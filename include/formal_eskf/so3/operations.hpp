@@ -13,6 +13,23 @@ namespace formal_eskf::so3
 {
 
 template <typename Linalg>
+[[nodiscard]] Status try_normalize(UnitQuaternion<Linalg> const & quaternion, typename Linalg::value_type minimum_norm,
+                                   UnitQuaternion<Linalg> & output) noexcept
+{
+    return UnitQuaternion<Linalg>::try_from_coefficients(quaternion.coefficients(), minimum_norm, output);
+}
+
+/** Compose two rotations and normalize the finite-precision result. */
+template <typename Linalg>
+[[nodiscard]] Status try_compose_normalized(UnitQuaternion<Linalg> const & q_a, UnitQuaternion<Linalg> const & q_b,
+                                            typename Linalg::value_type minimum_norm,
+                                            UnitQuaternion<Linalg> & output) noexcept
+{
+    UnitQuaternion<Linalg> const product = q_a * q_b;
+    return try_normalize(product, minimum_norm, output);
+}
+
+template <typename Linalg>
 [[nodiscard]] bool same_coefficients(UnitQuaternion<Linalg> const & q_a, UnitQuaternion<Linalg> const & q_b) noexcept
 {
     return q_a.q0() == q_b.q0() && q_a.q1() == q_b.q1() && q_a.q2() == q_b.q2() && q_a.q3() == q_b.q3();
@@ -42,8 +59,11 @@ template <typename Linalg>
 }
 
 /**
- * Convert q = [q0, q1, q2, q3] to R(q) using Equation (4) of the
- * project paper.  q0 is the scalar coefficient.
+ * Convert q = [q0, q1, q2, q3] to R(q) using Joan Sola, "Quaternion
+ * kinematics for the error-state Kalman filter", equation (115), with
+ * [q0, q1, q2, q3] corresponding to Sola's [qw, qx, qy, qz].
+ *
+ * @see https://arxiv.org/abs/1711.02508
  */
 template <typename Linalg>
 [[nodiscard]] typename Linalg::template matrix_type<3U, 3U>
@@ -96,6 +116,7 @@ inverse_rotate(UnitQuaternion<Linalg> const & quaternion,
     return linalg::transpose(to_rotation_matrix(quaternion)) * vector;
 }
 
+/** Cross-product matrix from Sola equations (20) and (21). */
 template <typename Linalg>
 [[nodiscard]] typename Linalg::template matrix_type<3U, 3U>
 hat(typename Linalg::template vector_type<3U> const & vector) noexcept

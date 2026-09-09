@@ -16,6 +16,12 @@ namespace formal_eskf::so3
  * Unit quaternion using scalar-first [q0, q1, q2, q3] coefficients and Hamilton
  * multiplication.
  *
+ * The ordering corresponds to [qw, qx, qy, qz], and multiplication and
+ * unit-quaternion inversion follow equations (12) and (30) of Joan Sola,
+ * "Quaternion kinematics for the error-state Kalman filter".
+ *
+ * @see https://arxiv.org/abs/1711.02508
+ *
  * Construction from arbitrary coefficients is checked and normalized.
  * Arithmetic evaluates eagerly.  Multiplication preserves unit norm over the
  * mathematical reals; finite-precision residual bounds belong to the selected

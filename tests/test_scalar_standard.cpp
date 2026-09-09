@@ -6,32 +6,13 @@
 #include <formal_eskf/scalar/backend/standard.hpp>
 #include <formal_eskf/scalar/math.hpp>
 
+#include "test_support.hpp"
+
 namespace
 {
 
-class TestContext
-{
-public:
-    void expect(bool condition, std::string_view profile, std::string_view description)
-    {
-        if (!condition)
-        {
-            ++m_failures;
-            std::cerr << "FAIL [" << profile << "]: " << description << '\n';
-        }
-    }
-
-    [[nodiscard]] int failures() const noexcept { return m_failures; }
-
-private:
-    int m_failures = 0;
-};
-
-template <typename T> [[nodiscard]] bool near(T actual, T expected, T tolerance)
-{
-    using std::abs;
-    return abs(actual - expected) <= tolerance;
-}
+using TestContext = formal_eskf::test::Context;
+using formal_eskf::test::near;
 
 template <typename Math>
 void test_primitives(TestContext & test, std::string_view profile, typename Math::value_type tolerance)

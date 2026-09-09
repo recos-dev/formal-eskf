@@ -25,6 +25,18 @@ target_include_directories(
 target_compile_features(formal_eskf_linalg INTERFACE cxx_std_20)
 target_link_libraries(formal_eskf_linalg INTERFACE formal_eskf::scalar_math)
 
+add_library(formal_eskf_so3 INTERFACE)
+add_library(formal_eskf::so3 ALIAS formal_eskf_so3)
+
+target_include_directories(
+    formal_eskf_so3
+    INTERFACE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
+target_compile_features(formal_eskf_so3 INTERFACE cxx_std_20)
+target_link_libraries(formal_eskf_so3 INTERFACE formal_eskf::linalg)
+
 option(FORMAL_ESKF_BUILD_EIGEN_BACKEND "Build the Eigen linear-algebra backend" ON)
 
 if(FORMAL_ESKF_BUILD_EIGEN_BACKEND)
@@ -70,6 +82,17 @@ if(PROJECT_IS_TOP_LEVEL)
             target_compile_definitions(test_linalg_eigen PRIVATE EIGEN_RUNTIME_NO_MALLOC)
             formal_eskf_configure_test(test_linalg_eigen)
             add_test(NAME formal_eskf.linalg.eigen COMMAND test_linalg_eigen)
+
+            add_executable(test_so3_eigen tests/test_so3_eigen.cpp)
+            target_link_libraries(
+                test_so3_eigen
+                PRIVATE
+                    formal_eskf::so3
+                    formal_eskf::linalg_eigen
+            )
+            target_compile_definitions(test_so3_eigen PRIVATE EIGEN_RUNTIME_NO_MALLOC)
+            formal_eskf_configure_test(test_so3_eigen)
+            add_test(NAME formal_eskf.so3.eigen COMMAND test_so3_eigen)
         endif()
     endif()
 endif()

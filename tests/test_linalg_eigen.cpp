@@ -256,7 +256,7 @@ void test_eskf_dimensions(TestContext & test, std::string_view profile, typename
 }
 
 template <typename Linalg>
-void run_conformance(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
+void run_conformance_tests(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
     test_construction_and_access<Linalg>(test, profile, tolerance);
     test_arithmetic_and_products<Linalg>(test, profile, tolerance);
@@ -273,8 +273,8 @@ int main()
     TestContext test;
 
     Eigen::internal::set_is_malloc_allowed(false);
-    run_conformance<formal_eskf::linalg::EigenBackend<double>>(test, "binary64", 1.0e-12);
-    run_conformance<formal_eskf::linalg::EigenBackend<float>>(test, "binary32", 1.0e-5F);
+    run_conformance_tests<formal_eskf::linalg::EigenBackend<double>>(test, "binary64", 1.0e-12);
+    run_conformance_tests<formal_eskf::linalg::EigenBackend<float>>(test, "binary32", 1.0e-5F);
 
     if (test.failures() != 0)
     {

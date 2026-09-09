@@ -5,7 +5,6 @@
  * Eigen implementation of the fixed-size linear algebra backend.
  */
 
-#include <cmath>
 #include <cstddef>
 #include <type_traits>
 
@@ -13,6 +12,7 @@
 #include <Eigen/Core>
 
 #include <formal_eskf/linalg/linalg.hpp>
+#include <formal_eskf/scalar/backend/standard.hpp>
 
 namespace formal_eskf::linalg
 {
@@ -30,6 +30,7 @@ template <typename Scalar> class EigenBackend
 
 public:
     using value_type = Scalar;
+    using scalar_math_type = scalar::StandardMath<value_type>;
 
     template <std::size_t Rows, std::size_t Columns> using matrix_type = Matrix<EigenBackend<Scalar>, Rows, Columns>;
 
@@ -83,12 +84,6 @@ public:
     [[nodiscard]] static value_type squared_norm(storage_type<Size, 1U> const & vector) noexcept;
 
     template <std::size_t Size> [[nodiscard]] static value_type norm(storage_type<Size, 1U> const & vector) noexcept;
-
-    [[nodiscard]] static value_type absolute(value_type value) noexcept;
-    [[nodiscard]] static bool is_finite(value_type value) noexcept;
-
-    template <std::size_t Rows, std::size_t Columns>
-    [[nodiscard]] static bool all_finite(storage_type<Rows, Columns> const & matrix) noexcept;
 
     template <std::size_t Size, std::size_t RightColumns>
     [[nodiscard]] static Status solve_spd(storage_type<Size, Size> const & system,
@@ -198,26 +193,6 @@ template <std::size_t Size>
 typename EigenBackend<Scalar>::value_type EigenBackend<Scalar>::norm(storage_type<Size, 1U> const & vector) noexcept
 {
     return vector.norm();
-}
-
-template <typename Scalar>
-typename EigenBackend<Scalar>::value_type EigenBackend<Scalar>::absolute(value_type value) noexcept
-{
-    using std::abs;
-    return abs(value);
-}
-
-template <typename Scalar> bool EigenBackend<Scalar>::is_finite(value_type value) noexcept
-{
-    using std::isfinite;
-    return isfinite(value);
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-bool EigenBackend<Scalar>::all_finite(storage_type<Rows, Columns> const & matrix) noexcept
-{
-    return matrix.allFinite();
 }
 
 template <typename Scalar>

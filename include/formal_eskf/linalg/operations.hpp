@@ -8,6 +8,7 @@
 #include <cstddef>
 
 #include <formal_eskf/linalg/matrix.hpp>
+#include <formal_eskf/scalar/math.hpp>
 #include <formal_eskf/status.hpp>
 
 namespace formal_eskf::linalg
@@ -44,7 +45,19 @@ template <typename Linalg, std::size_t Size>
 template <typename Linalg, std::size_t Rows, std::size_t Columns>
 [[nodiscard]] bool all_finite(Matrix<Linalg, Rows, Columns> const & matrix) noexcept
 {
-    return Linalg::template all_finite<Rows, Columns>(detail::MatrixAccess::storage(matrix));
+    using scalar_math_type = typename Linalg::scalar_math_type;
+
+    for (std::size_t row = 0U; row < Rows; ++row)
+    {
+        for (std::size_t column = 0U; column < Columns; ++column)
+        {
+            if (!scalar::is_finite<scalar_math_type>(matrix(row, column)))
+            {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 template <typename Linalg, std::size_t Size>
@@ -52,14 +65,15 @@ template <typename Linalg, std::size_t Size>
                                    Matrix<Linalg, Size, 1U> & output) noexcept
 {
     using value_type = typename Linalg::value_type;
+    using scalar_math_type = typename Linalg::scalar_math_type;
 
-    if (!all_finite(input) || !Linalg::is_finite(minimum_norm))
+    if (!all_finite(input) || !scalar::is_finite<scalar_math_type>(minimum_norm))
     {
         return Status::non_finite_input;
     }
 
     value_type const input_norm = norm(input);
-    if (!Linalg::is_finite(input_norm))
+    if (!scalar::is_finite<scalar_math_type>(input_norm))
     {
         return Status::non_finite_result;
     }
@@ -115,13 +129,14 @@ template <typename Linalg, std::size_t Rows, std::size_t Columns>
 [[nodiscard]] typename Linalg::value_type max_abs(Matrix<Linalg, Rows, Columns> const & matrix) noexcept
 {
     using value_type = typename Linalg::value_type;
+    using scalar_math_type = typename Linalg::scalar_math_type;
     value_type result{0};
     for (std::size_t row = 0U; row < Rows; ++row)
     {
         for (std::size_t column = 0U; column < Columns; ++column)
         {
-            value_type const magnitude = Linalg::absolute(matrix(row, column));
-            if (!Linalg::is_finite(magnitude))
+            value_type const magnitude = scalar::absolute<scalar_math_type>(matrix(row, column));
+            if (!scalar::is_finite<scalar_math_type>(magnitude))
             {
                 return magnitude;
             }
@@ -145,7 +160,8 @@ template <typename Linalg, std::size_t Size>
                                 typename Linalg::value_type tolerance) noexcept
 {
     using value_type = typename Linalg::value_type;
-    if (!all_finite(matrix) || !Linalg::is_finite(tolerance) || tolerance < value_type{0})
+    using scalar_math_type = typename Linalg::scalar_math_type;
+    if (!all_finite(matrix) || !scalar::is_finite<scalar_math_type>(tolerance) || tolerance < value_type{0})
     {
         return false;
     }

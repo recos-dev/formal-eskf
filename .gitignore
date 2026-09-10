@@ -1,3 +1,4 @@
 /formal/lean/.lake/
-/formal/lean/.tooling/
-/formal/cpp/.tooling/
+/tools/bootstrap/
+/tools/elan/
+/tools/esbmc-8.4.0/

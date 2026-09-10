@@ -1,0 +1,13 @@
+#pragma once
+
+/**
+ * Minimal ESBMC library model for the C++20 <numbers> facility used by
+ * StandardMath. ESBMC 8.4 does not ship this standard-library header.
+ */
+
+namespace std::numbers
+{
+
+template <typename Value> inline constexpr Value pi_v = static_cast<Value>(3.141592653589793238462643383279502884L);
+
+} /* end namespace std::numbers */

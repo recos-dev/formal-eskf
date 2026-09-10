@@ -1,0 +1,384 @@
+{
+  "version": 1,
+  "scalar_models": {
+    "lean": "Exact algebra over CommRing, with real-number theorems where required",
+    "cpp": "C++20 operations over IEEE-754 binary32 or binary64",
+    "esbmc": "IEEE-754 binary32; symbolic representation coefficients are finite values in [-1, 1]"
+  },
+  "review_dimensions": [
+    "coefficient ordering",
+    "Hamilton multiplication and composition order",
+    "active rotation and column-vector convention",
+    "preconditions and valid domains",
+    "coefficient-level equations and evaluation order",
+    "postconditions and failure behavior",
+    "exact algebra versus IEEE-754 claims",
+    "ESBMC assumptions and vacuity risk"
+  ],
+  "requirements": [
+    {
+      "id": "Q-IDENTITY",
+      "title": "Quaternion identity",
+      "references": {
+        "spec": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/Quaternion.lean",
+            "symbol": "def identity"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Quaternion.lean",
+            "symbol": "theorem identity_hamiltonMul"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Quaternion.lean",
+            "symbol": "theorem hamiltonMul_identity"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/so3/unit_quaternion.hpp",
+            "symbol": "identity()"
+          }
+        ],
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_basic_representation"
+          }
+        ]
+      }
+    },
+    {
+      "id": "Q-NORMALIZE",
+      "title": "Checked quaternion normalization",
+      "references": {
+        "spec": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/Quaternion.lean",
+            "symbol": "def normSquared"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Quaternion.lean",
+            "symbol": "def HasUnitNorm"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/so3/unit_quaternion.hpp",
+            "symbol": "try_from_coefficients"
+          },
+          {
+            "file": "include/formal_eskf/so3/operations.hpp",
+            "symbol": "try_normalize"
+          }
+        ],
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_construction_success"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_construction_failures"
+          }
+        ]
+      }
+    },
+    {
+      "id": "Q-MUL",
+      "title": "Hamilton multiplication",
+      "references": {
+        "spec": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/Quaternion.lean",
+            "symbol": "def hamiltonMul"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Quaternion.lean",
+            "symbol": "theorem hamiltonMul_assoc"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Quaternion.lean",
+            "symbol": "theorem normSquared_hamiltonMul"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/so3/unit_quaternion.hpp",
+            "symbol": "operator*(UnitQuaternion const & other)"
+          }
+        ],
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_hamilton_product"
+          }
+        ]
+      }
+    },
+    {
+      "id": "Q-ROT-COMPOSE",
+      "title": "Quaternion and rotation composition order",
+      "references": {
+        "spec": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "theorem rotationMatrix_hamiltonMul"
+          },
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "theorem rotate_hamiltonMul"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/so3/operations.hpp",
+            "symbol": "try_compose_normalized"
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
+      "id": "Q-INVERSE",
+      "title": "Unit-quaternion inverse",
+      "references": {
+        "spec": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/Quaternion.lean",
+            "symbol": "def conjugate"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Quaternion.lean",
+            "symbol": "theorem hamiltonMul_conjugate_of_unit"
+          },
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "theorem rotationMatrix_conjugate"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/so3/unit_quaternion.hpp",
+            "symbol": "inverse()"
+          }
+        ],
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_basic_representation"
+          }
+        ]
+      }
+    },
+    {
+      "id": "Q-ROT-MATRIX",
+      "title": "Quaternion-to-rotation-matrix conversion",
+      "references": {
+        "spec": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "def rotationMatrix"
+          },
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "theorem rotationMatrix_identity"
+          },
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "theorem det_rotationMatrix_of_unit"
+          },
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "theorem rotationMatrix_mul_transpose_of_unit"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/so3/operations.hpp",
+            "symbol": "to_rotation_matrix"
+          }
+        ],
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_rotation_matrix_row_0"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_rotation_matrix_row_1"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_rotation_matrix_row_2"
+          }
+        ]
+      }
+    },
+    {
+      "id": "Q-ROTATE",
+      "title": "Forward and inverse rotation action",
+      "references": {
+        "spec": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "def rotate"
+          },
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "def inverseRotate"
+          },
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "theorem inverseRotate_rotate_of_unit"
+          },
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "theorem vectorNormSquared_rotate_of_unit"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/so3/operations.hpp",
+            "symbol": "rotate(UnitQuaternion"
+          },
+          {
+            "file": "include/formal_eskf/so3/operations.hpp",
+            "symbol": "inverse_rotate"
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
+      "id": "Q-SIGN",
+      "title": "Quaternion sign equivalence",
+      "references": {
+        "spec": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/Quaternion.lean",
+            "symbol": "def neg"
+          },
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "theorem rotationMatrix_neg"
+          },
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "theorem rotate_neg"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/so3/unit_quaternion.hpp",
+            "symbol": "operator-()"
+          },
+          {
+            "file": "include/formal_eskf/so3/operations.hpp",
+            "symbol": "same_rotation"
+          }
+        ],
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "FORMAL_ESKF_ROTATION_SIGN_CHECK"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_same_rotation_sign"
+          }
+        ]
+      }
+    },
+    {
+      "id": "SO3-HAT",
+      "title": "Hat and cross-product semantics",
+      "references": {
+        "spec": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "def hat"
+          },
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "theorem hat_mulVec"
+          },
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "theorem transpose_hat"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/so3/operations.hpp",
+            "symbol": "hat(typename Linalg"
+          },
+          {
+            "file": "include/formal_eskf/linalg/operations.hpp",
+            "symbol": "cross(Matrix"
+          }
+        ],
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_hat"
+          }
+        ]
+      }
+    },
+    {
+      "id": "SO3-EXP",
+      "title": "Quaternion exponential map and zero behavior",
+      "references": {
+        "spec": [],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/so3/rotation_vector.hpp",
+            "symbol": "try_exp"
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
+      "id": "SO3-LOG",
+      "title": "Principal quaternion logarithmic map",
+      "references": {
+        "spec": [],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/so3/rotation_vector.hpp",
+            "symbol": "try_log"
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
+      "id": "SO3-SMALL-ANGLE",
+      "title": "Small-angle and exact-zero behavior",
+      "references": {
+        "spec": [],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/so3/rotation_vector.hpp",
+            "symbol": "Taylor"
+          }
+        ],
+        "esbmc": []
+      }
+    }
+  ]
+}

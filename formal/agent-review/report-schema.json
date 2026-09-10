@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "overall": {
+      "type": "string",
+      "enum": ["pass", "incomplete", "fail"]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "tool_results": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "properties": {
+          "tool": {
+            "type": "string",
+            "enum": ["lean", "esbmc"]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pass", "fail"]
+          },
+          "exit_code": {
+            "type": "integer"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": ["tool", "status", "exit_code", "summary"],
+        "additionalProperties": false
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "classification": {
+            "type": "string",
+            "enum": ["PASS", "MISMATCH", "GAP", "NUMERICAL"]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "layer": {
+                  "type": "string",
+                  "enum": ["spec", "lean", "cpp", "esbmc"]
+                },
+                "file": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "symbol": {
+                  "type": "string"
+                },
+                "observation": {
+                  "type": "string"
+                }
+              },
+              "required": ["layer", "file", "line", "symbol", "observation"],
+              "additionalProperties": false
+            }
+          },
+          "assumption_differences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "traceability",
+                    "convention",
+                    "formula",
+                    "precondition",
+                    "postcondition",
+                    "failure",
+                    "numerical",
+                    "coverage",
+                    "vacuity"
+                  ]
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": ["error", "warning", "info"]
+                },
+                "description": {
+                  "type": "string"
+                }
+              },
+              "required": ["category", "severity", "description"],
+              "additionalProperties": false
+            }
+          },
+          "next_action": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "classification",
+          "summary",
+          "evidence",
+          "assumption_differences",
+          "findings",
+          "next_action"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "unmapped_references": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "layer": {
+            "type": "string",
+            "enum": ["spec", "lean", "cpp", "esbmc"]
+          },
+          "file": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": ["layer", "file", "symbol", "reason"],
+        "additionalProperties": false
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "overall",
+    "summary",
+    "tool_results",
+    "requirements",
+    "unmapped_references",
+    "limitations"
+  ],
+  "additionalProperties": false
+}

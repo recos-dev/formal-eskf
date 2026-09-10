@@ -1,3 +1,6 @@
+*.sw*
+/report.json
+
 /formal/lean/.lake/
 /tools/bootstrap/
 /tools/elan/

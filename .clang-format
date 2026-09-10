@@ -1,0 +1,12 @@
+BasedOnStyle: LLVM
+AccessModifierOffset: -4
+AlwaysBreakTemplateDeclarations: MultiLine
+BreakBeforeBraces: Allman
+ColumnLimit: 120
+DerivePointerAlignment: false
+IndentWidth: 4
+NamespaceIndentation: None
+PointerAlignment: Middle
+SortIncludes: false
+Standard: c++20
+UseTab: Never

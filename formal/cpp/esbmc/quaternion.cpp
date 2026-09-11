@@ -1,3 +1,11 @@
+/*
+ * formal-eskf is freely redistributable under the BSD 3-Clause License.
+ * See the file "LICENSE" for information on usage and redistribution of this
+ * file.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 /**
  * ESBMC checks for the implemented quaternion and SO(3) semantics.
  *

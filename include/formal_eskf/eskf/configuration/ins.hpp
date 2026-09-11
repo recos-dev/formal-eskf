@@ -60,17 +60,21 @@ struct Ins
     };
 
     /**
-     * Independent-axis continuous-time noise intensities, not standard
-     * deviations or per-sample variances. For each noise w, E[w(t)w(s)^T]
-     * equals diag(intensity) * delta(t-s). The first two vectors describe
-     * measurement noise; the last two drive time derivatives of the biases.
+     * Independent body-axis noise parameters with the time scaling of
+     * SICE 2023 equation (15). Axis variances may differ; covariance prediction
+     * uses Sola's general noise mapping rather than assuming isotropic noise.
+     * Measurement variances describe a sampled error held over one IMU step;
+     * they are multiplied by dt^2, not squared again. Bias random-walk
+     * intensities drive bias derivatives and are multiplied by dt:
+     * E[w(t)w(s)^T] = diag(intensity) * delta(t-s).
+     * All coefficients must be finite and nonnegative; zero noise is allowed.
      */
     template <typename Linalg> struct ProcessNoise
     {
         using vector3_type = typename Linalg::template vector_type<3U>;
 
-        vector3_type specific_force_variance_density{};                 // m^2/s^3.
-        vector3_type angular_rate_variance_density{};                   // rad^2/s.
+        vector3_type specific_force_variance{};                         // m^2/s^4, per sample.
+        vector3_type angular_rate_variance{};                           // rad^2/s^2, per sample.
         vector3_type accelerometer_bias_random_walk_variance_density{}; // m^2/s^5.
         vector3_type gyroscope_bias_random_walk_variance_density{};     // rad^2/s^3.
     };

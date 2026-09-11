@@ -119,7 +119,7 @@ void test_imu_and_configuration(TestContext & test, std::string_view profile, ty
 
     static_assert(types::process_noise_dimension == 12U);
     test.expect(configuration.gravity_n(2U) == value_type{10} &&
-                    vector_near(configuration.process_noise.specific_force_variance_density, noise_vector, tolerance) &&
+                    vector_near(configuration.process_noise.specific_force_variance, noise_vector, tolerance) &&
                     configuration.minimum_quaternion_norm > value_type{0} &&
                     configuration.dt_min < configuration.dt_max,
                 profile, "configuration preserves physical and numerical parameters");
@@ -163,7 +163,7 @@ void test_ahrs_types(TestContext & test, std::string_view profile, typename Lina
                                                     static_cast<value_type>(1.0e-6),
                                                     static_cast<value_type>(1.0e-4),
                                                     static_cast<value_type>(1.0e-1)};
-    test.expect(vector_near(parameters.process_noise.angular_rate_variance_density, noise_vector, tolerance) &&
+    test.expect(vector_near(parameters.process_noise.angular_rate_variance, noise_vector, tolerance) &&
                     parameters.minimum_quaternion_norm > value_type{0} && parameters.dt_min < parameters.dt_max,
                 profile, "AHRS parameters contain angular-rate process noise and time bounds");
 }

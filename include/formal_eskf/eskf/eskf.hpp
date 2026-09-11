@@ -16,3 +16,6 @@
 #include <formal_eskf/eskf/configuration/ahrs.hpp>
 #include <formal_eskf/eskf/configuration/ins.hpp>
 #include <formal_eskf/eskf/types.hpp>
+#include <formal_eskf/eskf/prediction.hpp>
+#include <formal_eskf/eskf/process_noise.hpp>
+#include <formal_eskf/eskf/covariance_prediction.hpp>

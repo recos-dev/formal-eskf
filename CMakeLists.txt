@@ -49,6 +49,13 @@ target_include_directories(
 target_compile_features(formal_eskf_core INTERFACE cxx_std_20)
 target_link_libraries(formal_eskf_core INTERFACE formal_eskf::so3)
 
+option(ESKF_QUAT_APPROX "Use normalized Euler and first-order attitude error prediction" OFF)
+target_compile_definitions(
+    formal_eskf_core
+    INTERFACE
+        ESKF_QUAT_APPROX=$<BOOL:${ESKF_QUAT_APPROX}>
+)
+
 option(FORMAL_ESKF_BUILD_EIGEN_BACKEND "Build the Eigen linear-algebra backend" ON)
 
 if(FORMAL_ESKF_BUILD_EIGEN_BACKEND)
@@ -116,6 +123,18 @@ if(PROJECT_IS_TOP_LEVEL)
             target_compile_definitions(test_eskf_types PRIVATE EIGEN_RUNTIME_NO_MALLOC)
             formal_eskf_configure_test(test_eskf_types)
             add_test(NAME formal_eskf.types.eigen COMMAND test_eskf_types)
+
+            add_executable(test_eskf_prediction tests/test_eskf_prediction.cpp)
+            target_link_libraries(test_eskf_prediction PRIVATE formal_eskf::core formal_eskf::linalg_eigen)
+            target_compile_definitions(test_eskf_prediction PRIVATE EIGEN_RUNTIME_NO_MALLOC)
+            formal_eskf_configure_test(test_eskf_prediction)
+            add_test(NAME formal_eskf.prediction.eigen COMMAND test_eskf_prediction)
+
+            add_executable(test_eskf_covariance tests/test_eskf_covariance.cpp)
+            target_link_libraries(test_eskf_covariance PRIVATE formal_eskf::core formal_eskf::linalg_eigen)
+            target_compile_definitions(test_eskf_covariance PRIVATE EIGEN_RUNTIME_NO_MALLOC)
+            formal_eskf_configure_test(test_eskf_covariance)
+            add_test(NAME formal_eskf.covariance.eigen COMMAND test_eskf_covariance)
         endif()
     endif()
 endif()

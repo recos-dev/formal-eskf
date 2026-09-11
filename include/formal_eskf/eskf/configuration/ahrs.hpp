@@ -49,15 +49,16 @@ struct Ahrs
     };
 
     /**
-     * Independent-axis continuous-time angular-rate noise intensity, rad^2/s.
-     * E[w(t)w(s)^T] = diag(intensity) * delta(t-s); this is neither a standard
-     * deviation nor a per-sample variance.
+     * Independent body-axis angular-rate measurement variances, rad^2/s^2.
+     * Each sampled error is held over one IMU step, giving variance * dt^2
+     * in SICE 2023 equation (15). These are not standard deviations or
+     * continuous-time intensities. Coefficients must be finite and nonnegative.
      */
     template <typename Linalg> struct ProcessNoise
     {
         using vector3_type = typename Linalg::template vector_type<3U>;
 
-        vector3_type angular_rate_variance_density{};
+        vector3_type angular_rate_variance{};
     };
 
     /**

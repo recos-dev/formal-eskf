@@ -14,7 +14,6 @@ ESBMC_ARGUMENTS=(
     -I "${PROOF_DIR}/include"
     -I "${REPO_DIR}/include"
     --assign-param-nondet
-    --unwind 20
     --timeout 120s
     --quiet
 )
@@ -48,10 +47,16 @@ check_esbmc_version()
 verify()
 {
     local FUNCTION_NAME="$1"
+    local UNWIND_COUNT=10
     shift
 
+    if [[ "${1:-}" == "--proof-unwind" ]]; then
+        UNWIND_COUNT="$2"
+        shift 2
+    fi
+
     printf '==> %s\n' "${FUNCTION_NAME}"
-    "${ESBMC_COMMAND}" "${ESBMC_ARGUMENTS[@]}" --function "${FUNCTION_NAME}" "$@"
+    "${ESBMC_COMMAND}" "${ESBMC_ARGUMENTS[@]}" --unwind "${UNWIND_COUNT}" --function "${FUNCTION_NAME}" "$@"
 }
 
 run_suite()
@@ -60,8 +65,15 @@ run_suite()
 
     verify verify_basic_representation
     verify verify_hamilton_product
-    verify verify_construction_success --no-pointer-check --no-align-check
+    verify verify_construction_success
     verify verify_construction_failures
+    verify verify_construction_basis
+    verify verify_normalization_candidate_coefficient_0
+    verify verify_normalization_candidate_coefficient_1
+    verify verify_normalization_candidate_coefficient_2
+    verify verify_normalization_candidate_coefficient_3
+    verify verify_construction_below_threshold
+    verify verify_composition --proof-unwind 5
     verify verify_rotation_matrix_row_0
     verify verify_rotation_matrix_row_1
     verify verify_rotation_matrix_row_2
@@ -71,11 +83,26 @@ run_suite()
     for ROW in 0 1 2; do
         for COLUMN in 0 1 2; do
             verify "verify_rotation_sign_${ROW}${COLUMN}" --default-solver z3
+            verify "verify_rotate_basis_${ROW}${COLUMN}"
+            verify "verify_inverse_rotate_basis_${ROW}${COLUMN}"
         done
     done
 
     verify verify_same_rotation_sign
     verify verify_hat
+    verify verify_exp_zero --proof-unwind 5
+    verify verify_exp_taylor_branch --proof-unwind 5
+    verify verify_exp_closed_form --proof-unwind 5
+    verify verify_exp_failures --proof-unwind 5
+    verify verify_log_zero --proof-unwind 5
+    verify verify_log_taylor_branch --proof-unwind 5
+    verify verify_log_closed_form --proof-unwind 5
+    verify verify_log_closed_form_scale
+    verify verify_log_candidate_coefficient_0
+    verify verify_log_candidate_coefficient_1
+    verify verify_log_candidate_coefficient_2
+    verify verify_log_principal_sign --proof-unwind 5
+    verify verify_log_pi_boundary --proof-unwind 5
 }
 
 main()

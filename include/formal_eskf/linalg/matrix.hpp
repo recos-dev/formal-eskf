@@ -52,12 +52,18 @@ public:
     [[nodiscard]] static Matrix from_row_major(value_type const (&coefficients)[Rows * Columns]) noexcept;
 
     /** Access a coefficient.  The caller must prove row < Rows and column < Columns. */
-    [[nodiscard]] value_type const & operator()(std::size_t row, std::size_t column) const noexcept;
+    [[nodiscard]] value_type operator()(std::size_t row, std::size_t column) const noexcept;
     [[nodiscard]] value_type & operator()(std::size_t row, std::size_t column) noexcept;
 
     /** Access a vector coefficient.  This overload is available only when Columns is one. */
-    [[nodiscard]] value_type const & operator()(std::size_t index) const noexcept;
+    [[nodiscard]] value_type operator()(std::size_t index) const noexcept;
     [[nodiscard]] value_type & operator()(std::size_t index) noexcept;
+
+    /** Replace one coefficient without exposing a backend storage reference. */
+    void set(std::size_t row, std::size_t column, value_type value) noexcept;
+
+    /** Replace one vector coefficient.  This overload is available only when Columns is one. */
+    void set(std::size_t index, value_type value) noexcept;
 
     [[nodiscard]] Matrix operator+(Matrix const & other) const noexcept;
     [[nodiscard]] Matrix operator-(Matrix const & other) const noexcept;
@@ -144,7 +150,7 @@ Matrix<Linalg, Rows, Columns>::from_row_major(value_type const (&coefficients)[R
 }
 
 template <typename Linalg, std::size_t Rows, std::size_t Columns>
-typename Matrix<Linalg, Rows, Columns>::value_type const &
+typename Matrix<Linalg, Rows, Columns>::value_type
 Matrix<Linalg, Rows, Columns>::operator()(std::size_t row, std::size_t column) const noexcept
 {
     return Linalg::template coefficient<Rows, Columns>(m_storage, row, column);
@@ -158,11 +164,11 @@ Matrix<Linalg, Rows, Columns>::operator()(std::size_t row, std::size_t column) n
 }
 
 template <typename Linalg, std::size_t Rows, std::size_t Columns>
-typename Matrix<Linalg, Rows, Columns>::value_type const &
+typename Matrix<Linalg, Rows, Columns>::value_type
 Matrix<Linalg, Rows, Columns>::operator()(std::size_t index) const noexcept
 {
     static_assert(Columns == 1U);
-    return (*this)(index, 0U);
+    return Linalg::template coefficient<Rows, Columns>(m_storage, index, 0U);
 }
 
 template <typename Linalg, std::size_t Rows, std::size_t Columns>
@@ -170,7 +176,20 @@ typename Matrix<Linalg, Rows, Columns>::value_type &
 Matrix<Linalg, Rows, Columns>::operator()(std::size_t index) noexcept
 {
     static_assert(Columns == 1U);
-    return (*this)(index, 0U);
+    return Linalg::template coefficient<Rows, Columns>(m_storage, index, 0U);
+}
+
+template <typename Linalg, std::size_t Rows, std::size_t Columns>
+void Matrix<Linalg, Rows, Columns>::set(std::size_t row, std::size_t column, value_type value) noexcept
+{
+    Linalg::template set_coefficient<Rows, Columns>(m_storage, row, column, value);
+}
+
+template <typename Linalg, std::size_t Rows, std::size_t Columns>
+void Matrix<Linalg, Rows, Columns>::set(std::size_t index, value_type value) noexcept
+{
+    static_assert(Columns == 1U);
+    Linalg::template set_coefficient<Rows, Columns>(m_storage, index, 0U, value);
 }
 
 template <typename Linalg, std::size_t Rows, std::size_t Columns>

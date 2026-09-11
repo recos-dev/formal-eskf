@@ -51,6 +51,10 @@ public:
                                                   std::size_t column) noexcept;
 
     template <std::size_t Rows, std::size_t Columns>
+    static void set_coefficient(storage_type<Rows, Columns> & matrix, std::size_t row, std::size_t column,
+                                value_type value) noexcept;
+
+    template <std::size_t Rows, std::size_t Columns>
     static void add(storage_type<Rows, Columns> const & left, storage_type<Rows, Columns> const & right,
                     storage_type<Rows, Columns> & result) noexcept;
 
@@ -114,6 +118,14 @@ typename EigenBackend<Scalar>::value_type &
 EigenBackend<Scalar>::coefficient(storage_type<Rows, Columns> & matrix, std::size_t row, std::size_t column) noexcept
 {
     return matrix(static_cast<Eigen::Index>(row), static_cast<Eigen::Index>(column));
+}
+
+template <typename Scalar>
+template <std::size_t Rows, std::size_t Columns>
+void EigenBackend<Scalar>::set_coefficient(storage_type<Rows, Columns> & matrix, std::size_t row, std::size_t column,
+                                           value_type value) noexcept
+{
+    matrix(static_cast<Eigen::Index>(row), static_cast<Eigen::Index>(column)) = value;
 }
 
 template <typename Scalar>

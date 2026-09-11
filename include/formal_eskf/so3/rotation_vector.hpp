@@ -14,6 +14,47 @@
 namespace formal_eskf::so3
 {
 
+namespace detail
+{
+
+template <typename Scalar> struct PrincipalQuaternionCoefficients
+{
+    Scalar q0;
+    Scalar q1;
+    Scalar q2;
+    Scalar q3;
+};
+
+template <typename Linalg>
+[[nodiscard]] PrincipalQuaternionCoefficients<typename Linalg::value_type>
+principal_quaternion_coefficients(UnitQuaternion<Linalg> const & quaternion) noexcept
+{
+    using value_type = typename Linalg::value_type;
+    value_type const sign = quaternion.q0() < value_type{0} ? value_type{-1} : value_type{1};
+    return {sign * quaternion.q0(), sign * quaternion.q1(), sign * quaternion.q2(), sign * quaternion.q3()};
+}
+
+template <typename Scalar>
+[[nodiscard]] Scalar log_taylor_scale(Scalar q0, Scalar q0_squared, Scalar qv_squared_norm) noexcept
+{
+    return Scalar{2} / q0 * (Scalar{1} - qv_squared_norm / (Scalar{3} * q0_squared));
+}
+
+template <typename Scalar>
+[[nodiscard]] Scalar log_closed_form_scale(Scalar qv_norm, Scalar half_angle) noexcept
+{
+    return Scalar{2} * half_angle / qv_norm;
+}
+
+template <typename Linalg>
+[[nodiscard]] typename Linalg::template vector_type<3U>
+log_candidate(typename Linalg::template vector_type<3U> const & qv, typename Linalg::value_type scale) noexcept
+{
+    return qv * scale;
+}
+
+} /* end namespace detail */
+
 /**
  * Compute the quaternion exponential of a rotation vector.
  *
@@ -96,9 +137,11 @@ template <typename Linalg>
  *
  * Implements the capitalized quaternion Log in Joan Sola, "Quaternion
  * kinematics for the error-state Kalman filter", equations (103)--(106).  The
- * q0 >= 0 representative is selected first so that q and -q have the same
- * project-defined principal result with norm no greater than pi; that sign
- * selection is an SO(3) policy applied before Sola's S^3 Log formula.
+ * A q0 >= 0 representative is selected first, giving q and -q the same result
+ * away from q0 == 0 and a norm no greater than pi.  At q0 == 0, the two
+ * opposite axis signs are both valid principal results for the pi rotation.
+ * This sign selection is an SO(3) policy applied before Sola's S^3 Log
+ * formula.
  *
  * @see https://arxiv.org/abs/1711.02508
  */
@@ -115,12 +158,12 @@ template <typename Linalg>
         return Status::non_finite_input;
     }
 
-    value_type const sign = quaternion.q0() < value_type{0} ? value_type{-1} : value_type{1};
-    value_type const q0 = sign * quaternion.q0();
+    auto const principal = detail::principal_quaternion_coefficients(quaternion);
+    value_type const q0 = principal.q0;
     vector3_type qv;
-    qv(0U) = sign * quaternion.q1();
-    qv(1U) = sign * quaternion.q2();
-    qv(2U) = sign * quaternion.q3();
+    qv.set(0U, principal.q1);
+    qv.set(1U, principal.q2);
+    qv.set(2U, principal.q3);
 
     value_type const qv_squared_norm = linalg::squared_norm(qv);
     if (!scalar::is_finite<scalar_math_type>(qv_squared_norm))
@@ -133,7 +176,9 @@ template <typename Linalg>
     }
     if (qv_squared_norm == value_type{0})
     {
-        output = vector3_type::zero();
+        output.set(0U, value_type{0});
+        output.set(1U, value_type{0});
+        output.set(2U, value_type{0});
         return Status::success;
     }
 
@@ -145,7 +190,7 @@ template <typename Linalg>
         {
             return Status::zero_or_unsafe_divisor;
         }
-        scale = value_type{2} / q0 * (value_type{1} - qv_squared_norm / (value_type{3} * q0_squared));
+        scale = detail::log_taylor_scale(q0, q0_squared, qv_squared_norm);
     }
     else
     {
@@ -163,7 +208,7 @@ template <typename Linalg>
             return atan2_status;
         }
 
-        scale = value_type{2} * half_angle / qv_norm;
+        scale = detail::log_closed_form_scale(qv_norm, half_angle);
     }
 
     if (!scalar::is_finite<scalar_math_type>(scale))
@@ -171,13 +216,15 @@ template <typename Linalg>
         return Status::non_finite_result;
     }
 
-    vector3_type const candidate = qv * scale;
+    vector3_type const candidate = detail::log_candidate<Linalg>(qv, scale);
     if (!linalg::all_finite(candidate))
     {
         return Status::non_finite_result;
     }
 
-    output = candidate;
+    output.set(0U, candidate(0U));
+    output.set(1U, candidate(1U));
+    output.set(2U, candidate(2U));
     return Status::success;
 }
 

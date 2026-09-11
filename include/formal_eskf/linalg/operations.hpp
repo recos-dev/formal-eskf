@@ -14,6 +14,19 @@
 namespace formal_eskf::linalg
 {
 
+namespace detail
+{
+
+/** Pure coefficient step used after a checked norm has been established. */
+template <typename Linalg, std::size_t Size>
+[[nodiscard]] Matrix<Linalg, Size, 1U>
+normalization_candidate(Matrix<Linalg, Size, 1U> const & input, typename Linalg::value_type input_norm) noexcept
+{
+    return input / input_norm;
+}
+
+} /* end namespace detail */
+
 template <typename Linalg, std::size_t Rows, std::size_t Columns>
 [[nodiscard]] Matrix<Linalg, Columns, Rows> transpose(Matrix<Linalg, Rows, Columns> const & matrix) noexcept
 {
@@ -82,13 +95,16 @@ template <typename Linalg, std::size_t Size>
         return Status::zero_or_unsafe_divisor;
     }
 
-    Matrix<Linalg, Size, 1U> const candidate = input / input_norm;
+    Matrix<Linalg, Size, 1U> const candidate = detail::normalization_candidate(input, input_norm);
     if (!all_finite(candidate))
     {
         return Status::non_finite_result;
     }
 
-    output = candidate;
+    for (std::size_t index = 0U; index < Size; ++index)
+    {
+        output.set(index, candidate(index));
+    }
     return Status::success;
 }
 

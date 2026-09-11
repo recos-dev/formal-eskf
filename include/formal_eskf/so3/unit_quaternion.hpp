@@ -82,10 +82,10 @@ Status UnitQuaternion<Linalg>::try_from_coefficients(value_type q0, value_type q
                                                      value_type minimum_norm, UnitQuaternion & output) noexcept
 {
     vector4_type coefficients;
-    coefficients(0U) = q0;
-    coefficients(1U) = q1;
-    coefficients(2U) = q2;
-    coefficients(3U) = q3;
+    coefficients.set(0U, q0);
+    coefficients.set(1U, q1);
+    coefficients.set(2U, q2);
+    coefficients.set(3U, q3);
     return try_from_coefficients(coefficients, minimum_norm, output);
 }
 
@@ -113,7 +113,11 @@ Status UnitQuaternion<Linalg>::try_from_coefficients(vector4_type const & coeffi
         return status;
     }
 
-    output = UnitQuaternion(normalized(0U), normalized(1U), normalized(2U), normalized(3U), Unchecked{});
+    vector4_type const & result = normalized;
+    output.m_q0 = result(0U);
+    output.m_q1 = result(1U);
+    output.m_q2 = result(2U);
+    output.m_q3 = result(3U);
     return Status::success;
 }
 
@@ -121,10 +125,10 @@ template <typename Linalg>
 typename UnitQuaternion<Linalg>::vector4_type UnitQuaternion<Linalg>::coefficients() const noexcept
 {
     vector4_type result;
-    result(0U) = m_q0;
-    result(1U) = m_q1;
-    result(2U) = m_q2;
-    result(3U) = m_q3;
+    result.set(0U, m_q0);
+    result.set(1U, m_q1);
+    result.set(2U, m_q2);
+    result.set(3U, m_q3);
     return result;
 }
 

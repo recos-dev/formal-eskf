@@ -20,7 +20,7 @@
 // Exercise the standalone header, without relying on the ESKF master header.
 #include <formal_eskf/eskf/correction.hpp>
 #include <formal_eskf/eskf/types.hpp>
-#include <formal_eskf/linalg/backend/eigen.hpp>
+#include "test_backend.hpp"
 
 #include "test_support.hpp"
 
@@ -640,9 +640,9 @@ void run_correction_tests(TestContext & test, std::string_view profile, typename
 int main()
 {
     TestContext test;
-    Eigen::internal::set_is_malloc_allowed(false);
-    using FloatLinalg = formal_eskf::linalg::EigenBackend<float>;
-    using DoubleLinalg = formal_eskf::linalg::EigenBackend<double>;
+    formal_eskf::test::configure_backend_test();
+    using FloatLinalg = formal_eskf::test::Backend<float>;
+    using DoubleLinalg = formal_eskf::test::Backend<double>;
     using formal_eskf::configuration::Ahrs;
     using formal_eskf::configuration::Ins;
     run_correction_tests<FloatLinalg, Ahrs>(test, "AHRS binary32", 8.0e-6F);

@@ -25,7 +25,7 @@ namespace formal_eskf::linalg
  * Solve system * solution = right_hand_side for a finite, exactly symmetric,
  * positive-definite system matrix.
  *
- * The Eigen backend uses Cholesky (LLT), sharing one factorization across all
+ * The backends use Cholesky (LLT), sharing one factorization across all
  * right-hand-side columns. No inverse is formed. The caller is responsible for
  * cleaning up roundoff asymmetry when constructing a covariance system.
  *

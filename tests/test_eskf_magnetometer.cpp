@@ -17,7 +17,7 @@
 
 // Check that the measurement header includes its own dependencies.
 #include <formal_eskf/eskf/magnetometer.hpp>
-#include <formal_eskf/linalg/backend/eigen.hpp>
+#include "test_backend.hpp"
 
 #include "test_support.hpp"
 
@@ -388,14 +388,14 @@ void run_magnetometer_tests(TestContext & test, std::string_view profile, typena
 int main()
 {
     TestContext test;
-    Eigen::internal::set_is_malloc_allowed(false);
+    formal_eskf::test::configure_backend_test();
     using formal_eskf::configuration::Ahrs;
     using formal_eskf::configuration::Ins;
-    using formal_eskf::linalg::EigenBackend;
-    run_magnetometer_tests<EigenBackend<float>, Ahrs>(test, "AHRS magnetometer binary32", 8.0e-6F);
-    run_magnetometer_tests<EigenBackend<double>, Ahrs>(test, "AHRS magnetometer binary64", 2.0e-12);
-    run_magnetometer_tests<EigenBackend<float>, Ins>(test, "INS magnetometer binary32", 8.0e-6F);
-    run_magnetometer_tests<EigenBackend<double>, Ins>(test, "INS magnetometer binary64", 2.0e-12);
+    using formal_eskf::test::Backend;
+    run_magnetometer_tests<Backend<float>, Ahrs>(test, "AHRS magnetometer binary32", 8.0e-6F);
+    run_magnetometer_tests<Backend<double>, Ahrs>(test, "AHRS magnetometer binary64", 2.0e-12);
+    run_magnetometer_tests<Backend<float>, Ins>(test, "INS magnetometer binary32", 8.0e-6F);
+    run_magnetometer_tests<Backend<double>, Ins>(test, "INS magnetometer binary64", 2.0e-12);
     if (test.failures() != 0)
     {
         std::cerr << test.failures() << " ESKF magnetometer test(s) failed\n";

@@ -73,6 +73,28 @@ if(FORMAL_ESKF_BUILD_EIGEN_BACKEND)
     )
 endif()
 
+option(FORMAL_ESKF_BUILD_PX4_MATRIX_BACKEND "Build the adapter for host-provided PX4 matrix" OFF)
+set(FORMAL_ESKF_PX4_MATRIX_TARGET "" CACHE STRING "Optional existing target providing PX4 matrix's build environment")
+set(FORMAL_ESKF_PX4_INCLUDE_DIRS "" CACHE STRING "Optional PX4 matrix, platform and generated-header include directories")
+
+if(FORMAL_ESKF_BUILD_PX4_MATRIX_BACKEND)
+    add_library(formal_eskf_linalg_px4_matrix INTERFACE)
+    add_library(formal_eskf::linalg_px4_matrix ALIAS formal_eskf_linalg_px4_matrix)
+    target_link_libraries(formal_eskf_linalg_px4_matrix INTERFACE formal_eskf::linalg)
+
+    # PX4 owns the dependency. No submodule, download, or PX4 root build here.
+    # An embedding PX4 build may already supply its includes/definitions.
+    if(FORMAL_ESKF_PX4_MATRIX_TARGET)
+        if(NOT TARGET ${FORMAL_ESKF_PX4_MATRIX_TARGET})
+            message(FATAL_ERROR "FORMAL_ESKF_PX4_MATRIX_TARGET must name an existing CMake target")
+        endif()
+        target_link_libraries(formal_eskf_linalg_px4_matrix INTERFACE ${FORMAL_ESKF_PX4_MATRIX_TARGET})
+    endif()
+    if(FORMAL_ESKF_PX4_INCLUDE_DIRS)
+        target_include_directories(formal_eskf_linalg_px4_matrix SYSTEM INTERFACE ${FORMAL_ESKF_PX4_INCLUDE_DIRS})
+    endif()
+endif()
+
 if(PROJECT_IS_TOP_LEVEL)
     include(CTest)
 
@@ -97,94 +119,47 @@ if(PROJECT_IS_TOP_LEVEL)
         formal_eskf_configure_test(test_scalar_standard)
         add_test(NAME formal_eskf.scalar.standard COMMAND test_scalar_standard)
 
-        if(FORMAL_ESKF_BUILD_EIGEN_BACKEND)
-            add_executable(test_linalg_eigen tests/test_linalg_eigen.cpp)
-            target_link_libraries(test_linalg_eigen PRIVATE formal_eskf::linalg_eigen)
-            target_compile_definitions(test_linalg_eigen PRIVATE EIGEN_RUNTIME_NO_MALLOC)
-            formal_eskf_configure_test(test_linalg_eigen)
-            add_test(NAME formal_eskf.linalg.eigen COMMAND test_linalg_eigen)
-
-            add_executable(test_linalg_spd tests/test_linalg_spd.cpp)
-            target_link_libraries(test_linalg_spd PRIVATE formal_eskf::linalg_eigen)
-            target_compile_definitions(test_linalg_spd PRIVATE EIGEN_RUNTIME_NO_MALLOC)
-            formal_eskf_configure_test(test_linalg_spd)
-            add_test(NAME formal_eskf.linalg.spd COMMAND test_linalg_spd)
-
-            add_executable(test_so3_eigen tests/test_so3_eigen.cpp)
-            target_link_libraries(
-                test_so3_eigen
-                PRIVATE
-                    formal_eskf::so3
-                    formal_eskf::linalg_eigen
-            )
-            target_compile_definitions(test_so3_eigen PRIVATE EIGEN_RUNTIME_NO_MALLOC)
-            formal_eskf_configure_test(test_so3_eigen)
-            add_test(NAME formal_eskf.so3.eigen COMMAND test_so3_eigen)
-
-            add_executable(test_so3_jacobian tests/test_so3_jacobian.cpp)
-            target_link_libraries(test_so3_jacobian PRIVATE formal_eskf::so3 formal_eskf::linalg_eigen)
-            target_compile_definitions(test_so3_jacobian PRIVATE EIGEN_RUNTIME_NO_MALLOC)
-            formal_eskf_configure_test(test_so3_jacobian)
-            add_test(NAME formal_eskf.so3.jacobian COMMAND test_so3_jacobian)
-
-            add_executable(test_eskf_types tests/test_eskf_types.cpp)
-            target_link_libraries(
-                test_eskf_types
-                PRIVATE
-                    formal_eskf::core
-                    formal_eskf::linalg_eigen
-            )
-            target_compile_definitions(test_eskf_types PRIVATE EIGEN_RUNTIME_NO_MALLOC)
-            formal_eskf_configure_test(test_eskf_types)
-            add_test(NAME formal_eskf.types.eigen COMMAND test_eskf_types)
-
-            add_executable(test_eskf_prediction tests/test_eskf_prediction.cpp)
-            target_link_libraries(test_eskf_prediction PRIVATE formal_eskf::core formal_eskf::linalg_eigen)
-            target_compile_definitions(test_eskf_prediction PRIVATE EIGEN_RUNTIME_NO_MALLOC)
-            formal_eskf_configure_test(test_eskf_prediction)
-            add_test(NAME formal_eskf.prediction.eigen COMMAND test_eskf_prediction)
-
-            add_executable(test_eskf_covariance tests/test_eskf_covariance.cpp)
-            target_link_libraries(test_eskf_covariance PRIVATE formal_eskf::core formal_eskf::linalg_eigen)
-            target_compile_definitions(test_eskf_covariance PRIVATE EIGEN_RUNTIME_NO_MALLOC)
-            formal_eskf_configure_test(test_eskf_covariance)
-            add_test(NAME formal_eskf.covariance.eigen COMMAND test_eskf_covariance)
-
-            add_executable(test_eskf_injection tests/test_eskf_injection.cpp)
-            target_link_libraries(test_eskf_injection PRIVATE formal_eskf::core formal_eskf::linalg_eigen)
-            target_compile_definitions(test_eskf_injection PRIVATE EIGEN_RUNTIME_NO_MALLOC)
-            formal_eskf_configure_test(test_eskf_injection)
-            add_test(NAME formal_eskf.injection.eigen COMMAND test_eskf_injection)
-
-            add_executable(test_eskf_correction tests/test_eskf_correction.cpp)
-            target_link_libraries(test_eskf_correction PRIVATE formal_eskf::core formal_eskf::linalg_eigen)
-            target_compile_definitions(test_eskf_correction PRIVATE EIGEN_RUNTIME_NO_MALLOC)
-            formal_eskf_configure_test(test_eskf_correction)
-            add_test(NAME formal_eskf.correction.eigen COMMAND test_eskf_correction)
-
-            add_executable(test_eskf_position tests/test_eskf_position.cpp)
-            target_link_libraries(test_eskf_position PRIVATE formal_eskf::core formal_eskf::linalg_eigen)
-            target_compile_definitions(test_eskf_position PRIVATE EIGEN_RUNTIME_NO_MALLOC)
-            formal_eskf_configure_test(test_eskf_position)
-            add_test(NAME formal_eskf.position.eigen COMMAND test_eskf_position)
-
-            add_executable(test_eskf_velocity tests/test_eskf_velocity.cpp)
-            target_link_libraries(test_eskf_velocity PRIVATE formal_eskf::core formal_eskf::linalg_eigen)
-            target_compile_definitions(test_eskf_velocity PRIVATE EIGEN_RUNTIME_NO_MALLOC)
-            formal_eskf_configure_test(test_eskf_velocity)
-            add_test(NAME formal_eskf.velocity.eigen COMMAND test_eskf_velocity)
-
-            add_executable(test_eskf_magnetometer tests/test_eskf_magnetometer.cpp)
-            target_link_libraries(test_eskf_magnetometer PRIVATE formal_eskf::core formal_eskf::linalg_eigen)
-            target_compile_definitions(test_eskf_magnetometer PRIVATE EIGEN_RUNTIME_NO_MALLOC)
-            formal_eskf_configure_test(test_eskf_magnetometer)
-            add_test(NAME formal_eskf.magnetometer.eigen COMMAND test_eskf_magnetometer)
-
-            add_executable(test_eskf_accelerometer tests/test_eskf_accelerometer.cpp)
-            target_link_libraries(test_eskf_accelerometer PRIVATE formal_eskf::core formal_eskf::linalg_eigen)
-            target_compile_definitions(test_eskf_accelerometer PRIVATE EIGEN_RUNTIME_NO_MALLOC)
-            formal_eskf_configure_test(test_eskf_accelerometer)
-            add_test(NAME formal_eskf.accelerometer.eigen COMMAND test_eskf_accelerometer)
+        if(FORMAL_ESKF_BUILD_EIGEN_BACKEND OR FORMAL_ESKF_BUILD_PX4_MATRIX_BACKEND)
+            # Independent eigenvalue oracle in test_eskf_covariance.cpp only.
+            # PX4 production targets never link Eigen.
+            find_package(Eigen3 3.3 CONFIG REQUIRED)
         endif()
+
+        function(formal_eskf_add_backend_test target_name source_name test_name library)
+            if(FORMAL_ESKF_BUILD_EIGEN_BACKEND)
+                add_executable(${target_name} tests/${source_name}.cpp)
+                target_link_libraries(${target_name} PRIVATE ${library} formal_eskf::linalg_eigen)
+                target_compile_definitions(${target_name} PRIVATE EIGEN_RUNTIME_NO_MALLOC)
+                formal_eskf_configure_test(${target_name})
+                add_test(NAME ${test_name} COMMAND ${target_name})
+            endif()
+
+            if(FORMAL_ESKF_BUILD_PX4_MATRIX_BACKEND)
+                set(px4_target ${target_name}_px4_matrix)
+                add_executable(${px4_target} tests/${source_name}.cpp)
+                target_link_libraries(${px4_target} PRIVATE ${library} formal_eskf::linalg_px4_matrix)
+                target_compile_definitions(${px4_target} PRIVATE FORMAL_ESKF_TEST_PX4_MATRIX)
+                if(source_name STREQUAL "test_eskf_covariance")
+                    target_link_libraries(${px4_target} PRIVATE Eigen3::Eigen)
+                endif()
+                formal_eskf_configure_test(${px4_target})
+                string(REGEX REPLACE "\\.eigen$" "" px4_test_name "${test_name}")
+                add_test(NAME ${px4_test_name}.px4_matrix COMMAND ${px4_target})
+            endif()
+        endfunction()
+
+        formal_eskf_add_backend_test(test_linalg_eigen test_linalg_eigen formal_eskf.linalg.eigen formal_eskf::linalg)
+        formal_eskf_add_backend_test(test_linalg_spd test_linalg_spd formal_eskf.linalg.spd formal_eskf::linalg)
+        formal_eskf_add_backend_test(test_so3_eigen test_so3_eigen formal_eskf.so3.eigen formal_eskf::so3)
+        formal_eskf_add_backend_test(test_so3_jacobian test_so3_jacobian formal_eskf.so3.jacobian formal_eskf::so3)
+        formal_eskf_add_backend_test(test_eskf_types test_eskf_types formal_eskf.types.eigen formal_eskf::core)
+        formal_eskf_add_backend_test(test_eskf_prediction test_eskf_prediction formal_eskf.prediction.eigen formal_eskf::core)
+        formal_eskf_add_backend_test(test_eskf_covariance test_eskf_covariance formal_eskf.covariance.eigen formal_eskf::core)
+        formal_eskf_add_backend_test(test_eskf_injection test_eskf_injection formal_eskf.injection.eigen formal_eskf::core)
+        formal_eskf_add_backend_test(test_eskf_correction test_eskf_correction formal_eskf.correction.eigen formal_eskf::core)
+        formal_eskf_add_backend_test(test_eskf_position test_eskf_position formal_eskf.position.eigen formal_eskf::core)
+        formal_eskf_add_backend_test(test_eskf_velocity test_eskf_velocity formal_eskf.velocity.eigen formal_eskf::core)
+        formal_eskf_add_backend_test(test_eskf_magnetometer test_eskf_magnetometer formal_eskf.magnetometer.eigen formal_eskf::core)
+        formal_eskf_add_backend_test(test_eskf_accelerometer test_eskf_accelerometer formal_eskf.accelerometer.eigen formal_eskf::core)
     endif()
 endif()

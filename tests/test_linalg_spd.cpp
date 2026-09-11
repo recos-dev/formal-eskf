@@ -17,7 +17,7 @@
 
 // Check that the solver header does not depend on the backend include order.
 #include <formal_eskf/linalg/solve.hpp>
-#include <formal_eskf/linalg/backend/eigen.hpp>
+#include "test_backend.hpp"
 
 #include "test_support.hpp"
 
@@ -64,7 +64,7 @@ template <typename Matrix> [[nodiscard]] bool matrix_near(Matrix const & actual,
     return true;
 }
 
-// Manufacture right-hand sides independently of Eigen and the production
+// Manufacture right-hand sides independently of the backend and the production
 // matrix product. The bounded dyadic fixtures below have exactly representable
 // products/sums, so their known solutions are also independent solve oracles.
 template <typename Left, typename Right> [[nodiscard]] auto reference_product(Left const & a, Right const & b)
@@ -324,6 +324,26 @@ template <typename Linalg> void test_scaling(TestContext & test, std::string_vie
     }
 }
 
+template <typename Linalg> void test_scalar_precision(TestContext & test, std::string_view profile)
+{
+    using value_type = typename Linalg::value_type;
+    using matrix_type = typename Linalg::template matrix_type<3U, 3U>;
+    using rhs_type = typename Linalg::template matrix_type<3U, 2U>;
+    // Coupled, strictly diagonally dominant SPD system. The non-dyadic
+    // off-diagonal entries expose binary64 factorization narrowed to float.
+    value_type const a = value_type{1} / value_type{3};
+    value_type const b = value_type{1} / value_type{7};
+    auto const system = matrix_type::from_row_major({2, a, b, a, 3, -a, b, -a, 4});
+    auto const expected = rhs_type::from_row_major({1, -2, 3, 4, -5, 6});
+    auto const rhs = reference_product(system, expected);
+    rhs_type output;
+    Status const status = solve_spd(system, rhs, output);
+    test.expect(status == Status::success && matrix_near(output, expected), profile,
+                "Cholesky accumulation preserves the selected scalar precision");
+    test.expect(matrix_near(reference_product(system, output), rhs), profile,
+                "non-dyadic system satisfies A*X=B at the selected scalar precision");
+}
+
 template <typename Linalg> void test_factor_overflow(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
@@ -349,6 +369,7 @@ template <typename Linalg> void run_conformance_tests(TestContext & test, std::s
     test_aliases<Linalg>(test, profile);
     test_failures<Linalg>(test, profile);
     test_scaling<Linalg>(test, profile);
+    test_scalar_precision<Linalg>(test, profile);
     test_factor_overflow<Linalg>(test, profile);
 }
 
@@ -357,14 +378,14 @@ template <typename Linalg> void run_conformance_tests(TestContext & test, std::s
 int main()
 {
     TestContext test;
-    Eigen::internal::set_is_malloc_allowed(false);
-    run_conformance_tests<formal_eskf::linalg::EigenBackend<float>>(test, "binary32");
-    run_conformance_tests<formal_eskf::linalg::EigenBackend<double>>(test, "binary64");
+    formal_eskf::test::configure_backend_test();
+    run_conformance_tests<formal_eskf::test::Backend<float>>(test, "binary32");
+    run_conformance_tests<formal_eskf::test::Backend<double>>(test, "binary64");
     if (test.failures() != 0)
     {
         std::cerr << test.failures() << " linear solve test(s) failed\n";
         return 1;
     }
-    std::cout << "All Eigen Cholesky solve conformance tests passed\n";
+    std::cout << "All Cholesky solve conformance tests passed\n";
     return 0;
 }

@@ -17,7 +17,7 @@
 // Check that the measurement header includes its own dependencies.
 #include <formal_eskf/eskf/velocity.hpp>
 #include <formal_eskf/eskf/covariance_prediction.hpp>
-#include <formal_eskf/linalg/backend/eigen.hpp>
+#include "test_backend.hpp"
 
 #include "test_support.hpp"
 
@@ -611,15 +611,13 @@ void run_velocity_tests(TestContext & test, std::string_view profile, typename F
 int main()
 {
     TestContext test;
-    Eigen::internal::set_is_malloc_allowed(false);
-    run_velocity_tests<HorizontalVelocityFixture<formal_eskf::linalg::EigenBackend<float>>>(
+    formal_eskf::test::configure_backend_test();
+    run_velocity_tests<HorizontalVelocityFixture<formal_eskf::test::Backend<float>>>(
         test, "INS horizontal velocity binary32", 8.0e-6F);
-    run_velocity_tests<HorizontalVelocityFixture<formal_eskf::linalg::EigenBackend<double>>>(
+    run_velocity_tests<HorizontalVelocityFixture<formal_eskf::test::Backend<double>>>(
         test, "INS horizontal velocity binary64", 2.0e-12);
-    run_velocity_tests<VelocityFixture<formal_eskf::linalg::EigenBackend<float>>>(test, "INS 3D velocity binary32",
-                                                                                  8.0e-6F);
-    run_velocity_tests<VelocityFixture<formal_eskf::linalg::EigenBackend<double>>>(test, "INS 3D velocity binary64",
-                                                                                   2.0e-12);
+    run_velocity_tests<VelocityFixture<formal_eskf::test::Backend<float>>>(test, "INS 3D velocity binary32", 8.0e-6F);
+    run_velocity_tests<VelocityFixture<formal_eskf::test::Backend<double>>>(test, "INS 3D velocity binary64", 2.0e-12);
     if (test.failures() != 0)
     {
         std::cerr << test.failures() << " ESKF velocity test(s) failed\n";

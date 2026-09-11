@@ -17,7 +17,7 @@
 #include <Eigen/Eigenvalues>
 
 #include <formal_eskf/eskf/eskf.hpp>
-#include <formal_eskf/linalg/backend/eigen.hpp>
+#include "test_backend.hpp"
 
 #include "test_support.hpp"
 
@@ -701,9 +701,9 @@ void run_covariance_tests(TestContext & test, std::string_view profile, typename
 int main()
 {
     TestContext test;
-    Eigen::internal::set_is_malloc_allowed(false);
-    using double_backend = formal_eskf::linalg::EigenBackend<double>;
-    using float_backend = formal_eskf::linalg::EigenBackend<float>;
+    formal_eskf::test::configure_backend_test();
+    using double_backend = formal_eskf::test::Backend<double>;
+    using float_backend = formal_eskf::test::Backend<float>;
     using formal_eskf::configuration::Ahrs;
     using formal_eskf::configuration::Ins;
     run_covariance_tests<double_backend, Ins>(test, "INS binary64", 1.0e-11);

@@ -12,7 +12,7 @@
 #include <limits>
 #include <string_view>
 
-#include <formal_eskf/linalg/backend/eigen.hpp>
+#include "test_backend.hpp"
 #include <formal_eskf/so3/so3.hpp>
 
 #include "test_support.hpp"
@@ -353,9 +353,9 @@ int main()
 {
     TestContext test;
 
-    Eigen::internal::set_is_malloc_allowed(false);
-    run_conformance_tests<formal_eskf::linalg::EigenBackend<double>>(test, "binary64", 1.0e-12);
-    run_conformance_tests<formal_eskf::linalg::EigenBackend<float>>(test, "binary32", 1.0e-5F);
+    formal_eskf::test::configure_backend_test();
+    run_conformance_tests<formal_eskf::test::Backend<double>>(test, "binary64", 1.0e-12);
+    run_conformance_tests<formal_eskf::test::Backend<float>>(test, "binary32", 1.0e-5F);
 
     if (test.failures() != 0)
     {

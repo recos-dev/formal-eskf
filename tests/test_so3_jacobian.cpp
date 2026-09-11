@@ -16,7 +16,7 @@
 
 #include <formal_eskf/so3/right_jacobian.hpp>
 #include <formal_eskf/so3/rotation_vector.hpp>
-#include <formal_eskf/linalg/backend/eigen.hpp>
+#include "test_backend.hpp"
 
 #include "test_support.hpp"
 
@@ -224,9 +224,9 @@ void run_jacobian_tests(TestContext & test, std::string_view profile, typename L
 int main()
 {
     TestContext test;
-    Eigen::internal::set_is_malloc_allowed(false);
-    run_jacobian_tests<formal_eskf::linalg::EigenBackend<float>>(test, "binary32", 5.0e-7F);
-    run_jacobian_tests<formal_eskf::linalg::EigenBackend<double>>(test, "binary64", 1.0e-12);
+    formal_eskf::test::configure_backend_test();
+    run_jacobian_tests<formal_eskf::test::Backend<float>>(test, "binary32", 5.0e-7F);
+    run_jacobian_tests<formal_eskf::test::Backend<double>>(test, "binary64", 1.0e-12);
     if (test.failures() != 0)
     {
         std::cerr << test.failures() << " SO(3) right-Jacobian test(s) failed\n";

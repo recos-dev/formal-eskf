@@ -12,7 +12,7 @@
 #include <limits>
 #include <string_view>
 
-#include <formal_eskf/linalg/backend/eigen.hpp>
+#include "test_backend.hpp"
 
 #include "test_support.hpp"
 
@@ -128,6 +128,19 @@ void test_arithmetic_and_products(TestContext & test, std::string_view profile, 
     test.expect(near(z(0U), value_type{0}, tolerance) && near(z(1U), value_type{0}, tolerance) &&
                     near(z(2U), value_type{1}, tolerance),
                 profile, "three-dimensional cross product");
+}
+
+template <typename Linalg> void test_extreme_division(TestContext & test, std::string_view profile)
+{
+    using value_type = typename Linalg::value_type;
+    using matrix_type = typename Linalg::template matrix_type<2U, 3U>;
+    // The quotient is finite even though forming 1 / divisor would overflow.
+    value_type const divisor = std::numeric_limits<value_type>::min() / value_type{8};
+    auto const input = matrix_type::from_row_major({divisor, -divisor, 0, 2 * divisor, -2 * divisor, 0});
+    auto const expected = matrix_type::from_row_major({1, -1, 0, 2, -2, 0});
+    auto const output = input / divisor;
+    test.expect(all_finite(output) && matrix_near(output, expected, value_type{0}), profile,
+                "division does not overflow an unnecessary reciprocal");
 }
 
 template <typename Linalg>
@@ -248,6 +261,7 @@ void run_conformance_tests(TestContext & test, std::string_view profile, typenam
 {
     test_construction_and_access<Linalg>(test, profile, tolerance);
     test_arithmetic_and_products<Linalg>(test, profile, tolerance);
+    test_extreme_division<Linalg>(test, profile);
     test_derived_operations<Linalg>(test, profile, tolerance);
     test_finite_checks<Linalg>(test, profile);
     test_spd_solves<Linalg>(test, profile, tolerance);
@@ -260,9 +274,9 @@ int main()
 {
     TestContext test;
 
-    Eigen::internal::set_is_malloc_allowed(false);
-    run_conformance_tests<formal_eskf::linalg::EigenBackend<double>>(test, "binary64", 1.0e-12);
-    run_conformance_tests<formal_eskf::linalg::EigenBackend<float>>(test, "binary32", 1.0e-5F);
+    formal_eskf::test::configure_backend_test();
+    run_conformance_tests<formal_eskf::test::Backend<double>>(test, "binary64", 1.0e-12);
+    run_conformance_tests<formal_eskf::test::Backend<float>>(test, "binary32", 1.0e-5F);
 
     if (test.failures() != 0)
     {
@@ -270,6 +284,6 @@ int main()
         return 1;
     }
 
-    std::cout << "All Eigen linalg backend conformance tests passed\n";
+    std::cout << "All linalg backend conformance tests passed\n";
     return 0;
 }

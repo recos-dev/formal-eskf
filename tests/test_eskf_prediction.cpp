@@ -14,7 +14,7 @@
 #include <type_traits>
 
 #include <formal_eskf/eskf/eskf.hpp>
-#include <formal_eskf/linalg/backend/eigen.hpp>
+#include "test_backend.hpp"
 
 #include "test_support.hpp"
 
@@ -353,9 +353,9 @@ void run_prediction_tests(TestContext & test, std::string_view profile, typename
 int main()
 {
     TestContext test;
-    Eigen::internal::set_is_malloc_allowed(false);
-    run_prediction_tests<formal_eskf::linalg::EigenBackend<float>>(test, "binary32", 2.0e-6F);
-    run_prediction_tests<formal_eskf::linalg::EigenBackend<double>>(test, "binary64", 1.0e-12);
+    formal_eskf::test::configure_backend_test();
+    run_prediction_tests<formal_eskf::test::Backend<float>>(test, "binary32", 2.0e-6F);
+    run_prediction_tests<formal_eskf::test::Backend<double>>(test, "binary64", 1.0e-12);
     if (test.failures() != 0)
     {
         std::cerr << test.failures() << " ESKF prediction test(s) failed\n";

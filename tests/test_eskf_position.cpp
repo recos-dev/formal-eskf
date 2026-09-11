@@ -16,7 +16,7 @@
 // Check that the measurement header includes its own dependencies.
 #include <formal_eskf/eskf/position.hpp>
 #include <formal_eskf/eskf/covariance_prediction.hpp>
-#include <formal_eskf/linalg/backend/eigen.hpp>
+#include "test_backend.hpp"
 
 #include "test_support.hpp"
 
@@ -588,14 +588,14 @@ void run_position_tests(TestContext & test, std::string_view profile, typename F
 int main()
 {
     TestContext test;
-    Eigen::internal::set_is_malloc_allowed(false);
-    run_position_tests<HorizontalPositionFixture<formal_eskf::linalg::EigenBackend<float>>>(
+    formal_eskf::test::configure_backend_test();
+    run_position_tests<HorizontalPositionFixture<formal_eskf::test::Backend<float>>>(
         test, "INS horizontal position binary32", 8.0e-6F);
-    run_position_tests<HorizontalPositionFixture<formal_eskf::linalg::EigenBackend<double>>>(
+    run_position_tests<HorizontalPositionFixture<formal_eskf::test::Backend<double>>>(
         test, "INS horizontal position binary64", 2.0e-12);
-    run_position_tests<VerticalPositionFixture<formal_eskf::linalg::EigenBackend<float>>>(
+    run_position_tests<VerticalPositionFixture<formal_eskf::test::Backend<float>>>(
         test, "INS vertical position binary32", 8.0e-6F);
-    run_position_tests<VerticalPositionFixture<formal_eskf::linalg::EigenBackend<double>>>(
+    run_position_tests<VerticalPositionFixture<formal_eskf::test::Backend<double>>>(
         test, "INS vertical position binary64", 2.0e-12);
     if (test.failures() != 0)
     {

@@ -50,10 +50,12 @@ target_compile_features(formal_eskf_core INTERFACE cxx_std_20)
 target_link_libraries(formal_eskf_core INTERFACE formal_eskf::so3)
 
 option(ESKF_QUAT_APPROX "Use normalized Euler and first-order attitude error prediction" OFF)
+option(ESKF_RESET_APPROX "Use first-order attitude-error covariance reset instead of the SO(3) right Jacobian" OFF)
 target_compile_definitions(
     formal_eskf_core
     INTERFACE
         ESKF_QUAT_APPROX=$<BOOL:${ESKF_QUAT_APPROX}>
+        ESKF_RESET_APPROX=$<BOOL:${ESKF_RESET_APPROX}>
 )
 
 option(FORMAL_ESKF_BUILD_EIGEN_BACKEND "Build the Eigen linear-algebra backend" ON)
@@ -113,6 +115,12 @@ if(PROJECT_IS_TOP_LEVEL)
             formal_eskf_configure_test(test_so3_eigen)
             add_test(NAME formal_eskf.so3.eigen COMMAND test_so3_eigen)
 
+            add_executable(test_so3_jacobian tests/test_so3_jacobian.cpp)
+            target_link_libraries(test_so3_jacobian PRIVATE formal_eskf::so3 formal_eskf::linalg_eigen)
+            target_compile_definitions(test_so3_jacobian PRIVATE EIGEN_RUNTIME_NO_MALLOC)
+            formal_eskf_configure_test(test_so3_jacobian)
+            add_test(NAME formal_eskf.so3.jacobian COMMAND test_so3_jacobian)
+
             add_executable(test_eskf_types tests/test_eskf_types.cpp)
             target_link_libraries(
                 test_eskf_types
@@ -135,6 +143,12 @@ if(PROJECT_IS_TOP_LEVEL)
             target_compile_definitions(test_eskf_covariance PRIVATE EIGEN_RUNTIME_NO_MALLOC)
             formal_eskf_configure_test(test_eskf_covariance)
             add_test(NAME formal_eskf.covariance.eigen COMMAND test_eskf_covariance)
+
+            add_executable(test_eskf_injection tests/test_eskf_injection.cpp)
+            target_link_libraries(test_eskf_injection PRIVATE formal_eskf::core formal_eskf::linalg_eigen)
+            target_compile_definitions(test_eskf_injection PRIVATE EIGEN_RUNTIME_NO_MALLOC)
+            formal_eskf_configure_test(test_eskf_injection)
+            add_test(NAME formal_eskf.injection.eigen COMMAND test_eskf_injection)
         endif()
     endif()
 endif()

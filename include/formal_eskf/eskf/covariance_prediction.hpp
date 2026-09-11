@@ -15,6 +15,7 @@
 
 #include <formal_eskf/eskf/prediction.hpp>
 #include <formal_eskf/eskf/process_noise.hpp>
+#include <formal_eskf/eskf/covariance.hpp>
 
 namespace formal_eskf
 {
@@ -47,30 +48,6 @@ template <typename Linalg>
     }
     output = linalg::transpose(so3::to_rotation_matrix(increment));
 #endif
-    return Status::success;
-}
-
-template <typename Linalg, std::size_t Size>
-[[nodiscard]] Status try_finish_covariance(linalg::Matrix<Linalg, Size, Size> & candidate,
-                                           linalg::Matrix<Linalg, Size, Size> & output) noexcept
-{
-    if (!linalg::all_finite(candidate))
-    {
-        return Status::non_finite_result;
-    }
-    // Remove roundoff asymmetry, not an indefinite covariance's negative
-    // eigenvalues. Halve before adding to avoid overflow in a + a^T.
-    for (std::size_t row = 0U; row < Size; ++row)
-    {
-        for (std::size_t column = row + 1U; column < Size; ++column)
-        {
-            auto const mean = typename Linalg::value_type{0.5} * candidate(row, column) +
-                              typename Linalg::value_type{0.5} * candidate(column, row);
-            candidate.set(row, column, mean);
-            candidate.set(column, row, mean);
-        }
-    }
-    output = candidate;
     return Status::success;
 }
 

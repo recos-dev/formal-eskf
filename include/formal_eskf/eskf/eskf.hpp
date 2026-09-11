@@ -19,3 +19,4 @@
 #include <formal_eskf/eskf/prediction.hpp>
 #include <formal_eskf/eskf/process_noise.hpp>
 #include <formal_eskf/eskf/covariance_prediction.hpp>
+#include <formal_eskf/eskf/injection.hpp>

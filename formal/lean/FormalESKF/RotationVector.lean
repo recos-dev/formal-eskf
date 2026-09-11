@@ -1,3 +1,11 @@
+/-
+formal-eskf is freely redistributable under the BSD 3-Clause License.
+See the file "LICENSE" for information on usage and redistribution of this
+file.
+
+SPDX-License-Identifier: BSD-3-Clause
+-/
+
 import FormalESKF.SO3
 import Mathlib.Analysis.Calculus.Taylor
 import Mathlib.Analysis.SpecialFunctions.Trigonometric.ArctanDeriv

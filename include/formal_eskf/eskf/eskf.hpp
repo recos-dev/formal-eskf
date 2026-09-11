@@ -23,3 +23,4 @@
 #include <formal_eskf/eskf/correction.hpp>
 #include <formal_eskf/eskf/position.hpp>
 #include <formal_eskf/eskf/velocity.hpp>
+#include <formal_eskf/eskf/magnetometer.hpp>

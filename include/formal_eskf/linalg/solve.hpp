@@ -25,9 +25,17 @@ namespace formal_eskf::linalg
  * Solve system * solution = right_hand_side for a finite, exactly symmetric,
  * positive-definite system matrix.
  *
- * The output is unchanged on failure.  A configurable finite-precision
- * symmetry and conditioning policy will replace the exact symmetry check once
- * that numerical profile is defined.
+ * The Eigen backend uses Cholesky (LLT), sharing one factorization across all
+ * right-hand-side columns. No inverse is formed. The caller is responsible for
+ * cleaning up roundoff asymmetry when constructing a covariance system.
+ *
+ * Non-finite inputs return non_finite_input. Asymmetric inputs or a failed
+ * positive-definite factorization return not_positive_definite. Non-finite
+ * factors or solutions return non_finite_result. Success does not certify a
+ * condition number or forward-error bound; no conditioning cutoff is imposed.
+ *
+ * Failure leaves output unchanged. Output may alias either input when their
+ * dimensions match.
  */
 template <typename Linalg, std::size_t Size, std::size_t RightColumns>
 [[nodiscard]] Status solve_spd(Matrix<Linalg, Size, Size> const & system,
@@ -62,6 +70,11 @@ template <typename Linalg, std::size_t Size, std::size_t RightColumns>
     return Status::success;
 }
 
+/**
+ * Solve solution * system = right_hand_side for the same SPD domain.
+ * Uses system * solution^T = right_hand_side^T because system is symmetric.
+ * The finite-input, failure and output-alias rules of solve_spd also apply.
+ */
 template <typename Linalg, std::size_t Rows, std::size_t Size>
 [[nodiscard]] Status right_solve_spd(Matrix<Linalg, Rows, Size> const & right_hand_side,
                                      Matrix<Linalg, Size, Size> const & system,

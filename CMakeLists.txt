@@ -104,6 +104,12 @@ if(PROJECT_IS_TOP_LEVEL)
             formal_eskf_configure_test(test_linalg_eigen)
             add_test(NAME formal_eskf.linalg.eigen COMMAND test_linalg_eigen)
 
+            add_executable(test_linalg_spd tests/test_linalg_spd.cpp)
+            target_link_libraries(test_linalg_spd PRIVATE formal_eskf::linalg_eigen)
+            target_compile_definitions(test_linalg_spd PRIVATE EIGEN_RUNTIME_NO_MALLOC)
+            formal_eskf_configure_test(test_linalg_spd)
+            add_test(NAME formal_eskf.linalg.spd COMMAND test_linalg_spd)
+
             add_executable(test_so3_eigen tests/test_so3_eigen.cpp)
             target_link_libraries(
                 test_so3_eigen

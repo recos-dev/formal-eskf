@@ -227,6 +227,10 @@ Status EigenBackend<Scalar>::solve_spd(storage_type<Size, Size> const & system,
     {
         return Status::not_positive_definite;
     }
+    if (!factorization.matrixLLT().allFinite())
+    {
+        return Status::non_finite_result;
+    }
 
     solution = factorization.solve(right_hand_side);
     return Status::success;

@@ -132,7 +132,7 @@ void test_ahrs_types(TestContext & test, std::string_view profile, typename Lina
     using state_type = typename types::nominal_state_type;
     using error_type = typename types::error_state_type;
     using covariance_type = typename types::error_covariance_type;
-    using value_type = typename types::value_type;
+    using value_type = typename Linalg::value_type;
     using vector3_type = typename Linalg::template vector_type<3U>;
 
     static_assert(types::nominal_state_dimension == 4U);

@@ -31,7 +31,7 @@ using formal_eskf::try_predict;
 using formal_eskf::try_predict_covariance;
 using formal_eskf::test::near;
 
-template <typename Linalg, typename Configuration> struct Fixture
+template <typename Linalg, typename Configuration> struct CovariancePredictionFixture
 {
     using types = formal_eskf::EskfTypes<Linalg, Configuration>;
     using value_type = typename types::value_type;
@@ -45,7 +45,7 @@ template <typename Linalg, typename Configuration> struct Fixture
     typename types::parameter_type parameters{};
     covariance_type covariance{};
 
-    Fixture()
+    CovariancePredictionFixture()
     {
         parameters.dt_min = value_type{0.125};
         parameters.dt_max = value_type{2};
@@ -114,7 +114,7 @@ template <typename State> [[nodiscard]] bool same_state(State const & actual, St
 template <typename Linalg, typename Configuration>
 void test_noise_discretization(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
-    using fixture_type = Fixture<Linalg, Configuration>;
+    using fixture_type = CovariancePredictionFixture<Linalg, Configuration>;
     using value_type = typename Linalg::value_type;
     using noise_matrix = typename fixture_type::noise_covariance_type;
     fixture_type fixture;
@@ -183,7 +183,7 @@ void test_noise_discretization(TestContext & test, std::string_view profile, typ
 template <typename Linalg, typename Configuration>
 void test_noise_failures(TestContext & test, std::string_view profile)
 {
-    using fixture_type = Fixture<Linalg, Configuration>;
+    using fixture_type = CovariancePredictionFixture<Linalg, Configuration>;
     using value_type = typename Linalg::value_type;
     using noise_matrix = typename fixture_type::noise_covariance_type;
     fixture_type fixture;
@@ -250,9 +250,9 @@ void test_noise_failures(TestContext & test, std::string_view profile)
 }
 
 template <typename Linalg, typename Configuration>
-[[nodiscard]] auto reference_covariance(Fixture<Linalg, Configuration> const & fixture, double dt)
+[[nodiscard]] auto reference_covariance(CovariancePredictionFixture<Linalg, Configuration> const & fixture, double dt)
 {
-    using fixture_type = Fixture<Linalg, Configuration>;
+    using fixture_type = CovariancePredictionFixture<Linalg, Configuration>;
     using value_type = typename Linalg::value_type;
     constexpr std::size_t size = fixture_type::size;
     std::array<double, size * size> F{};
@@ -362,7 +362,7 @@ template <typename Matrix>
 template <typename Linalg, typename Configuration>
 void test_dense_prediction(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
-    using fixture_type = Fixture<Linalg, Configuration>;
+    using fixture_type = CovariancePredictionFixture<Linalg, Configuration>;
     using value_type = typename Linalg::value_type;
     fixture_type fixture;
     fixture.set_distinct_noise();
@@ -440,7 +440,7 @@ void test_dense_prediction(TestContext & test, std::string_view profile, typenam
 template <typename Linalg>
 void test_rotated_noise(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
-    using fixture_type = Fixture<Linalg, formal_eskf::configuration::Ins>;
+    using fixture_type = CovariancePredictionFixture<Linalg, formal_eskf::configuration::Ins>;
     using value_type = typename Linalg::value_type;
     fixture_type fixture;
     value_type const angle = static_cast<value_type>(std::acos(-1.0) / 8.0);
@@ -478,7 +478,7 @@ void test_rotated_noise(TestContext & test, std::string_view profile, typename L
 template <typename Linalg, typename Configuration>
 void test_prediction_failures(TestContext & test, std::string_view profile)
 {
-    using fixture_type = Fixture<Linalg, Configuration>;
+    using fixture_type = CovariancePredictionFixture<Linalg, Configuration>;
     using value_type = typename Linalg::value_type;
     using covariance_type = typename fixture_type::covariance_type;
     fixture_type fixture;
@@ -589,7 +589,7 @@ void test_prediction_failures(TestContext & test, std::string_view profile)
 
 template <typename Linalg> void test_ins_input_boundary(TestContext & test, std::string_view profile)
 {
-    using fixture_type = Fixture<Linalg, formal_eskf::configuration::Ins>;
+    using fixture_type = CovariancePredictionFixture<Linalg, formal_eskf::configuration::Ins>;
     using value_type = typename Linalg::value_type;
     using covariance_type = typename fixture_type::covariance_type;
     fixture_type fixture;
@@ -651,7 +651,7 @@ template <typename Linalg>
 void test_noise_accumulation(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
     using value_type = typename Linalg::value_type;
-    Fixture<Linalg, formal_eskf::configuration::Ins> fixture;
+    CovariancePredictionFixture<Linalg, formal_eskf::configuration::Ins> fixture;
     fixture.parameters.process_noise.specific_force_variance.set(0U, value_type{4});
     for (std::size_t step = 0U; step < 2U; ++step)
     {
@@ -679,7 +679,7 @@ void test_noise_accumulation(TestContext & test, std::string_view profile, typen
                     formal_eskf::linalg::max_abs(fixture.state.b_g) == value_type{0},
                 profile, "bias variance accumulates with elapsed time while nominal biases stay constant");
 
-    Fixture<Linalg, formal_eskf::configuration::Ahrs> ahrs;
+    CovariancePredictionFixture<Linalg, formal_eskf::configuration::Ahrs> ahrs;
     ahrs.imu.specific_force_b.set(0U, std::numeric_limits<value_type>::quiet_NaN());
     Status const status = try_predict(ahrs.state, ahrs.covariance, ahrs.imu, value_type{0.5}, ahrs.parameters,
                                       ahrs.state, ahrs.covariance);

@@ -129,21 +129,21 @@ void verify_construction_basis()
 }
 
 #define FORMAL_ESKF_NORMALIZATION_COEFFICIENT_CHECK(INDEX)                                                             \
-    void verify_normalization_candidate_coefficient_##INDEX(Scalar q0, Scalar q1, Scalar q2, Scalar q3, Scalar norm)  \
+    void verify_normalization_candidate_coefficient_##INDEX(Scalar q0, Scalar q1, Scalar q2, Scalar q3, Scalar norm)   \
     {                                                                                                                  \
         proof::assume_scalar(q0);                                                                                      \
         proof::assume_scalar(q1);                                                                                      \
         proof::assume_scalar(q2);                                                                                      \
         proof::assume_scalar(q3);                                                                                      \
         __ESBMC_assume(norm >= Scalar{0.125} && norm <= Scalar{1});                                                    \
-        Vector4 input;                                                                                                  \
-        input.set(0U, q0);                                                                                              \
-        input.set(1U, q1);                                                                                              \
-        input.set(2U, q2);                                                                                              \
-        input.set(3U, q3);                                                                                              \
+        Vector4 input;                                                                                                 \
+        input.set(0U, q0);                                                                                             \
+        input.set(1U, q1);                                                                                             \
+        input.set(2U, q2);                                                                                             \
+        input.set(3U, q3);                                                                                             \
         Vector4 const output = formal_eskf::linalg::detail::normalization_candidate(input, norm);                      \
         __ESBMC_assert(output(INDEX##U) == input(INDEX##U) / norm,                                                     \
-                       "Q-NORMALIZE-COEFFICIENT: candidate coefficient equals input divided by checked norm");        \
+                       "Q-NORMALIZE-COEFFICIENT: candidate coefficient equals input divided by checked norm");         \
     }
 
 FORMAL_ESKF_NORMALIZATION_COEFFICIENT_CHECK(0)
@@ -473,8 +473,8 @@ void verify_log_closed_form_scale(Scalar qv_norm, Scalar half_angle)
                    "SO3-LOG-CLOSED-SCALE: the observed atan2 half-angle is divided by vector norm");
 }
 
-#define FORMAL_ESKF_LOG_CANDIDATE_COEFFICIENT_CHECK(INDEX)                                                            \
-    void verify_log_candidate_coefficient_##INDEX(Scalar q1, Scalar q2, Scalar q3, Scalar scale)                     \
+#define FORMAL_ESKF_LOG_CANDIDATE_COEFFICIENT_CHECK(INDEX)                                                             \
+    void verify_log_candidate_coefficient_##INDEX(Scalar q1, Scalar q2, Scalar q3, Scalar scale)                       \
     {                                                                                                                  \
         proof::assume_scalar(q1);                                                                                      \
         proof::assume_scalar(q2);                                                                                      \
@@ -484,9 +484,9 @@ void verify_log_closed_form_scale(Scalar qv_norm, Scalar half_angle)
         qv.set(0U, q1);                                                                                                \
         qv.set(1U, q2);                                                                                                \
         qv.set(2U, q3);                                                                                                \
-        Vector3 const output = formal_eskf::so3::detail::log_candidate<Linalg>(qv, scale);                            \
+        Vector3 const output = formal_eskf::so3::detail::log_candidate<Linalg>(qv, scale);                             \
         __ESBMC_assert(output(INDEX##U) == qv(INDEX##U) * scale,                                                       \
-                       "SO3-LOG-CANDIDATE: each vector coefficient is multiplied by the checked scale");            \
+                       "SO3-LOG-CANDIDATE: each vector coefficient is multiplied by the checked scale");               \
     }
 
 FORMAL_ESKF_LOG_CANDIDATE_COEFFICIENT_CHECK(0)
@@ -528,8 +528,7 @@ void verify_log_pi_boundary()
                        negative_output(2U) == Scalar{0},
                    "SO3-LOG-PI: opposite axis signs remain valid at the pi boundary");
     constexpr Scalar half_pi = Scalar{1.57079632679489661923};
-    __ESBMC_assert(positive_output(0U) == Scalar{2} * half_pi &&
-                       negative_output(0U) == -(Scalar{2} * half_pi),
+    __ESBMC_assert(positive_output(0U) == Scalar{2} * half_pi && negative_output(0U) == -(Scalar{2} * half_pi),
                    "SO3-LOG-PI-MAGNITUDE: both boundary results have the contracted pi magnitude");
 }
 

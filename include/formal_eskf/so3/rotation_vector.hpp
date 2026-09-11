@@ -48,8 +48,7 @@ template <typename Scalar>
     return Scalar{2} / q0 * (Scalar{1} - qv_squared_norm / (Scalar{3} * q0_squared));
 }
 
-template <typename Scalar>
-[[nodiscard]] Scalar log_closed_form_scale(Scalar qv_norm, Scalar half_angle) noexcept
+template <typename Scalar> [[nodiscard]] Scalar log_closed_form_scale(Scalar qv_norm, Scalar half_angle) noexcept
 {
     return Scalar{2} * half_angle / qv_norm;
 }

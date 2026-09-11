@@ -46,7 +46,7 @@ template <typename Vector>
     return true;
 }
 
-template <typename Linalg, typename Configuration> struct Fixture
+template <typename Linalg, typename Configuration> struct NominalPredictionFixture
 {
     using types = formal_eskf::EskfTypes<Linalg, Configuration>;
     using value_type = typename types::value_type;
@@ -56,7 +56,7 @@ template <typename Linalg, typename Configuration> struct Fixture
     typename types::imu_sample_type imu{};
     typename types::parameter_type parameters{};
 
-    Fixture()
+    NominalPredictionFixture()
     {
         parameters.minimum_quaternion_norm = static_cast<value_type>(1.0e-6);
         parameters.dt_min = static_cast<value_type>(0.001);
@@ -96,7 +96,7 @@ template <typename Linalg, typename Configuration>
 void test_attitude_prediction(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
     using value_type = typename Linalg::value_type;
-    Fixture<Linalg, Configuration> fixture;
+    NominalPredictionFixture<Linalg, Configuration> fixture;
 
     auto const initial = fixture.state;
     Status status = try_predict_nominal(fixture.state, fixture.imu, value_type{0.5}, fixture.parameters, fixture.state);
@@ -132,7 +132,7 @@ void test_attitude_prediction(TestContext & test, std::string_view profile, type
                 profile, "prediction preserves quaternion sign equivalence");
 
     // A mixed-axis rate exercises every coefficient in the Euler kernel.
-    Fixture<Linalg, Configuration> mixed;
+    NominalPredictionFixture<Linalg, Configuration> mixed;
     mixed.imu.angular_rate_b = vector3<Linalg>(1, -2, 3);
     value_type const dt = value_type{0.25};
     value_type const rate_norm = std::sqrt(value_type{14});
@@ -157,7 +157,7 @@ void test_attitude_prediction(TestContext & test, std::string_view profile, type
                     near(mixed.state.q_nb.q3(), half_c, tolerance),
                 profile, "mixed-axis prediction includes all cross terms for a general initial attitude");
 
-    Fixture<Linalg, Configuration> repeated;
+    NominalPredictionFixture<Linalg, Configuration> repeated;
     repeated.imu.angular_rate_b = vector3<Linalg>(0, 0, 1);
     value_type const step = static_cast<value_type>(0.01);
     bool all_succeeded = true;
@@ -178,7 +178,7 @@ template <typename Linalg>
 void test_ins_translation(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
     using value_type = typename Linalg::value_type;
-    Fixture<Linalg, formal_eskf::configuration::Ins> fixture;
+    NominalPredictionFixture<Linalg, formal_eskf::configuration::Ins> fixture;
     fixture.state.p_n = vector3<Linalg>(1, 2, 3);
     fixture.state.v_n = vector3<Linalg>(4, 5, 6);
     fixture.state.b_a = vector3<Linalg>(1, 2, 3);
@@ -207,7 +207,7 @@ void test_ins_translation(TestContext & test, std::string_view profile, typename
     test.expect(status == Status::success && same_state(alias, output) && same_state(fixture.state, initial), profile,
                 "aliased and separate outputs agree, while separate input remains unchanged");
 
-    Fixture<Linalg, formal_eskf::configuration::Ins> tilted;
+    NominalPredictionFixture<Linalg, formal_eskf::configuration::Ins> tilted;
     value_type const h = std::sqrt(value_type{0.5});
     status = formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
         h, value_type{0}, h, value_type{0}, tilted.parameters.minimum_quaternion_norm, tilted.state.q_nb);
@@ -226,7 +226,7 @@ template <typename Linalg, typename Configuration>
 void test_prediction_validation(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
-    Fixture<Linalg, Configuration> fixture;
+    NominalPredictionFixture<Linalg, Configuration> fixture;
     auto const initial = fixture.state;
     value_type const infinity = std::numeric_limits<value_type>::infinity();
     value_type const nan = std::numeric_limits<value_type>::quiet_NaN();
@@ -361,7 +361,7 @@ int main()
         std::cerr << test.failures() << " ESKF prediction test(s) failed\n";
         return 1;
     }
-    std::cout << "All ESKF nominal prediction tests passed ("
-              << (ESKF_QUAT_APPROX ? "normalized Euler" : "Exp") << ")\n";
+    std::cout << "All ESKF nominal prediction tests passed (" << (ESKF_QUAT_APPROX ? "normalized Euler" : "Exp")
+              << ")\n";
     return 0;
 }

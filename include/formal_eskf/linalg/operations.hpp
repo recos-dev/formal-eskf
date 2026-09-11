@@ -27,8 +27,8 @@ namespace detail
 
 /** Pure coefficient step used after a checked norm has been established. */
 template <typename Linalg, std::size_t Size>
-[[nodiscard]] Matrix<Linalg, Size, 1U>
-normalization_candidate(Matrix<Linalg, Size, 1U> const & input, typename Linalg::value_type input_norm) noexcept
+[[nodiscard]] Matrix<Linalg, Size, 1U> normalization_candidate(Matrix<Linalg, Size, 1U> const & input,
+                                                               typename Linalg::value_type input_norm) noexcept
 {
     return input / input_norm;
 }

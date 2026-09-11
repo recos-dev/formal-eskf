@@ -38,6 +38,24 @@ void test_primitives(TestContext & test, std::string_view profile, typename Math
                 profile, "pi constant");
 }
 
+template <typename Math> void test_backend_sqrt(TestContext & test, std::string_view profile)
+{
+    using value_type = typename Math::value_type;
+
+    test.expect(Math::sqrt(value_type{4}) == value_type{2}, profile, "backend sqrt preserves valid results");
+    value_type const zero = Math::sqrt(value_type{0});
+    value_type const negative_zero = Math::sqrt(-value_type{0});
+    test.expect(zero == value_type{0} && !std::signbit(zero) && negative_zero == value_type{0} &&
+                    std::signbit(negative_zero),
+                profile, "backend sqrt preserves both signs of zero");
+    value_type const infinity = std::numeric_limits<value_type>::infinity();
+    test.expect(Math::sqrt(infinity) == infinity &&
+                    std::isnan(Math::sqrt(std::numeric_limits<value_type>::quiet_NaN())),
+                profile, "backend sqrt preserves infinity and NaN classifications");
+    test.expect(std::isnan(Math::sqrt(value_type{-1})) && std::isnan(Math::sqrt(-infinity)), profile,
+                "negative backend sqrt inputs return NaN without an unchecked libm call");
+}
+
 template <typename Math>
 void test_checked_sqrt(TestContext & test, std::string_view profile, typename Math::value_type tolerance)
 {
@@ -130,6 +148,7 @@ template <typename Math>
 void run_conformance_tests(TestContext & test, std::string_view profile, typename Math::value_type tolerance)
 {
     test_primitives<Math>(test, profile, tolerance);
+    test_backend_sqrt<Math>(test, profile);
     test_checked_sqrt<Math>(test, profile, tolerance);
     test_checked_trigonometry<Math>(test, profile, tolerance);
 }

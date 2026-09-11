@@ -43,7 +43,19 @@ public:
 
     [[nodiscard]] static value_type absolute(value_type value) noexcept { return std::abs(value); }
 
-    [[nodiscard]] static value_type sqrt(value_type value) noexcept { return std::sqrt(value); }
+    /**
+     * Return quiet NaN for negative inputs without invoking libm's domain-error
+     * path. errno and floating-point exception flags are not this adapter's
+     * error interface; checked callers use scalar::try_sqrt for a Status.
+     */
+    [[nodiscard]] static value_type sqrt(value_type value) noexcept
+    {
+        if (value >= value_type{0})
+        {
+            return std::sqrt(value);
+        }
+        return std::numeric_limits<value_type>::quiet_NaN();
+    }
 
     [[nodiscard]] static value_type sin(value_type value) noexcept { return std::sin(value); }
 

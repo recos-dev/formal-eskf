@@ -89,7 +89,7 @@ public:
 
     /** Replace a compile-time-positioned block.  The block dimensions are deduced. */
     template <std::size_t StartRow, std::size_t StartColumn, std::size_t BlockRows, std::size_t BlockColumns>
-    void set_block(Matrix<Linalg, BlockRows, BlockColumns> const & block) noexcept;
+    void set_block(Matrix<Linalg, BlockRows, BlockColumns> const & source) noexcept;
 
     /** Return a compile-time-positioned vector segment. */
     template <std::size_t Offset, std::size_t SegmentSize>
@@ -97,7 +97,7 @@ public:
 
     /** Replace a compile-time-positioned vector segment.  Its size is deduced. */
     template <std::size_t Offset, std::size_t SegmentSize>
-    void set_segment(Matrix<Linalg, SegmentSize, 1U> const & segment) noexcept;
+    void set_segment(Matrix<Linalg, SegmentSize, 1U> const & source) noexcept;
 
 private:
     using storage_type = typename Linalg::template storage_type<Rows, Columns>;
@@ -269,7 +269,7 @@ Matrix<Linalg, BlockRows, BlockColumns> Matrix<Linalg, Rows, Columns>::block() c
 
 template <typename Linalg, std::size_t Rows, std::size_t Columns>
 template <std::size_t StartRow, std::size_t StartColumn, std::size_t BlockRows, std::size_t BlockColumns>
-void Matrix<Linalg, Rows, Columns>::set_block(Matrix<Linalg, BlockRows, BlockColumns> const & block) noexcept
+void Matrix<Linalg, Rows, Columns>::set_block(Matrix<Linalg, BlockRows, BlockColumns> const & source) noexcept
 {
     static_assert(StartRow + BlockRows <= Rows);
     static_assert(StartColumn + BlockColumns <= Columns);
@@ -277,7 +277,7 @@ void Matrix<Linalg, Rows, Columns>::set_block(Matrix<Linalg, BlockRows, BlockCol
     {
         for (std::size_t column = 0U; column < BlockColumns; ++column)
         {
-            (*this)(StartRow + row, StartColumn + column) = block(row, column);
+            (*this)(StartRow + row, StartColumn + column) = source(row, column);
         }
     }
 }
@@ -298,13 +298,13 @@ Matrix<Linalg, SegmentSize, 1U> Matrix<Linalg, Rows, Columns>::segment() const n
 
 template <typename Linalg, std::size_t Rows, std::size_t Columns>
 template <std::size_t Offset, std::size_t SegmentSize>
-void Matrix<Linalg, Rows, Columns>::set_segment(Matrix<Linalg, SegmentSize, 1U> const & segment) noexcept
+void Matrix<Linalg, Rows, Columns>::set_segment(Matrix<Linalg, SegmentSize, 1U> const & source) noexcept
 {
     static_assert(Columns == 1U);
     static_assert(Offset + SegmentSize <= Rows);
     for (std::size_t index = 0U; index < SegmentSize; ++index)
     {
-        (*this)(Offset + index) = segment(index);
+        (*this)(Offset + index) = source(index);
     }
 }
 

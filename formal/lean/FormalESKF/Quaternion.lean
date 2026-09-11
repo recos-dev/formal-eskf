@@ -1,4 +1,5 @@
 import Mathlib.Tactic.Ring
+import Mathlib.Analysis.SpecialFunctions.Sqrt
 
 /-!
 # Quaternion semantics
@@ -37,6 +38,10 @@ def ofScalar [Zero R] (a : R) : Quaternion R :=
 def neg [Neg R] (q : Quaternion R) : Quaternion R :=
   { q0 := -q.q0, q1 := -q.q1, q2 := -q.q2, q3 := -q.q3 }
 
+/-- Multiply every quaternion coefficient by the same scalar. -/
+def scale [Mul R] (a : R) (q : Quaternion R) : Quaternion R :=
+  { q0 := a * q.q0, q1 := a * q.q1, q2 := a * q.q2, q3 := a * q.q3 }
+
 /-- `Q-MUL`: scalar-first Hamilton multiplication. -/
 def hamiltonMul [Mul R] [Sub R] [Add R] (a b : Quaternion R) : Quaternion R :=
   {
@@ -57,6 +62,10 @@ def normSquared [Add R] [Mul R] (q : Quaternion R) : R :=
 /-- Exact unit-norm predicate. -/
 def HasUnitNorm [One R] [Add R] [Mul R] (q : Quaternion R) : Prop :=
   normSquared q = 1
+
+/-- `Q-NORMALIZE`: exact normalization of a nonzero real quaternion. -/
+noncomputable def normalize (q : Quaternion ℝ) : Quaternion ℝ :=
+  scale (1 / √(normSquared q)) q
 
 @[simp]
 theorem neg_neg [AddGroup R] (q : Quaternion R) : neg (neg q) = q := by
@@ -100,6 +109,27 @@ theorem normSquared_neg [CommRing R] (q : Quaternion R) :
 theorem normSquared_conjugate [CommRing R] (q : Quaternion R) :
     normSquared (conjugate q) = normSquared q := by
   simp [normSquared, conjugate]
+
+theorem normSquared_scale [CommRing R] (a : R) (q : Quaternion R) :
+    normSquared (scale a q) = a * a * normSquared q := by
+  simp [normSquared, scale]
+  ring
+
+/-- Exact normalization divides each coefficient by the Euclidean norm. -/
+theorem normalize_coefficients (q : Quaternion ℝ) :
+    (normalize q).q0 = q.q0 / √(normSquared q) ∧
+    (normalize q).q1 = q.q1 / √(normSquared q) ∧
+    (normalize q).q2 = q.q2 / √(normSquared q) ∧
+    (normalize q).q3 = q.q3 / √(normSquared q) := by
+  simp [normalize, scale, div_eq_mul_inv, mul_comm]
+
+/-- Exact normalization produces unit norm whenever the input norm is nonzero. -/
+theorem hasUnitNorm_normalize {q : Quaternion ℝ} (hq : 0 < normSquared q) :
+    HasUnitNorm (normalize q) := by
+  rw [HasUnitNorm, normalize, normSquared_scale]
+  have hsqrt : √(normSquared q) ≠ 0 := ne_of_gt (Real.sqrt_pos.2 hq)
+  field_simp [hsqrt]
+  exact (Real.sq_sqrt hq.le).symm
 
 /-- Multiplying by the conjugate yields the squared norm as a scalar quaternion. -/
 theorem hamiltonMul_conjugate [CommRing R] (q : Quaternion R) :

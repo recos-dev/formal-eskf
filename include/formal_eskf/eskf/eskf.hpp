@@ -22,3 +22,4 @@
 #include <formal_eskf/eskf/injection.hpp>
 #include <formal_eskf/eskf/correction.hpp>
 #include <formal_eskf/eskf/position.hpp>
+#include <formal_eskf/eskf/velocity.hpp>

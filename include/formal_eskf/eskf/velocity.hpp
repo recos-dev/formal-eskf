@@ -10,13 +10,26 @@
 
 /**
  * @file
- * Local navigation-frame velocity measurement for INS.
+ * Horizontal and three-dimensional navigation-frame velocity measurements for INS.
  */
 
 #include <formal_eskf/eskf/correction.hpp>
 
 namespace formal_eskf
 {
+
+/**
+ * Error-state Jacobian of h(state) = [v_N, v_E]^T, not of the residual.
+ * Selects columns 3 and 4 of the INS error state
+ * [delta_p_n, delta_v_n, delta_theta_b, delta_b_a, delta_b_g].
+ * No vertical velocity observation is introduced.
+ */
+template <typename Linalg> [[nodiscard]] linalg::Matrix<Linalg, 2U, 15U> horizontal_velocity_jacobian() noexcept
+{
+    linalg::Matrix<Linalg, 2U, 15U> H;
+    H.template set_block<0U, 3U>(linalg::Matrix<Linalg, 2U, 2U>::identity());
+    return H;
+}
 
 /**
  * Error-state Jacobian of h(state) = v_n, not of the residual z_v_n - v_n.
@@ -72,6 +85,42 @@ try_correct_velocity(configuration::Ins::NominalState<Linalg> const & state,
     }
     return try_correct(state, covariance, r, velocity_jacobian<Linalg>(), V, minimum_quaternion_norm, state_output,
                        covariance_output);
+}
+
+/**
+ * Correct INS with horizontal velocity z_v_ne = [v_N, v_E]^T in m/s and its
+ * 2x2 noise covariance V in m^2/s^2. No v_D measurement is required. Frame,
+ * origin, time, covariance preconditions and failure/aliasing semantics follow
+ * try_correct_velocity. Both components must describe the same measurement time.
+ *
+ * Forms r = z_v_ne - state.v_n.segment<0, 2>(). Full V is retained, and the
+ * full INS state/covariance is corrected through prior cross-covariances;
+ * this is not an independent horizontal filter or a gain mask.
+ *
+ * Use this OR try_correct_velocity for a given velocity sample, not both:
+ * fusing the same horizontal observations twice would double-count them.
+ * Separate observation calls do not represent cross-source noise correlations.
+ */
+template <typename Linalg>
+[[nodiscard]] Status try_correct_horizontal_velocity(configuration::Ins::NominalState<Linalg> const & state,
+                                                     linalg::Matrix<Linalg, 15U, 15U> const & covariance,
+                                                     linalg::Matrix<Linalg, 2U, 1U> const & z_v_ne,
+                                                     linalg::Matrix<Linalg, 2U, 2U> const & V,
+                                                     typename Linalg::value_type minimum_quaternion_norm,
+                                                     configuration::Ins::NominalState<Linalg> & state_output,
+                                                     linalg::Matrix<Linalg, 15U, 15U> & covariance_output) noexcept
+{
+    if (!linalg::all_finite(state.v_n) || !linalg::all_finite(z_v_ne))
+    {
+        return Status::non_finite_input;
+    }
+    auto const r = z_v_ne - state.v_n.template segment<0U, 2U>();
+    if (!linalg::all_finite(r))
+    {
+        return Status::non_finite_result;
+    }
+    return try_correct(state, covariance, r, horizontal_velocity_jacobian<Linalg>(), V, minimum_quaternion_norm,
+                       state_output, covariance_output);
 }
 
 } /* end namespace formal_eskf */

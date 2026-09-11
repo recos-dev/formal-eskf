@@ -26,7 +26,6 @@ namespace
 
 using TestContext = formal_eskf::test::Context;
 using formal_eskf::Status;
-using formal_eskf::try_correct_velocity;
 using formal_eskf::test::near;
 
 template <typename Matrix> [[nodiscard]] bool same_bits(Matrix const & a, Matrix const & b)
@@ -51,19 +50,75 @@ template <typename State> [[nodiscard]] bool same_state(State const & a, State c
            same_bits(a.q_nb.coefficients(), b.q_nb.coefficients());
 }
 
-template <typename Linalg> struct VelocityFixture
+template <typename Linalg> struct HorizontalVelocityFixture
 {
+    using linalg_type = Linalg;
     using value_type = typename Linalg::value_type;
     using state_type = formal_eskf::configuration::Ins::NominalState<Linalg>;
     using covariance_type = formal_eskf::linalg::Matrix<Linalg, 15U, 15U>;
     using vector_type = formal_eskf::linalg::Matrix<Linalg, 3U, 1U>;
-    using matrix3_type = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
+    using measurement_type = formal_eskf::linalg::Matrix<Linalg, 2U, 1U>;
+    using measurement_covariance_type = formal_eskf::linalg::Matrix<Linalg, 2U, 2U>;
+    using jacobian_type = formal_eskf::linalg::Matrix<Linalg, 2U, 15U>;
+    static constexpr std::size_t axis_offset = 0U;
     static constexpr value_type minimum_norm = static_cast<value_type>(1.0e-6);
 
     state_type state{};
     covariance_type P = covariance_type::identity();
-    vector_type z_v_n{};
-    matrix3_type V = matrix3_type::identity();
+    measurement_type z{};
+    measurement_covariance_type V = measurement_covariance_type::identity();
+
+    HorizontalVelocityFixture()
+    {
+        for (std::size_t axis = 0U; axis < 3U; ++axis)
+        {
+            value_type const n = static_cast<value_type>(axis + 1U);
+            state.v_n.set(axis, n);
+            state.p_n.set(axis, -n);
+            state.b_a.set(axis, n / value_type{8});
+            state.b_g.set(axis, -n / value_type{16});
+        }
+        for (std::size_t axis = 0U; axis < measurement_type::row_count; ++axis)
+        {
+            value_type const n = state.v_n(axis_offset + axis);
+            z.set(axis, n + n / value_type{32});
+        }
+    }
+
+    [[nodiscard]] static jacobian_type jacobian() noexcept
+    {
+        return formal_eskf::horizontal_velocity_jacobian<Linalg>();
+    }
+
+    [[nodiscard]] static constexpr bool observes_axis(std::size_t axis) noexcept { return axis < 2U; }
+
+    [[nodiscard]] static Status correct(state_type const & prior, covariance_type const & covariance,
+                                        measurement_type const & observation, measurement_covariance_type const & noise,
+                                        value_type norm_bound, state_type & posterior,
+                                        covariance_type & posterior_covariance) noexcept
+    {
+        return formal_eskf::try_correct_horizontal_velocity(prior, covariance, observation, noise, norm_bound,
+                                                            posterior, posterior_covariance);
+    }
+};
+
+template <typename Linalg> struct VelocityFixture
+{
+    using linalg_type = Linalg;
+    using value_type = typename Linalg::value_type;
+    using state_type = formal_eskf::configuration::Ins::NominalState<Linalg>;
+    using covariance_type = formal_eskf::linalg::Matrix<Linalg, 15U, 15U>;
+    using vector_type = formal_eskf::linalg::Matrix<Linalg, 3U, 1U>;
+    using measurement_type = formal_eskf::linalg::Matrix<Linalg, 3U, 1U>;
+    using measurement_covariance_type = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
+    using jacobian_type = formal_eskf::linalg::Matrix<Linalg, 3U, 15U>;
+    static constexpr std::size_t axis_offset = 0U;
+    static constexpr value_type minimum_norm = static_cast<value_type>(1.0e-6);
+
+    state_type state{};
+    covariance_type P = covariance_type::identity();
+    measurement_type z{};
+    measurement_covariance_type V = measurement_covariance_type::identity();
 
     VelocityFixture()
     {
@@ -74,31 +129,65 @@ template <typename Linalg> struct VelocityFixture
             state.p_n.set(axis, -n);
             state.b_a.set(axis, n / value_type{8});
             state.b_g.set(axis, -n / value_type{16});
-            z_v_n.set(axis, n + n / value_type{32});
         }
+        for (std::size_t axis = 0U; axis < measurement_type::row_count; ++axis)
+        {
+            value_type const n = state.v_n(axis_offset + axis);
+            z.set(axis, n + n / value_type{32});
+        }
+    }
+
+    [[nodiscard]] static jacobian_type jacobian() noexcept { return formal_eskf::velocity_jacobian<Linalg>(); }
+
+    [[nodiscard]] static constexpr bool observes_axis(std::size_t axis) noexcept { return axis < 3U; }
+
+    [[nodiscard]] static Status correct(state_type const & prior, covariance_type const & covariance,
+                                        measurement_type const & observation, measurement_covariance_type const & noise,
+                                        value_type norm_bound, state_type & posterior,
+                                        covariance_type & posterior_covariance) noexcept
+    {
+        return formal_eskf::try_correct_velocity(prior, covariance, observation, noise, norm_bound, posterior,
+                                                 posterior_covariance);
     }
 };
 
-template <typename Linalg, typename State, typename Covariance>
-concept SupportsVelocity = requires(State state, Covariance P, formal_eskf::linalg::Matrix<Linalg, 3U, 1U> z,
-                                    formal_eskf::linalg::Matrix<Linalg, 3U, 3U> V)
+template <typename Linalg, typename State, typename Covariance, std::size_t Size>
+concept SupportsHorizontalVelocity = requires(State state, Covariance P,
+                                              formal_eskf::linalg::Matrix<Linalg, Size, 1U> z,
+                                              formal_eskf::linalg::Matrix<Linalg, Size, Size> V)
 {
-    try_correct_velocity(state, P, z, V, typename Linalg::value_type{1}, state, P);
+    formal_eskf::try_correct_horizontal_velocity(state, P, z, V, typename Linalg::value_type{1}, state, P);
 };
 
-template <typename Linalg>
-void test_velocity_jacobian(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
+template <typename Linalg, typename State, typename Covariance, std::size_t Size>
+concept SupportsVelocity = requires(State state, Covariance P, formal_eskf::linalg::Matrix<Linalg, Size, 1U> z,
+                                    formal_eskf::linalg::Matrix<Linalg, Size, Size> V)
 {
-    using value_type = typename Linalg::value_type;
-    using Fixture = VelocityFixture<Linalg>;
+    formal_eskf::try_correct_velocity(state, P, z, V, typename Linalg::value_type{1}, state, P);
+};
+
+template <typename Fixture>
+void test_velocity_jacobian(TestContext & test, std::string_view profile, typename Fixture::value_type tolerance)
+{
+    using Linalg = typename Fixture::linalg_type;
+    constexpr std::size_t measurement_size = Fixture::measurement_type::row_count;
+    using value_type = typename Fixture::value_type;
     using error_type = formal_eskf::configuration::Ins::ErrorState<Linalg>;
-    static_assert(SupportsVelocity<Linalg, typename Fixture::state_type, typename Fixture::covariance_type>);
+    static_assert(
+        SupportsHorizontalVelocity<Linalg, typename Fixture::state_type, typename Fixture::covariance_type, 2U>);
+    static_assert(
+        !SupportsHorizontalVelocity<Linalg, typename Fixture::state_type, typename Fixture::covariance_type, 3U>);
+    static_assert(!SupportsHorizontalVelocity<Linalg, formal_eskf::configuration::Ahrs::NominalState<Linalg>,
+                                              formal_eskf::linalg::Matrix<Linalg, 3U, 3U>, 2U>);
+    static_assert(SupportsVelocity<Linalg, typename Fixture::state_type, typename Fixture::covariance_type, 3U>);
+    static_assert(!SupportsVelocity<Linalg, typename Fixture::state_type, typename Fixture::covariance_type, 2U>);
     static_assert(!SupportsVelocity<Linalg, formal_eskf::configuration::Ahrs::NominalState<Linalg>,
-                                    formal_eskf::linalg::Matrix<Linalg, 3U, 3U>>);
+                                    formal_eskf::linalg::Matrix<Linalg, 3U, 3U>, 3U>);
+    static_assert(noexcept(formal_eskf::horizontal_velocity_jacobian<Linalg>()));
     static_assert(noexcept(formal_eskf::velocity_jacobian<Linalg>()));
 
     Fixture const fixture;
-    auto const H = formal_eskf::velocity_jacobian<Linalg>();
+    auto const H = Fixture::jacobian();
     constexpr value_type step = value_type{0.0625};
     // Differentiate h(inject(state, delta_x)), not z - h. This checks the sign
     // and all 15 column meanings against the actual injection convention.
@@ -121,21 +210,22 @@ void test_velocity_jacobian(TestContext & test, std::string_view profile, typena
                         formal_eskf::try_inject_nominal(fixture.state, negative, Fixture::minimum_norm, minus) ==
                             Status::success,
                     profile, "finite-difference perturbations succeed");
-        for (std::size_t row = 0U; row < 3U; ++row)
+        for (std::size_t row = 0U; row < measurement_size; ++row)
         {
             value_type const expected = row + 3U == column ? value_type{1} : value_type{0};
-            value_type const derivative = (plus.v_n(row) - minus.v_n(row)) / (value_type{2} * step);
+            value_type const derivative =
+                (plus.v_n(Fixture::axis_offset + row) - minus.v_n(Fixture::axis_offset + row)) / (value_type{2} * step);
             test.expect(H(row, column) == expected && near(H(row, column), derivative, tolerance), profile,
                         "velocity Jacobian matches layout and injected observation derivative");
         }
     }
 }
 
-template <typename Linalg>
-void test_velocity_analytic(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
+template <typename Fixture>
+void test_velocity_analytic(TestContext & test, std::string_view profile, typename Fixture::value_type tolerance)
 {
-    using value_type = typename Linalg::value_type;
-    using Fixture = VelocityFixture<Linalg>;
+    constexpr std::size_t measurement_size = Fixture::measurement_type::row_count;
+    using value_type = typename Fixture::value_type;
     Fixture fixture;
     // P is SPD: velocity block 4I, all other diagonal blocks I, with
     // velocity cross-covariances to position and both biases (but not attitude).
@@ -148,37 +238,42 @@ void test_velocity_analytic(TestContext & test, std::string_view profile, typena
             fixture.P.set(3U + axis, 3U * block + axis, cross);
             fixture.P.set(3U * block + axis, 3U + axis, cross);
         }
+    }
+    for (std::size_t axis = 0U; axis < measurement_size; ++axis)
+    {
         fixture.V.set(axis, axis, static_cast<value_type>(axis + 1U));
     }
     fixture.V.set(0U, 1U, value_type{0.5});
     fixture.V.set(1U, 0U, value_type{0.5});
-    // Independent closed-form inverse of S = [[5,.5,0],[.5,6,0],[0,0,7]].
+    // Independent 2x2/3x3 inverse: S has diagonal 5, 6, 7 as
+    // applicable, and off-diagonal .5 for the first two observed axes.
     // This oracle does not use production Jacobian, solve, Joseph or reset.
     constexpr long double determinant = 5.0L * 6.0L - 0.5L * 0.5L;
-    std::array<std::array<long double, 3U>, 3U> const inverse{{{6.0L / determinant, -0.5L / determinant, 0.0L},
-                                                               {-0.5L / determinant, 5.0L / determinant, 0.0L},
-                                                               {0.0L, 0.0L, 1.0L / 7.0L}}};
+    // The horizontal model uses the upper-left 2x2 block of this oracle.
+    constexpr std::array<std::array<long double, 3U>, 3U> inverse{{{6.0L / determinant, -0.5L / determinant, 0.0L},
+                                                                   {-0.5L / determinant, 5.0L / determinant, 0.0L},
+                                                                   {0.0L, 0.0L, 1.0L / 7.0L}}};
     std::array<long double, 15U> correction{};
     typename Fixture::state_type state_output;
     typename Fixture::covariance_type P_output;
-    test.expect(try_correct_velocity(fixture.state, fixture.P, fixture.z_v_n, fixture.V, Fixture::minimum_norm,
-                                     state_output, P_output) == Status::success,
+    test.expect(Fixture::correct(fixture.state, fixture.P, fixture.z, fixture.V, Fixture::minimum_norm, state_output,
+                                 P_output) == Status::success,
                 profile, "velocity correction with correlated V succeeds");
     for (std::size_t row = 0U; row < 15U; ++row)
     {
-        std::array<long double, 3U> gain{};
-        for (std::size_t axis = 0U; axis < 3U; ++axis)
+        std::array<long double, measurement_size> gain{};
+        for (std::size_t axis = 0U; axis < measurement_size; ++axis)
         {
-            for (std::size_t k = 0U; k < 3U; ++k)
+            for (std::size_t k = 0U; k < measurement_size; ++k)
             {
                 gain[axis] += static_cast<long double>(fixture.P(row, 3U + k)) * inverse[k][axis];
             }
-            correction[row] += gain[axis] * (static_cast<long double>(fixture.z_v_n(axis)) - fixture.state.v_n(axis));
+            correction[row] += gain[axis] * (static_cast<long double>(fixture.z(axis)) - fixture.state.v_n(axis));
         }
         for (std::size_t column = 0U; column < 15U; ++column)
         {
             long double expected = fixture.P(row, column);
-            for (std::size_t axis = 0U; axis < 3U; ++axis)
+            for (std::size_t axis = 0U; axis < measurement_size; ++axis)
             {
                 expected -= gain[axis] * fixture.P(3U + axis, column);
             }
@@ -204,10 +299,11 @@ void test_velocity_analytic(TestContext & test, std::string_view profile, typena
                 "uncorrelated attitude stays unchanged");
 }
 
-template <typename Linalg> void test_velocity_delegation(TestContext & test, std::string_view profile)
+template <typename Fixture> void test_velocity_delegation(TestContext & test, std::string_view profile)
 {
-    using value_type = typename Linalg::value_type;
-    using Fixture = VelocityFixture<Linalg>;
+    using Linalg = typename Fixture::linalg_type;
+    constexpr std::size_t measurement_size = Fixture::measurement_type::row_count;
+    using value_type = typename Fixture::value_type;
     Fixture fixture;
     // Dense SPD P and V exercise attitude injection/reset and cross-axis noise.
     for (std::size_t row = 0U; row < 15U; ++row)
@@ -223,11 +319,12 @@ template <typename Linalg> void test_velocity_delegation(TestContext & test, std
                     value_type{0.5}, value_type{0.5}, value_type{0.5}, value_type{0.5}, Fixture::minimum_norm,
                     fixture.state.q_nb) == Status::success,
                 profile, "non-identity prior attitude is valid");
-    formal_eskf::linalg::Matrix<Linalg, 3U, 15U> H;
-    H.set(0U, 3U, value_type{1});
-    H.set(1U, 4U, value_type{1});
-    H.set(2U, 5U, value_type{1});
-    auto const r = fixture.z_v_n - fixture.state.v_n;
+    formal_eskf::linalg::Matrix<Linalg, measurement_size, 15U> H;
+    for (std::size_t axis = 0U; axis < measurement_size; ++axis)
+    {
+        H.set(axis, 3U + axis, value_type{1});
+    }
+    auto const r = fixture.z - fixture.state.v_n.template segment<Fixture::axis_offset, measurement_size>();
     typename Fixture::state_type expected_state;
     typename Fixture::covariance_type expected_P;
     test.expect(formal_eskf::try_correct(fixture.state, fixture.P, r, H, fixture.V, Fixture::minimum_norm,
@@ -242,28 +339,30 @@ template <typename Linalg> void test_velocity_delegation(TestContext & test, std
         typename Fixture::covariance_type separate_P;
         auto & state_output = (aliases & 1U) != 0U ? input.state : separate_state;
         auto & P_output = (aliases & 2U) != 0U ? input.P : separate_P;
-        test.expect(try_correct_velocity(input.state, input.P, input.z_v_n, input.V, Fixture::minimum_norm,
-                                         state_output, P_output) == Status::success,
+        test.expect(Fixture::correct(input.state, input.P, input.z, input.V, Fixture::minimum_norm, state_output,
+                                     P_output) == Status::success,
                     profile, "all output-alias combinations succeed");
         test.expect(same_state(state_output, expected_state) && same_bits(P_output, expected_P), profile,
                     "wrapper preserves full generic correction result, including attitude reset");
         test.expect(((aliases & 1U) != 0U || same_state(input.state, fixture.state)) &&
-                        ((aliases & 2U) != 0U || same_bits(input.P, fixture.P)) &&
-                        same_bits(input.z_v_n, fixture.z_v_n) && same_bits(input.V, fixture.V),
+                        ((aliases & 2U) != 0U || same_bits(input.P, fixture.P)) && same_bits(input.z, fixture.z) &&
+                        same_bits(input.V, fixture.V),
                     profile, "non-output inputs remain unchanged");
     }
     auto zero_residual = fixture;
-    test.expect(try_correct_velocity(zero_residual.state, zero_residual.P, zero_residual.state.v_n, zero_residual.V,
-                                     Fixture::minimum_norm, zero_residual.state, zero_residual.P) == Status::success,
-                profile, "measurement may alias in-place state velocity");
+    test.expect(Fixture::correct(zero_residual.state, zero_residual.P,
+                                 zero_residual.state.v_n.template segment<Fixture::axis_offset, measurement_size>(),
+                                 zero_residual.V, Fixture::minimum_norm, zero_residual.state,
+                                 zero_residual.P) == Status::success,
+                profile, "measurement from in-place state succeeds");
     test.expect(same_state(zero_residual.state, fixture.state) && zero_residual.P(3U, 3U) < fixture.P(3U, 3U), profile,
                 "zero residual leaves state unchanged but still reduces velocity uncertainty");
 }
 
-template <typename Linalg> void test_velocity_failures(TestContext & test, std::string_view profile)
+template <typename Fixture> void test_velocity_failures(TestContext & test, std::string_view profile)
 {
-    using value_type = typename Linalg::value_type;
-    using Fixture = VelocityFixture<Linalg>;
+    constexpr std::size_t measurement_size = Fixture::measurement_type::row_count;
+    using value_type = typename Fixture::value_type;
     Fixture const fixture;
     auto const fail = [&](Fixture const & bad, value_type minimum_norm, Status expected, std::string_view description)
     {
@@ -271,17 +370,17 @@ template <typename Linalg> void test_velocity_failures(TestContext & test, std::
         {
             auto input = bad;
             auto separate_state = fixture.state;
-            auto separate_P = fixture.P * value_type{7};
+            typename Fixture::covariance_type separate_P = fixture.P * value_type{7};
             auto & state_output = (aliases & 1U) != 0U ? input.state : separate_state;
             auto & P_output = (aliases & 2U) != 0U ? input.P : separate_P;
             auto const state_before = state_output;
             auto const P_before = P_output;
             Status const status =
-                try_correct_velocity(input.state, input.P, input.z_v_n, input.V, minimum_norm, state_output, P_output);
+                Fixture::correct(input.state, input.P, input.z, input.V, minimum_norm, state_output, P_output);
             test.expect(status == expected && same_state(state_output, state_before) && same_bits(P_output, P_before),
                         profile, description);
-            test.expect(same_state(input.state, bad.state) && same_bits(input.P, bad.P) &&
-                            same_bits(input.z_v_n, bad.z_v_n) && same_bits(input.V, bad.V),
+            test.expect(same_state(input.state, bad.state) && same_bits(input.P, bad.P) && same_bits(input.z, bad.z) &&
+                            same_bits(input.V, bad.V),
                         profile, "failed velocity correction preserves all inputs bit-for-bit");
         }
     };
@@ -289,19 +388,25 @@ template <typename Linalg> void test_velocity_failures(TestContext & test, std::
          {std::numeric_limits<value_type>::quiet_NaN(), std::numeric_limits<value_type>::infinity(),
           -std::numeric_limits<value_type>::infinity()})
     {
+        for (std::size_t axis = 0U; axis < measurement_size; ++axis)
+        {
+            auto bad = fixture;
+            bad.z.set(axis, invalid);
+            fail(bad, Fixture::minimum_norm, Status::non_finite_input, "non-finite measured velocity rolls back");
+            bad = fixture;
+            bad.V.set(axis, axis, invalid);
+            fail(bad, Fixture::minimum_norm, Status::non_finite_input, "non-finite measurement variance rolls back");
+        }
         for (std::size_t axis = 0U; axis < 3U; ++axis)
         {
             auto bad = fixture;
-            bad.z_v_n.set(axis, invalid);
-            fail(bad, Fixture::minimum_norm, Status::non_finite_input, "non-finite measured velocity rolls back");
-            bad = fixture;
             bad.state.v_n.set(axis, invalid);
             fail(bad, Fixture::minimum_norm, Status::non_finite_input, "non-finite prior velocity rolls back");
         }
     }
     auto bad = fixture;
-    bad.state.v_n.set(1U, -std::numeric_limits<value_type>::max());
-    bad.z_v_n.set(1U, std::numeric_limits<value_type>::max());
+    bad.state.v_n.set(Fixture::axis_offset, -std::numeric_limits<value_type>::max());
+    bad.z.set(0U, std::numeric_limits<value_type>::max());
     fail(bad, Fixture::minimum_norm, Status::non_finite_result, "finite velocity subtraction overflow rolls back");
     bad = fixture;
     bad.state.p_n.set(0U, std::numeric_limits<value_type>::quiet_NaN());
@@ -312,9 +417,12 @@ template <typename Linalg> void test_velocity_failures(TestContext & test, std::
     bad = fixture;
     bad.V.set(0U, 1U, value_type{0.25});
     fail(bad, Fixture::minimum_norm, Status::domain_error, "asymmetric V is not silently repaired");
-    bad = fixture;
-    bad.V.set(2U, 2U, value_type{0});
-    fail(bad, Fixture::minimum_norm, Status::domain_error, "nonpositive measurement variance rolls back");
+    for (value_type variance : {value_type{0}, value_type{-1}})
+    {
+        bad = fixture;
+        bad.V.set(measurement_size - 1U, measurement_size - 1U, variance);
+        fail(bad, Fixture::minimum_norm, Status::domain_error, "nonpositive measurement variance rolls back");
+    }
     bad = fixture;
     bad.P.set(1U, 0U, value_type{0.25});
     fail(bad, Fixture::minimum_norm, Status::domain_error, "asymmetric prior covariance rolls back");
@@ -328,11 +436,10 @@ template <typename Linalg> void test_velocity_failures(TestContext & test, std::
          "non-finite quaternion norm bound propagates");
 }
 
-template <typename Linalg>
-void test_velocity_translation(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
+template <typename Fixture>
+void test_velocity_translation(TestContext & test, std::string_view profile, typename Fixture::value_type tolerance)
 {
-    using value_type = typename Linalg::value_type;
-    using Fixture = VelocityFixture<Linalg>;
+    using value_type = typename Fixture::value_type;
     Fixture original;
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
@@ -342,10 +449,10 @@ void test_velocity_translation(TestContext & test, std::string_view profile, typ
     auto translated = original;
     auto const offset = Fixture::vector_type::from_row_major({value_type{32}, value_type{-16}, value_type{8}});
     translated.state.p_n = original.state.p_n + offset;
-    test.expect(try_correct_velocity(original.state, original.P, original.z_v_n, original.V, Fixture::minimum_norm,
-                                     original.state, original.P) == Status::success &&
-                    try_correct_velocity(translated.state, translated.P, translated.z_v_n, translated.V,
-                                         Fixture::minimum_norm, translated.state, translated.P) == Status::success,
+    test.expect(Fixture::correct(original.state, original.P, original.z, original.V, Fixture::minimum_norm,
+                                 original.state, original.P) == Status::success &&
+                    Fixture::correct(translated.state, translated.P, translated.z, translated.V, Fixture::minimum_norm,
+                                     translated.state, translated.P) == Status::success,
                 profile, "velocity corrections at translated prior positions succeed");
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
@@ -369,11 +476,15 @@ struct PositionVelocityReference
     long double pv = 0.0L;
     long double vv = 1.0L;
 
-    void step(long double dt, long double z, long double variance)
+    void predict(long double dt)
     {
         p += v * dt;
         pp += 2.0L * dt * pv + dt * dt * vv;
         pv += dt * vv;
+    }
+
+    void correct(long double z, long double variance)
+    {
         long double const S = vv + variance;
         long double const kp = pv / S;
         long double const kv = vv / S;
@@ -386,15 +497,16 @@ struct PositionVelocityReference
     }
 };
 
-template <typename Linalg>
-void test_velocity_sequence(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance,
+template <typename Fixture>
+void test_velocity_sequence(TestContext & test, std::string_view profile, typename Fixture::value_type tolerance,
                             bool moving)
 {
-    using value_type = typename Linalg::value_type;
-    using Fixture = VelocityFixture<Linalg>;
+    using Linalg = typename Fixture::linalg_type;
+    constexpr std::size_t measurement_size = Fixture::measurement_type::row_count;
+    using value_type = typename Fixture::value_type;
     typename Fixture::state_type state;
     typename Fixture::covariance_type P;
-    typename Fixture::matrix3_type V;
+    typename Fixture::measurement_covariance_type V;
     formal_eskf::configuration::Ins::Parameters<Linalg> parameters;
     formal_eskf::ImuSample<Linalg> imu;
     constexpr value_type dt = value_type{0.125};
@@ -410,7 +522,7 @@ void test_velocity_sequence(TestContext & test, std::string_view profile, typena
     std::array<long double, 3U> const initial_position{2.0L, -1.0L, 3.0L};
     std::array<long double, 3U> const velocity_error{0.5L, -0.25L, 0.125L};
     std::array<PositionVelocityReference, 3U> reference{};
-    typename Fixture::vector_type z_v_n;
+    typename Fixture::measurement_type z;
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
         reference[axis].p = initial_position[axis];
@@ -419,18 +531,25 @@ void test_velocity_sequence(TestContext & test, std::string_view profile, typena
         state.v_n.set(axis, static_cast<value_type>(reference[axis].v));
         P.set(axis, axis, value_type{4});
         P.set(3U + axis, 3U + axis, value_type{1});
+    }
+    for (std::size_t axis = 0U; axis < measurement_size; ++axis)
+    {
         V.set(axis, axis, static_cast<value_type>(axis + 1U) / value_type{4});
-        z_v_n.set(axis, static_cast<value_type>(truth_velocity[axis]));
+        z.set(axis, static_cast<value_type>(truth_velocity[axis]));
     }
     constexpr std::size_t steps = 80U;
     for (std::size_t step = 1U; step <= steps; ++step)
     {
-        for (std::size_t axis = 0U; axis < 3U; ++axis)
+        for (auto & axis_reference : reference)
         {
-            reference[axis].step(dt, z_v_n(axis), V(axis, axis));
+            axis_reference.predict(dt);
+        }
+        for (std::size_t axis = 0U; axis < measurement_size; ++axis)
+        {
+            reference[axis].correct(z(axis), V(axis, axis));
         }
         Status const predict_status = formal_eskf::try_predict(state, P, imu, dt, parameters, state, P);
-        Status const correct_status = try_correct_velocity(state, P, z_v_n, V, Fixture::minimum_norm, state, P);
+        Status const correct_status = Fixture::correct(state, P, z, V, Fixture::minimum_norm, state, P);
         test.expect(predict_status == Status::success && correct_status == Status::success, profile,
                     "repeated in-place predict and velocity correct succeed");
         for (std::size_t axis = 0U; axis < 3U; ++axis)
@@ -449,6 +568,16 @@ void test_velocity_sequence(TestContext & test, std::string_view profile, typena
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
         long double const time = static_cast<long double>(steps) * dt;
+        if (!Fixture::observes_axis(axis))
+        {
+            auto const expected_v = static_cast<value_type>(truth_velocity[axis] + velocity_error[axis]);
+            auto const expected_p = static_cast<value_type>(initial_position[axis] + time * expected_v);
+            test.expect(near(state.v_n(axis), expected_v, tolerance) && near(state.p_n(axis), expected_p, tolerance) &&
+                            near(P(3U + axis, 3U + axis), value_type{1}, tolerance) &&
+                            near(P(axis, axis), static_cast<value_type>(4.0L + time * time), tolerance),
+                        profile, "unobserved vertical axis follows prediction only, without a fabricated measurement");
+            continue;
+        }
         long double const variance = V(axis, axis);
         // Initial velocity variance is 1; each of N observations adds 1/V
         // information. p(t) = p(0) + t*v; p(0) remains unobserved.
@@ -465,16 +594,16 @@ void test_velocity_sequence(TestContext & test, std::string_view profile, typena
     }
 }
 
-template <typename Linalg>
-void run_velocity_tests(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
+template <typename Fixture>
+void run_velocity_tests(TestContext & test, std::string_view profile, typename Fixture::value_type tolerance)
 {
-    test_velocity_jacobian<Linalg>(test, profile, tolerance);
-    test_velocity_analytic<Linalg>(test, profile, tolerance);
-    test_velocity_delegation<Linalg>(test, profile);
-    test_velocity_failures<Linalg>(test, profile);
-    test_velocity_translation<Linalg>(test, profile, tolerance);
-    test_velocity_sequence<Linalg>(test, profile, tolerance, false);
-    test_velocity_sequence<Linalg>(test, profile, tolerance, true);
+    test_velocity_jacobian<Fixture>(test, profile, tolerance);
+    test_velocity_analytic<Fixture>(test, profile, tolerance);
+    test_velocity_delegation<Fixture>(test, profile);
+    test_velocity_failures<Fixture>(test, profile);
+    test_velocity_translation<Fixture>(test, profile, tolerance);
+    test_velocity_sequence<Fixture>(test, profile, tolerance, false);
+    test_velocity_sequence<Fixture>(test, profile, tolerance, true);
 }
 
 } /* end namespace */
@@ -483,8 +612,14 @@ int main()
 {
     TestContext test;
     Eigen::internal::set_is_malloc_allowed(false);
-    run_velocity_tests<formal_eskf::linalg::EigenBackend<float>>(test, "INS velocity binary32", 8.0e-6F);
-    run_velocity_tests<formal_eskf::linalg::EigenBackend<double>>(test, "INS velocity binary64", 2.0e-12);
+    run_velocity_tests<HorizontalVelocityFixture<formal_eskf::linalg::EigenBackend<float>>>(
+        test, "INS horizontal velocity binary32", 8.0e-6F);
+    run_velocity_tests<HorizontalVelocityFixture<formal_eskf::linalg::EigenBackend<double>>>(
+        test, "INS horizontal velocity binary64", 2.0e-12);
+    run_velocity_tests<VelocityFixture<formal_eskf::linalg::EigenBackend<float>>>(test, "INS 3D velocity binary32",
+                                                                                  8.0e-6F);
+    run_velocity_tests<VelocityFixture<formal_eskf::linalg::EigenBackend<double>>>(test, "INS 3D velocity binary64",
+                                                                                   2.0e-12);
     if (test.failures() != 0)
     {
         std::cerr << test.failures() << " ESKF velocity test(s) failed\n";

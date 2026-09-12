@@ -44,10 +44,10 @@ public:
     using vector4_type = typename Linalg::template vector_type<4U>;
 
     constexpr UnitQuaternion() noexcept = default;
-    UnitQuaternion(UnitQuaternion const &) = default;
-    UnitQuaternion(UnitQuaternion &&) noexcept = default;
-    UnitQuaternion & operator=(UnitQuaternion const &) = default;
-    UnitQuaternion & operator=(UnitQuaternion &&) noexcept = default;
+    UnitQuaternion(UnitQuaternion const & other) = default;
+    UnitQuaternion(UnitQuaternion && other) noexcept = default;
+    UnitQuaternion & operator=(UnitQuaternion const & other) = default;
+    UnitQuaternion & operator=(UnitQuaternion && other) noexcept = default;
     ~UnitQuaternion() = default;
 
     [[nodiscard]] static constexpr UnitQuaternion identity() noexcept { return UnitQuaternion(); }

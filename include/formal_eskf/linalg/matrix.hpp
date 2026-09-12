@@ -44,10 +44,10 @@ public:
     static constexpr std::size_t column_count = Columns;
 
     Matrix() noexcept { Linalg::template set_zero<Rows, Columns>(m_storage); }
-    Matrix(Matrix const &) = default;
-    Matrix(Matrix &&) noexcept = default;
-    Matrix & operator=(Matrix const &) = default;
-    Matrix & operator=(Matrix &&) noexcept = default;
+    Matrix(Matrix const & other) = default;
+    Matrix(Matrix && other) noexcept = default;
+    Matrix & operator=(Matrix const & other) = default;
+    Matrix & operator=(Matrix && other) noexcept = default;
     ~Matrix() = default;
 
     /** Return a zero matrix. */

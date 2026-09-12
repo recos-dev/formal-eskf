@@ -53,19 +53,99 @@ extern "C" float atan2f(float y, float x) noexcept
 namespace formal_eskf::verification
 {
 
-class ArrayLinalg
+// Scalar fields avoid bytewise memcpy/type-punning of floating arrays in the
+// verifier. This is fixed-size value storage, with no heap or shared cells.
+template <typename Number, std::size_t Size> struct ScalarArray
+{
+    Number head;
+    ScalarArray<Number, Size - 1U> tail;
+    ScalarArray() : head{}, tail{} {}
+    ScalarArray(ScalarArray const & other) : head(other.head), tail(other.tail) {}
+    ScalarArray & operator=(ScalarArray const & other)
+    {
+        head = other.head;
+        tail = other.tail;
+        return *this;
+    }
+    Number & operator[](std::size_t index)
+    {
+        __ESBMC_assert(index < Size, "proof storage index is in bounds");
+        if (index == 0U)
+        {
+            return head;
+        }
+        return tail[index - 1U];
+    }
+    Number const & operator[](std::size_t index) const
+    {
+        __ESBMC_assert(index < Size, "proof storage index is in bounds");
+        if (index == 0U)
+        {
+            return head;
+        }
+        return tail[index - 1U];
+    }
+};
+
+template <typename Number> struct ScalarArray<Number, 1U>
+{
+    Number head;
+    ScalarArray() : head{} {}
+    ScalarArray(ScalarArray const & other) : head(other.head) {}
+    ScalarArray & operator=(ScalarArray const & other)
+    {
+        head = other.head;
+        return *this;
+    }
+    Number & operator[](std::size_t index)
+    {
+        __ESBMC_assert(index == 0U, "proof storage last index is zero");
+        return head;
+    }
+    Number const & operator[](std::size_t index) const
+    {
+        __ESBMC_assert(index == 0U, "proof storage last index is zero");
+        return head;
+    }
+};
+
+template <typename Number> struct NoNormObserver
+{
+    template <std::size_t Size, typename Values> static void input(Values const &) noexcept {}
+    static void result(Number) noexcept {}
+    template <std::size_t Rows, std::size_t Inner, std::size_t Columns, typename Left, typename Right, typename Result>
+    static void product(Left const &, Right const &, Result const &) noexcept
+    {
+    }
+    template <std::size_t Size, typename Left, typename Right, typename Result>
+    static void addition(Left const &, Right const &, Result const &) noexcept
+    {
+    }
+    template <std::size_t Size, typename Values, typename Result>
+    static void quotient(Values const &, Number, Result const &) noexcept
+    {
+    }
+    template <std::size_t Size, typename Values, typename Result>
+    static void scaling(Values const &, Number, Result const &) noexcept
+    {
+    }
+};
+
+template <typename Number, typename Observer = NoNormObserver<Number>, typename Math = scalar::StandardMath<Number>>
+class FixedArrayLinalg
 {
 public:
-    using value_type = float;
-    using scalar_math_type = scalar::StandardMath<value_type>;
+    using value_type = Number;
+    using scalar_math_type = Math;
 
-    template <std::size_t Rows, std::size_t Columns> using matrix_type = linalg::Matrix<ArrayLinalg, Rows, Columns>;
+    template <std::size_t Rows, std::size_t Columns>
+    using matrix_type = linalg::Matrix<FixedArrayLinalg, Rows, Columns>;
 
     template <std::size_t Size> using vector_type = matrix_type<Size, 1U>;
 
     template <std::size_t Rows, std::size_t Columns> struct storage_type
     {
-        value_type values[Rows * Columns];
+        ScalarArray<value_type, Rows * Columns> values;
     };
 
     template <std::size_t Rows, std::size_t Columns> static void set_zero(storage_type<Rows, Columns> & matrix) noexcept
@@ -105,6 +185,7 @@ public:
         {
             result.values[index] = left.values[index] + right.values[index];
         }
+        Observer::template addition<Rows * Columns>(left.values, right.values, result.values);
     }
 
     template <std::size_t Rows, std::size_t Columns>
@@ -134,6 +215,7 @@ public:
         {
             result.values[index] = matrix.values[index] * scalar;
         }
+        Observer::template scaling<Rows * Columns>(matrix.values, scalar, result.values);
     }
 
     template <std::size_t Rows, std::size_t Columns>
@@ -144,6 +226,7 @@ public:
         {
             result.values[index] = matrix.values[index] / scalar;
         }
+        Observer::template quotient<Rows * Columns>(matrix.values, scalar, result.values);
     }
 
     template <std::size_t Size>
@@ -166,7 +249,10 @@ public:
 
     template <std::size_t Size> [[nodiscard]] static value_type norm(storage_type<Size, 1U> const & vector) noexcept
     {
-        return scalar_math_type::sqrt(squared_norm(vector));
+        Observer::template input<Size>(vector.values);
+        value_type const result = scalar_math_type::sqrt(squared_norm(vector));
+        Observer::result(result);
+        return result;
     }
 
     template <std::size_t Rows, std::size_t Inner, std::size_t Columns>
@@ -185,6 +271,7 @@ public:
                 result.values[row * Columns + column] = sum;
             }
         }
+        Observer::template product<Rows, Inner, Columns>(left.values, right.values, result.values);
     }
 
     template <std::size_t Rows, std::size_t Columns>
@@ -200,6 +287,7 @@ public:
     }
 };
 
+using ArrayLinalg = FixedArrayLinalg<float>;
 using Linalg = ArrayLinalg;
 using Quaternion = so3::UnitQuaternion<Linalg>;
 using Scalar = Linalg::value_type;

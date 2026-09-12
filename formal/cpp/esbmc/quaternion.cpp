@@ -302,10 +302,13 @@ FORMAL_ESKF_ROTATE_BASIS_CHECK(2, 2)
 void verify_rotate_zero(Quaternion quaternion)
 {
     proof::assume_quaternion(quaternion);
-    __ESBMC_assert(
-        proof::same_vector(formal_eskf::so3::rotate(quaternion, Vector3::zero()), Vector3::zero()) &&
-            proof::same_vector(formal_eskf::so3::inverse_rotate(quaternion, Vector3::zero()), Vector3::zero()),
-        "Q-ROTATE-ZERO: forward and inverse actions preserve the zero vector");
+    auto const forward = formal_eskf::so3::rotate(quaternion, Vector3::zero());
+    auto const inverse = formal_eskf::so3::inverse_rotate(quaternion, Vector3::zero());
+    for (std::size_t i = 0U; i < 3U; ++i)
+    {
+        __ESBMC_assert(forward(i) == Scalar{0}, "Q-ROTATE-ZERO: forward action preserves each zero component");
+        __ESBMC_assert(inverse(i) == Scalar{0}, "Q-ROTATE-ZERO: inverse action preserves each zero component");
+    }
 }
 
 /* SO3-HAT. */

@@ -658,23 +658,19 @@ void verify_prediction_parameters(Scalar dt, Scalar dt_min, Scalar dt_max, Scala
                    "E-PRED: invalid step interval is reported");
 }
 
-// Arbitrary IEEE parameters, including NaNs/infinities. State/IMU fixtures are
-// valid so the only possible rejection is parameter validation.
-void verify_prediction_parameter_rejection(Scalar dt, Scalar dt_min, Scalar dt_max, Scalar minimum_norm, bool alias)
+// Parameter rejection precedes state/IMU processing. Prior and output fields
+// are arbitrary IEEE values, not identity sentinels or assumed-valid states.
+void verify_prediction_parameter_rejection(Scalar dt, Scalar dt_min, Scalar dt_max, Scalar minimum_norm, bool alias,
+                                           Ins::nominal_state_type ins, Ahrs::nominal_state_type ahrs, Imu imu,
+                                           Ins::nominal_state_type oi, Ahrs::nominal_state_type oa)
 {
     Status const expected = formal_eskf::detail::validate_prediction_parameters<Math>(dt, dt_min, dt_max, minimum_norm);
     __ESBMC_assume(expected != Status::success);
-    Ins::nominal_state_type ins;
-    Ahrs::nominal_state_type ahrs;
-    Imu imu;
     Ins::parameter_type pi;
     Ahrs::parameter_type pa;
     pi.dt_min = pa.dt_min = dt_min;
     pi.dt_max = pa.dt_max = dt_max;
     pi.minimum_quaternion_norm = pa.minimum_quaternion_norm = minimum_norm;
-    auto oi = ins;
-    auto oa = ahrs;
-    oi.q_nb = oa.q_nb = -Quaternion::identity();
     auto const before_i = alias ? ins : oi;
     auto const before_a = alias ? ahrs : oa;
     Status const si = formal_eskf::try_predict_nominal(ins, imu, dt, pi, alias ? ins : oi);
@@ -685,7 +681,7 @@ void verify_prediction_parameter_rejection(Scalar dt, Scalar dt_min, Scalar dt_m
 }
 
 // A symbolic non-finite value is placed in each consumed INS scalar field.
-void verify_ins_non_finite_input(Scalar invalid, unsigned field, bool alias)
+void verify_ins_non_finite_input(Scalar invalid, unsigned field, bool alias, Ins::nominal_state_type output)
 {
     __ESBMC_assume(!Math::is_finite(invalid));
     __ESBMC_assume(field < 21U);
@@ -695,8 +691,6 @@ void verify_ins_non_finite_input(Scalar invalid, unsigned field, bool alias)
     Vector * fields[] = {&state.p_n,          &state.v_n,           &state.b_a, &state.b_g, &imu.specific_force_b,
                          &imu.angular_rate_b, &parameters.gravity_n};
     fields[field / 3U]->set(field % 3U, invalid);
-    Ins::nominal_state_type output;
-    output.q_nb = -Quaternion::identity();
     auto const before = alias ? state : output;
     Status const status = formal_eskf::try_predict_nominal(state, imu, Scalar{0.5}, parameters, alias ? state : output);
     __ESBMC_assert(status == Status::non_finite_input && preserved_state(alias ? state : output, before),
@@ -880,14 +874,65 @@ void verify_ins_translation_execution()
 }
 
 // All IEEE quaternion/rate values that fail the consumed-input finite check.
-void verify_attitude_non_finite(Quaternion q, Vector rate)
+void verify_attitude_non_finite(Quaternion q, Vector rate, Quaternion output)
 {
     __ESBMC_assume(!formal_eskf::linalg::all_finite(q.coefficients()) || !formal_eskf::linalg::all_finite(rate));
-    Quaternion output = -Quaternion::identity();
     auto const before = output;
     Status const status = formal_eskf::detail::try_predict_attitude(q, rate, Scalar{0.5}, Scalar{0.125}, output);
     __ESBMC_assert(status == Status::non_finite_input && preserved_vector(output.coefficients(), before.coefficients()),
                    "E-PRED: non-finite attitude/rate is rejected before arithmetic");
+}
+
+// Check the public callers as well as the helper: non-finite attitude/rate
+// rejection must reach both APIs without publishing any nominal-state field.
+void verify_prediction_attitude_non_finite(Quaternion q, Vector rate, bool alias, Ins::nominal_state_type oi,
+                                           Ahrs::nominal_state_type oa)
+{
+    __ESBMC_assume(!formal_eskf::linalg::all_finite(q.coefficients()) || !formal_eskf::linalg::all_finite(rate));
+    Ins::nominal_state_type ins;
+    Ahrs::nominal_state_type ahrs;
+    ins.q_nb = ahrs.q_nb = q;
+    Imu imu;
+    imu.angular_rate_b = rate;
+    auto const pi = valid_parameters<Ins::parameter_type>();
+    auto const pa = valid_parameters<Ahrs::parameter_type>();
+    auto const before_i = alias ? ins : oi;
+    auto const before_a = alias ? ahrs : oa;
+    auto const si = formal_eskf::try_predict_nominal(ins, imu, Scalar{0.5}, pi, alias ? ins : oi);
+    auto const sa = formal_eskf::try_predict_nominal(ahrs, imu, Scalar{0.5}, pa, alias ? ahrs : oa);
+    __ESBMC_assert(si == Status::non_finite_input && sa == Status::non_finite_input &&
+                       preserved_state(alias ? ins : oi, before_i) && preserved_state(alias ? ahrs : oa, before_a),
+                   "E-PRED: public attitude/rate rejection preserves every output field, including aliases");
+}
+
+// A successful boundary witness: equal time bounds and a normalization norm
+// exactly equal to the maximum valid threshold are accepted by both APIs.
+// A concrete success witness for the inclusive API boundaries. Symbolic output
+// preservation and aliasing are checked separately by the failure harnesses.
+void verify_prediction_boundary_success()
+{
+    Ins::nominal_state_type ins;
+    Ahrs::nominal_state_type ahrs;
+    Ins::nominal_state_type oi;
+    Ahrs::nominal_state_type oa;
+    oi.q_nb = -Quaternion::identity();
+    oa.q_nb = -Quaternion::identity();
+    Imu imu;
+    auto pi = valid_parameters<Ins::parameter_type>();
+    auto pa = valid_parameters<Ahrs::parameter_type>();
+    pi.dt_min = pi.dt_max = pa.dt_min = pa.dt_max = Scalar{0.125};
+    pi.minimum_quaternion_norm = pa.minimum_quaternion_norm = Scalar{1};
+    pi.gravity_n.set(2U, Scalar{1});
+    imu.specific_force_b.set(2U, Scalar{-1});
+    auto const before_i = ins;
+    auto const before_a = ahrs;
+    auto const si = formal_eskf::try_predict_nominal(ins, imu, Scalar{0.125}, pi, oi);
+    // The passive scaling trace is sized for one call, not a batch of calls.
+    NormObserver::scale_count = 0U;
+    auto const sa = formal_eskf::try_predict_nominal(ahrs, imu, Scalar{0.125}, pa, oa);
+    __ESBMC_assert(si == Status::success && sa == Status::success && preserved_state(oi, before_i) &&
+                       preserved_state(oa, before_a),
+                   "E-PRED: inclusive equal time bounds and exact normalization threshold accept a valid step");
 }
 
 // AHRS consumes no accelerometer sample or process-noise parameter. Their
@@ -1151,7 +1196,7 @@ void verify_attitude_euler_execution()
 
 // A finite input can still overflow. Cover early bias subtraction, rotation
 // increment, acceleration, position, and velocity, before/after attitude work.
-void verify_prediction_overflow(bool alias)
+void verify_prediction_overflow(bool alias, Ins::nominal_state_type output)
 {
     constexpr unsigned scenario = FORMAL_ESKF_PROOF_SCENARIO;
     static_assert(scenario < 6U);
@@ -1188,20 +1233,17 @@ void verify_prediction_overflow(bool alias)
         imu.specific_force_b.set(0U, maximum);
         break;
     }
-    Ins::nominal_state_type output;
-    output.q_nb = -Quaternion::identity();
     auto const before = alias ? state : output;
     Status const status = formal_eskf::try_predict_nominal(state, imu, dt, parameters, alias ? state : output);
     __ESBMC_assert(status == Status::non_finite_result && preserved_state(alias ? state : output, before),
                    "E-PRED: finite-input overflow is reported without publishing a partial state");
 }
 
-void verify_attitude_norm_failure(Quaternion q, bool overflow)
+void verify_attitude_norm_failure(Quaternion q, bool overflow, Quaternion output)
 {
     Scalar const value = overflow ? std::numeric_limits<Scalar>::max() : Scalar{0};
     __ESBMC_assume(q.q0() == value && q.q1() == Scalar{0} && q.q2() == Scalar{0} && q.q3() == Scalar{0});
     Vector rate;
-    Quaternion output = -Quaternion::identity();
     auto const before = output;
     auto const status = formal_eskf::detail::try_predict_attitude(q, rate, Scalar{0.5}, Scalar{0.125}, output);
     __ESBMC_assert(status == (overflow ? Status::non_finite_result : Status::invalid_quaternion_norm) &&

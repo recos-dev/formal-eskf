@@ -193,9 +193,13 @@ run_prediction_suite()
             PROFILE_ARGUMENTS=(-D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "ESKF_QUAT_APPROX=${APPROX}"
                 --smt-symex-guard)
             for FUNCTION_NAME in verify_prediction_parameter_rejection verify_ins_non_finite_input \
-                verify_attitude_non_finite verify_ahrs_zero_rate verify_ins_gyro_bias verify_attitude_norm_failure; do
+                verify_attitude_non_finite verify_prediction_attitude_non_finite \
+                verify_ahrs_zero_rate verify_ins_gyro_bias verify_attitude_norm_failure; do
                 verify "${FUNCTION_NAME}" --proof-unwind "${PREDICTION_UNWIND}" "${PROFILE_ARGUMENTS[@]}"
             done
+            # Z3 prunes the concrete boundary fixture without Bitwuzla's
+            # symex memory exhaustion. The obligations are unchanged.
+            verify verify_prediction_boundary_success --proof-unwind "${PREDICTION_UNWIND}" "${PROFILE_ARGUMENTS[@]}" --z3
             BASE_PROFILE="${PROFILE}"
             for COEFFICIENT in 0 1 2 3 4 5; do
                 PROFILE="${BASE_PROFILE}-overflow${COEFFICIENT}"

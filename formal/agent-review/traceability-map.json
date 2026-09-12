@@ -774,7 +774,40 @@
       "id": "E-PRED",
       "title": "Checked nominal INS/AHRS prediction",
       "references": {
-        "spec": [],
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### E-PRED-INPUT:"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### E-PRED-TIME:"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### E-PRED-INS:"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### E-PRED-ATTITUDE:"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### E-PRED-CONSISTENCY:"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### E-PRED-SUCCESS:"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### E-PRED-FAILURE:"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### E-PRED-ATOMICITY:"
+          }
+        ],
         "lean": [
           {
             "file": "formal/lean/FormalESKF/Prediction.lean",
@@ -783,6 +816,18 @@
           {
             "file": "formal/lean/FormalESKF/Prediction.lean",
             "symbol": "theorem eulerCandidate_is_euler"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem normalizedEuler_hasDerivAt_zero"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem predictAttitude_neg"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem predictIns_neg_attitude"
           },
           {
             "file": "formal/lean/FormalESKF/Prediction.lean",
@@ -895,6 +940,14 @@
           {
             "file": "formal/cpp/esbmc/prediction.cpp",
             "symbol": "verify_prediction_parameter_rejection"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_prediction_attitude_non_finite"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_prediction_boundary_success"
           },
           {
             "file": "formal/cpp/esbmc/prediction.cpp",

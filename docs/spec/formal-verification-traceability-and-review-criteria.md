@@ -22,7 +22,7 @@ Lean and ESBMC provide separate evidence. There is no machine-checked real-to-fl
 |---|---|
 | `Q-*` and `SO3-*` | [Quaternion and SO(3) behavior](so3-and-unit-quaternion-abstraction-layer.md), including normalization, composition, rotation, Exp/Log and small-angle behavior. |
 | `E-STATE` | [State conventions](eskf-state-conventions.md). |
-| `E-PRED` | Paper/formula references remain unmapped. Retain the existing Lean/C++ evidence, but report the missing specification correspondence as `GAP`. |
+| `E-PRED` | [Nominal prediction requirements](verification-requirements.md#e-pred-nominal-prediction-requirements), including paper references and eight behavior clauses. Prior-validity policy and wider-domain evidence remain open; mapping the specification alone does not close them. |
 
 The map is not a complete ESKF coverage denominator. Process noise, covariance prediction, injection/reset, correction/solve, sensor models and combined-step obligations remain outside the registered proof scope. Unmapped code must remain visible through the [function inventory and review queue](cpp-function-inventory-and-formal-proof-review-queue.md).
 

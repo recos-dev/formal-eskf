@@ -134,7 +134,69 @@ theorem constantRateIncrement_eq_exp (omega : Vector3 ℝ) {dt : ℝ} (ht : 0 �
 /-- Componentwise quaternion derivative, using four stored coefficients. -/
 def HasQuaternionDerivAt (f : ℝ → Quaternion ℝ) (d : Quaternion ℝ) (t : ℝ) : Prop :=
   HasDerivAt (fun x => (f x).q0) d.q0 t ∧ HasDerivAt (fun x => (f x).q1) d.q1 t ∧
-  HasDerivAt (fun x => (f x).q2) d.q2 t ∧ HasDerivAt (fun x => (f x).q3) d.q3 t
+    HasDerivAt (fun x => (f x).q2) d.q2 t ∧ HasDerivAt (fun x => (f x).q3) d.q3 t
+
+private theorem normalizedEuler_coefficient_hasDerivAt_zero (a b c : ℝ) :
+    HasDerivAt (fun t : ℝ => (1 / Real.sqrt (1 + t ^ 2 * c / 4)) * (a + t * b)) b 0 := by
+  have hp : HasDerivAt (fun t : ℝ => 1 + t ^ 2 * c / 4) 0 0 := by
+    exact ((hasDerivAt_const (0 : ℝ) (1 : ℝ)).add
+      ((((hasDerivAt_id (0 : ℝ)).pow 2).mul_const c).div_const 4)).congr_deriv (by norm_num)
+  have hs := (hp.sqrt (by norm_num)).inv (by norm_num)
+  have hn := (hasDerivAt_const (0 : ℝ) a).add ((hasDerivAt_id (0 : ℝ)).mul_const b)
+  convert (hs.mul hn).congr_deriv (g' := b) (by norm_num) using 1 <;>
+    first | rfl | (funext t; simp [div_eq_mul_inv])
+
+/-- E-PRED-ATTITUDE: normalization does not change Euler's first derivative
+at zero for a unit prior. This is not equality with Exp at a finite step. -/
+theorem normalizedEuler_hasDerivAt_zero {q : Quaternion ℝ} (hq : HasUnitNorm q)
+    (omega : Vector3 ℝ) :
+    HasQuaternionDerivAt (fun dt => predictAttitude .normalizedEuler q omega dt)
+      (scale (1 / 2) (hamiltonMul q (fromScalarVector 0 omega))) 0 := by
+  have hn (t : ℝ) : normSquared (eulerCandidate q (vectorScale t omega)) =
+      1 + t ^ 2 * vectorNormSquared omega / 4 := by
+    rw [eulerCandidate_normSquared, hq, one_mul, vectorNormSquared_vectorScale]
+  dsimp [HasQuaternionDerivAt, predictAttitude, Quaternion.normalize, scale]
+  simp only [hn]
+  constructor
+  · convert normalizedEuler_coefficient_hasDerivAt_zero q.q0
+      ((1 / 2) * (hamiltonMul q (fromScalarVector 0 omega)).q0) (vectorNormSquared omega) using 1
+    funext t
+    congr 1
+    simp [eulerCandidate, hamiltonMul, fromScalarVector, vectorScale]
+    ring
+  constructor
+  · convert normalizedEuler_coefficient_hasDerivAt_zero q.q1
+      ((1 / 2) * (hamiltonMul q (fromScalarVector 0 omega)).q1) (vectorNormSquared omega) using 1
+    funext t
+    congr 1
+    simp [eulerCandidate, hamiltonMul, fromScalarVector, vectorScale]
+    ring
+  constructor
+  · convert normalizedEuler_coefficient_hasDerivAt_zero q.q2
+      ((1 / 2) * (hamiltonMul q (fromScalarVector 0 omega)).q2) (vectorNormSquared omega) using 1
+    funext t
+    congr 1
+    simp [eulerCandidate, hamiltonMul, fromScalarVector, vectorScale]
+    ring
+  · convert normalizedEuler_coefficient_hasDerivAt_zero q.q3
+      ((1 / 2) * (hamiltonMul q (fromScalarVector 0 omega)).q3) (vectorNormSquared omega) using 1
+    funext t
+    congr 1
+    simp [eulerCandidate, hamiltonMul, fromScalarVector, vectorScale]
+    ring
+
+/-- E-PRED-CONSISTENCY: changing the prior representative changes only the
+predicted quaternion sign, in either exact-real attitude mode. -/
+theorem predictAttitude_neg (mode : AttitudeMode) (q : Quaternion ℝ)
+    (omega : Vector3 ℝ) (dt : ℝ) :
+    predictAttitude mode (Quaternion.neg q) omega dt = Quaternion.neg (predictAttitude mode q omega dt) := by
+  have hm (r : Quaternion ℝ) : hamiltonMul (Quaternion.neg q) r = Quaternion.neg (hamiltonMul q r) := by
+    ext <;> simp [hamiltonMul, Quaternion.neg] <;> ring
+  cases mode with
+  | exponential => exact hm _
+  | normalizedEuler =>
+    simp only [predictAttitude, eulerCandidate, hm, Quaternion.normalize, normSquared_neg]
+    ext <;> simp [scale, Quaternion.neg]
 
 /-- The closed form satisfies qdot = (q * [0,omega])/2, not left multiplication. -/
 theorem constantRateIncrement_kinematics (omega : Vector3 ℝ) (t : ℝ) :
@@ -242,6 +304,15 @@ theorem predictIns_preserves_biases (mode : AttitudeMode) (s : InsState)
     (f w g : Vector3 ℝ) (dt : ℝ) :
     (predictIns mode s f w g dt).b_a = s.b_a ∧ (predictIns mode s f w g dt).b_g = s.b_g :=
   ⟨rfl, rfl⟩
+
+/-- E-PRED-CONSISTENCY: the prior quaternion sign does not change INS
+translation, and the predicted attitude retains that representative sign. -/
+theorem predictIns_neg_attitude (mode : AttitudeMode) (s : InsState)
+    (f w g : Vector3 ℝ) (dt : ℝ) :
+    let original := predictIns mode s f w g dt
+    predictIns mode { s with q_nb := Quaternion.neg s.q_nb } f w g dt =
+      { original with q_nb := Quaternion.neg original.q_nb } := by
+  simp [predictIns, navigationAcceleration, rotate_neg, predictAttitude_neg]
 
 /-- Applying the same calibration shift to a measurement and its bias leaves
 the predicted p/v/q unchanged; this detects the subtraction convention. -/

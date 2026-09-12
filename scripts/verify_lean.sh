@@ -12,6 +12,26 @@ ELAN_ARCHIVE_SHA256="42b94d4244e8353142c456ec0e4ca6528fd898a6c604d4059f494e706e4
 BOOTSTRAP_DIR="${REPO_DIR}/tools/bootstrap/lean"
 ELAN_ARCHIVE="${BOOTSTRAP_DIR}/${ELAN_ARCHIVE_NAME}"
 LAKE_COMMAND=""
+FETCH_CACHE=false
+LAKE_ARGUMENTS=()
+
+parse_arguments()
+{
+    while (($#)); do
+        case "$1" in
+            --cache) FETCH_CACHE=true ;;
+            --wfail) LAKE_ARGUMENTS+=(--wfail) ;;
+            --help|-h)
+                printf 'Usage: %s [--cache] [--wfail]\n' "${0##*/}"
+                printf '  --cache  Fetch pinned Mathlib build artifacts before checking project proofs.\n'
+                printf '  --wfail  Treat Lean build warnings (including sorry) as failures.\n'
+                exit 0
+                ;;
+            *) fail "unknown option: $1; use --help for usage" ;;
+        esac
+        shift
+    done
+}
 
 fail()
 {
@@ -62,18 +82,28 @@ select_lake()
     fi
 }
 
+run_lake()
+{
+    if [[ "${LAKE_COMMAND}" == "${ELAN_DIR}/bin/lake" ]]; then
+        ELAN_HOME="${ELAN_DIR}" "${LAKE_COMMAND}" "$@"
+    else
+        "${LAKE_COMMAND}" "$@"
+    fi
+}
+
 build_lean()
 {
     cd -- "${LEAN_DIR}"
-    if [[ "${LAKE_COMMAND}" == "${ELAN_DIR}/bin/lake" ]]; then
-        ELAN_HOME="${ELAN_DIR}" "${LAKE_COMMAND}" build FormalESKF
-    else
-        "${LAKE_COMMAND}" build FormalESKF
+    if [[ "${FETCH_CACHE}" == true ]]; then
+        # Read upstream caches only, without opting into caches from forks.
+        run_lake exe cache get --cache-from=master,legacy
     fi
+    run_lake "${LAKE_ARGUMENTS[@]}" build FormalESKF
 }
 
 main()
 {
+    parse_arguments "$@"
     select_lake
     build_lean
 }

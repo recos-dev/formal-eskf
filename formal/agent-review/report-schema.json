@@ -37,11 +37,14 @@
     },
     "requirements": {
       "type": "array",
+      "minItems": 1,
       "items": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
           },
           "classification": {
             "type": "string",
@@ -60,14 +63,18 @@
                   "enum": ["spec", "lean", "cpp", "esbmc"]
                 },
                 "file": {
-                  "type": "string"
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
                 },
                 "line": {
                   "type": "integer",
                   "minimum": 1
                 },
                 "symbol": {
-                  "type": "string"
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
                 },
                 "observation": {
                   "type": "string"

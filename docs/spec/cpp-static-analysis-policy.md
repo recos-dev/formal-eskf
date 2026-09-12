@@ -2,7 +2,7 @@
 
 Define the source-level defect and portability checks for the shared C++ core. Cppcheck complements compiler warnings, tests and formal verification; it does not replace them.
 
-This follows the [C++ portability constraints](cpp-portability-and-constraints.md). The executable configuration is maintained in [configs/cppcheck.cppcheck](../configs/cppcheck.cppcheck) and [verify_cppcheck.sh](../scripts/verify_cppcheck.sh).
+This follows the [C++ portability constraints](cpp-portability-and-constraints.md). The executable configuration is maintained in [configs/cppcheck.cppcheck](../../configs/cppcheck.cppcheck) and [verify_cppcheck.sh](../../scripts/verify_cppcheck.sh).
 
 ## Analysis boundary
 

@@ -3,7 +3,7 @@
   "scalar_models": {
     "lean": "Exact algebra over CommRing, with real-number theorems where required",
     "cpp": "C++20 operations over IEEE-754 binary32 or binary64",
-    "esbmc": "IEEE-754 binary32; symbolic representation coefficients are finite values in [-1, 1]"
+    "esbmc": "Quaternion/SO(3): binary32. E-STATE/E-PRED: separate binary32 and binary64 profiles, both ESKF_QUAT_APPROX modes. Per-entry domains and fixtures are defined in formal/cpp/esbmc/prediction.cpp; proof limitations are recorded in docs/spec/formal-verification-traceability-and-review-criteria.md."
   },
   "review_dimensions": [
     "coefficient ordering",
@@ -20,7 +20,12 @@
       "id": "Q-IDENTITY",
       "title": "Quaternion identity",
       "references": {
-        "spec": [],
+        "spec": [
+          {
+            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
+            "symbol": "### Identity"
+          }
+        ],
         "lean": [
           {
             "file": "formal/lean/FormalESKF/Quaternion.lean",
@@ -53,7 +58,12 @@
       "id": "Q-NORMALIZE",
       "title": "Checked quaternion normalization",
       "references": {
-        "spec": [],
+        "spec": [
+          {
+            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
+            "symbol": "### Normalization"
+          }
+        ],
         "lean": [
           {
             "file": "formal/lean/FormalESKF/Quaternion.lean",
@@ -61,7 +71,15 @@
           },
           {
             "file": "formal/lean/FormalESKF/Quaternion.lean",
-            "symbol": "def HasUnitNorm"
+            "symbol": "def normalize"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Quaternion.lean",
+            "symbol": "theorem normalize_coefficients"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Quaternion.lean",
+            "symbol": "theorem hasUnitNorm_normalize"
           }
         ],
         "cpp": [
@@ -70,8 +88,12 @@
             "symbol": "try_from_coefficients"
           },
           {
-            "file": "include/formal_eskf/so3/operations.hpp",
+            "file": "include/formal_eskf/linalg/operations.hpp",
             "symbol": "try_normalize"
+          },
+          {
+            "file": "include/formal_eskf/linalg/operations.hpp",
+            "symbol": "normalization_candidate"
           }
         ],
         "esbmc": [
@@ -82,6 +104,18 @@
           {
             "file": "formal/cpp/esbmc/quaternion.cpp",
             "symbol": "verify_construction_failures"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_construction_basis"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "FORMAL_ESKF_NORMALIZATION_COEFFICIENT_CHECK"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_construction_below_threshold"
           }
         ]
       }
@@ -90,7 +124,12 @@
       "id": "Q-MUL",
       "title": "Hamilton multiplication",
       "references": {
-        "spec": [],
+        "spec": [
+          {
+            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
+            "symbol": "### Multiplication and composition"
+          }
+        ],
         "lean": [
           {
             "file": "formal/lean/FormalESKF/Quaternion.lean",
@@ -123,7 +162,12 @@
       "id": "Q-ROT-COMPOSE",
       "title": "Quaternion and rotation composition order",
       "references": {
-        "spec": [],
+        "spec": [
+          {
+            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
+            "symbol": "### Multiplication and composition"
+          }
+        ],
         "lean": [
           {
             "file": "formal/lean/FormalESKF/SO3.lean",
@@ -140,14 +184,24 @@
             "symbol": "try_compose_normalized"
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_composition"
+          }
+        ]
       }
     },
     {
       "id": "Q-INVERSE",
       "title": "Unit-quaternion inverse",
       "references": {
-        "spec": [],
+        "spec": [
+          {
+            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
+            "symbol": "### Inverse"
+          }
+        ],
         "lean": [
           {
             "file": "formal/lean/FormalESKF/Quaternion.lean",
@@ -156,6 +210,18 @@
           {
             "file": "formal/lean/FormalESKF/Quaternion.lean",
             "symbol": "theorem hamiltonMul_conjugate_of_unit"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Quaternion.lean",
+            "symbol": "theorem conjugate_hamiltonMul_of_unit"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Quaternion.lean",
+            "symbol": "theorem conjugate_hamiltonMul"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Quaternion.lean",
+            "symbol": "theorem conjugate_conjugate"
           },
           {
             "file": "formal/lean/FormalESKF/SO3.lean",
@@ -180,7 +246,12 @@
       "id": "Q-ROT-MATRIX",
       "title": "Quaternion-to-rotation-matrix conversion",
       "references": {
-        "spec": [],
+        "spec": [
+          {
+            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
+            "symbol": "R(q) = ["
+          }
+        ],
         "lean": [
           {
             "file": "formal/lean/FormalESKF/SO3.lean",
@@ -197,6 +268,10 @@
           {
             "file": "formal/lean/FormalESKF/SO3.lean",
             "symbol": "theorem rotationMatrix_mul_transpose_of_unit"
+          },
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "theorem rotationMatrix_mem_specialOrthogonalGroup"
           }
         ],
         "cpp": [
@@ -225,7 +300,12 @@
       "id": "Q-ROTATE",
       "title": "Forward and inverse rotation action",
       "references": {
-        "spec": [],
+        "spec": [
+          {
+            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
+            "symbol": "### Rotation action"
+          }
+        ],
         "lean": [
           {
             "file": "formal/lean/FormalESKF/SO3.lean",
@@ -242,6 +322,10 @@
           {
             "file": "formal/lean/FormalESKF/SO3.lean",
             "symbol": "theorem vectorNormSquared_rotate_of_unit"
+          },
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "theorem inverseRotate_eq_rotate_conjugate"
           }
         ],
         "cpp": [
@@ -254,18 +338,36 @@
             "symbol": "inverse_rotate"
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "FORMAL_ESKF_ROTATE_BASIS_CHECK"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_rotate_zero"
+          }
+        ]
       }
     },
     {
       "id": "Q-SIGN",
       "title": "Quaternion sign equivalence",
       "references": {
-        "spec": [],
+        "spec": [
+          {
+            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
+            "symbol": "### Quaternion sign equivalence"
+          }
+        ],
         "lean": [
           {
             "file": "formal/lean/FormalESKF/Quaternion.lean",
             "symbol": "def neg"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Quaternion.lean",
+            "symbol": "theorem neg_neg"
           },
           {
             "file": "formal/lean/FormalESKF/SO3.lean",
@@ -284,6 +386,10 @@
           {
             "file": "include/formal_eskf/so3/operations.hpp",
             "symbol": "same_rotation"
+          },
+          {
+            "file": "include/formal_eskf/so3/operations.hpp",
+            "symbol": "same_coefficients"
           }
         ],
         "esbmc": [
@@ -302,7 +408,12 @@
       "id": "SO3-HAT",
       "title": "Hat and cross-product semantics",
       "references": {
-        "spec": [],
+        "spec": [
+          {
+            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
+            "symbol": "### Hat operator"
+          }
+        ],
         "lean": [
           {
             "file": "formal/lean/FormalESKF/SO3.lean",
@@ -339,45 +450,517 @@
       "id": "SO3-EXP",
       "title": "Quaternion exponential map and zero behavior",
       "references": {
-        "spec": [],
-        "lean": [],
+        "spec": [
+          {
+            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
+            "symbol": "### Exponential map"
+          }
+        ],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "def quaternionExp"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "theorem quaternionExp_hasUnitNorm"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "theorem quaternionExp_zero"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "def rotationMatrixExp"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "theorem rotationMatrix_quaternionExp"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "theorem cos_fourth_order_remainder"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "theorem sin_fifth_order_remainder"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/so3/rotation_vector.hpp",
             "symbol": "try_exp"
+          },
+          {
+            "file": "include/formal_eskf/so3/operations.hpp",
+            "symbol": "to_rotation_matrix"
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_exp_zero"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_exp_closed_form"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_exp_failures"
+          }
+        ]
       }
     },
     {
       "id": "SO3-LOG",
       "title": "Principal quaternion logarithmic map",
       "references": {
-        "spec": [],
-        "lean": [],
+        "spec": [
+          {
+            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
+            "symbol": "### Logarithmic map"
+          }
+        ],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "def quaternionLog"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "theorem quaternionLog_norm_le_pi"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "theorem quaternionLog_quaternionExp_of_norm_lt_pi"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "theorem quaternionLog_neg_of_q0_ne_zero"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "def principalRepresentative"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "def firstQuadrantAtan2"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/so3/rotation_vector.hpp",
             "symbol": "try_log"
+          },
+          {
+            "file": "include/formal_eskf/so3/rotation_vector.hpp",
+            "symbol": "principal_quaternion_coefficients"
+          },
+          {
+            "file": "include/formal_eskf/so3/rotation_vector.hpp",
+            "symbol": "log_closed_form_scale"
+          },
+          {
+            "file": "include/formal_eskf/so3/rotation_vector.hpp",
+            "symbol": "log_candidate"
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_log_zero"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_log_closed_form"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_log_closed_form_scale"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "FORMAL_ESKF_LOG_CANDIDATE_COEFFICIENT_CHECK"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_log_principal_sign"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_log_pi_boundary"
+          }
+        ]
       }
     },
     {
       "id": "SO3-SMALL-ANGLE",
       "title": "Small-angle and exact-zero behavior",
       "references": {
-        "spec": [],
-        "lean": [],
+        "spec": [
+          {
+            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
+            "symbol": "### Small-angle behavior"
+          }
+        ],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "def quaternionExpTaylorCandidate"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "theorem expTaylor_scalar_remainder"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "theorem expTaylor_vector_scale_remainder"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "def quaternionLogTaylorCandidate"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "def quaternionLogTaylorScale"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "theorem arctan_third_order_remainder"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "theorem arctan_fifth_order_remainder"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RotationVector.lean",
+            "symbol": "theorem exp_zero_branches_agree"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/so3/rotation_vector.hpp",
-            "symbol": "Taylor"
+            "symbol": "try_exp"
+          },
+          {
+            "file": "include/formal_eskf/so3/rotation_vector.hpp",
+            "symbol": "log_taylor_scale"
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_exp_taylor_branch"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_log_taylor_branch"
+          }
+        ]
+      }
+    },
+    {
+      "id": "E-STATE",
+      "title": "INS/AHRS state and local-error coordinates",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/eskf-state-conventions.md",
+            "symbol": "## Supported configurations"
+          }
+        ],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/State.lean",
+            "symbol": "theorem unpack_pack_insState"
+          },
+          {
+            "file": "formal/lean/FormalESKF/State.lean",
+            "symbol": "theorem pack_unpack_insState"
+          },
+          {
+            "file": "formal/lean/FormalESKF/State.lean",
+            "symbol": "theorem unpack_pack_ahrsState"
+          },
+          {
+            "file": "formal/lean/FormalESKF/State.lean",
+            "symbol": "theorem pack_unpack_ahrsState"
+          },
+          {
+            "file": "formal/lean/FormalESKF/State.lean",
+            "symbol": "theorem unpack_pack_insError"
+          },
+          {
+            "file": "formal/lean/FormalESKF/State.lean",
+            "symbol": "theorem pack_unpack_insError"
+          },
+          {
+            "file": "formal/lean/FormalESKF/State.lean",
+            "symbol": "theorem unpack_pack_ahrsError"
+          },
+          {
+            "file": "formal/lean/FormalESKF/State.lean",
+            "symbol": "theorem pack_unpack_ahrsError"
+          },
+          {
+            "file": "formal/lean/FormalESKF/State.lean",
+            "symbol": "theorem unpackInsError_zero"
+          },
+          {
+            "file": "formal/lean/FormalESKF/State.lean",
+            "symbol": "theorem unpackAhrsError_zero"
+          },
+          {
+            "file": "formal/lean/FormalESKF/State.lean",
+            "symbol": "theorem localAttitude_zero"
+          },
+          {
+            "file": "formal/lean/FormalESKF/State.lean",
+            "symbol": "theorem localAttitude_hasUnitNorm"
+          },
+          {
+            "file": "formal/lean/FormalESKF/State.lean",
+            "symbol": "theorem localAttitude_action"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/eskf/configuration/ins.hpp",
+            "symbol": "struct Ins"
+          },
+          {
+            "file": "include/formal_eskf/eskf/configuration/ins.hpp",
+            "symbol": "struct NominalState"
+          },
+          {
+            "file": "include/formal_eskf/eskf/configuration/ins.hpp",
+            "symbol": "struct ErrorState"
+          },
+          {
+            "file": "include/formal_eskf/eskf/configuration/ahrs.hpp",
+            "symbol": "struct Ahrs"
+          },
+          {
+            "file": "include/formal_eskf/eskf/configuration/ahrs.hpp",
+            "symbol": "struct NominalState"
+          },
+          {
+            "file": "include/formal_eskf/eskf/configuration/ahrs.hpp",
+            "symbol": "struct ErrorState"
+          },
+          {
+            "file": "include/formal_eskf/eskf/correction.hpp",
+            "symbol": "unpack_correction"
+          }
+        ],
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_state_defaults"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_state_unpack"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_storage_copy"
+          }
+        ]
+      }
+    },
+    {
+      "id": "E-PRED",
+      "title": "Checked nominal INS/AHRS prediction",
+      "references": {
+        "spec": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem eulerCandidate_coefficients"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem eulerCandidate_is_euler"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem eulerCandidate_normSquared"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem eulerCandidate_normSquared_pos"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem normalize_of_unit"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem predictAttitude_hasUnitNorm"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem normalized_exponential_prediction_eq"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem predictAttitude_zero_rate"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem predictAttitude_zero_step"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem predictAttitude_exponential_action"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem constantRateIncrement_eq_exp"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem constantRateIncrement_kinematics"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem HasQuaternionDerivAt.hamilton_left"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem constantRate_attitude_kinematics"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem positionStep_hasDerivAt"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem velocityStep_hasDerivAt"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem constantAcceleration_compose"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem newVelocity_position_difference"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem predictIns_preserves_biases"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem predictIns_bias_compensation"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem predictIns_hasUnitNorm"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem predictAhrs_hasUnitNorm"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem navigationAcceleration_stationary"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Prediction.lean",
+            "symbol": "theorem predictIns_stationary"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/eskf/prediction.hpp",
+            "symbol": "validate_prediction_parameters"
+          },
+          {
+            "file": "include/formal_eskf/eskf/prediction.hpp",
+            "symbol": "try_predict_attitude"
+          },
+          {
+            "file": "include/formal_eskf/eskf/prediction.hpp",
+            "symbol": "try_predict_nominal"
+          }
+        ],
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_prediction_parameters"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_prediction_parameter_rejection"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_ins_non_finite_input"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_ins_translation"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_ins_translation_execution"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_attitude_non_finite"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_ahrs_zero_rate"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_ahrs_attitude_contract"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_ins_gyro_bias"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_attitude_euler"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_attitude_exp"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_attitude_euler_execution"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_prediction_overflow"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_attitude_norm_failure"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_attitude_exp_general"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_sqrt_envelope"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_sqrt_squared_envelope"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_scalar_boundary_dispatch"
+          }
+        ]
       }
     }
   ]

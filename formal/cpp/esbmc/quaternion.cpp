@@ -10,7 +10,7 @@
  * ESBMC checks for the implemented quaternion and SO(3) semantics.
  *
  * Each entry point below maps directly to one requirement in
- * docs/so3-unit-quaternion-semantics.md.  All symbolic coefficients are
+ * docs/spec/so3-and-unit-quaternion-abstraction-layer.md.  All symbolic coefficients are
  * IEEE-754 binary32 values in [-1, 1]; unit norm is not assumed unless the
  * entry point calls the public checked constructor.
  */

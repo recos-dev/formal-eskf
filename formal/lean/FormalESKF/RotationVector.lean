@@ -314,7 +314,8 @@ theorem deriv_one_div_one_add_sq :
   have hbase : HasDerivAt (fun y : ℝ => 1 + y ^ 2) (2 * x) x := by
     have h := (hasDerivAt_const x (1 : ℝ)).add ((hasDerivAt_id x).pow 2)
     change HasDerivAt (fun y : ℝ => 1 + y ^ 2) (0 + 2 * x ^ (2 - 1) * 1) x at h
-    convert h using 1 <;> ring
+    convert h using 1
+    ring
   simpa only [one_div] using (hbase.fun_inv (by positivity)).deriv
 
 theorem deriv_neg_two_mul_div_one_add_sq_sq :
@@ -322,13 +323,12 @@ theorem deriv_neg_two_mul_div_one_add_sq_sq :
       fun x => (6 * x ^ 2 - 2) / (1 + x ^ 2) ^ 3 := by
   funext x
   have hnum : HasDerivAt (fun y : ℝ => -(2 * y)) (-2) x := by
-    have h := (hasDerivAt_id x).const_mul (-2)
-    change HasDerivAt (fun y : ℝ => -2 * y) (-2 * 1) x at h
-    convert h using 1 <;> ring
+    simpa only [id_eq, mul_one, neg_mul] using (hasDerivAt_id x).const_mul (-2)
   have hbase : HasDerivAt (fun y : ℝ => 1 + y ^ 2) (2 * x) x := by
     have h := (hasDerivAt_const x (1 : ℝ)).add ((hasDerivAt_id x).pow 2)
     change HasDerivAt (fun y : ℝ => 1 + y ^ 2) (0 + 2 * x ^ (2 - 1) * 1) x at h
-    convert h using 1 <;> ring
+    convert h using 1
+    ring
   have hdenominator : (1 + x ^ 2) ^ 2 ≠ 0 := by positivity
   have hquotient := hnum.div (hbase.pow 2) hdenominator
   change HasDerivAt (fun y : ℝ => -(2 * y) / (1 + y ^ 2) ^ 2)
@@ -350,7 +350,8 @@ theorem deriv_six_sq_sub_two_div_one_add_sq_cube :
   have hbase : HasDerivAt (fun y : ℝ => 1 + y ^ 2) (2 * x) x := by
     have h := (hasDerivAt_const x (1 : ℝ)).add ((hasDerivAt_id x).pow 2)
     change HasDerivAt (fun y : ℝ => 1 + y ^ 2) (0 + 2 * x ^ (2 - 1) * 1) x at h
-    convert h using 1 <;> ring
+    convert h using 1
+    ring
   have hdenominator : (1 + x ^ 2) ^ 3 ≠ 0 := by positivity
   have hquotient := hnum.div (hbase.pow 3) hdenominator
   change HasDerivAt (fun y : ℝ => (6 * y ^ 2 - 2) / (1 + y ^ 2) ^ 3)
@@ -369,9 +370,7 @@ theorem arctan_iteratedDeriv_three_at_zero :
   have hsecond : HasDerivAt
       (fun x : ℝ => -(2 * x) / (1 + x ^ 2) ^ 2) (-2) 0 := by
     have hnum : HasDerivAt (fun x : ℝ => -(2 * x)) (-2) 0 := by
-      have h := (hasDerivAt_id (0 : ℝ)).const_mul (-2)
-      change HasDerivAt (fun y : ℝ => -2 * y) (-2 * 1) 0 at h
-      convert h using 1 <;> ring
+      simpa only [id_eq, mul_one, neg_mul] using (hasDerivAt_id (0 : ℝ)).const_mul (-2)
     have hbase : HasDerivAt (fun x : ℝ => 1 + x ^ 2) 0 0 := by
       have h := (hasDerivAt_const (0 : ℝ) (1 : ℝ)).add
         ((hasDerivAt_id (0 : ℝ)).pow 2)

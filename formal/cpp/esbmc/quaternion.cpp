@@ -7,12 +7,9 @@
  */
 
 /**
- * ESBMC checks for the implemented quaternion and SO(3) semantics.
- *
- * Each entry point below maps directly to one requirement in
- * docs/spec/so3-and-unit-quaternion-abstraction-layer.md.  All symbolic coefficients are
- * IEEE-754 binary32 values in [-1, 1]; unit norm is not assumed unless the
- * entry point calls the public checked constructor.
+ * Retained binary32 execution witnesses and historical bounded success checks.
+ * General-domain source proofs live in algebra.cpp, normalization.cpp,
+ * rotation.cpp and maps.cpp. These witnesses do not substitute for them.
  */
 
 #include <limits>
@@ -20,59 +17,11 @@
 #include "support.hpp"
 
 namespace proof = formal_eskf::verification;
-
 using proof::Linalg;
-using proof::Matrix3;
 using proof::Quaternion;
 using proof::Scalar;
 using proof::Vector3;
-using proof::Vector4;
 
-/* Q-IDENTITY, Q-NEGATE, and Q-INVERSE. */
-void verify_basic_representation(Quaternion quaternion)
-{
-    proof::assume_quaternion(quaternion);
-
-    Quaternion const identity = Quaternion::identity();
-    __ESBMC_assert(identity.q0() == Scalar{1} && identity.q1() == Scalar{0} && identity.q2() == Scalar{0} &&
-                       identity.q3() == Scalar{0},
-                   "Q-IDENTITY: identity is [1, 0, 0, 0]");
-
-    Quaternion const negative = -quaternion;
-    __ESBMC_assert(negative.q0() == -quaternion.q0() && negative.q1() == -quaternion.q1() &&
-                       negative.q2() == -quaternion.q2() && negative.q3() == -quaternion.q3(),
-                   "Q-NEGATE: negation changes every coefficient sign");
-
-    Quaternion const inverse = quaternion.inverse();
-    __ESBMC_assert(inverse.q0() == quaternion.q0() && inverse.q1() == -quaternion.q1() &&
-                       inverse.q2() == -quaternion.q2() && inverse.q3() == -quaternion.q3(),
-                   "Q-INVERSE: unit inverse is the Hamilton conjugate");
-
-    __ESBMC_assert(proof::same_coefficients(identity * quaternion, quaternion) &&
-                       proof::same_coefficients(quaternion * identity, quaternion),
-                   "Q-IDENTITY-LAWS: identity acts on both sides");
-    __ESBMC_assert(proof::same_coefficients(-negative, quaternion) &&
-                       proof::same_coefficients(inverse.inverse(), quaternion),
-                   "Q-INVOLUTIONS: negation and inverse are involutive");
-}
-
-/* Q-MUL. */
-void verify_hamilton_product(Quaternion left, Quaternion right)
-{
-    proof::assume_quaternion(left);
-    proof::assume_quaternion(right);
-    Quaternion const result = left * right;
-
-    Scalar const q0 = left.q0() * right.q0() - left.q1() * right.q1() - left.q2() * right.q2() - left.q3() * right.q3();
-    Scalar const q1 = left.q0() * right.q1() + left.q1() * right.q0() + left.q2() * right.q3() - left.q3() * right.q2();
-    Scalar const q2 = left.q0() * right.q2() - left.q1() * right.q3() + left.q2() * right.q0() + left.q3() * right.q1();
-    Scalar const q3 = left.q0() * right.q3() + left.q1() * right.q2() - left.q2() * right.q1() + left.q3() * right.q0();
-
-    __ESBMC_assert(result.q0() == q0 && result.q1() == q1 && result.q2() == q2 && result.q3() == q3,
-                   "Q-MUL: multiplication implements the scalar-first Hamilton product");
-}
-
-/* Q-NORMALIZE: checked-construction status and failure atomicity. */
 void verify_construction_success(Scalar q0, Scalar q1, Scalar q2, Scalar q3)
 {
     proof::assume_scalar(q0);
@@ -128,31 +77,6 @@ void verify_construction_basis()
                    "Q-NORMALIZE-BASIS: an exact unit basis quaternion is unchanged");
 }
 
-#define FORMAL_ESKF_NORMALIZATION_COEFFICIENT_CHECK(INDEX)                                                             \
-    void verify_normalization_candidate_coefficient_##INDEX(Scalar q0, Scalar q1, Scalar q2, Scalar q3, Scalar norm)   \
-    {                                                                                                                  \
-        proof::assume_scalar(q0);                                                                                      \
-        proof::assume_scalar(q1);                                                                                      \
-        proof::assume_scalar(q2);                                                                                      \
-        proof::assume_scalar(q3);                                                                                      \
-        __ESBMC_assume(norm >= Scalar{0.125} && norm <= Scalar{1});                                                    \
-        Vector4 input;                                                                                                 \
-        input.set(0U, q0);                                                                                             \
-        input.set(1U, q1);                                                                                             \
-        input.set(2U, q2);                                                                                             \
-        input.set(3U, q3);                                                                                             \
-        Vector4 const output = formal_eskf::linalg::detail::normalization_candidate(input, norm);                      \
-        __ESBMC_assert(output(INDEX##U) == input(INDEX##U) / norm,                                                     \
-                       "Q-NORMALIZE-COEFFICIENT: candidate coefficient equals input divided by checked norm");         \
-    }
-
-FORMAL_ESKF_NORMALIZATION_COEFFICIENT_CHECK(0)
-FORMAL_ESKF_NORMALIZATION_COEFFICIENT_CHECK(1)
-FORMAL_ESKF_NORMALIZATION_COEFFICIENT_CHECK(2)
-FORMAL_ESKF_NORMALIZATION_COEFFICIENT_CHECK(3)
-
-#undef FORMAL_ESKF_NORMALIZATION_COEFFICIENT_CHECK
-
 void verify_construction_below_threshold()
 {
     Quaternion output = -Quaternion::identity();
@@ -162,41 +86,6 @@ void verify_construction_below_threshold()
                    "Q-NORMALIZE-THRESHOLD: a finite nonzero norm below the threshold is rejected atomically");
 }
 
-// General matrix coefficients and action composition are proved in rotation.cpp.
-
-[[nodiscard]] bool rotation_sign_equal(Quaternion const & quaternion, std::size_t row, std::size_t column)
-{
-    return formal_eskf::so3::to_rotation_matrix(quaternion)(row, column) ==
-           formal_eskf::so3::to_rotation_matrix(-quaternion)(row, column);
-}
-
-#define FORMAL_ESKF_ROTATION_SIGN_CHECK(ROW, COLUMN)                                                                   \
-    void verify_rotation_sign_##ROW##COLUMN(Quaternion quaternion)                                                     \
-    {                                                                                                                  \
-        proof::assume_quaternion(quaternion);                                                                          \
-        __ESBMC_assert(rotation_sign_equal(quaternion, ROW##U, COLUMN##U), "Q-SIGN: R(q) equals R(-q)");               \
-    }
-
-FORMAL_ESKF_ROTATION_SIGN_CHECK(0, 0)
-FORMAL_ESKF_ROTATION_SIGN_CHECK(0, 1)
-FORMAL_ESKF_ROTATION_SIGN_CHECK(0, 2)
-FORMAL_ESKF_ROTATION_SIGN_CHECK(1, 0)
-FORMAL_ESKF_ROTATION_SIGN_CHECK(1, 1)
-FORMAL_ESKF_ROTATION_SIGN_CHECK(1, 2)
-FORMAL_ESKF_ROTATION_SIGN_CHECK(2, 0)
-FORMAL_ESKF_ROTATION_SIGN_CHECK(2, 1)
-FORMAL_ESKF_ROTATION_SIGN_CHECK(2, 2)
-
-#undef FORMAL_ESKF_ROTATION_SIGN_CHECK
-
-void verify_same_rotation_sign(Quaternion quaternion)
-{
-    proof::assume_quaternion(quaternion);
-    __ESBMC_assert(formal_eskf::so3::same_rotation(quaternion, -quaternion, Scalar{0}),
-                   "Q-SIGN: same_rotation accepts q and -q at zero tolerance");
-}
-
-/* Q-ROT-COMPOSE: production multiplication followed by checked normalization. */
 void verify_composition(Quaternion left, Quaternion right)
 {
     proof::assume_quaternion(left);
@@ -220,9 +109,6 @@ void verify_composition(Quaternion left, Quaternion right)
                    "Q-ROT-COMPOSE: composition is Hamilton multiplication followed by normalization");
 }
 
-// The basis properties are retained compositionally in rotation.cpp; the
-// concrete zero regression below remains an independent production check.
-
 void verify_rotate_zero(Quaternion quaternion)
 {
     proof::assume_quaternion(quaternion);
@@ -235,25 +121,6 @@ void verify_rotate_zero(Quaternion quaternion)
     }
 }
 
-/* SO3-HAT. */
-void verify_hat(Scalar x, Scalar y, Scalar z)
-{
-    proof::assume_scalar(x);
-    proof::assume_scalar(y);
-    proof::assume_scalar(z);
-    Vector3 vector;
-    vector(0U) = x;
-    vector(1U) = y;
-    vector(2U) = z;
-
-    Matrix3 const result = formal_eskf::so3::hat<Linalg>(vector);
-    __ESBMC_assert(result(0U, 0U) == Scalar{0} && result(0U, 1U) == -z && result(0U, 2U) == y && result(1U, 0U) == z &&
-                       result(1U, 1U) == Scalar{0} && result(1U, 2U) == -x && result(2U, 0U) == -y &&
-                       result(2U, 1U) == x && result(2U, 2U) == Scalar{0},
-                   "SO3-HAT: hat(v) matches the specified skew-symmetric matrix");
-}
-
-/* SO3-EXP and SO3-SMALL-ANGLE. */
 void verify_exp_zero()
 {
     Vector3 const zero = Vector3::zero();
@@ -331,7 +198,6 @@ void verify_exp_failures()
                    "SO3-EXP-NAN: non-finite input is rejected atomically");
 }
 
-/* SO3-LOG. */
 void verify_log_zero()
 {
     Vector3 output;
@@ -389,49 +255,6 @@ void verify_log_closed_form()
     __ESBMC_assert(status == formal_eskf::Status::success, "SO3-LOG-CLOSED-STATUS: closed-form Log succeeds");
     __ESBMC_assert(output(1U) == Scalar{0} && output(2U) == Scalar{0},
                    "SO3-LOG-CLOSED: zero vector coefficients remain zero through the regular path");
-}
-
-void verify_log_closed_form_scale(Scalar qv_norm, Scalar half_angle)
-{
-    __ESBMC_assume(qv_norm >= Scalar{0.125} && qv_norm <= Scalar{1});
-    __ESBMC_assume(half_angle >= Scalar{0} && half_angle <= Scalar{1.57079632679489661923});
-    Scalar const scale = formal_eskf::so3::detail::log_closed_form_scale(qv_norm, half_angle);
-    __ESBMC_assert(scale == Scalar{2} * half_angle / qv_norm,
-                   "SO3-LOG-CLOSED-SCALE: the observed atan2 half-angle is divided by vector norm");
-}
-
-#define FORMAL_ESKF_LOG_CANDIDATE_COEFFICIENT_CHECK(INDEX)                                                             \
-    void verify_log_candidate_coefficient_##INDEX(Scalar q1, Scalar q2, Scalar q3, Scalar scale)                       \
-    {                                                                                                                  \
-        proof::assume_scalar(q1);                                                                                      \
-        proof::assume_scalar(q2);                                                                                      \
-        proof::assume_scalar(q3);                                                                                      \
-        proof::assume_scalar(scale);                                                                                   \
-        Vector3 qv;                                                                                                    \
-        qv.set(0U, q1);                                                                                                \
-        qv.set(1U, q2);                                                                                                \
-        qv.set(2U, q3);                                                                                                \
-        Vector3 const output = formal_eskf::so3::detail::log_candidate<Linalg>(qv, scale);                             \
-        __ESBMC_assert(output(INDEX##U) == qv(INDEX##U) * scale,                                                       \
-                       "SO3-LOG-CANDIDATE: each vector coefficient is multiplied by the checked scale");               \
-    }
-
-FORMAL_ESKF_LOG_CANDIDATE_COEFFICIENT_CHECK(0)
-FORMAL_ESKF_LOG_CANDIDATE_COEFFICIENT_CHECK(1)
-FORMAL_ESKF_LOG_CANDIDATE_COEFFICIENT_CHECK(2)
-
-#undef FORMAL_ESKF_LOG_CANDIDATE_COEFFICIENT_CHECK
-
-void verify_log_principal_sign(Quaternion quaternion)
-{
-    proof::assume_quaternion(quaternion);
-    __ESBMC_assume(quaternion.q0() != Scalar{0});
-
-    auto const principal = formal_eskf::so3::detail::principal_quaternion_coefficients(quaternion);
-    auto const negative_principal = formal_eskf::so3::detail::principal_quaternion_coefficients(-quaternion);
-    __ESBMC_assert(principal.q0 == negative_principal.q0 && principal.q1 == negative_principal.q1 &&
-                       principal.q2 == negative_principal.q2 && principal.q3 == negative_principal.q3,
-                   "SO3-LOG-SIGN: q and -q select the same principal representative away from pi");
 }
 
 void verify_log_pi_boundary()

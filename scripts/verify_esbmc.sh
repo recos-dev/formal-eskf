@@ -114,31 +114,16 @@ verify()
 
 run_quaternion_suite()
 {
-    local ROW COLUMN
-
-    verify verify_basic_representation
-    verify verify_hamilton_product
+    # Retained success/axis/native-math witnesses, not general-domain coverage.
+    SOURCE_FILE="${PROOF_DIR}/quaternion.cpp"
+    PROFILE=quaternion-binary32-witness
     verify verify_construction_success
     verify verify_construction_failures
     verify verify_construction_basis
-    verify verify_normalization_candidate_coefficient_0
-    verify verify_normalization_candidate_coefficient_1
-    verify verify_normalization_candidate_coefficient_2
-    verify verify_normalization_candidate_coefficient_3
     verify verify_construction_below_threshold
     verify verify_composition --proof-unwind 5 --smt-symex-guard
 
-    # A single nine-element query exhausts Bitwuzla's resource limit. Z3 proves
-    # each coefficient independently; together they establish R(q) = R(-q).
-    for ROW in 0 1 2; do
-        for COLUMN in 0 1 2; do
-            verify "verify_rotation_sign_${ROW}${COLUMN}" --default-solver z3
-        done
-    done
-
-    verify verify_same_rotation_sign
     verify verify_rotate_zero --multi-property
-    verify verify_hat
     verify verify_exp_zero --proof-unwind 5
     verify verify_exp_taylor_branch --proof-unwind 5
     verify verify_exp_closed_form --proof-unwind 5
@@ -146,12 +131,74 @@ run_quaternion_suite()
     verify verify_log_zero --proof-unwind 5
     verify verify_log_taylor_branch --proof-unwind 5
     verify verify_log_closed_form --proof-unwind 5
-    verify verify_log_closed_form_scale
-    verify verify_log_candidate_coefficient_0
-    verify verify_log_candidate_coefficient_1
-    verify verify_log_candidate_coefficient_2
-    verify verify_log_principal_sign --proof-unwind 5
     verify verify_log_pi_boundary --proof-unwind 5
+}
+
+run_algebra_suite()
+{
+    local BINARY64 ROW FUNCTION_NAME BASE_PROFILE
+    local -a PROFILE_ARGUMENTS
+    SOURCE_FILE="${PROOF_DIR}/algebra.cpp"
+    for BINARY64 in 0 1; do
+        BASE_PROFILE="algebra-binary$((32 + 32 * BINARY64))-all-ieee"
+        PROFILE_ARGUMENTS=(-D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}")
+        PROFILE="${BASE_PROFILE}"
+        for FUNCTION_NAME in verify_representation verify_product verify_hat_entries verify_principal_representative; do
+            verify "${FUNCTION_NAME}" "${PROFILE_ARGUMENTS[@]}" --multi-property
+        done
+        verify verify_rotation_comparison "${PROFILE_ARGUMENTS[@]}" --cvc5 --multi-property
+        for ROW in 0 1 2; do
+            PROFILE="${BASE_PROFILE}-finite-sign-row${ROW}"
+            verify verify_matrix_sign "${PROFILE_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_AXIS=${ROW}" --z3
+        done
+    done
+}
+
+run_normalization_suite()
+{
+    local BINARY64 ALIAS BASE_PROFILE FUNCTION_NAME
+    local -a PROFILE_ARGUMENTS
+    SOURCE_FILE="${PROOF_DIR}/normalization.cpp"
+    for BINARY64 in 0 1; do
+        BASE_PROFILE="normalization-binary$((32 + 32 * BINARY64))-all-ieee"
+        PROFILE_ARGUMENTS=(-D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}")
+        PROFILE="${BASE_PROFILE}-actual-producer"
+        for FUNCTION_NAME in verify_norm_producer verify_division_producer; do
+            verify "${FUNCTION_NAME}" "${PROFILE_ARGUMENTS[@]}" --multi-property
+        done
+        PROFILE="${BASE_PROFILE}-actual-constructor"
+        verify verify_constructor "${PROFILE_ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_NORMALIZATION_BOUNDARY=2 --multi-property
+        for ALIAS in 0 1; do
+            PROFILE="${BASE_PROFILE}-checked-vector-alias${ALIAS}"
+            verify verify_checked_normalization "${PROFILE_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" \
+                -D FORMAL_ESKF_PROOF_NORMALIZATION_BOUNDARY=1 --multi-property
+            PROFILE="${BASE_PROFILE}-quaternion-wrapper-alias${ALIAS}"
+            verify verify_normalize_wrapper "${PROFILE_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" \
+                -D FORMAL_ESKF_PROOF_CONSTRUCTOR_CONTRACT=1 --multi-property
+        done
+        for ALIAS in 0 1 2 3 4; do
+            PROFILE="${BASE_PROFILE}-composition-alias${ALIAS}"
+            verify verify_composition_general "${PROFILE_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" \
+                -D FORMAL_ESKF_PROOF_CONSTRUCTOR_CONTRACT=1 --multi-property
+        done
+    done
+}
+
+run_maps_suite()
+{
+    local BINARY64
+    local -a PROFILE_ARGUMENTS
+    SOURCE_FILE="${PROOF_DIR}/maps.cpp"
+    for BINARY64 in 0 1; do
+        PROFILE="maps-binary$((32 + 32 * BINARY64))-all-ieee"
+        PROFILE_ARGUMENTS=(-D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}")
+        verify verify_scalar_wrappers "${PROFILE_ARGUMENTS[@]}" --multi-property
+        verify verify_log_arithmetic "${PROFILE_ARGUMENTS[@]}" --multi-property
+        verify verify_squared_norm_producer "${PROFILE_ARGUMENTS[@]}" --multi-property
+        verify verify_log_behavior "${PROFILE_ARGUMENTS[@]}" --cvc5 --multi-property
+        verify verify_exp_behavior "${PROFILE_ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_CONSTRUCTOR_CONTRACT=1 \
+            -D FORMAL_ESKF_PROOF_SQUARED_NORM_CONTRACT=1 --cvc5 --multi-property
+    done
 }
 
 run_rotation_suite()
@@ -231,6 +278,7 @@ run_prediction_suite()
         PROFILE="scalar-contract-binary$((32 + 32 * BINARY64))-actual-ieee"
         verify verify_sqrt_envelope --proof-unwind "${PREDICTION_UNWIND}" -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
         verify verify_sqrt_squared_envelope --proof-unwind "${PREDICTION_UNWIND}" -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        verify verify_sqrt_special_values --proof-unwind "${PREDICTION_UNWIND}" -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
         PROFILE="scalar-contract-binary$((32 + 32 * BINARY64))-dispatch"
         verify verify_scalar_boundary_dispatch --proof-unwind "${PREDICTION_UNWIND}" \
             -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_SCALAR_BOUNDARY=1
@@ -311,6 +359,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == quaternion ]]; then
         run_quaternion_suite
+        run_algebra_suite
+        run_normalization_suite
+        run_maps_suite
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == quaternion || "${SUITE}" == rotation ]]; then
         run_rotation_suite

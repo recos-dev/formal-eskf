@@ -3,7 +3,7 @@
   "scalar_models": {
     "lean": "Exact algebra over CommRing, with real-number theorems where required",
     "cpp": "C++20 operations over IEEE-754 binary32 or binary64",
-    "esbmc": "Quaternion/SO(3): binary32 except Q-ROT-MATRIX/Q-ROTATE, which also have binary64 profiles in formal/cpp/esbmc/rotation.cpp. Rotation actions use an opaque matrix-producer summary with separate actual-producer row proofs and an actual-backend basis lemma; no matrix value constraints are assumed by the action proof. E-STATE/E-PRED: separate binary32 and binary64 profiles, both ESKF_QUAT_APPROX modes and both alias cases. Per-entry domains and fixtures remain explicit; proof-backend results do not verify Eigen or PX4 internals."
+    "esbmc": "All 14 registered families have binary32 and binary64 source profiles. Quaternion normalization and Exp use explicit pure-callee summaries (including a separately proved three-vector squared norm), each paired with actual producer/constructor proofs; scalar returns in these new flow proofs are arbitrary IEEE values, without accuracy or successful-result assumptions. General Log executes all branch arithmetic with arbitrary scalar returns. Retained binary32 bounded/native-math witnesses are separate from general-domain claims. E-STATE/E-PRED retain both modes and independent aliases, use independent domain/status oracles, and retain their explicit scalar-enclosure assumptions and actual callee profiles. These are source-semantic claims for the proof backend, not numerical qualification or Eigen/PX4/libm/deployment proofs."
   },
   "review_dimensions": [
     "coefficient ordering",
@@ -48,8 +48,8 @@
         ],
         "esbmc": [
           {
-            "file": "formal/cpp/esbmc/quaternion.cpp",
-            "symbol": "verify_basic_representation"
+            "file": "formal/cpp/esbmc/algebra.cpp",
+            "symbol": "verify_representation"
           }
         ]
       }
@@ -98,6 +98,26 @@
         ],
         "esbmc": [
           {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_norm_producer"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_division_producer"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_checked_normalization"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_constructor"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_normalize_wrapper"
+          },
+          {
             "file": "formal/cpp/esbmc/quaternion.cpp",
             "symbol": "verify_construction_success"
           },
@@ -108,10 +128,6 @@
           {
             "file": "formal/cpp/esbmc/quaternion.cpp",
             "symbol": "verify_construction_basis"
-          },
-          {
-            "file": "formal/cpp/esbmc/quaternion.cpp",
-            "symbol": "FORMAL_ESKF_NORMALIZATION_COEFFICIENT_CHECK"
           },
           {
             "file": "formal/cpp/esbmc/quaternion.cpp",
@@ -152,8 +168,8 @@
         ],
         "esbmc": [
           {
-            "file": "formal/cpp/esbmc/quaternion.cpp",
-            "symbol": "verify_hamilton_product"
+            "file": "formal/cpp/esbmc/algebra.cpp",
+            "symbol": "verify_product"
           }
         ]
       }
@@ -185,6 +201,34 @@
           }
         ],
         "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/algebra.cpp",
+            "symbol": "verify_product"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_norm_producer"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_division_producer"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_checked_normalization"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_constructor"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_normalize_wrapper"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_composition_general"
+          },
           {
             "file": "formal/cpp/esbmc/quaternion.cpp",
             "symbol": "verify_composition"
@@ -236,8 +280,8 @@
         ],
         "esbmc": [
           {
-            "file": "formal/cpp/esbmc/quaternion.cpp",
-            "symbol": "verify_basic_representation"
+            "file": "formal/cpp/esbmc/algebra.cpp",
+            "symbol": "verify_representation"
           }
         ]
       }
@@ -394,12 +438,16 @@
         ],
         "esbmc": [
           {
-            "file": "formal/cpp/esbmc/quaternion.cpp",
-            "symbol": "FORMAL_ESKF_ROTATION_SIGN_CHECK"
+            "file": "formal/cpp/esbmc/algebra.cpp",
+            "symbol": "verify_representation"
           },
           {
-            "file": "formal/cpp/esbmc/quaternion.cpp",
-            "symbol": "verify_same_rotation_sign"
+            "file": "formal/cpp/esbmc/algebra.cpp",
+            "symbol": "verify_matrix_sign"
+          },
+          {
+            "file": "formal/cpp/esbmc/algebra.cpp",
+            "symbol": "verify_rotation_comparison"
           }
         ]
       }
@@ -440,8 +488,8 @@
         ],
         "esbmc": [
           {
-            "file": "formal/cpp/esbmc/quaternion.cpp",
-            "symbol": "verify_hat"
+            "file": "formal/cpp/esbmc/algebra.cpp",
+            "symbol": "verify_hat_entries"
           }
         ]
       }
@@ -498,8 +546,44 @@
         ],
         "esbmc": [
           {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "verify_squared_norm_producer"
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "verify_scalar_wrappers"
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "verify_exp_behavior"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_norm_producer"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_division_producer"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_checked_normalization"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_constructor"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_normalize_wrapper"
+          },
+          {
             "file": "formal/cpp/esbmc/quaternion.cpp",
             "symbol": "verify_exp_zero"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_exp_taylor_branch"
           },
           {
             "file": "formal/cpp/esbmc/quaternion.cpp",
@@ -508,6 +592,10 @@
           {
             "file": "formal/cpp/esbmc/quaternion.cpp",
             "symbol": "verify_exp_failures"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_exp_general"
           }
         ]
       }
@@ -568,24 +656,32 @@
         ],
         "esbmc": [
           {
+            "file": "formal/cpp/esbmc/algebra.cpp",
+            "symbol": "verify_principal_representative"
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "verify_scalar_wrappers"
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "verify_log_arithmetic"
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "verify_log_behavior"
+          },
+          {
             "file": "formal/cpp/esbmc/quaternion.cpp",
             "symbol": "verify_log_zero"
           },
           {
             "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_log_taylor_branch"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
             "symbol": "verify_log_closed_form"
-          },
-          {
-            "file": "formal/cpp/esbmc/quaternion.cpp",
-            "symbol": "verify_log_closed_form_scale"
-          },
-          {
-            "file": "formal/cpp/esbmc/quaternion.cpp",
-            "symbol": "FORMAL_ESKF_LOG_CANDIDATE_COEFFICIENT_CHECK"
-          },
-          {
-            "file": "formal/cpp/esbmc/quaternion.cpp",
-            "symbol": "verify_log_principal_sign"
           },
           {
             "file": "formal/cpp/esbmc/quaternion.cpp",
@@ -650,12 +746,60 @@
         ],
         "esbmc": [
           {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "verify_squared_norm_producer"
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "verify_exp_behavior"
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "verify_log_arithmetic"
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "verify_log_behavior"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_norm_producer"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_division_producer"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_checked_normalization"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_constructor"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_normalize_wrapper"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_exp_zero"
+          },
+          {
             "file": "formal/cpp/esbmc/quaternion.cpp",
             "symbol": "verify_exp_taylor_branch"
           },
           {
             "file": "formal/cpp/esbmc/quaternion.cpp",
+            "symbol": "verify_log_zero"
+          },
+          {
+            "file": "formal/cpp/esbmc/quaternion.cpp",
             "symbol": "verify_log_taylor_branch"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_exp_general"
           }
         ]
       }
@@ -1028,6 +1172,10 @@
           {
             "file": "formal/cpp/esbmc/prediction.cpp",
             "symbol": "verify_scalar_boundary_dispatch"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_sqrt_special_values"
           }
         ]
       }

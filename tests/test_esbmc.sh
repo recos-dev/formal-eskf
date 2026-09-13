@@ -18,12 +18,18 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE
     PLAN="$("${RUNNER}" --list)"
-    check_count 192 '^PLAN'
-    check_count 36 'quaternion-binary32'
+    check_count 222 '^PLAN'
+    check_count 14 'quaternion-binary32-witness'
+    check_count 8 'algebra-binary32'
+    check_count 8 'algebra-binary64'
+    check_count 12 'normalization-binary32'
+    check_count 12 'normalization-binary64'
+    check_count 5 'maps-binary32'
+    check_count 5 'maps-binary64'
     check_count 5 'rotation-binary32'
     check_count 5 'rotation-binary64'
-    check_count 73 'prediction-binary32|state-binary32|scalar-contract-binary32'
-    check_count 73 'prediction-binary64|state-binary64|scalar-contract-binary64'
+    check_count 74 'prediction-binary32|state-binary32|scalar-contract-binary32'
+    check_count 74 'prediction-binary64|state-binary64|scalar-contract-binary64'
     check_count 0 'shared'
     check_count 24 'attitude-summary-translation'
     check_count 8 'attitude-summary-ahrs'
@@ -33,6 +39,16 @@ check_plan()
     check_count 16 'approx0.*actual-exp-coefficient'
     check_count 66 'approx[01]-standard'
     for BINARY64 in 0 1; do
+        BASE_PROFILE="normalization-binary$((32 + 32 * BINARY64))-all-ieee"
+        check_count 2 "${BASE_PROFILE}-actual-producer"
+        check_count 1 "${BASE_PROFILE}-actual-constructor"
+        for ALIAS in 0 1; do
+            check_count 1 "${BASE_PROFILE}-checked-vector-alias${ALIAS}"
+            check_count 1 "${BASE_PROFILE}-quaternion-wrapper-alias${ALIAS}"
+        done
+        for ALIAS in 0 1 2 3 4; do
+            check_count 1 "${BASE_PROFILE}-composition-alias${ALIAS}"
+        done
         BASE_PROFILE="rotation-binary$((32 + 32 * BINARY64))"
         for COEFFICIENT in 0 1 2; do
             check_count 1 "${BASE_PROFILE}-actual-matrix-row${COEFFICIENT}"
@@ -56,17 +72,17 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 64 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 192 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 60 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 222 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
     diff -u <(printf '%s\n' "${PLAN}" | sort) <(printf '%s' "${SHARDED}" | sort)
-    [[ "$("${RUNNER}" quaternion --list | wc -l)" == 46 ]] || fail 'quaternion selection changed'
+    [[ "$("${RUNNER}" quaternion --list | wc -l)" == 74 ]] || fail 'quaternion selection changed'
     [[ "$("${RUNNER}" rotation --list | wc -l)" == 10 ]] || fail 'rotation dependencies are missing'
-    [[ "$("${RUNNER}" prediction --list | wc -l)" == 146 ]] || fail 'prediction selection changed'
-    [[ "$("${RUNNER}" prediction32 --list | wc -l)" == 73 ]] || fail 'binary32 selection changed'
-    [[ "$("${RUNNER}" prediction64 --list | wc -l)" == 73 ]] || fail 'binary64 selection changed'
+    [[ "$("${RUNNER}" prediction --list | wc -l)" == 148 ]] || fail 'prediction selection changed'
+    [[ "$("${RUNNER}" prediction32 --list | wc -l)" == 74 ]] || fail 'binary32 selection changed'
+    [[ "$("${RUNNER}" prediction64 --list | wc -l)" == 74 ]] || fail 'binary64 selection changed'
 }
 
 check_mode_constants()
@@ -120,6 +136,58 @@ check_rotation_contract_guards()
     printf 'ESBMC contract guard tests: pass (both misconfigurations rejected)\n'
 )
 
+check_normalization_contract_guards()
+(
+    local TEST_WORK_DIR FUNCTION_NAME
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-normalization-test.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    SOURCE_FILE="${PROOF_DIR}/normalization.cpp"
+    for FUNCTION_NAME in verify_norm_producer verify_division_producer; do
+        PROFILE="regression-wrong-${FUNCTION_NAME}-contract"
+        verify "${FUNCTION_NAME}" -D FORMAL_ESKF_PROOF_NORMALIZATION_BOUNDARY=1 >"${TEST_WORK_DIR}/${FUNCTION_NAME}.log" 2>&1
+        if ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${FUNCTION_NAME}.log" ||
+            ! grep -q 'Runner error:.*producer must be actual' "${TEST_WORK_DIR}/${FUNCTION_NAME}.log"; then
+            fail "${FUNCTION_NAME} accepted a substituted implementation"
+        fi
+    done
+    PROFILE=regression-wrong-constructor-contract
+    verify verify_constructor -D FORMAL_ESKF_PROOF_NORMALIZATION_BOUNDARY=2 \
+        -D FORMAL_ESKF_PROOF_CONSTRUCTOR_CONTRACT=1 >"${TEST_WORK_DIR}/constructor.log" 2>&1
+    if [[ "${FAILED_CHECKS}" != 3 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/constructor.log" ||
+        ! grep -q 'Runner error: actual quaternion constructor' "${TEST_WORK_DIR}/constructor.log"; then
+        fail 'constructor producer accepted a substituted implementation'
+    fi
+    printf 'ESBMC normalization guard tests: pass (three substituted producers rejected)\n'
+)
+
+check_maps_contract_guards()
+(
+    local TEST_WORK_DIR FUNCTION_NAME
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-maps-test.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    SOURCE_FILE="${PROOF_DIR}/maps.cpp"
+    for FUNCTION_NAME in verify_squared_norm_producer verify_log_behavior; do
+        PROFILE="regression-wrong-${FUNCTION_NAME}-contract"
+        verify "${FUNCTION_NAME}" -D FORMAL_ESKF_PROOF_SQUARED_NORM_CONTRACT=1 \
+            >"${TEST_WORK_DIR}/${FUNCTION_NAME}.log" 2>&1
+        if ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${FUNCTION_NAME}.log" ||
+            ! grep -q 'Runner error:.*actual' "${TEST_WORK_DIR}/${FUNCTION_NAME}.log"; then
+            fail "${FUNCTION_NAME} accepted a substituted squared norm"
+        fi
+    done
+    PROFILE=regression-missing-exp-contract
+    verify verify_exp_behavior -D FORMAL_ESKF_PROOF_CONSTRUCTOR_CONTRACT=1 >"${TEST_WORK_DIR}/exp.log" 2>&1
+    if [[ "${FAILED_CHECKS}" != 3 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/exp.log" ||
+        ! grep -q 'Runner error: Exp requires constructor and squared-norm boundaries' "${TEST_WORK_DIR}/exp.log"; then
+        fail 'Exp accepted a missing squared-norm contract'
+    fi
+    printf 'ESBMC map guard tests: pass (three incompatible boundaries rejected)\n'
+)
+
 RUN_SOLVER=0
 case "${1:-}" in
     '') ;;
@@ -133,8 +201,10 @@ case "${1:-}" in
 esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
-printf 'ESBMC inventory tests: pass (192 profiles; 64 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (222 profiles; 60 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards
+    check_normalization_contract_guards
+    check_maps_contract_guards
 fi

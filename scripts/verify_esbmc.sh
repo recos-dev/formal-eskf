@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|prediction|prediction32|prediction64) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,7 +37,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|prediction|prediction32|prediction64] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 exit 0
@@ -127,17 +127,12 @@ run_quaternion_suite()
     verify verify_normalization_candidate_coefficient_3
     verify verify_construction_below_threshold
     verify verify_composition --proof-unwind 5 --smt-symex-guard
-    verify verify_rotation_matrix_row_0
-    verify verify_rotation_matrix_row_1
-    verify verify_rotation_matrix_row_2
 
     # A single nine-element query exhausts Bitwuzla's resource limit. Z3 proves
     # each coefficient independently; together they establish R(q) = R(-q).
     for ROW in 0 1 2; do
         for COLUMN in 0 1 2; do
             verify "verify_rotation_sign_${ROW}${COLUMN}" --default-solver z3
-            verify "verify_rotate_basis_${ROW}${COLUMN}"
-            verify "verify_inverse_rotate_basis_${ROW}${COLUMN}"
         done
     done
 
@@ -159,9 +154,61 @@ run_quaternion_suite()
     verify verify_log_pi_boundary --proof-unwind 5
 }
 
+run_rotation_suite()
+{
+    local BINARY64 ROW BASE_PROFILE
+    local -a PROFILE_ARGUMENTS
+    SOURCE_FILE="${PROOF_DIR}/rotation.cpp"
+    for BINARY64 in 0 1; do
+        BASE_PROFILE="rotation-binary$((32 + 32 * BINARY64))"
+        PROFILE_ARGUMENTS=(-D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}")
+        # The caller's opaque return is supported by all actual producer rows.
+        # The basis lemma plus bounded-q finiteness retains the old basis claims.
+        for ROW in 0 1 2; do
+            PROFILE="${BASE_PROFILE}-actual-matrix-row${ROW}"
+            verify verify_rotation_matrix "${PROFILE_ARGUMENTS[@]}" \
+                -D "FORMAL_ESKF_PROOF_AXIS=${ROW}" --multi-property
+        done
+        PROFILE="${BASE_PROFILE}-matrix-contract-action"
+        verify verify_rotation_action "${PROFILE_ARGUMENTS[@]}" \
+            -D FORMAL_ESKF_PROOF_ROTATION_CONTRACT=1 --multi-property
+        PROFILE="${BASE_PROFILE}-actual-matvec-basis"
+        verify verify_matvec_basis "${PROFILE_ARGUMENTS[@]}" --multi-property
+    done
+}
+
+run_prediction_callers()
+{
+    local BINARY64="$1" APPROX="$2" PREDICTION_UNWIND="$3" TIME_LIMIT="$4" MEMORY_LIMIT="$5"
+    local COEFFICIENT ALIAS
+    local BASE_PROFILE="prediction-binary$((32 + 32 * BINARY64))-approx${APPROX}-scalar-contract-full-domain"
+    local -a PROFILE_ARGUMENTS=(-D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "ESKF_QUAT_APPROX=${APPROX}"
+        -D FORMAL_ESKF_PROOF_SCALAR_BOUNDARY=1)
+
+    # Verify both modes independently. ESBMC's human-readable GOTO/symbol dumps
+    # round floating constants; identical printed programs do not justify reuse.
+    for COEFFICIENT in 0 1 2; do
+        for ALIAS in 0 1; do
+            PROFILE="${BASE_PROFILE}-attitude-summary-translation${COEFFICIENT}-alias${ALIAS}"
+            verify verify_ins_translation --proof-unwind "${PREDICTION_UNWIND}" \
+                --proof-timeout "${TIME_LIMIT}" --proof-memory "${MEMORY_LIMIT}" \
+                "${PROFILE_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_AXIS=${COEFFICIENT}" \
+                -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" \
+                -D FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT=1 --bitwuzla --multi-property
+        done
+    done
+    for ALIAS in 0 1; do
+        PROFILE="${BASE_PROFILE}-attitude-summary-ahrs-alias${ALIAS}"
+        verify verify_ahrs_attitude_contract --proof-unwind "${PREDICTION_UNWIND}" \
+            --proof-timeout "${TIME_LIMIT}" --proof-memory "${MEMORY_LIMIT}" \
+            "${PROFILE_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" \
+            -D FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT=1 --cvc5
+    done
+}
+
 run_prediction_suite()
 {
-    local BINARY64 APPROX FUNCTION_NAME COEFFICIENT BASE_PROFILE ALIAS PREDICTION_UNWIND TAYLOR TIME_LIMIT MEMORY_LIMIT
+    local BINARY64 APPROX FUNCTION_NAME COEFFICIENT BASE_PROFILE PREDICTION_UNWIND TAYLOR TIME_LIMIT MEMORY_LIMIT
     local -a PROFILE_ARGUMENTS
     SOURCE_FILE="${PROOF_DIR}/prediction.cpp"
 
@@ -223,26 +270,9 @@ run_prediction_suite()
                 verify verify_attitude_exp --proof-unwind "${PREDICTION_UNWIND}" "${PROFILE_ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_TAYLOR=1
             fi
             BASE_PROFILE="prediction-binary$((32 + 32 * BINARY64))-approx${APPROX}-scalar-contract-full-domain"
-            # Actual helper queries use CVC5 with the checked root envelope.
-            # INS callers have a different bit-vector query shape: Bitwuzla
-            # avoids CVC5's memory exhaustion without changing any obligation.
-            # Every default safety check and assertion remains enabled.
+            run_prediction_callers "${BINARY64}" "${APPROX}" "${PREDICTION_UNWIND}" "${TIME_LIMIT}" "${MEMORY_LIMIT}"
             PROFILE_ARGUMENTS=(-D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "ESKF_QUAT_APPROX=${APPROX}"
                 -D FORMAL_ESKF_PROOF_SCALAR_BOUNDARY=1)
-            for COEFFICIENT in 0 1 2; do
-                for ALIAS in 0 1; do
-                    PROFILE="${BASE_PROFILE}-attitude-summary-translation${COEFFICIENT}-alias${ALIAS}"
-                    verify verify_ins_translation --proof-unwind "${PREDICTION_UNWIND}" --proof-timeout "${TIME_LIMIT}" --proof-memory "${MEMORY_LIMIT}" "${PROFILE_ARGUMENTS[@]}" \
-                        -D "FORMAL_ESKF_PROOF_AXIS=${COEFFICIENT}" -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" \
-                        -D FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT=1 --bitwuzla --multi-property
-                done
-            done
-            for ALIAS in 0 1; do
-                PROFILE="${BASE_PROFILE}-attitude-summary-ahrs-alias${ALIAS}"
-                verify verify_ahrs_attitude_contract --proof-unwind "${PREDICTION_UNWIND}" \
-                    --proof-timeout "${TIME_LIMIT}" --proof-memory "${MEMORY_LIMIT}" "${PROFILE_ARGUMENTS[@]}" \
-                    -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" -D FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT=1 --cvc5
-            done
             # Full-domain helper proofs: arbitrary IEEE q/rates/output and all
             # positive finite time/threshold parameters accepted by prediction.
             # Exp and its composition caller are separate obligations. Every
@@ -282,6 +312,9 @@ main()
     if [[ "${SUITE}" == all || "${SUITE}" == quaternion ]]; then
         run_quaternion_suite
     fi
+    if [[ "${SUITE}" == all || "${SUITE}" == quaternion || "${SUITE}" == rotation ]]; then
+        run_rotation_suite
+    fi
     if [[ "${SUITE}" == all || "${SUITE}" == prediction* ]]; then
         run_prediction_suite
     fi
@@ -291,4 +324,6 @@ main()
     fi
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

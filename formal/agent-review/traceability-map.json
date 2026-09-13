@@ -3,7 +3,7 @@
   "scalar_models": {
     "lean": "Exact algebra over CommRing, with real-number theorems where required",
     "cpp": "C++20 operations over IEEE-754 binary32 or binary64",
-    "esbmc": "Quaternion/SO(3): binary32. E-STATE/E-PRED: separate binary32 and binary64 profiles, both ESKF_QUAT_APPROX modes. Per-entry domains and fixtures are defined in formal/cpp/esbmc/prediction.cpp; proof limitations are recorded in docs/spec/formal-verification-traceability-and-review-criteria.md."
+    "esbmc": "Quaternion/SO(3): binary32 except Q-ROT-MATRIX/Q-ROTATE, which also have binary64 profiles in formal/cpp/esbmc/rotation.cpp. Rotation actions use an opaque matrix-producer summary with separate actual-producer row proofs and an actual-backend basis lemma; no matrix value constraints are assumed by the action proof. E-STATE/E-PRED: separate binary32 and binary64 profiles, both ESKF_QUAT_APPROX modes and both alias cases. Per-entry domains and fixtures remain explicit; proof-backend results do not verify Eigen or PX4 internals."
   },
   "review_dimensions": [
     "coefficient ordering",
@@ -282,16 +282,8 @@
         ],
         "esbmc": [
           {
-            "file": "formal/cpp/esbmc/quaternion.cpp",
-            "symbol": "verify_rotation_matrix_row_0"
-          },
-          {
-            "file": "formal/cpp/esbmc/quaternion.cpp",
-            "symbol": "verify_rotation_matrix_row_1"
-          },
-          {
-            "file": "formal/cpp/esbmc/quaternion.cpp",
-            "symbol": "verify_rotation_matrix_row_2"
+            "file": "formal/cpp/esbmc/rotation.cpp",
+            "symbol": "verify_rotation_matrix"
           }
         ]
       }
@@ -340,8 +332,16 @@
         ],
         "esbmc": [
           {
-            "file": "formal/cpp/esbmc/quaternion.cpp",
-            "symbol": "FORMAL_ESKF_ROTATE_BASIS_CHECK"
+            "file": "formal/cpp/esbmc/rotation.cpp",
+            "symbol": "verify_rotation_action"
+          },
+          {
+            "file": "formal/cpp/esbmc/rotation.cpp",
+            "symbol": "verify_rotation_matrix"
+          },
+          {
+            "file": "formal/cpp/esbmc/rotation.cpp",
+            "symbol": "verify_matvec_basis"
           },
           {
             "file": "formal/cpp/esbmc/quaternion.cpp",

@@ -162,48 +162,7 @@ void verify_construction_below_threshold()
                    "Q-NORMALIZE-THRESHOLD: a finite nonzero norm below the threshold is rejected atomically");
 }
 
-/* Q-ROT-MATRIX.  Rows are separate only to keep solver memory bounded. */
-void verify_rotation_matrix_row_0(Quaternion quaternion)
-{
-    proof::assume_quaternion(quaternion);
-    Matrix3 const rotation = formal_eskf::so3::to_rotation_matrix(quaternion);
-    Scalar const q0 = quaternion.q0();
-    Scalar const q1 = quaternion.q1();
-    Scalar const q2 = quaternion.q2();
-    Scalar const q3 = quaternion.q3();
-    __ESBMC_assert(rotation(0U, 0U) == q0 * q0 + q1 * q1 - q2 * q2 - q3 * q3 &&
-                       rotation(0U, 1U) == Scalar{2} * (q1 * q2 - q0 * q3) &&
-                       rotation(0U, 2U) == Scalar{2} * (q1 * q3 + q0 * q2),
-                   "Q-ROT-MATRIX-ROW-0: R(q) row 0 matches the specified map");
-}
-
-void verify_rotation_matrix_row_1(Quaternion quaternion)
-{
-    proof::assume_quaternion(quaternion);
-    Matrix3 const rotation = formal_eskf::so3::to_rotation_matrix(quaternion);
-    Scalar const q0 = quaternion.q0();
-    Scalar const q1 = quaternion.q1();
-    Scalar const q2 = quaternion.q2();
-    Scalar const q3 = quaternion.q3();
-    __ESBMC_assert(rotation(1U, 0U) == Scalar{2} * (q1 * q2 + q0 * q3) &&
-                       rotation(1U, 1U) == q0 * q0 - q1 * q1 + q2 * q2 - q3 * q3 &&
-                       rotation(1U, 2U) == Scalar{2} * (q2 * q3 - q0 * q1),
-                   "Q-ROT-MATRIX-ROW-1: R(q) row 1 matches the specified map");
-}
-
-void verify_rotation_matrix_row_2(Quaternion quaternion)
-{
-    proof::assume_quaternion(quaternion);
-    Matrix3 const rotation = formal_eskf::so3::to_rotation_matrix(quaternion);
-    Scalar const q0 = quaternion.q0();
-    Scalar const q1 = quaternion.q1();
-    Scalar const q2 = quaternion.q2();
-    Scalar const q3 = quaternion.q3();
-    __ESBMC_assert(rotation(2U, 0U) == Scalar{2} * (q1 * q3 - q0 * q2) &&
-                       rotation(2U, 1U) == Scalar{2} * (q2 * q3 + q0 * q1) &&
-                       rotation(2U, 2U) == q0 * q0 - q1 * q1 - q2 * q2 + q3 * q3,
-                   "Q-ROT-MATRIX-ROW-2: R(q) row 2 matches the specified map");
-}
+// General matrix coefficients and action composition are proved in rotation.cpp.
 
 [[nodiscard]] bool rotation_sign_equal(Quaternion const & quaternion, std::size_t row, std::size_t column)
 {
@@ -261,43 +220,8 @@ void verify_composition(Quaternion left, Quaternion right)
                    "Q-ROT-COMPOSE: composition is Hamilton multiplication followed by normalization");
 }
 
-/* Q-ROTATE: basis actions cover all coefficients without one large query. */
-[[nodiscard]] Vector3 basis_vector(std::size_t index)
-{
-    Vector3 result;
-    result(index) = Scalar{1};
-    return result;
-}
-
-#define FORMAL_ESKF_ROTATE_BASIS_CHECK(ROW, COLUMN)                                                                    \
-    void verify_rotate_basis_##ROW##COLUMN(Quaternion quaternion)                                                      \
-    {                                                                                                                  \
-        proof::assume_quaternion(quaternion);                                                                          \
-        Matrix3 const rotation = formal_eskf::so3::to_rotation_matrix(quaternion);                                     \
-        Vector3 const result = formal_eskf::so3::rotate(quaternion, basis_vector(COLUMN##U));                          \
-        __ESBMC_assert(result(ROW##U) == rotation(ROW##U, COLUMN##U),                                                  \
-                       "Q-ROTATE: rotating a basis vector returns the matching R(q) coefficient");                     \
-    }                                                                                                                  \
-    void verify_inverse_rotate_basis_##ROW##COLUMN(Quaternion quaternion)                                              \
-    {                                                                                                                  \
-        proof::assume_quaternion(quaternion);                                                                          \
-        Matrix3 const rotation = formal_eskf::so3::to_rotation_matrix(quaternion);                                     \
-        Vector3 const result = formal_eskf::so3::inverse_rotate(quaternion, basis_vector(ROW##U));                     \
-        __ESBMC_assert(result(COLUMN##U) == rotation(ROW##U, COLUMN##U),                                               \
-                       "Q-INVERSE-ROTATE: inverse rotating a basis vector returns the matching R(q) coefficient");     \
-    }
-
-FORMAL_ESKF_ROTATE_BASIS_CHECK(0, 0)
-FORMAL_ESKF_ROTATE_BASIS_CHECK(0, 1)
-FORMAL_ESKF_ROTATE_BASIS_CHECK(0, 2)
-FORMAL_ESKF_ROTATE_BASIS_CHECK(1, 0)
-FORMAL_ESKF_ROTATE_BASIS_CHECK(1, 1)
-FORMAL_ESKF_ROTATE_BASIS_CHECK(1, 2)
-FORMAL_ESKF_ROTATE_BASIS_CHECK(2, 0)
-FORMAL_ESKF_ROTATE_BASIS_CHECK(2, 1)
-FORMAL_ESKF_ROTATE_BASIS_CHECK(2, 2)
-
-#undef FORMAL_ESKF_ROTATE_BASIS_CHECK
+// The basis properties are retained compositionally in rotation.cpp; the
+// concrete zero regression below remains an independent production check.
 
 void verify_rotate_zero(Quaternion quaternion)
 {

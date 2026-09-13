@@ -12,7 +12,9 @@ The [traceability map](../../formal/agent-review/traceability-map.json) records 
 | Lean 4 | Prove exact algebra and real-number properties of the mathematical models. |
 | ESBMC | Check production C++ control flow, coefficient equations, statuses and output preservation under declared IEEE-754 profiles through the fixed-array proof backend. |
 | Eigen and PX4 matrix tests | Check backend conformance and regressions, without proving backend internals. |
-| Agent review | Audit correspondence between the preceding artifacts and expose missing or inconsistent evidence. |
+| Cppcheck | Run configured static analysis without modifying source. This is a quality gate, not mathematical proof evidence. |
+| ASan/UBSan | Check memory safety and undefined behavior along executed test paths; this is not exhaustive symbolic coverage. |
+| Agent review | Audit specification ↔ Lean ↔ C++ ↔ ESBMC correspondence and expose missing or inconsistent evidence. |
 
 Lean and ESBMC provide separate evidence. There is no machine-checked real-to-float refinement theorem connecting them. Agent review does not create that bridge.
 
@@ -52,7 +54,9 @@ Require successful execution evidence for every applicable profile and dependenc
 
 Use `PASS` for aligned evidence within the declared claim, `GAP` for missing required evidence, `MISMATCH` for disagreement, and `NUMERICAL` for a missing in-scope floating-point error bound. Report target-specific exclusions separately; they do not excuse missing exact-algebra, coefficient, control-flow, status or failure-atomicity evidence.
 
-Validate the complete report schema locally. An empty required reference layer cannot be classified as `PASS` or `NUMERICAL`; `PASS` requires source citations from every mapped layer and no error-severity findings. These mechanical checks establish evidence presence, not semantic correctness. The runner returns 0 for pass, 1 for failure and 2 for incomplete review.
+Validate the complete report schema locally. An empty required reference layer cannot be classified as `PASS` or `NUMERICAL`; `PASS` requires source citations from every mapped layer and no error-severity findings. These mechanical checks establish evidence presence, not semantic correctness. The runner returns 0 for pass, 1 for failure and 2 for incomplete review. A Lean, ESBMC, Cppcheck or ASan/UBSan failure makes the overall result fail; the latter two checks do not change the requirement coverage denominator.
+
+The agent returns semantic findings only. Its prompt includes Lean/ESBMC execution evidence, but no Cppcheck or sanitizer results or logs. The runner validates the audit, adds the actual results of all four checks and computes the overall result. These runner-owned fields are not accepted from the agent; tool failures cannot be overridden by its findings. The report's summary and limitations describe the semantic audit, not the independent quality checks.
 
 Do not weaken specifications, narrow coverage silently or change production behavior merely to pass the review. Changes to source, assumptions or dependencies require affected evidence to be reviewed again.
 
@@ -62,7 +66,11 @@ Current mapped coverage does not establish deployed libm correctness, global flo
 
 These require separate numerical or target-specific evidence. An agent `PASS` is a scoped audit result, not certification of the whole estimator.
 
-The runner requires Python 3 with `jsonschema` supporting Draft 2020-12, in addition to the verifier and agent prerequisites checked by the script. The offline regression test exercises report validation and execution-inventory checks without running Lean, ESBMC or the agent.
+The runner executes Lean, ESBMC, Cppcheck, ASan/UBSan and the agent audit, in that order. ASan and UBSan share one instrumented build and one full CTest run through `verify_asan.sh`, reported as `asan_ubsan`. The sanitizer claim remains limited to that script's build configuration, runtime options and executed tests.
+
+The runner reports total elapsed wall time as `HH:MM:SS` on completion or failure. Static analysis and sanitizer runs may generate build caches, binaries and diagnostics, but do not fix or format source code.
+
+The runner requires Python 3 with `jsonschema` supporting Draft 2020-12, in addition to the verifier, static-analysis, sanitizer-build and agent prerequisites checked by the scripts. The offline regression test exercises report validation, execution-inventory checks and runner behavior without running the real analysis tools or agent. Reports missing any of the four tool results must be regenerated, not relabeled as having passed checks that were never run.
 
 Run the tool regression tests, then the proofs and semantic audit with:
 

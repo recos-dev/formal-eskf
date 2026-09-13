@@ -38,6 +38,8 @@ prepare_fixtures()
     REVIEW_WORK_DIR="${TEST_ROOT}/work"
     TRACEABILITY_MAP="${TEST_ROOT}/map.json"
     REPORT_FILE="${TEST_ROOT}/report.json"
+    AUDIT_FILE="${REVIEW_WORK_DIR}/audit.json"
+    AUDIT_SCHEMA="${REVIEW_WORK_DIR}/audit-schema.json"
     mkdir -p "${REPO_DIR}" "${REVIEW_WORK_DIR}" "${TEST_ROOT}/bin"
     printf 'synthetic witness\n' >"${REPO_DIR}/evidence.txt"
     cp "${REPO_DIR}/evidence.txt" "${REPO_DIR}/unmapped.txt"
@@ -54,7 +56,7 @@ prepare_fixtures()
 
     jq '
         {overall: "pass", summary: "Synthetic validator fixture, not an audit.",
-         tool_results: ["lean", "esbmc"] |
+         tool_results: ["lean", "esbmc", "cppcheck", "asan_ubsan"] |
             map({tool: ., status: "pass", exit_code: 0, summary: "Not executed."}),
          requirements: [.requirements[] |
             {id: .id, classification: "PASS", summary: "Synthetic claim.",
@@ -64,6 +66,8 @@ prepare_fixtures()
              assumption_differences: [], findings: [], next_action: ""}],
          unmapped_references: [], limitations: ["No verifiers or agent were run."]}
     ' "${TRACEABILITY_MAP}" >"${TEST_ROOT}/base-report.json"
+    jq 'del(.overall, .tool_results)' "${TEST_ROOT}/base-report.json" >"${TEST_ROOT}/base-audit.json"
+    write_audit_schema
 
     # Expand these variables in the generated stub, not in this test process.
     # shellcheck disable=SC2016
@@ -106,6 +110,15 @@ test_reports()
     check_report 'reordered requirements' 1 '.requirements |= reverse'
     check_report 'changed verifier result' 1 '.tool_results[0].exit_code = 1'
     check_report 'duplicate tool result' 1 '.tool_results[1] = .tool_results[0]'
+    check_report 'old two-tool report rejected' 1 '.tool_results |= .[0:2]'
+    check_report 'reordered tools rejected' 1 '.tool_results |= reverse'
+    check_report 'changed Cppcheck status rejected' 1 '.tool_results[2].status = "fail" | .overall = "fail"'
+    check_report 'changed Cppcheck exit code rejected' 1 '.tool_results[2].exit_code = 2'
+    check_report 'Cppcheck is not a proof layer' 1 '.requirements[0].evidence[0].layer = "cppcheck"'
+    check_report 'missing sanitizer result rejected' 1 '.tool_results |= .[0:3]'
+    check_report 'changed sanitizer status rejected' 1 '.tool_results[3].status = "fail" | .overall = "fail"'
+    check_report 'changed sanitizer exit code rejected' 1 '.tool_results[3].exit_code = 8'
+    check_report 'sanitizers are not a proof layer' 1 '.requirements[0].evidence[0].layer = "asan_ubsan"'
     check_report 'error finding cannot pass' 1 '.requirements[0].findings = [{category:"coverage", severity:"error", description:"Missing evidence."}]'
     check_report 'inconsistent overall status' 1 '.overall = "fail"'
     check_report 'valid numerical gap' 0 '.requirements[0].classification = "NUMERICAL" | .overall = "incomplete"'
@@ -180,32 +193,273 @@ run_mocked_review()
     # status logic run against the synthetic files prepared above.
     check_prerequisites() { :; }
     prepare_output() { :; }
+    clean_up() { :; }
     run_verifiers() { :; }
     validate_execution_inventory() { :; }
     run_codex_review() { :; }
     main
 }
 
-run_mocked_failed_verifier()
+run_mocked_failed_check()
 {
-    LEAN_RESULT=fail
-    LEAN_STATUS=9
+    case "$1" in
+        lean) LEAN_RESULT=fail; LEAN_STATUS=9 ;;
+        esbmc) ESBMC_RESULT=fail; ESBMC_STATUS=7 ;;
+        cppcheck) CPPCHECK_RESULT=fail; CPPCHECK_STATUS=2 ;;
+        asan_ubsan) SANITIZER_RESULT=fail; SANITIZER_STATUS=8 ;;
+        *) return 99 ;;
+    esac
     run_mocked_review
+}
+
+check_final_elapsed_time()
+{
+    tail -n 1 "${TEST_ROOT}/case.log" | rg -q '^Total elapsed time: [0-9]{2,}:[0-9]{2}:[0-9]{2}$'
+    [[ "$(rg -c '^Total elapsed time:' "${TEST_ROOT}/case.log")" == 1 ]]
+    TEST_COUNT=$((TEST_COUNT + 1))
 }
 
 test_exit_status()
 {
-    cp "${TEST_ROOT}/base-report.json" "${REPORT_FILE}"
+    local TOOL EXPECTED_STATUS
+    cp "${TEST_ROOT}/base-audit.json" "${AUDIT_FILE}"
     expect_status 'PASS exits zero' 0 run_mocked_review
-    jq '.requirements[0].classification = "GAP" | .overall = "incomplete"' \
-        "${TEST_ROOT}/base-report.json" >"${REPORT_FILE}"
+    check_final_elapsed_time
+    jq '.requirements[0].classification = "GAP"' "${TEST_ROOT}/base-audit.json" >"${AUDIT_FILE}"
     expect_status 'GAP exits two' 2 run_mocked_review
-    jq '.requirements[0].classification = "MISMATCH" | .overall = "fail"' \
-        "${TEST_ROOT}/base-report.json" >"${REPORT_FILE}"
+    check_final_elapsed_time
+    jq '.requirements[0].classification = "NUMERICAL"' "${TEST_ROOT}/base-audit.json" >"${AUDIT_FILE}"
+    expect_status 'NUMERICAL exits two' 2 run_mocked_review
+    check_final_elapsed_time
+    jq '.requirements[0].classification = "MISMATCH"' "${TEST_ROOT}/base-audit.json" >"${AUDIT_FILE}"
     expect_status 'MISMATCH exits one' 1 run_mocked_review
-    jq '.tool_results[0].status = "fail" | .tool_results[0].exit_code = 9 | .overall = "fail"' \
-        "${TEST_ROOT}/base-report.json" >"${REPORT_FILE}"
-    expect_status 'verifier failure exits one' 1 run_mocked_failed_verifier
+    check_final_elapsed_time
+    cp "${TEST_ROOT}/base-audit.json" "${AUDIT_FILE}"
+    for TOOL in lean esbmc cppcheck asan_ubsan; do
+        case "${TOOL}" in
+            lean) EXPECTED_STATUS=9 ;;
+            esbmc) EXPECTED_STATUS=7 ;;
+            cppcheck) EXPECTED_STATUS=2 ;;
+            asan_ubsan) EXPECTED_STATUS=8 ;;
+        esac
+        expect_status "${TOOL} failure exits one even when every requirement passes" 1 run_mocked_failed_check "${TOOL}"
+        check_final_elapsed_time
+        expect_status "runner records ${TOOL} failure without changing the audit" 0 \
+            check_assembled_failure "${TOOL}" "${EXPECTED_STATUS}"
+    done
+    jq '.requirements[0].classification = "GAP"' "${TEST_ROOT}/base-audit.json" >"${AUDIT_FILE}"
+    expect_status 'quality-check failure takes precedence over GAP' 1 run_mocked_failed_check cppcheck
+    check_final_elapsed_time
+}
+
+check_assembled_failure()
+{
+    jq -e --arg TOOL "$1" --argjson EXPECTED_STATUS "$2" '
+        .overall == "fail" and
+        any(.tool_results[]; .tool == $TOOL and .status == "fail" and .exit_code == $EXPECTED_STATUS) and
+        all(.tool_results[] | select(.tool != $TOOL); .status == "pass" and .exit_code == 0)
+    ' "${REPORT_FILE}" >/dev/null || return 1
+    diff -u <(jq -S . "${AUDIT_FILE}") <(jq -S 'del(.overall, .tool_results)' "${REPORT_FILE}")
+}
+
+run_mocked_prerequisite_failure()
+{
+    clean_up() { :; }
+    check_prerequisites() { fail 'synthetic missing prerequisite'; }
+    main
+}
+
+check_elapsed_format()
+{
+    [[ "$(print_elapsed_time "$1" 2>&1)" == "Total elapsed time: $2" ]]
+}
+
+test_elapsed_time()
+{
+    expect_status 'zero duration' 0 check_elapsed_format 0 '00:00:00'
+    expect_status 'hour and minute rollover' 0 check_elapsed_format 3661 '01:01:01'
+    expect_status 'duration over 24 hours' 0 check_elapsed_format 90061 '25:01:01'
+    expect_status 'prerequisite failure exits one' 1 run_mocked_prerequisite_failure
+    check_final_elapsed_time
+}
+
+check_verifier_sequence()
+{
+    local EXPECTED_LEAN="$1" EXPECTED_ESBMC="$2" EXPECTED_CPPCHECK="$3" EXPECTED_SANITIZER="$4"
+    # Check orchestration without executing real tools or modifying sources.
+    run_verifier()
+    {
+        local STEP="$1" NAME="$2" LOG_FILE="$3"
+        shift 3
+        printf '%s\t%s\t%s\t%s\n' "${STEP}" "${NAME}" "${LOG_FILE##*/}" "$*" \
+            >>"${TEST_ROOT}/sequence.tsv"
+        case "${NAME}" in
+            Lean) return "${EXPECTED_LEAN}" ;;
+            ESBMC) return "${EXPECTED_ESBMC}" ;;
+            Cppcheck) return "${EXPECTED_CPPCHECK}" ;;
+            ASan/UBSan) return "${EXPECTED_SANITIZER}" ;;
+            *) return 99 ;;
+        esac
+    }
+    printf '' >"${TEST_ROOT}/sequence.tsv"
+    run_verifiers
+    [[ "${LEAN_STATUS}" == "${EXPECTED_LEAN}" && "${ESBMC_STATUS}" == "${EXPECTED_ESBMC}" &&
+        "${CPPCHECK_STATUS}" == "${EXPECTED_CPPCHECK}" && "${SANITIZER_STATUS}" == "${EXPECTED_SANITIZER}" ]] || return 1
+    [[ "${LEAN_RESULT}" == "$([[ ${EXPECTED_LEAN} == 0 ]] && echo pass || echo fail)" ]] || return 1
+    [[ "${ESBMC_RESULT}" == "$([[ ${EXPECTED_ESBMC} == 0 ]] && echo pass || echo fail)" ]] || return 1
+    [[ "${CPPCHECK_RESULT}" == "$([[ ${EXPECTED_CPPCHECK} == 0 ]] && echo pass || echo fail)" ]] || return 1
+    [[ "${SANITIZER_RESULT}" == "$([[ ${EXPECTED_SANITIZER} == 0 ]] && echo pass || echo fail)" ]] || return 1
+    printf '1\tLean\tlean.log\t%s/verify_lean.sh --wfail\n2\tESBMC\tesbmc.log\t%s/verify_esbmc.sh\n3\tCppcheck\tcppcheck.log\t%s/verify_cppcheck.sh\n4\tASan/UBSan\tsanitizers.log\t%s/verify_asan.sh\n' \
+        "${SCRIPT_DIR}" "${SCRIPT_DIR}" "${SCRIPT_DIR}" "${SCRIPT_DIR}" >"${TEST_ROOT}/expected-sequence.tsv"
+    diff -u "${TEST_ROOT}/expected-sequence.tsv" "${TEST_ROOT}/sequence.tsv"
+}
+
+check_verifier_output()
+{
+    local EXPECTED="$1" NAME="$2" STEP="$3" ACTUAL=0 OUTPUT REVIEW_WORK_DIR START_SECONDS
+    REVIEW_WORK_DIR="$(mktemp -d "${TEST_ROOT}/verifier.XXXXXX")" || return 1
+    START_SECONDS=${SECONDS}
+    synthetic_check_output()
+    {
+        local INDEX
+        printf 'synthetic first line\n'
+        for ((INDEX = 1; INDEX <= 80; INDEX++)); do
+            printf 'synthetic detail %d\n' "${INDEX}"
+        done
+        printf 'synthetic final diagnostic\n' >&2
+        return "${EXPECTED}"
+    }
+    OUTPUT="$(
+        exec 2>&1
+        trap finish_review EXIT
+        run_verifier "${STEP}" "${NAME}" "${REVIEW_WORK_DIR}/check.log" synthetic_check_output
+    )" || ACTUAL=$?
+    [[ "${ACTUAL}" == "${EXPECTED}" && "${OUTPUT}" == *"[${STEP}/5] ${NAME}"* ]] || return 1
+    [[ ! -e "${REVIEW_WORK_DIR}" ]] || return 1
+    printf '%s\n' "${OUTPUT}" | tail -n 1 | rg -q '^Total elapsed time: [0-9]{2,}:[0-9]{2}:[0-9]{2}$' || return 1
+    [[ "$(printf '%s\n' "${OUTPUT}" | rg -c '^Total elapsed time:')" == 1 ]] || return 1
+    if ((EXPECTED == 0)); then
+        [[ "${OUTPUT}" == *$'\e[32;01m'"${NAME}: pass"$'\e[0m'* &&
+            "${OUTPUT}" != *'synthetic'* && "${OUTPUT}" != *'log tail:'* ]]
+    else
+        [[ "${OUTPUT}" == *$'\e[31;01m'"${NAME}: fail (exit ${EXPECTED})"$'\e[0m'* &&
+            "${OUTPUT}" == *"${NAME} log tail:"* &&
+            "${OUTPUT}" == *'synthetic final diagnostic'* &&
+            "${OUTPUT}" != *'synthetic first line'* ]] || return 1
+        [[ "$(printf '%s\n' "${OUTPUT}" | rg -c '^synthetic')" == 80 ]]
+    fi
+}
+
+test_verifiers()
+{
+    expect_status 'four checks run in order without filtering sanitizer tests' 0 check_verifier_sequence 0 0 0 0
+    expect_status 'earlier failures do not skip Cppcheck or sanitizers' 0 check_verifier_sequence 9 7 2 8
+    expect_status 'Cppcheck success stays concise after cleanup and timing' 0 check_verifier_output 0 Cppcheck 3
+    expect_status 'Cppcheck failure diagnostics survive cleanup with original status and timing' 0 check_verifier_output 2 Cppcheck 3
+    expect_status 'sanitizer success stays concise after cleanup and timing' 0 check_verifier_output 0 ASan/UBSan 4
+    expect_status 'sanitizer failure diagnostics survive cleanup with original status and timing' 0 check_verifier_output 8 ASan/UBSan 4
+}
+
+prepare_proof_logs()
+{
+    LEAN_LOG="${TEST_ROOT}/lean.log"
+    ESBMC_LOG="${TEST_ROOT}/esbmc.log"
+    printf 'synthetic Lean log\n' >"${LEAN_LOG}"
+    printf 'synthetic ESBMC log\n' >"${ESBMC_LOG}"
+}
+
+check_review_prompt()
+{
+    prepare_proof_logs
+    CPPCHECK_LOG="${TEST_ROOT}/cppcheck.log"
+    SANITIZER_LOG="${TEST_ROOT}/sanitizers.log"
+    printf 'synthetic Cppcheck pass\n' >"${CPPCHECK_LOG}"
+    printf 'synthetic sanitizer pass\n' >"${SANITIZER_LOG}"
+    write_review_prompt "${TEST_ROOT}/prompt-pass.txt"
+    CPPCHECK_STATUS=2
+    CPPCHECK_RESULT=fail
+    SANITIZER_STATUS=8
+    SANITIZER_RESULT=fail
+    printf 'synthetic Cppcheck diagnostic\n' >"${CPPCHECK_LOG}"
+    printf 'synthetic sanitizer diagnostic\n' >"${SANITIZER_LOG}"
+    write_review_prompt "${TEST_ROOT}/prompt.txt"
+    diff -u "${TEST_ROOT}/prompt-pass.txt" "${TEST_ROOT}/prompt.txt" &&
+    ! rg -iq 'cppcheck|asan|ubsan|sanitizer' "${TEST_ROOT}/prompt.txt" &&
+    rg -Fq 'Lean result: pass; exit code: 0' "${TEST_ROOT}/prompt.txt" &&
+    rg -Fq 'ESBMC result: pass; exit code: 0' "${TEST_ROOT}/prompt.txt" &&
+    rg -Fq "Full Lean log: ${LEAN_LOG}" "${TEST_ROOT}/prompt.txt" &&
+    rg -Fq "Full ESBMC log: ${ESBMC_LOG}" "${TEST_ROOT}/prompt.txt" &&
+    rg -Fq 'synthetic Lean log' "${TEST_ROOT}/prompt.txt" &&
+    rg -Fq 'synthetic ESBMC log' "${TEST_ROOT}/prompt.txt" &&
+    rg -Fq "Expected profile inventory: ${REVIEW_WORK_DIR}/expected-executions.tsv" "${TEST_ROOT}/prompt.txt" &&
+    rg -Fq "Actual profile inventory: ${REVIEW_WORK_DIR}/actual-executions.tsv" "${TEST_ROOT}/prompt.txt" &&
+    rg -Fq 'Return only the semantic audit:' "${TEST_ROOT}/prompt.txt"
+}
+
+check_audit_schema()
+{
+    jq -e '
+        (.properties | keys) == ["limitations", "requirements", "summary", "unmapped_references"] and
+        (.required | sort) == ["limitations", "requirements", "summary", "unmapped_references"] and
+        .additionalProperties == false
+    ' "${AUDIT_SCHEMA}" >/dev/null || return 1
+    diff -u <(jq -S 'del(.properties.overall, .properties.tool_results) | .required -= ["overall", "tool_results"]' "${REPORT_SCHEMA}") \
+        <(jq -S . "${AUDIT_SCHEMA}")
+}
+
+test_audit_assembly()
+{
+    local FILTER
+    expect_status 'agent schema retains only semantic fields and their constraints' 0 check_audit_schema
+    for FILTER in \
+        '.overall = "pass"' \
+        '.tool_results = []' \
+        'del(.requirements)' \
+        '.requirements[0].classification = "INVALID"'; do
+        jq "${FILTER}" "${TEST_ROOT}/base-audit.json" >"${AUDIT_FILE}"
+        expect_status "reject invalid agent output before merging: ${FILTER}" 1 assemble_review_report
+    done
+    printf '{' >"${AUDIT_FILE}"
+    expect_status 'reject malformed agent JSON before merging' 1 assemble_review_report
+    cp "${TEST_ROOT}/base-report.json" "${AUDIT_FILE}"
+    expect_status 'reject legacy agent-owned tool results and overall' 1 assemble_review_report
+    jq '.requirements[0].classification = "GAP" | .requirements[0].evidence = [] |
+        .requirements[0].findings = [{category: "coverage", severity: "error", description: "Synthetic gap."}] |
+        .requirements[0].next_action = "Supply evidence."' "${TEST_ROOT}/base-audit.json" >"${AUDIT_FILE}"
+    expect_status 'merge a semantic gap without weakening its findings' 0 check_assembled_audit
+}
+
+check_assembled_audit()
+{
+    assemble_review_report
+    validate_review_report
+    diff -u <(jq -S . "${AUDIT_FILE}") <(jq -S 'del(.overall, .tool_results)' "${REPORT_FILE}")
+}
+
+check_agent_invocation()
+{
+    # A local CLI stand-in checks the schema/output handoff, not AI semantics.
+    fixture_codex()
+    {
+        local SCHEMA_PATH="" OUTPUT_PATH=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --output-schema) SCHEMA_PATH="$2"; shift 2 ;;
+                --output-last-message) OUTPUT_PATH="$2"; shift 2 ;;
+                *) shift ;;
+            esac
+        done
+        [[ "${SCHEMA_PATH}" == "${AUDIT_SCHEMA}" && "${OUTPUT_PATH}" == "${AUDIT_FILE}" &&
+            "${OUTPUT_PATH}" != "${REPORT_FILE}" ]] || return 1
+        check_audit_schema || return 1
+        sed -n 'p' >"${TEST_ROOT}/agent-input.txt"
+        cp "${TEST_ROOT}/base-audit.json" "${OUTPUT_PATH}"
+    }
+    CODEX_COMMAND=fixture_codex
+    prepare_proof_logs
+    run_codex_review
+    diff -u "${REVIEW_WORK_DIR}/prompt.txt" "${TEST_ROOT}/agent-input.txt" || return 1
+    check_assembled_audit
 }
 
 check_repository_map()
@@ -220,5 +474,10 @@ test_reports
 test_map
 test_inventory
 test_exit_status
+test_elapsed_time
+test_verifiers
+test_audit_assembly
+expect_status 'quality-check results and logs do not enter or influence the agent prompt' 0 check_review_prompt
+expect_status 'agent writes semantic output and runner assembles the final report' 0 check_agent_invocation
 expect_status 'repository map references' 0 check_repository_map
 printf '%bAgent-review regression tests: %d passed%b\n' "${PASS_COLOR}" "${TEST_COUNT}" "${NO_COLOR}"

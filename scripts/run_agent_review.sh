@@ -19,12 +19,21 @@ NO_COLOR='\e[0m'
 OUTPUT_FILE=""
 REVIEW_WORK_DIR=""
 REPORT_FILE=""
+AUDIT_FILE=""
+AUDIT_SCHEMA=""
 LEAN_LOG=""
 ESBMC_LOG=""
+CPPCHECK_LOG=""
+SANITIZER_LOG=""
 LEAN_STATUS=0
 ESBMC_STATUS=0
+CPPCHECK_STATUS=0
+SANITIZER_STATUS=0
 LEAN_RESULT="pass"
 ESBMC_RESULT="pass"
+CPPCHECK_RESULT="pass"
+SANITIZER_RESULT="pass"
+START_SECONDS=0
 
 usage()
 {
@@ -74,6 +83,8 @@ check_prerequisites()
     [[ -f "${REPORT_SCHEMA}" ]] || fail "missing ${REPORT_SCHEMA}"
     [[ -x "${SCRIPT_DIR}/verify_lean.sh" ]] || fail "scripts/verify_lean.sh is not executable"
     [[ -x "${SCRIPT_DIR}/verify_esbmc.sh" ]] || fail "scripts/verify_esbmc.sh is not executable"
+    [[ -x "${SCRIPT_DIR}/verify_cppcheck.sh" ]] || fail "scripts/verify_cppcheck.sh is not executable"
+    [[ -x "${SCRIPT_DIR}/verify_asan.sh" ]] || fail "scripts/verify_asan.sh is not executable"
 }
 
 clean_up()
@@ -83,11 +94,27 @@ clean_up()
     fi
 }
 
+print_elapsed_time()
+{
+    local ELAPSED_SECONDS="$1"
+    printf 'Total elapsed time: %02d:%02d:%02d\n' \
+        "$((ELAPSED_SECONDS / 3600))" "$((ELAPSED_SECONDS / 60 % 60))" "$((ELAPSED_SECONDS % 60))" >&2
+}
+
+finish_review()
+{
+    local STATUS=$?
+    clean_up
+    print_elapsed_time "$((SECONDS - START_SECONDS))"
+    exit "${STATUS}"
+}
+
 prepare_output()
 {
     REVIEW_WORK_DIR="$(mktemp -d)" || fail "could not create a temporary directory"
-    trap clean_up EXIT
     REPORT_FILE="${REVIEW_WORK_DIR}/review.json"
+    AUDIT_FILE="${REVIEW_WORK_DIR}/audit.json"
+    AUDIT_SCHEMA="${REVIEW_WORK_DIR}/audit-schema.json"
 
     if [[ -z "${OUTPUT_FILE}" ]]; then
         return
@@ -144,7 +171,7 @@ run_verifier()
     local LOG_FILE="$3"
     shift 3
 
-    printf '[%s/3] %s\n' "${STEP}" "${NAME}" >&2
+    printf '[%s/5] %s\n' "${STEP}" "${NAME}" >&2
     "$@" >"${LOG_FILE}" 2>&1
     local STATUS=$?
 
@@ -152,6 +179,8 @@ run_verifier()
         printf '%b%s: pass%b\n' "${PASS_COLOR}" "${NAME}" "${NO_COLOR}" >&2
     else
         printf '%b%s: fail (exit %d)%b\n' "${FAIL_COLOR}" "${NAME}" "${STATUS}" "${NO_COLOR}" >&2
+        printf '%s log tail:\n' "${NAME}" >&2
+        tail -n 80 "${LOG_FILE}" >&2
     fi
 
     return "${STATUS}"
@@ -161,12 +190,22 @@ run_verifiers()
 {
     LEAN_LOG="${REVIEW_WORK_DIR}/lean.log"
     ESBMC_LOG="${REVIEW_WORK_DIR}/esbmc.log"
+    CPPCHECK_LOG="${REVIEW_WORK_DIR}/cppcheck.log"
+    SANITIZER_LOG="${REVIEW_WORK_DIR}/sanitizers.log"
+    LEAN_STATUS=0 ESBMC_STATUS=0 CPPCHECK_STATUS=0 SANITIZER_STATUS=0
+    LEAN_RESULT=pass ESBMC_RESULT=pass CPPCHECK_RESULT=pass SANITIZER_RESULT=pass
 
     run_verifier 1 "Lean" "${LEAN_LOG}" "${SCRIPT_DIR}/verify_lean.sh" --wfail || LEAN_STATUS=$?
     run_verifier 2 "ESBMC" "${ESBMC_LOG}" "${SCRIPT_DIR}/verify_esbmc.sh" || ESBMC_STATUS=$?
+    # Static analysis only. Do not invoke formatters or modify source files.
+    run_verifier 3 "Cppcheck" "${CPPCHECK_LOG}" "${SCRIPT_DIR}/verify_cppcheck.sh" || CPPCHECK_STATUS=$?
+    # One build instruments the full test suite with both sanitizers.
+    run_verifier 4 "ASan/UBSan" "${SANITIZER_LOG}" "${SCRIPT_DIR}/verify_asan.sh" || SANITIZER_STATUS=$?
 
     [[ ${LEAN_STATUS} -eq 0 ]] || LEAN_RESULT="fail"
     [[ ${ESBMC_STATUS} -eq 0 ]] || ESBMC_RESULT="fail"
+    [[ ${CPPCHECK_STATUS} -eq 0 ]] || CPPCHECK_RESULT="fail"
+    [[ ${SANITIZER_STATUS} -eq 0 ]] || SANITIZER_RESULT="fail"
 }
 
 validate_execution_inventory()
@@ -250,10 +289,9 @@ write_review_prompt()
             'C++, or ESBMC definitions/harnesses that are not represented by the manifest;' \
             'do not report build files or proof-support infrastructure as unmapped semantics.' \
             '' \
-            'Overall result rules:' \
-            '- fail if either verifier failed or any requirement is MISMATCH;' \
-            '- incomplete if neither condition above holds and any requirement is GAP or NUMERICAL;' \
-            '- pass only when both verifiers passed and every requirement is PASS.' \
+            'Return only the semantic audit: summary, requirements, unmapped_references, and limitations.' \
+            'Keep the summary and limitations scoped to this semantic audit. The runner owns' \
+            'tool execution results and the combined outcome; do not generate those fields.' \
             '' \
             'The following verifier results and complete execution inventory are execution evidence.' \
             'Inspect all relevant RESULT records, not only the final log tail. A planned entry is not a completed proof.' \
@@ -271,6 +309,14 @@ write_review_prompt()
     } >"${PROMPT_FILE}" || fail "could not write the Codex review prompt"
 }
 
+write_audit_schema()
+{
+    # Reuse the semantic fields without giving the agent runner-owned fields.
+    jq 'del(.properties.overall, .properties.tool_results) |
+        .required -= ["overall", "tool_results"]' \
+        "${REPORT_SCHEMA}" >"${AUDIT_SCHEMA}" || fail "could not write the audit schema"
+}
+
 run_codex_review()
 {
     local PROMPT_FILE="${REVIEW_WORK_DIR}/prompt.txt"
@@ -284,17 +330,18 @@ run_codex_review()
         --ephemeral
         --sandbox read-only
         --color never
-        --output-schema "${REPORT_SCHEMA}"
-        --output-last-message "${REPORT_FILE}"
+        --output-schema "${AUDIT_SCHEMA}"
+        --output-last-message "${AUDIT_FILE}"
     )
 
     if [[ -n "${REVIEW_MODEL}" ]]; then
         CODEX_ARGUMENTS+=(--model "${REVIEW_MODEL}")
     fi
 
+    write_audit_schema
     write_review_prompt "${PROMPT_FILE}"
 
-    printf '[3/3] Codex semantic audit\n' >&2
+    printf '[5/5] Codex semantic audit\n' >&2
     if ! "${CODEX_COMMAND}" "${CODEX_ARGUMENTS[@]}" - <"${PROMPT_FILE}" >"${CODEX_LOG}" 2>&1; then
         echo "Codex audit log tail:" >&2
         tail -n 80 "${CODEX_LOG}" >&2
@@ -314,9 +361,10 @@ validate_requirement_ids()
         fail "review requirement IDs do not match the traceability map"
 }
 
-validate_report_schema()
+validate_json_schema()
 {
-    python3 - "${REPORT_SCHEMA}" "${REPORT_FILE}" <<'PY' || fail "review report does not satisfy the report schema"
+    local SCHEMA_FILE="$1" INPUT_FILE="$2"
+    python3 - "${SCHEMA_FILE}" "${INPUT_FILE}" <<'PY' || fail "${INPUT_FILE} does not satisfy ${SCHEMA_FILE}"
 import json
 import sys
 
@@ -366,13 +414,20 @@ validate_tool_results()
         --arg LEAN_RESULT "${LEAN_RESULT}" \
         --argjson LEAN_STATUS "${LEAN_STATUS}" \
         --arg ESBMC_RESULT "${ESBMC_RESULT}" \
-        --argjson ESBMC_STATUS "${ESBMC_STATUS}" '
-        ([.tool_results[] | select(.tool == "lean")] | length == 1) and
-        ([.tool_results[] | select(.tool == "esbmc")] | length == 1) and
+        --argjson ESBMC_STATUS "${ESBMC_STATUS}" \
+        --arg CPPCHECK_RESULT "${CPPCHECK_RESULT}" \
+        --argjson CPPCHECK_STATUS "${CPPCHECK_STATUS}" \
+        --arg SANITIZER_RESULT "${SANITIZER_RESULT}" \
+        --argjson SANITIZER_STATUS "${SANITIZER_STATUS}" '
+        ([.tool_results[].tool] == ["lean", "esbmc", "cppcheck", "asan_ubsan"]) and
         (first(.tool_results[] | select(.tool == "lean")) |
             .status == $LEAN_RESULT and .exit_code == $LEAN_STATUS) and
         (first(.tool_results[] | select(.tool == "esbmc")) |
-            .status == $ESBMC_RESULT and .exit_code == $ESBMC_STATUS)
+            .status == $ESBMC_RESULT and .exit_code == $ESBMC_STATUS) and
+        (first(.tool_results[] | select(.tool == "cppcheck")) |
+            .status == $CPPCHECK_RESULT and .exit_code == $CPPCHECK_STATUS) and
+        (first(.tool_results[] | select(.tool == "asan_ubsan")) |
+            .status == $SANITIZER_RESULT and .exit_code == $SANITIZER_STATUS)
     ' "${REPORT_FILE}" >/dev/null || fail "review changed the deterministic verifier results"
 }
 
@@ -395,19 +450,54 @@ validate_evidence()
     done <"${EVIDENCE_ROWS}"
 }
 
-validate_overall_result()
+calculate_overall_result()
 {
-    local EXPECTED_OVERALL ACTUAL_OVERALL
-    EXPECTED_OVERALL="$({
-        printf '%s\n' "${LEAN_RESULT}" "${ESBMC_RESULT}"
-        jq -r '.requirements[].classification' "${REPORT_FILE}"
+    local INPUT_FILE="$1"
+    {
+        printf '%s\n' "${LEAN_RESULT}" "${ESBMC_RESULT}" "${CPPCHECK_RESULT}" "${SANITIZER_RESULT}"
+        jq -r '.requirements[].classification' "${INPUT_FILE}"
     } | jq -R -s -r '
         split("\n")[:-1] as $AUDIT_RESULTS |
         if any($AUDIT_RESULTS[]; . == "fail" or . == "MISMATCH") then "fail"
         elif any($AUDIT_RESULTS[]; . == "GAP" or . == "NUMERICAL") then "incomplete"
         else "pass"
         end
-    ')"
+    '
+}
+
+assemble_review_report()
+{
+    # Reject unexpected agent fields before adding deterministic tool results.
+    validate_json_schema "${AUDIT_SCHEMA}" "${AUDIT_FILE}"
+    local OVERALL_RESULT
+    OVERALL_RESULT="$(calculate_overall_result "${AUDIT_FILE}")" || fail "could not calculate the review result"
+    jq --arg OVERALL_RESULT "${OVERALL_RESULT}" \
+        --arg LEAN_RESULT "${LEAN_RESULT}" --argjson LEAN_STATUS "${LEAN_STATUS}" \
+        --arg ESBMC_RESULT "${ESBMC_RESULT}" --argjson ESBMC_STATUS "${ESBMC_STATUS}" \
+        --arg CPPCHECK_RESULT "${CPPCHECK_RESULT}" --argjson CPPCHECK_STATUS "${CPPCHECK_STATUS}" \
+        --arg SANITIZER_RESULT "${SANITIZER_RESULT}" --argjson SANITIZER_STATUS "${SANITIZER_STATUS}" '
+        def tool_result($TOOL; $STATUS; $EXIT_CODE; $SUMMARY):
+            {tool: $TOOL, status: $STATUS, exit_code: $EXIT_CODE, summary: $SUMMARY};
+        . + {
+            overall: $OVERALL_RESULT,
+            tool_results: [
+                tool_result("lean"; $LEAN_RESULT; $LEAN_STATUS;
+                    "verify_lean.sh --wfail; exit \($LEAN_STATUS)."),
+                tool_result("esbmc"; $ESBMC_RESULT; $ESBMC_STATUS;
+                    "verify_esbmc.sh and execution-inventory validation; status \($ESBMC_STATUS)."),
+                tool_result("cppcheck"; $CPPCHECK_RESULT; $CPPCHECK_STATUS;
+                    "verify_cppcheck.sh; exit \($CPPCHECK_STATUS). Static analysis, not formal proof."),
+                tool_result("asan_ubsan"; $SANITIZER_RESULT; $SANITIZER_STATUS;
+                    "verify_asan.sh; exit \($SANITIZER_STATUS). Sanitizer checks on executed test paths only.")
+            ]
+        }
+    ' "${AUDIT_FILE}" >"${REPORT_FILE}" || fail "could not assemble the review report"
+}
+
+validate_overall_result()
+{
+    local EXPECTED_OVERALL ACTUAL_OVERALL
+    EXPECTED_OVERALL="$(calculate_overall_result "${REPORT_FILE}")" || fail "could not calculate the review result"
     ACTUAL_OVERALL="$(jq -r '.overall' "${REPORT_FILE}")"
 
     [[ "${ACTUAL_OVERALL}" == "${EXPECTED_OVERALL}" ]] ||
@@ -416,7 +506,7 @@ validate_overall_result()
 
 validate_review_report()
 {
-    validate_report_schema
+    validate_json_schema "${REPORT_SCHEMA}" "${REPORT_FILE}"
     validate_requirement_ids
     validate_tool_results
     validate_requirement_coverage
@@ -463,12 +553,14 @@ print_review_summary()
         case "${TOOL}" in
             lean) TOOL_LABEL="Lean" ;;
             esbmc) TOOL_LABEL="ESBMC" ;;
+            cppcheck) TOOL_LABEL="Cppcheck" ;;
+            asan_ubsan) TOOL_LABEL="ASan/UBSan" ;;
             *) TOOL_LABEL="${TOOL}" ;;
         esac
         if [[ "${STATUS}" == "pass" ]]; then
-            printf '  %-8s %b%s%b\n' "${TOOL_LABEL}" "${PASS_COLOR}" "${STATUS^^}" "${NO_COLOR}"
+            printf '  %-10s %b%s%b\n' "${TOOL_LABEL}" "${PASS_COLOR}" "${STATUS^^}" "${NO_COLOR}"
         else
-            printf '  %-8s %b%s%b\n' "${TOOL_LABEL}" "${FAIL_COLOR}" "${STATUS^^}" "${NO_COLOR}"
+            printf '  %-10s %b%s%b\n' "${TOOL_LABEL}" "${FAIL_COLOR}" "${STATUS^^}" "${NO_COLOR}"
         fi
     done < <(jq -r '.tool_results[] | [.tool, .status] | @tsv' "${REPORT_FILE}")
 
@@ -514,12 +606,15 @@ main()
     local OVERALL_RESULT
 
     parse_arguments "$@"
+    START_SECONDS=${SECONDS}
+    trap finish_review EXIT
     check_prerequisites
     prepare_output
     validate_traceability_map
     run_verifiers
     validate_execution_inventory
     run_codex_review
+    assemble_review_report
     validate_review_report
     save_review_report
 

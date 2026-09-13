@@ -513,6 +513,7 @@ void test_velocity_sequence(TestContext & test, std::string_view profile, typena
     parameters.dt_min = dt;
     parameters.dt_max = dt;
     parameters.minimum_quaternion_norm = Fixture::minimum_norm;
+    parameters.quaternion_squared_norm_tolerance = value_type{32} * std::numeric_limits<value_type>::epsilon();
     parameters.gravity_n.set(2U, value_type{8});
     imu.specific_force_b.set(2U, value_type{-8});
     // Known attitude/bias and zero process noise reduce this scenario to three

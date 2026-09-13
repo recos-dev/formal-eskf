@@ -50,6 +50,7 @@ template <typename Linalg, typename Configuration> struct CovariancePredictionFi
         parameters.dt_min = value_type{0.125};
         parameters.dt_max = value_type{2};
         parameters.minimum_quaternion_norm = static_cast<value_type>(1.0e-6);
+        parameters.quaternion_squared_norm_tolerance = value_type{32} * std::numeric_limits<value_type>::epsilon();
     }
 
     [[nodiscard]] auto noise_groups()
@@ -647,6 +648,61 @@ template <typename Linalg> void test_ins_input_boundary(TestContext & test, std:
                 "standalone covariance does not consume position, velocity, or gravity");
 }
 
+template <typename Linalg, typename Configuration>
+void test_prior_rejection(TestContext & test, std::string_view profile)
+{
+    using fixture_type = CovariancePredictionFixture<Linalg, Configuration>;
+    using value_type = typename fixture_type::value_type;
+    using quaternion_type = formal_eskf::so3::UnitQuaternion<Linalg>;
+    fixture_type fixture;
+    fixture.covariance = fixture_type::covariance_type::identity();
+    int const exponent = (std::numeric_limits<value_type>::min_exponent - std::numeric_limits<value_type>::digits) / 2;
+    value_type const tiny = std::ldexp(value_type{1}, exponent);
+    // Public-constructor underflow fixture, with squared norm exactly 1.25.
+    auto const construction =
+        quaternion_type::try_from_coefficients(tiny, tiny * value_type{0.5}, value_type{0}, value_type{0},
+                                               std::numeric_limits<value_type>::min(), fixture.state.q_nb);
+    test.expect(construction == Status::success && fixture.state.q_nb.q0() == value_type{1} &&
+                    fixture.state.q_nb.q1() == value_type{0.5},
+                profile, "non-unit prior fixture is constructed");
+    auto const initial = fixture;
+    auto status = try_predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5},
+                                         fixture.parameters, fixture.covariance);
+    test.expect(status == (fixture_type::is_ins ? Status::invalid_quaternion_norm : Status::success) &&
+                    matrix_near(fixture.covariance, initial.covariance, value_type{0}) &&
+                    same_state(fixture.state, initial.state),
+                profile, "standalone covariance checks prior attitude only when its configuration consumes it");
+
+    for (bool state_alias : {false, true})
+    {
+        for (bool covariance_alias : {false, true})
+        {
+            auto state = initial.state;
+            auto covariance = initial.covariance;
+            auto separate_state = initial.state;
+            separate_state.q_nb = -separate_state.q_nb;
+            auto separate_covariance = initial.covariance * value_type{2};
+            auto & state_output = state_alias ? state : separate_state;
+            auto & covariance_output = covariance_alias ? covariance : separate_covariance;
+            auto const state_before = state_output;
+            auto const covariance_before = covariance_output;
+            status = try_predict(state, covariance, fixture.imu, value_type{0.5}, fixture.parameters, state_output,
+                                 covariance_output);
+            test.expect(
+                status == Status::invalid_quaternion_norm && same_state(state_output, state_before) &&
+                    matrix_near(covariance_output, covariance_before, value_type{0}) &&
+                    same_state(state, initial.state) && matrix_near(covariance, initial.covariance, value_type{0}),
+                profile, "combined prior rejection preserves both outputs for every complete-object alias case");
+        }
+    }
+    fixture.parameters.quaternion_squared_norm_tolerance = std::numeric_limits<value_type>::quiet_NaN();
+    status = try_predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters,
+                                    fixture.covariance);
+    test.expect(status == (fixture_type::is_ins ? Status::non_finite_input : Status::success) &&
+                    matrix_near(fixture.covariance, initial.covariance, value_type{0}),
+                profile, "AHRS covariance ignores the unused prior tolerance while INS validates it");
+}
+
 template <typename Linalg>
 void test_noise_accumulation(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
@@ -694,6 +750,7 @@ void run_covariance_tests(TestContext & test, std::string_view profile, typename
     test_noise_failures<Linalg, Configuration>(test, profile);
     test_dense_prediction<Linalg, Configuration>(test, profile, tolerance);
     test_prediction_failures<Linalg, Configuration>(test, profile);
+    test_prior_rejection<Linalg, Configuration>(test, profile);
 }
 
 } /* end namespace */

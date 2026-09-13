@@ -94,6 +94,9 @@ struct Ins
         value_type minimum_quaternion_norm{};
         value_type dt_min{};
         value_type dt_max{};
+        // Prediction: abs(squared_norm(q_nb) - 1) <= tolerance.
+        // Dimensionless, finite and strictly between 0 and 1; configure explicitly.
+        value_type quaternion_squared_norm_tolerance{};
     };
 };
 

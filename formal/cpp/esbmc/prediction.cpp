@@ -33,6 +33,9 @@
 #ifndef FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT
 #define FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT 0
 #endif
+#ifndef FORMAL_ESKF_PROOF_EXP_CONTRACT
+#define FORMAL_ESKF_PROOF_EXP_CONTRACT 0
+#endif
 
 namespace prediction_proof
 {
@@ -48,29 +51,28 @@ bool preserved_scalar(Scalar a, Scalar b);
 // asking a solver to rediscover equivalence between two large sqrt circuits.
 struct NormObserver
 {
-    inline static formal_eskf::verification::ScalarArray<Scalars<4U>, 2U> arguments{};
-    inline static Scalars<2U> norms{};
+    inline static formal_eskf::verification::ScalarArray<Scalars<4U>, 1U> arguments{};
+    inline static Scalars<1U> norms{};
     inline static unsigned count = 0U;
     inline static bool active = false;
-    inline static Scalars<4U> initial_q{};
     inline static Scalars<9U> rotation{};
     inline static Scalars<3U> force{};
     inline static Scalars<3U> rotated_force{};
     inline static unsigned product_count = 0U;
     inline static formal_eskf::verification::ScalarArray<Scalars<3U>, 4U> add_left{}, add_right{}, add_result{};
     inline static unsigned add_count = 0U;
-    inline static formal_eskf::verification::ScalarArray<Scalars<4U>, 2U> divided{};
+    inline static formal_eskf::verification::ScalarArray<Scalars<4U>, 1U> divided{};
     inline static unsigned division_count = 0U;
     inline static formal_eskf::verification::ScalarArray<Scalars<3U>, 5U> scale_input{}, scale_result{};
     inline static Scalars<5U> scale_factor{};
     inline static unsigned scale_count = 0U;
 
-    // Stages have fixed storage slots. Each cut is asserted before it becomes
-    // an assumption; a failed stage bound or correspondence fails the proof.
+    // Each actual-callee proof has one normalization. Each cut is asserted
+    // before becoming an assumption; failed correspondence fails the proof.
     template <std::size_t Stage, typename Values, typename Result>
     static void record_quotient(Values const & values, Scalar divisor, Result const & result)
     {
-        static_assert(Stage < 2U);
+        static_assert(Stage == 0U);
         // The four coefficient profiles share one input domain. Together they
         // prove every division; no fact about another coefficient is assumed.
         constexpr std::size_t i = FORMAL_ESKF_PROOF_COEFFICIENT;
@@ -95,16 +97,9 @@ struct NormObserver
         {
             if (active)
             {
-                __ESBMC_assert(division_count < 2U, "E-PRED: quotient trace is in bounds");
-                __ESBMC_assume(division_count < 2U);
-                if (division_count == 0U)
-                {
-                    record_quotient<0U>(values, divisor, result);
-                }
-                else
-                {
-                    record_quotient<1U>(values, divisor, result);
-                }
+                __ESBMC_assert(division_count == 0U, "E-PRED: each actual callee divides one normalization candidate");
+                __ESBMC_assume(division_count == 0U);
+                record_quotient<0U>(values, divisor, result);
                 ++division_count;
             }
         }
@@ -177,36 +172,11 @@ struct NormObserver
         {
             if (active)
             {
-                __ESBMC_assert(count < 2U, "E-PRED: at most two normalization calls per attitude prediction");
-                __ESBMC_assume(count < 2U);
-#if !ESKF_QUAT_APPROX
-                if (count == 1U)
-                {
-                    __ESBMC_assert(division_count == 1U,
-                                   "E-PRED: composition follows one completed normalization division");
-                    __ESBMC_assume(division_count == 1U);
-                    auto const & q = initial_q;
-                    auto const & d = divided[0U];
-                    Scalars<4U> h;
-                    h[0] = q[0] * d[0] - q[1] * d[1] - q[2] * d[2] - q[3] * d[3];
-                    h[1] = q[0] * d[1] + q[1] * d[0] + q[2] * d[3] - q[3] * d[2];
-                    h[2] = q[0] * d[2] - q[1] * d[3] + q[2] * d[0] + q[3] * d[1];
-                    h[3] = q[0] * d[3] + q[1] * d[2] - q[2] * d[1] + q[3] * d[0];
-                    constexpr std::size_t i = FORMAL_ESKF_PROOF_COEFFICIENT;
-                    __ESBMC_assert(preserved_scalar(values[i], h[i]),
-                                   "E-PRED: composition is OLD quaternion times normalized Exp increment");
-                }
-#endif
+                __ESBMC_assert(count == 0U, "E-PRED: each actual callee has one normalization");
+                __ESBMC_assume(count == 0U);
                 for (std::size_t i = 0U; i < 4U; ++i)
                 {
-                    if (count == 0U)
-                    {
-                        arguments[0U][i] = values[i];
-                    }
-                    else
-                    {
-                        arguments[1U][i] = values[i];
-                    }
+                    arguments[0U][i] = values[i];
                 }
             }
         }
@@ -216,27 +186,17 @@ struct NormObserver
     {
         if (active)
         {
-            __ESBMC_assert(count < 2U, "E-PRED: normalization observation is in bounds");
-            __ESBMC_assume(count < 2U);
-            if (count == 0U)
-            {
-                norms[0U] = value;
-            }
-            else
-            {
-                norms[1U] = value;
-            }
+            __ESBMC_assert(count == 0U, "E-PRED: normalization observation is in bounds");
+            __ESBMC_assume(count == 0U);
+            norms[0U] = value;
             ++count;
         }
     }
 
-    static void start(Scalar q0, Scalar q1, Scalar q2, Scalar q3)
+    static void start()
     {
         count = 0U;
-        initial_q[0] = q0;
-        initial_q[1] = q1;
-        initial_q[2] = q2;
-        initial_q[3] = q3;
+        division_count = 0U;
         active = true;
     }
 };
@@ -381,7 +341,55 @@ struct AttitudeContract
     }
 };
 
+// Exp is proved separately from its caller's Hamilton composition. The actual
+// Exp profiles discharge finite output on success and both frame conditions;
+// its branch/coefficient equations are not assumed by the caller.
+struct ExpContract
+{
+    inline static bool enabled = false;
+    inline static bool called = false;
+    inline static Quaternion result{};
+    inline static Status status{};
+    inline static Vector received_theta{};
+    inline static Scalar received_minimum{};
+
+    static void prepare(Quaternion const & candidate, Status candidate_status)
+    {
+        __ESBMC_assume(candidate_status != Status::success ||
+                       formal_eskf::linalg::all_finite(candidate.coefficients()));
+        result = candidate;
+        status = candidate_status;
+        enabled = true;
+        called = false;
+    }
+};
+
 } // namespace prediction_proof
+
+#if FORMAL_ESKF_PROOF_EXP_CONTRACT
+namespace formal_eskf::so3
+{
+template <>
+Status try_exp<prediction_proof::Linalg>(prediction_proof::Vector const & theta, prediction_proof::Scalar minimum,
+                                         prediction_proof::Quaternion & output) noexcept
+{
+    using namespace prediction_proof;
+    __ESBMC_assert(ExpContract::enabled && !ExpContract::called,
+                   "E-PRED Exp contract: caller initializes one delegated Exp call");
+    __ESBMC_assert(formal_eskf::linalg::all_finite(theta) && Math::is_finite(minimum) && minimum > Scalar{0} &&
+                       minimum <= Scalar{1},
+                   "E-PRED Exp contract: caller meets the actual Exp proof domain");
+    ExpContract::called = true;
+    ExpContract::received_theta = theta;
+    ExpContract::received_minimum = minimum;
+    if (ExpContract::status == Status::success)
+    {
+        output = ExpContract::result;
+    }
+    return ExpContract::status;
+}
+} // namespace formal_eskf::so3
+#endif
 
 #if FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT
 namespace formal_eskf::detail
@@ -396,18 +404,9 @@ Status try_predict_attitude<prediction_proof::Linalg>(prediction_proof::Quaterni
     __ESBMC_assert(AttitudeContract::enabled, "Runner error: attitude summary requires an explicit caller harness");
     __ESBMC_assert(!AttitudeContract::called, "E-PRED contract: caller delegates at most once");
     __ESBMC_assert(&q != &output, "E-PRED contract: caller supplies a distinct attitude candidate");
-    auto const coefficients = q.coefficients();
-    for (std::size_t i = 0U; i < 4U; ++i)
-    {
-        __ESBMC_assert(coefficients(i) >= Scalar{-1} && coefficients(i) <= Scalar{1},
-                       "E-PRED contract: caller meets the proved quaternion domain");
-    }
-    for (std::size_t i = 0U; i < 3U; ++i)
-    {
-        __ESBMC_assert(rate(i) >= Scalar{-2} && rate(i) <= Scalar{2},
-                       "E-PRED contract: caller meets the proved corrected-rate domain");
-    }
-    __ESBMC_assert(dt >= Scalar{0.0009765625} && dt <= Scalar{1} && minimum == Scalar{0.125},
+    // Actual helper profiles quantify over all IEEE quaternion/rate values.
+    __ESBMC_assert(Math::is_finite(dt) && dt > Scalar{0} && Math::is_finite(minimum) && minimum > Scalar{0} &&
+                       minimum <= Scalar{1},
                    "E-PRED contract: caller meets the proved time and normalization domain");
     AttitudeContract::called = true;
     AttitudeContract::received_q = q;
@@ -516,12 +515,37 @@ template <typename State> bool preserved_state(State const & a, State const & b)
     return same;
 }
 
+bool preserved_imu(Imu const & a, Imu const & b)
+{
+    return preserved_vector(a.angular_rate_b, b.angular_rate_b) &&
+           preserved_vector(a.specific_force_b, b.specific_force_b);
+}
+
+template <typename Parameters> bool preserved_parameters(Parameters const & a, Parameters const & b)
+{
+    bool same = preserved_scalar(a.dt_min, b.dt_min) && preserved_scalar(a.dt_max, b.dt_max) &&
+                preserved_scalar(a.minimum_quaternion_norm, b.minimum_quaternion_norm) &&
+                preserved_scalar(a.quaternion_squared_norm_tolerance, b.quaternion_squared_norm_tolerance) &&
+                preserved_vector(a.process_noise.angular_rate_variance, b.process_noise.angular_rate_variance);
+    if constexpr (requires { a.gravity_n; })
+    {
+        same = same && preserved_vector(a.gravity_n, b.gravity_n) &&
+               preserved_vector(a.process_noise.specific_force_variance, b.process_noise.specific_force_variance) &&
+               preserved_vector(a.process_noise.accelerometer_bias_random_walk_variance_density,
+                                b.process_noise.accelerometer_bias_random_walk_variance_density) &&
+               preserved_vector(a.process_noise.gyroscope_bias_random_walk_variance_density,
+                                b.process_noise.gyroscope_bias_random_walk_variance_density);
+    }
+    return same;
+}
+
 template <typename Parameters> Parameters valid_parameters()
 {
     Parameters parameters;
     parameters.dt_min = Scalar{0.0009765625};
     parameters.dt_max = Scalar{1};
     parameters.minimum_quaternion_norm = Scalar{0.125};
+    parameters.quaternion_squared_norm_tolerance = Scalar{0.125};
     return parameters;
 }
 
@@ -533,6 +557,76 @@ void assume_bounded(Vector const & v)
     }
 }
 
+void assume_prediction_parameters(Scalar dt, Scalar minimum_norm)
+{
+    __ESBMC_assume(Math::is_finite(dt) && dt > Scalar{0});
+    __ESBMC_assume(Math::is_finite(minimum_norm) && minimum_norm > Scalar{0} && minimum_norm <= Scalar{1});
+}
+
+template <typename Parameters> void assume_prediction_parameters(Scalar dt, Parameters const & parameters)
+{
+    assume_prediction_parameters(dt, parameters.minimum_quaternion_norm);
+    __ESBMC_assume(Math::is_finite(parameters.dt_min) && Math::is_finite(parameters.dt_max));
+    __ESBMC_assume(parameters.dt_min > Scalar{0} && parameters.dt_min <= dt && dt <= parameters.dt_max);
+}
+
+// Independent status oracle for the public prior check. No restriction on q or
+// tolerance, and no call back into the production validator. Its ordered sum
+// matches the declared proof backend; this is not a real-number error bound.
+Status prior_status(Quaternion const & q, Scalar tolerance)
+{
+    if (!Math::is_finite(tolerance))
+    {
+        return Status::non_finite_input;
+    }
+    if (!(tolerance > Scalar{0}) || !(tolerance < Scalar{1}))
+    {
+        return Status::domain_error;
+    }
+    bool finite = true;
+    Scalar norm_squared{0};
+    for (std::size_t i = 0U; i < 4U; ++i)
+    {
+        Scalar const coefficient = q.coefficients()(i);
+        finite = finite && Math::is_finite(coefficient);
+        norm_squared += coefficient * coefficient;
+    }
+    if (!finite)
+    {
+        return Status::non_finite_input;
+    }
+    if (!Math::is_finite(norm_squared))
+    {
+        return Status::non_finite_result;
+    }
+    return std::fabs(norm_squared - Scalar{1}) <= tolerance ? Status::success : Status::invalid_quaternion_norm;
+}
+
+// Interpret the actual normalization trace, without re-running its arithmetic
+// or assuming that it succeeded. All profiles retain these status obligations.
+template <std::size_t Stage> Status observed_normalization_status(Scalar minimum_norm)
+{
+    static_assert(Stage == 0U);
+    if (!Math::is_finite(NormObserver::norms[Stage]))
+    {
+        return Status::non_finite_result;
+    }
+    if (NormObserver::norms[Stage] < minimum_norm)
+    {
+        return Status::invalid_quaternion_norm;
+    }
+    __ESBMC_assert(NormObserver::division_count > Stage,
+                   "E-PRED: every accepted computed norm is followed by its coefficient divisions");
+    for (std::size_t i = 0U; i < 4U; ++i)
+    {
+        if (!Math::is_finite(NormObserver::divided[Stage][i]))
+        {
+            return Status::non_finite_result;
+        }
+    }
+    return Status::success;
+}
+
 } // namespace prediction_proof
 
 using namespace prediction_proof;
@@ -541,16 +635,10 @@ using namespace prediction_proof;
 // Both compile-time alias profiles are required. The opaque callee result may
 // be any finite quaternion on success and any IEEE values on failure.
 void verify_ahrs_attitude_contract(Quaternion q, Vector rate, Scalar dt, Quaternion next, Status next_status,
-                                   Ahrs::nominal_state_type separate)
+                                   Ahrs::parameter_type parameters, Ahrs::nominal_state_type separate)
 {
     __ESBMC_assert(FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT, "Runner error: AHRS caller requires the callee summary");
-    auto const coefficients = q.coefficients();
-    for (std::size_t i = 0U; i < 4U; ++i)
-    {
-        __ESBMC_assume(coefficients(i) >= Scalar{-1} && coefficients(i) <= Scalar{1});
-    }
-    assume_bounded(rate);
-    __ESBMC_assume(dt >= Scalar{0.0009765625} && dt <= Scalar{1});
+    assume_prediction_parameters(dt, parameters);
     AttitudeContract::prepare(next, next_status);
     Ahrs::nominal_state_type source;
     source.q_nb = q;
@@ -562,19 +650,28 @@ void verify_ahrs_attitude_contract(Quaternion q, Vector rate, Scalar dt, Quatern
     auto const before = destination;
     Imu imu;
     imu.angular_rate_b = rate;
-    auto parameters = valid_parameters<Ahrs::parameter_type>();
     for (std::size_t i = 0U; i < 3U; ++i)
     {
         imu.specific_force_b.set(i, ScalarBoundary::fresh());
         parameters.process_noise.angular_rate_variance.set(i, ScalarBoundary::fresh());
     }
+    auto const imu_before = imu;
+    auto const parameters_before = parameters;
+    auto const prior_result = prior_status(q, parameters.quaternion_squared_norm_tolerance);
     auto const status = formal_eskf::try_predict_nominal(source, imu, dt, parameters, destination);
-    __ESBMC_assert(AttitudeContract::called && status == next_status,
-                   "E-PRED: public AHRS delegates and propagates the callee status");
-    __ESBMC_assert(preserved_vector(AttitudeContract::received_q.coefficients(), q.coefficients()) &&
-                       preserved_vector(AttitudeContract::received_rate, rate) && AttitudeContract::received_dt == dt &&
-                       AttitudeContract::received_minimum == Scalar{0.125},
-                   "E-PRED: public AHRS forwards the old attitude, sampled body rate and time/norm parameters");
+    __ESBMC_assert(preserved_imu(imu, imu_before) && preserved_parameters(parameters, parameters_before),
+                   "E-PRED: public AHRS preserves its IMU and parameters on every return");
+    __ESBMC_assert(AttitudeContract::called == (prior_result == Status::success) &&
+                       status == (prior_result == Status::success ? next_status : prior_result),
+                   "E-PRED: public AHRS validates the prior before delegation and propagates the selected status");
+    if (prior_result == Status::success)
+    {
+        __ESBMC_assert(preserved_vector(AttitudeContract::received_q.coefficients(), q.coefficients()) &&
+                           preserved_vector(AttitudeContract::received_rate, rate) &&
+                           AttitudeContract::received_dt == dt &&
+                           AttitudeContract::received_minimum == parameters.minimum_quaternion_norm,
+                       "E-PRED: public AHRS forwards the old attitude, sampled body rate and time/norm parameters");
+    }
     __ESBMC_assert(status != Status::success || preserved_vector(destination.q_nb.coefficients(), next.coefficients()),
                    "E-PRED: public AHRS publishes the callee result without changing any coefficient");
     __ESBMC_assert(status == Status::success || preserved_state(destination, before),
@@ -658,11 +755,24 @@ void verify_prediction_parameters(Scalar dt, Scalar dt_min, Scalar dt_max, Scala
                    "E-PRED: invalid step interval is reported");
 }
 
+// All IEEE prior coefficients and tolerance values, including zero, boundary,
+// NaN/Inf and finite-input squared-norm overflow. No success premise.
+void verify_prediction_quaternion(Quaternion q, Scalar tolerance)
+{
+    auto const before = q;
+    auto const actual = formal_eskf::detail::validate_prediction_quaternion(q, tolerance);
+    __ESBMC_assert(actual == prior_status(q, tolerance),
+                   "E-PRED: prior acceptance iff the ordered IEEE squared-norm residual meets a valid tolerance");
+    __ESBMC_assert(preserved_vector(q.coefficients(), before.coefficients()),
+                   "E-PRED: prior validation never normalizes or modifies its input");
+}
+
 // Parameter rejection precedes state/IMU processing. Prior and output fields
 // are arbitrary IEEE values, not identity sentinels or assumed-valid states.
-void verify_prediction_parameter_rejection(Scalar dt, Scalar dt_min, Scalar dt_max, Scalar minimum_norm, bool alias,
-                                           Ins::nominal_state_type ins, Ahrs::nominal_state_type ahrs, Imu imu,
-                                           Ins::nominal_state_type oi, Ahrs::nominal_state_type oa)
+void verify_prediction_parameter_rejection(Scalar dt, Scalar dt_min, Scalar dt_max, Scalar minimum_norm,
+                                           Scalar tolerance, bool alias, Ins::nominal_state_type ins,
+                                           Ahrs::nominal_state_type ahrs, Imu imu, Ins::nominal_state_type oi,
+                                           Ahrs::nominal_state_type oa)
 {
     Status const expected = formal_eskf::detail::validate_prediction_parameters<Math>(dt, dt_min, dt_max, minimum_norm);
     __ESBMC_assume(expected != Status::success);
@@ -671,52 +781,64 @@ void verify_prediction_parameter_rejection(Scalar dt, Scalar dt_min, Scalar dt_m
     pi.dt_min = pa.dt_min = dt_min;
     pi.dt_max = pa.dt_max = dt_max;
     pi.minimum_quaternion_norm = pa.minimum_quaternion_norm = minimum_norm;
+    pi.quaternion_squared_norm_tolerance = pa.quaternion_squared_norm_tolerance = tolerance;
     auto const before_i = alias ? ins : oi;
     auto const before_a = alias ? ahrs : oa;
+    auto const ins_before = ins;
+    auto const ahrs_before = ahrs;
+    auto const imu_before = imu;
+    auto const pi_before = pi;
+    auto const pa_before = pa;
     Status const si = formal_eskf::try_predict_nominal(ins, imu, dt, pi, alias ? ins : oi);
     Status const sa = formal_eskf::try_predict_nominal(ahrs, imu, dt, pa, alias ? ahrs : oa);
     __ESBMC_assert(si == expected && sa == expected && preserved_state(alias ? ins : oi, before_i) &&
                        preserved_state(alias ? ahrs : oa, before_a),
                    "E-PRED: both public APIs preserve output on parameter rejection, including aliases");
+    __ESBMC_assert(preserved_state(ins, ins_before) && preserved_state(ahrs, ahrs_before) &&
+                       preserved_imu(imu, imu_before) && preserved_parameters(pi, pi_before) &&
+                       preserved_parameters(pa, pa_before),
+                   "E-PRED: early parameter rejection preserves every input and parameter");
 }
 
-// A symbolic non-finite value is placed in each consumed INS scalar field.
-void verify_ins_non_finite_input(Scalar invalid, unsigned field, bool alias, Ins::nominal_state_type output)
+// A symbolic non-finite value is placed in each consumed INS vector field;
+// all other input/output fields remain arbitrary, not zero fixtures.
+void verify_ins_non_finite_input(Scalar invalid, unsigned field, bool alias, Scalar dt, Ins::nominal_state_type state,
+                                 Imu imu, Ins::parameter_type parameters, Ins::nominal_state_type output)
 {
     __ESBMC_assume(!Math::is_finite(invalid));
     __ESBMC_assume(field < 21U);
-    Ins::nominal_state_type state;
-    Imu imu;
-    auto parameters = valid_parameters<Ins::parameter_type>();
+    assume_prediction_parameters(dt, parameters);
     Vector * fields[] = {&state.p_n,          &state.v_n,           &state.b_a, &state.b_g, &imu.specific_force_b,
                          &imu.angular_rate_b, &parameters.gravity_n};
     fields[field / 3U]->set(field % 3U, invalid);
     auto const before = alias ? state : output;
-    Status const status = formal_eskf::try_predict_nominal(state, imu, Scalar{0.5}, parameters, alias ? state : output);
-    __ESBMC_assert(status == Status::non_finite_input && preserved_state(alias ? state : output, before),
-                   "E-PRED: every non-finite consumed INS vector field is rejected atomically");
+    auto const state_before = state;
+    auto const imu_before = imu;
+    auto const parameters_before = parameters;
+    auto const prior_result = prior_status(state.q_nb, parameters.quaternion_squared_norm_tolerance);
+    Status const status = formal_eskf::try_predict_nominal(state, imu, dt, parameters, alias ? state : output);
+    __ESBMC_assert(status == (prior_result == Status::success ? Status::non_finite_input : prior_result) &&
+                       preserved_state(alias ? state : output, before),
+                   "E-PRED: prior rejection or every non-finite consumed INS vector field is reported atomically");
+    __ESBMC_assert(preserved_state(state, state_before) && preserved_imu(imu, imu_before) &&
+                       preserved_parameters(parameters, parameters_before),
+                   "E-PRED: rejection preserves all INS inputs and parameters");
 }
 
-// General bounded translation through the ACTUAL INS wrapper. Only its
+// Full finite-input translation through the ACTUAL INS wrapper. Only its
 // attitude helper uses the separately discharged summary; rotation, bias
 // subtraction, integration, validation and publishing all execute normally.
 void verify_ins_translation(Vector const position_n, Vector const velocity_n, Vector const bias_a, Vector const force_b,
                             Vector const gravity, Quaternion q, Vector const rate_b, Vector const bias_g, Scalar dt,
-                            Quaternion next, Status next_status, Ins::nominal_state_type output)
+                            Quaternion next, Status next_status, Ins::parameter_type parameters,
+                            Ins::nominal_state_type output)
 {
     __ESBMC_assert(FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT, "Runner error: INS caller requires the callee summary");
-    assume_bounded(position_n);
-    assume_bounded(velocity_n);
-    assume_bounded(bias_a);
-    assume_bounded(force_b);
-    assume_bounded(gravity);
-    assume_bounded(rate_b);
-    assume_bounded(bias_g);
-    __ESBMC_assume(q.q0() >= Scalar{-1} && q.q0() <= Scalar{1});
-    __ESBMC_assume(q.q1() >= Scalar{-1} && q.q1() <= Scalar{1});
-    __ESBMC_assume(q.q2() >= Scalar{-1} && q.q2() <= Scalar{1});
-    __ESBMC_assume(q.q3() >= Scalar{-1} && q.q3() <= Scalar{1});
-    __ESBMC_assume(dt >= Scalar{0.0009765625} && dt <= Scalar{1});
+    __ESBMC_assume(formal_eskf::linalg::all_finite(position_n) && formal_eskf::linalg::all_finite(velocity_n) &&
+                   formal_eskf::linalg::all_finite(bias_a) && formal_eskf::linalg::all_finite(force_b) &&
+                   formal_eskf::linalg::all_finite(gravity) && formal_eskf::linalg::all_finite(rate_b) &&
+                   formal_eskf::linalg::all_finite(bias_g));
+    assume_prediction_parameters(dt, parameters);
     AttitudeContract::prepare(next, next_status);
     Ins::nominal_state_type state;
     state.p_n = position_n;
@@ -724,7 +846,6 @@ void verify_ins_translation(Vector const position_n, Vector const velocity_n, Ve
     state.b_a = bias_a;
     Imu imu;
     imu.specific_force_b = force_b;
-    auto parameters = valid_parameters<Ins::parameter_type>();
     parameters.gravity_n = gravity;
     state.q_nb = q;
     state.b_g = bias_g;
@@ -761,13 +882,33 @@ void verify_ins_translation(Vector const position_n, Vector const velocity_n, Ve
     auto & result = output;
 #endif
     auto const before_output = result;
+    auto const imu_before = imu;
+    auto const parameters_before = parameters;
+    auto const prior_result = prior_status(q, parameters.quaternion_squared_norm_tolerance);
     Status const status = formal_eskf::try_predict_nominal(state, imu, dt, parameters, result);
-    __ESBMC_assert(AttitudeContract::called, "E-PRED: bounded INS inputs reach the attitude helper");
+    __ESBMC_assert(preserved_imu(imu, imu_before) && preserved_parameters(parameters, parameters_before),
+                   "E-PRED: public INS preserves its IMU and parameters on every return");
+    bool const finite_corrections =
+        formal_eskf::linalg::all_finite(force_b - bias_a) && formal_eskf::linalg::all_finite(rate_b - bias_g);
+    bool const delegates = prior_result == Status::success && finite_corrections;
+    __ESBMC_assert(AttitudeContract::called == delegates,
+                   "E-PRED: attitude is reached iff the prior is accepted and both bias subtractions stay finite");
+    if (!delegates)
+    {
+        __ESBMC_assert(status == (prior_result == Status::success ? Status::non_finite_result : prior_result) &&
+                           preserved_state(result, before_output),
+                       "E-PRED: prior rejection or bias-subtraction overflow never publishes output");
+#if !FORMAL_ESKF_PROOF_ALIAS
+        __ESBMC_assert(preserved_state(state, before), "E-PRED: early rejection preserves distinct input state");
+#endif
+        return;
+    }
     // This proved cut avoids rediscovering input validation in every later
     // output/status obligation. Its assertion remains part of the proof.
     __ESBMC_assume(AttitudeContract::called);
     __ESBMC_assert(preserved_vector(AttitudeContract::received_q.coefficients(), q.coefficients()) &&
-                       AttitudeContract::received_dt == dt && AttitudeContract::received_minimum == Scalar{0.125},
+                       AttitudeContract::received_dt == dt &&
+                       AttitudeContract::received_minimum == parameters.minimum_quaternion_norm,
                    "E-PRED: INS delegates the old attitude and unchanged time/norm parameters");
     for (std::size_t j = 0U; j < 3U; ++j)
     {
@@ -898,10 +1039,12 @@ void verify_prediction_attitude_non_finite(Quaternion q, Vector rate, bool alias
     auto const pa = valid_parameters<Ahrs::parameter_type>();
     auto const before_i = alias ? ins : oi;
     auto const before_a = alias ? ahrs : oa;
+    auto const prior_result = prior_status(q, pi.quaternion_squared_norm_tolerance);
     auto const si = formal_eskf::try_predict_nominal(ins, imu, Scalar{0.5}, pi, alias ? ins : oi);
     auto const sa = formal_eskf::try_predict_nominal(ahrs, imu, Scalar{0.5}, pa, alias ? ahrs : oa);
-    __ESBMC_assert(si == Status::non_finite_input && sa == Status::non_finite_input &&
-                       preserved_state(alias ? ins : oi, before_i) && preserved_state(alias ? ahrs : oa, before_a),
+    auto const expected = prior_result == Status::success ? Status::non_finite_input : prior_result;
+    __ESBMC_assert(si == expected && sa == expected && preserved_state(alias ? ins : oi, before_i) &&
+                       preserved_state(alias ? ahrs : oa, before_a),
                    "E-PRED: public attitude/rate rejection preserves every output field, including aliases");
 }
 
@@ -943,6 +1086,7 @@ void verify_ahrs_zero_rate(Imu imu, Ahrs::parameter_type parameters, Scalar dt, 
     parameters.dt_min = Scalar{0.0009765625};
     parameters.dt_max = Scalar{1};
     parameters.minimum_quaternion_norm = Scalar{0.125};
+    parameters.quaternion_squared_norm_tolerance = Scalar{0.125};
     imu.angular_rate_b = Vector::zero();
     Ahrs::nominal_state_type state;
     Ahrs::nominal_state_type output;
@@ -971,25 +1115,17 @@ void verify_ins_gyro_bias(Vector bias, Scalar dt)
                    "E-PRED: all gyro-bias components are subtracted, not added or omitted");
 }
 
-// Arbitrary finite q coefficients in [-1,1], corrected rates in [-2,2], and
-// arbitrary initial output (including NaN/Inf). This is a coefficient and
+// Arbitrary IEEE quaternion/rate coefficients and initial output, with every
+// positive finite dt and public normalization threshold. This is a coefficient and
 // status correspondence claim, not a premise that every q here is unit.
 // Independent numerator equations correspond to eulerCandidate_coefficients.
 // A passive observer records the actual norm input/result, not a model return.
-void verify_attitude_euler(Quaternion q, Vector sample, Scalar dt, Quaternion output)
+void verify_attitude_euler(Quaternion q, Vector sample, Scalar dt, Scalar minimum_norm, Quaternion output)
 {
 #if ESKF_QUAT_APPROX
     __ESBMC_assert(!FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT, "Runner error: Euler proof must execute the REAL helper");
-    __ESBMC_assume(q.q0() >= Scalar{-1} && q.q0() <= Scalar{1});
-    __ESBMC_assume(q.q1() >= Scalar{-1} && q.q1() <= Scalar{1});
-    __ESBMC_assume(q.q2() >= Scalar{-1} && q.q2() <= Scalar{1});
-    __ESBMC_assume(q.q3() >= Scalar{-1} && q.q3() <= Scalar{1});
-    for (std::size_t j = 0U; j < 3U; ++j)
-    {
-        __ESBMC_assume(sample(j) >= Scalar{-2} && sample(j) <= Scalar{2});
-    }
+    assume_prediction_parameters(dt, minimum_norm);
     auto const rate = sample;
-    __ESBMC_assume(dt >= Scalar{0.0009765625} && dt <= Scalar{1});
     Scalar const x = (rate(0U) * dt) * Scalar{0.5};
     Scalar const y = (rate(1U) * dt) * Scalar{0.5};
     Scalar const z = (rate(2U) * dt) * Scalar{0.5};
@@ -1001,8 +1137,36 @@ void verify_attitude_euler(Quaternion q, Vector sample, Scalar dt, Quaternion ou
     auto const before = output;
     auto const q_before = q;
     auto const rate_before = sample;
-    NormObserver::start(q.q0(), q.q1(), q.q2(), q.q3());
-    Status const status = formal_eskf::detail::try_predict_attitude(q, sample, dt, Scalar{0.125}, output);
+    NormObserver::start();
+    Status const status = formal_eskf::detail::try_predict_attitude(q, sample, dt, minimum_norm, output);
+    Status expected_status;
+    if (!formal_eskf::linalg::all_finite(q.coefficients()) || !formal_eskf::linalg::all_finite(sample))
+    {
+        expected_status = Status::non_finite_input;
+    }
+    else
+    {
+        bool finite_candidate = true;
+        for (std::size_t j = 0U; j < 3U; ++j)
+        {
+            finite_candidate = finite_candidate && Math::is_finite(rate(j) * dt);
+        }
+        for (std::size_t j = 0U; j < 4U; ++j)
+        {
+            finite_candidate = finite_candidate && Math::is_finite(expected[j]);
+        }
+        if (!finite_candidate)
+        {
+            expected_status = Status::non_finite_result;
+        }
+        else
+        {
+            __ESBMC_assert(NormObserver::count == 1U, "E-PRED: a finite Euler candidate reaches normalization");
+            expected_status = observed_normalization_status<0U>(minimum_norm);
+        }
+    }
+    __ESBMC_assert(status == expected_status,
+                   "E-PRED: Euler reports the exact input, arithmetic, norm-threshold or division outcome");
     __ESBMC_assert(preserved_vector(q.coefficients(), q_before.coefficients()) && preserved_vector(sample, rate_before),
                    "E-PRED: the attitude helper preserves both distinct input objects");
     __ESBMC_assert(status != Status::success || formal_eskf::linalg::all_finite(output.coefficients()),
@@ -1031,52 +1195,137 @@ void verify_attitude_euler(Quaternion q, Vector sample, Scalar dt, Quaternion ou
     (void)q;
     (void)sample;
     (void)dt;
+    (void)minimum_norm;
     (void)output;
     __ESBMC_assert(false, "Runner error: Euler harness must only run with ESKF_QUAT_APPROX=1");
 #endif
 }
 
-// General Exp/Taylor branch and Hamilton-composition correspondence. This is
-// NOT a second Exp implementation used to generate a reference answer: it
-// checks independently stated scalar equations against the SAME call's trace.
-void verify_attitude_exp_general(Quaternion const q, Vector const sample, Scalar dt, Quaternion output)
+// Actual attitude helper with only Exp summarized. Quaternion multiplication,
+// normalization, status propagation and publishing remain production C++.
+// Every summary premise is discharged by verify_exp_general, not by a fixture.
+void verify_attitude_exp_general(Quaternion const q, Vector const sample, Scalar dt, Scalar minimum_norm,
+                                 Quaternion increment, Status exp_status, Quaternion output)
 {
-#if !ESKF_QUAT_APPROX && FORMAL_ESKF_PROOF_SCALAR_BOUNDARY
+#if !ESKF_QUAT_APPROX && FORMAL_ESKF_PROOF_EXP_CONTRACT
     __ESBMC_assert(!FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT, "Runner error: Exp proof must execute the REAL helper");
-    __ESBMC_assume(q.q0() >= Scalar{-1} && q.q0() <= Scalar{1});
-    __ESBMC_assume(q.q1() >= Scalar{-1} && q.q1() <= Scalar{1});
-    __ESBMC_assume(q.q2() >= Scalar{-1} && q.q2() <= Scalar{1});
-    __ESBMC_assume(q.q3() >= Scalar{-1} && q.q3() <= Scalar{1});
+    assume_prediction_parameters(dt, minimum_norm);
+    ExpContract::prepare(increment, exp_status);
+    Vector theta;
     for (std::size_t j = 0U; j < 3U; ++j)
     {
-        __ESBMC_assume(sample(j) >= Scalar{-2} && sample(j) <= Scalar{2});
+        theta.set(j, sample(j) * dt);
     }
-    auto const rate = sample;
-    __ESBMC_assume(dt >= Scalar{0.0009765625} && dt <= Scalar{1});
-    Scalars<3U> theta;
-    Scalar theta_squared{0};
-    for (std::size_t j = 0U; j < 3U; ++j)
-    {
-        theta[j] = rate(j) * dt;
-        theta_squared += theta[j] * theta[j];
-    }
-#if FORMAL_ESKF_PROOF_TAYLOR
-    __ESBMC_assume(theta_squared <= std::numeric_limits<Scalar>::epsilon());
-#else
-    __ESBMC_assume(theta_squared > std::numeric_limits<Scalar>::epsilon());
-#endif
+    Scalars<4U> expected;
+    expected[0] = q.q0() * increment.q0() - q.q1() * increment.q1() - q.q2() * increment.q2() - q.q3() * increment.q3();
+    expected[1] = q.q0() * increment.q1() + q.q1() * increment.q0() + q.q2() * increment.q3() - q.q3() * increment.q2();
+    expected[2] = q.q0() * increment.q2() - q.q1() * increment.q3() + q.q2() * increment.q0() + q.q3() * increment.q1();
+    expected[3] = q.q0() * increment.q3() + q.q1() * increment.q2() - q.q2() * increment.q1() + q.q3() * increment.q0();
     auto const before = output;
     auto const q_before = q;
     auto const rate_before = sample;
-    NormObserver::start(q.q0(), q.q1(), q.q2(), q.q3());
-    auto const status = formal_eskf::detail::try_predict_attitude(q, sample, dt, Scalar{0.125}, output);
+    NormObserver::start();
+    auto const status = formal_eskf::detail::try_predict_attitude(q, sample, dt, minimum_norm, output);
+    Status expected_status;
+    bool const finite_inputs =
+        formal_eskf::linalg::all_finite(q.coefficients()) && formal_eskf::linalg::all_finite(sample);
+    bool const finite_theta = formal_eskf::linalg::all_finite(theta);
+    __ESBMC_assert(ExpContract::called == (finite_inputs && finite_theta),
+                   "E-PRED: Exp is reached exactly after finite input and increment checks");
+    if (!finite_inputs)
+    {
+        expected_status = Status::non_finite_input;
+    }
+    else if (!finite_theta)
+    {
+        expected_status = Status::non_finite_result;
+    }
+    else
+    {
+        __ESBMC_assert(preserved_vector(ExpContract::received_theta, theta) &&
+                           ExpContract::received_minimum == minimum_norm,
+                       "E-PRED: Exp consumes sampled body rate times dt and the unchanged threshold");
+        expected_status = exp_status;
+        if (exp_status == Status::success)
+        {
+            bool finite_candidate = true;
+            for (std::size_t j = 0U; j < 4U; ++j)
+            {
+                finite_candidate = finite_candidate && Math::is_finite(expected[j]);
+            }
+            __ESBMC_assert(NormObserver::count == (finite_candidate ? 1U : 0U),
+                           "E-PRED: composition normalizes exactly when its Hamilton candidate is finite");
+            expected_status =
+                finite_candidate ? observed_normalization_status<0U>(minimum_norm) : Status::non_finite_result;
+        }
+    }
+    __ESBMC_assert(status == expected_status,
+                   "E-PRED: attitude propagates Exp failure or the exact composition outcome");
     __ESBMC_assert(preserved_vector(q.coefficients(), q_before.coefficients()) && preserved_vector(sample, rate_before),
                    "E-PRED: the attitude helper preserves both distinct input objects");
     __ESBMC_assert(status != Status::success || formal_eskf::linalg::all_finite(output.coefficients()),
                    "E-PRED: successful Exp prediction has finite output coefficients");
     constexpr std::size_t i = FORMAL_ESKF_PROOF_COEFFICIENT;
     static_assert(i < 4U);
-    if (NormObserver::count != 0U)
+    if (NormObserver::count == 1U)
+    {
+        __ESBMC_assert(preserved_scalar(NormObserver::arguments[0][i], expected[i]),
+                       "E-PRED: composition normalizes OLD quaternion times the unchanged Exp result");
+        if (status == Status::success)
+        {
+            __ESBMC_assert(preserved_scalar(output.coefficients()(i), expected[i] / NormObserver::norms[0]),
+                           "E-PRED: attitude publishes the checked normalized Hamilton coefficient");
+        }
+    }
+    __ESBMC_assert(status != Status::success || NormObserver::count == 1U,
+                   "E-PRED: successful Exp attitude completes its composition normalization");
+    __ESBMC_assert(status == Status::success || preserved_vector(output.coefficients(), before.coefficients()),
+                   "E-PRED: every failed Exp attitude preserves the output");
+#else
+    (void)q;
+    (void)sample;
+    (void)dt;
+    (void)minimum_norm;
+    (void)increment;
+    (void)exp_status;
+    (void)output;
+    __ESBMC_assert(false, "Runner error: general Exp attitude requires the Exp callee summary");
+#endif
+}
+
+// Actual Exp body: all IEEE rotation vectors, every public norm threshold and
+// arbitrary old output. Taylor and its full complement partition this domain.
+// Observations compare branch equations against this same production call.
+void verify_exp_general(Vector const theta, Scalar minimum_norm, Quaternion output)
+{
+#if !ESKF_QUAT_APPROX && FORMAL_ESKF_PROOF_SCALAR_BOUNDARY
+    __ESBMC_assert(!FORMAL_ESKF_PROOF_EXP_CONTRACT, "Runner error: Exp callee proof must execute the REAL Exp body");
+    __ESBMC_assume(Math::is_finite(minimum_norm) && minimum_norm > Scalar{0} && minimum_norm <= Scalar{1});
+    Scalar theta_squared{0};
+    for (std::size_t j = 0U; j < 3U; ++j)
+    {
+        theta_squared += theta(j) * theta(j);
+    }
+#if FORMAL_ESKF_PROOF_TAYLOR
+    __ESBMC_assume(theta_squared <= std::numeric_limits<Scalar>::epsilon());
+#else
+    __ESBMC_assume(!(theta_squared <= std::numeric_limits<Scalar>::epsilon()));
+#endif
+    auto const before = output;
+    auto const theta_before = theta;
+    NormObserver::start();
+    auto const status = formal_eskf::so3::try_exp(theta, minimum_norm, output);
+    Status const expected_status = !formal_eskf::linalg::all_finite(theta) ? Status::non_finite_input
+                                   : NormObserver::count == 0U             ? Status::non_finite_result
+                                                               : observed_normalization_status<0U>(minimum_norm);
+    __ESBMC_assert(status == expected_status,
+                   "E-PRED: actual Exp reports the input, arithmetic, norm-threshold or division outcome");
+    __ESBMC_assert(preserved_vector(theta, theta_before), "E-PRED: actual Exp preserves its distinct input");
+    __ESBMC_assert(status != Status::success || formal_eskf::linalg::all_finite(output.coefficients()),
+                   "E-PRED: actual Exp discharges the finite-success postcondition used by its caller");
+    constexpr std::size_t i = FORMAL_ESKF_PROOF_COEFFICIENT;
+    static_assert(i < 4U);
+    if (NormObserver::count == 1U)
     {
         Scalar scalar_part;
         Scalar scale;
@@ -1104,30 +1353,25 @@ void verify_attitude_exp_general(Quaternion const q, Vector const sample, Scalar
         }
         else
         {
-            expected_increment = scale * theta[i - 1U];
+            expected_increment = scale * theta(i - 1U);
         }
         __ESBMC_assert(preserved_scalar(NormObserver::arguments[0][i], expected_increment),
                        "E-PRED: Exp normalization receives the specified scalar/vector branch coefficient");
-    }
-    if (NormObserver::count == 2U)
-    {
         if (status == Status::success)
         {
-            auto const coefficients = output.coefficients();
-            __ESBMC_assert(preserved_scalar(coefficients(i), NormObserver::divided[1][i]),
-                           "E-PRED: Exp prediction publishes the checked normalized Hamilton coefficient");
+            __ESBMC_assert(preserved_scalar(output.coefficients()(i), expected_increment / NormObserver::norms[0]),
+                           "E-PRED: actual Exp publishes its branch coefficient divided by the computed norm");
         }
     }
-    __ESBMC_assert(status != Status::success || NormObserver::count == 2U,
-                   "E-PRED: successful Exp prediction completes both normalization stages");
+    __ESBMC_assert(status != Status::success || NormObserver::count == 1U,
+                   "E-PRED: successful actual Exp completes one normalization");
     __ESBMC_assert(status == Status::success || preserved_vector(output.coefficients(), before.coefficients()),
-                   "E-PRED: every failed Exp branch preserves the output");
+                   "E-PRED: actual Exp discharges unchanged output on every failure");
 #else
-    (void)q;
-    (void)sample;
-    (void)dt;
+    (void)theta;
+    (void)minimum_norm;
     (void)output;
-    __ESBMC_assert(false, "Runner error: general Exp requires scalar-boundary Exp profile");
+    __ESBMC_assert(false, "Runner error: actual Exp requires scalar-boundary Exp profile");
 #endif
 }
 

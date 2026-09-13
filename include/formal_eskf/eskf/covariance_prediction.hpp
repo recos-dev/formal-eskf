@@ -129,6 +129,8 @@ template <typename Linalg>
  * injection are omitted. Bias coupling remains first order even in Exp mode.
  * Covariance preconditions and failure behavior follow the AHRS overload.
  * Position, velocity, and gravity are not consumed by this operation.
+ * The consumed prior attitude is checked against quaternion_squared_norm_tolerance,
+ * as in nominal prediction. AHRS covariance consumes neither field.
  */
 template <typename Linalg>
 [[nodiscard]] Status try_predict_covariance(configuration::Ins::NominalState<Linalg> const & state,
@@ -145,6 +147,12 @@ template <typename Linalg>
     if (!succeeded(parameter_status))
     {
         return parameter_status;
+    }
+    Status const quaternion_status =
+        detail::validate_prediction_quaternion(state.q_nb, parameters.quaternion_squared_norm_tolerance);
+    if (!succeeded(quaternion_status))
+    {
+        return quaternion_status;
     }
     if (!linalg::all_finite(covariance) || !linalg::all_finite(state.q_nb.coefficients()) ||
         !linalg::all_finite(state.b_a) || !linalg::all_finite(state.b_g) || !linalg::all_finite(imu.specific_force_b) ||

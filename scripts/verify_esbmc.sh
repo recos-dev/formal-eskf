@@ -180,6 +180,7 @@ run_prediction_suite()
         verify verify_state_unpack --proof-unwind 129 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
         verify verify_storage_copy --proof-unwind 129 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
         verify verify_prediction_parameters --proof-unwind "${PREDICTION_UNWIND}" -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        verify verify_prediction_quaternion --proof-unwind "${PREDICTION_UNWIND}" -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" --cvc5
         PROFILE="scalar-contract-binary$((32 + 32 * BINARY64))-actual-ieee"
         verify verify_sqrt_envelope --proof-unwind "${PREDICTION_UNWIND}" -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
         verify verify_sqrt_squared_envelope --proof-unwind "${PREDICTION_UNWIND}" -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
@@ -195,7 +196,13 @@ run_prediction_suite()
             for FUNCTION_NAME in verify_prediction_parameter_rejection verify_ins_non_finite_input \
                 verify_attitude_non_finite verify_prediction_attitude_non_finite \
                 verify_ahrs_zero_rate verify_ins_gyro_bias verify_attitude_norm_failure; do
-                verify "${FUNCTION_NAME}" --proof-unwind "${PREDICTION_UNWIND}" "${PROFILE_ARGUMENTS[@]}"
+                if [[ "${FUNCTION_NAME}" == verify_prediction_attitude_non_finite ]]; then
+                    # CVC5 prunes the checked-prior/non-finite-rate paths without
+                    # Bitwuzla's binary64 symex timeout; the domain is unchanged.
+                    verify "${FUNCTION_NAME}" --proof-unwind "${PREDICTION_UNWIND}" "${PROFILE_ARGUMENTS[@]}" --cvc5
+                else
+                    verify "${FUNCTION_NAME}" --proof-unwind "${PREDICTION_UNWIND}" "${PROFILE_ARGUMENTS[@]}"
+                fi
             done
             # Z3 prunes the concrete boundary fixture without Bitwuzla's
             # symex memory exhaustion. The obligations are unchanged.
@@ -215,7 +222,7 @@ run_prediction_suite()
                 PROFILE="${BASE_PROFILE}-taylor"
                 verify verify_attitude_exp --proof-unwind "${PREDICTION_UNWIND}" "${PROFILE_ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_TAYLOR=1
             fi
-            BASE_PROFILE="prediction-binary$((32 + 32 * BINARY64))-approx${APPROX}-scalar-contract"
+            BASE_PROFILE="prediction-binary$((32 + 32 * BINARY64))-approx${APPROX}-scalar-contract-full-domain"
             # Actual helper queries use CVC5 with the checked root envelope.
             # INS callers have a different bit-vector query shape: Bitwuzla
             # avoids CVC5's memory exhaustion without changing any obligation.
@@ -236,16 +243,26 @@ run_prediction_suite()
                     --proof-timeout "${TIME_LIMIT}" --proof-memory "${MEMORY_LIMIT}" "${PROFILE_ARGUMENTS[@]}" \
                     -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" -D FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT=1 --cvc5
             done
-            # Actual helper, with NO attitude summary: all four coefficients,
-            # both exhaustive Exp branches, rates in [-2,2] and arbitrary old
-            # output. Every caller summary depends on these callee proofs.
+            # Full-domain helper proofs: arbitrary IEEE q/rates/output and all
+            # positive finite time/threshold parameters accepted by prediction.
+            # Exp and its composition caller are separate obligations. Every
+            # summary depends on the matching actual-callee coefficient proofs.
             for COEFFICIENT in 0 1 2 3; do
+                PROFILE="${BASE_PROFILE}-actual-helper-coefficient${COEFFICIENT}"
+                if [[ "${APPROX}" == 1 ]]; then
+                    verify verify_attitude_euler --proof-unwind "${PREDICTION_UNWIND}" \
+                        --proof-timeout "${TIME_LIMIT}" --proof-memory "${MEMORY_LIMIT}" "${PROFILE_ARGUMENTS[@]}" \
+                        -D "FORMAL_ESKF_PROOF_COEFFICIENT=${COEFFICIENT}" --cvc5
+                    continue
+                fi
+                PROFILE="${BASE_PROFILE}-exp-summary-helper-coefficient${COEFFICIENT}"
+                verify verify_attitude_exp_general --proof-unwind "${PREDICTION_UNWIND}" \
+                    --proof-timeout "${TIME_LIMIT}" --proof-memory "${MEMORY_LIMIT}" "${PROFILE_ARGUMENTS[@]}" \
+                    -D "FORMAL_ESKF_PROOF_COEFFICIENT=${COEFFICIENT}" -D FORMAL_ESKF_PROOF_EXP_CONTRACT=1 \
+                    --bitwuzla --multi-property
                 for TAYLOR in 0 1; do
-                    [[ "${APPROX}" == 0 || "${TAYLOR}" == 0 ]] || continue
-                    PROFILE="${BASE_PROFILE}-actual-helper-coefficient${COEFFICIENT}-taylor${TAYLOR}"
-                    FUNCTION_NAME=verify_attitude_exp_general
-                    [[ "${APPROX}" == 0 ]] || FUNCTION_NAME=verify_attitude_euler
-                    verify "${FUNCTION_NAME}" --proof-unwind "${PREDICTION_UNWIND}" \
+                    PROFILE="${BASE_PROFILE}-actual-exp-coefficient${COEFFICIENT}-taylor${TAYLOR}"
+                    verify verify_exp_general --proof-unwind "${PREDICTION_UNWIND}" \
                         --proof-timeout "${TIME_LIMIT}" --proof-memory "${MEMORY_LIMIT}" "${PROFILE_ARGUMENTS[@]}" \
                         -D "FORMAL_ESKF_PROOF_COEFFICIENT=${COEFFICIENT}" -D "FORMAL_ESKF_PROOF_TAYLOR=${TAYLOR}" --cvc5
                 done

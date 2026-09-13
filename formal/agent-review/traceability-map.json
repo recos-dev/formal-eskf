@@ -925,17 +925,29 @@
           },
           {
             "file": "include/formal_eskf/eskf/prediction.hpp",
+            "symbol": "validate_prediction_quaternion"
+          },
+          {
+            "file": "include/formal_eskf/eskf/prediction.hpp",
             "symbol": "try_predict_attitude"
           },
           {
             "file": "include/formal_eskf/eskf/prediction.hpp",
             "symbol": "try_predict_nominal"
+          },
+          {
+            "file": "include/formal_eskf/so3/rotation_vector.hpp",
+            "symbol": "Status try_exp"
           }
         ],
         "esbmc": [
           {
             "file": "formal/cpp/esbmc/prediction.cpp",
             "symbol": "verify_prediction_parameters"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "verify_prediction_quaternion"
           },
           {
             "file": "formal/cpp/esbmc/prediction.cpp",
@@ -1000,6 +1012,10 @@
           {
             "file": "formal/cpp/esbmc/prediction.cpp",
             "symbol": "verify_attitude_exp_general"
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "void verify_exp_general"
           },
           {
             "file": "formal/cpp/esbmc/prediction.cpp",

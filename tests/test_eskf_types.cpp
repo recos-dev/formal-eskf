@@ -113,14 +113,18 @@ void test_imu_and_configuration(TestContext & test, std::string_view profile, ty
     process_noise_type const noise{noise_vector, noise_vector, noise_vector, noise_vector};
 
     constexpr value_type gravity_values[3] = {0, 0, 10};
-    configuration_type const configuration{vector3_type::from_row_major(gravity_values), noise,
-                                           static_cast<value_type>(1.0e-6), static_cast<value_type>(1.0e-4),
-                                           static_cast<value_type>(1.0e-1)};
+    configuration_type const configuration{vector3_type::from_row_major(gravity_values),
+                                           noise,
+                                           static_cast<value_type>(1.0e-6),
+                                           static_cast<value_type>(1.0e-4),
+                                           static_cast<value_type>(1.0e-1),
+                                           static_cast<value_type>(1.0e-5)};
 
     static_assert(types::process_noise_dimension == 12U);
     test.expect(configuration.gravity_n(2U) == value_type{10} &&
                     vector_near(configuration.process_noise.specific_force_variance, noise_vector, tolerance) &&
                     configuration.minimum_quaternion_norm > value_type{0} &&
+                    configuration.quaternion_squared_norm_tolerance == static_cast<value_type>(1.0e-5) &&
                     configuration.dt_min < configuration.dt_max,
                 profile, "configuration preserves physical and numerical parameters");
 }
@@ -162,9 +166,11 @@ void test_ahrs_types(TestContext & test, std::string_view profile, typename Lina
     typename types::parameter_type const parameters{{noise_vector},
                                                     static_cast<value_type>(1.0e-6),
                                                     static_cast<value_type>(1.0e-4),
-                                                    static_cast<value_type>(1.0e-1)};
+                                                    static_cast<value_type>(1.0e-1),
+                                                    static_cast<value_type>(1.0e-5)};
     test.expect(vector_near(parameters.process_noise.angular_rate_variance, noise_vector, tolerance) &&
-                    parameters.minimum_quaternion_norm > value_type{0} && parameters.dt_min < parameters.dt_max,
+                    parameters.minimum_quaternion_norm > value_type{0} && parameters.dt_min < parameters.dt_max &&
+                    parameters.quaternion_squared_norm_tolerance == static_cast<value_type>(1.0e-5),
                 profile, "AHRS parameters contain angular-rate process noise and time bounds");
 }
 

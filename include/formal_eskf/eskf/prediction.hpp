@@ -57,6 +57,38 @@ template <typename Math>
     return Status::success;
 }
 
+/** Check the prior without normalizing or otherwise modifying it. */
+template <typename Linalg>
+[[nodiscard]] Status validate_prediction_quaternion(so3::UnitQuaternion<Linalg> const & q_nb,
+                                                    typename Linalg::value_type tolerance) noexcept
+{
+    using value_type = typename Linalg::value_type;
+    using scalar_math_type = typename Linalg::scalar_math_type;
+
+    if (!scalar::is_finite<scalar_math_type>(tolerance))
+    {
+        return Status::non_finite_input;
+    }
+    if (!(tolerance > value_type{0}) || !(tolerance < value_type{1}))
+    {
+        return Status::domain_error;
+    }
+    if (!linalg::all_finite(q_nb.coefficients()))
+    {
+        return Status::non_finite_input;
+    }
+    value_type const norm_squared = linalg::squared_norm(q_nb.coefficients());
+    if (!scalar::is_finite<scalar_math_type>(norm_squared))
+    {
+        return Status::non_finite_result;
+    }
+    if (scalar::absolute<scalar_math_type>(norm_squared - value_type{1}) > tolerance)
+    {
+        return Status::invalid_quaternion_norm;
+    }
+    return Status::success;
+}
+
 template <typename Linalg>
 [[nodiscard]] Status try_predict_attitude(so3::UnitQuaternion<Linalg> const & q_nb,
                                           typename Linalg::template vector_type<3U> const & angular_rate_b,
@@ -125,6 +157,10 @@ template <typename Linalg>
  * Requires finite consumed inputs, 0 < dt_min <= dt_max, dt in the inclusive
  * interval [dt_min, dt_max], and 0 < minimum_quaternion_norm <= 1. Invalid
  * parameters return domain_error; an invalid interval step returns out_of_range.
+ * After those checks, validate the prior against quaternion_squared_norm_tolerance:
+ * a finite tolerance in (0,1), and abs(squared_norm(q_nb) - 1) <= tolerance.
+ * This is a checked floating-point residual, not exact unit norm. The prior is
+ * never repaired; minimum_quaternion_norm only guards normalization candidates.
  * Output may alias state and remains unchanged on failure.
  */
 template <typename Linalg>
@@ -138,6 +174,13 @@ template <typename Linalg>
     if (!succeeded(parameter_status))
     {
         return parameter_status;
+    }
+
+    Status const quaternion_status =
+        detail::validate_prediction_quaternion(state.q_nb, parameters.quaternion_squared_norm_tolerance);
+    if (!succeeded(quaternion_status))
+    {
+        return quaternion_status;
     }
 
     auto candidate = state;
@@ -180,6 +223,12 @@ template <typename Linalg>
     if (!succeeded(parameter_status))
     {
         return parameter_status;
+    }
+    Status const quaternion_status =
+        detail::validate_prediction_quaternion(state.q_nb, parameters.quaternion_squared_norm_tolerance);
+    if (!succeeded(quaternion_status))
+    {
+        return quaternion_status;
     }
     if (!linalg::all_finite(state.p_n) || !linalg::all_finite(state.v_n) || !linalg::all_finite(state.b_a) ||
         !linalg::all_finite(state.b_g) || !linalg::all_finite(imu.specific_force_b) ||

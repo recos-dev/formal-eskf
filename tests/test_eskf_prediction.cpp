@@ -59,6 +59,7 @@ template <typename Linalg, typename Configuration> struct NominalPredictionFixtu
     NominalPredictionFixture()
     {
         parameters.minimum_quaternion_norm = static_cast<value_type>(1.0e-6);
+        parameters.quaternion_squared_norm_tolerance = value_type{32} * std::numeric_limits<value_type>::epsilon();
         parameters.dt_min = static_cast<value_type>(0.001);
         parameters.dt_max = value_type{1};
         if constexpr (std::is_same_v<Configuration, formal_eskf::configuration::Ins>)
@@ -338,6 +339,95 @@ void test_prediction_validation(TestContext & test, std::string_view profile)
     }
 }
 
+template <typename Linalg, typename Configuration>
+void test_prior_validation(TestContext & test, std::string_view profile)
+{
+    using value_type = typename Linalg::value_type;
+    using quaternion_type = formal_eskf::so3::UnitQuaternion<Linalg>;
+    NominalPredictionFixture<Linalg, Configuration> fixture;
+    // Squaring the smaller component underflows to zero. This constructs an
+    // exactly [1, 1/2, 0, 0] non-unit value through the PUBLIC constructor,
+    // without private-member access or assuming that the type enforces a bound.
+    int const exponent = (std::numeric_limits<value_type>::min_exponent - std::numeric_limits<value_type>::digits) / 2;
+    value_type const tiny = std::ldexp(value_type{1}, exponent);
+    quaternion_type non_unit;
+    auto const construction = quaternion_type::try_from_coefficients(
+        tiny, tiny * value_type{0.5}, value_type{0}, value_type{0}, std::numeric_limits<value_type>::min(), non_unit);
+    test.expect(construction == Status::success && non_unit.q0() == value_type{1} && non_unit.q1() == value_type{0.5},
+                profile, "public construction exposes a non-unit IEEE fixture");
+
+    for (auto const & q : {non_unit, -non_unit})
+    {
+        auto prior = fixture.state;
+        prior.q_nb = q;
+        for (bool alias : {false, true})
+        {
+            auto state = prior;
+            auto separate = fixture.state;
+            separate.q_nb = -separate.q_nb;
+            auto & output = alias ? state : separate;
+            auto const before = output;
+            auto const status = try_predict_nominal(state, fixture.imu, value_type{0.5}, fixture.parameters, output);
+            test.expect(status == Status::invalid_quaternion_norm && same_state(output, before) &&
+                            same_state(state, prior),
+                        profile, "non-unit priors of either sign are rejected atomically");
+        }
+    }
+
+    for (value_type bound : {value_type{0}, value_type{-1}, value_type{1}, value_type{2},
+                             std::numeric_limits<value_type>::infinity(), std::numeric_limits<value_type>::quiet_NaN()})
+    {
+        auto parameters = fixture.parameters;
+        parameters.quaternion_squared_norm_tolerance = bound;
+        auto output = fixture.state;
+        auto const status = try_predict_nominal(output, fixture.imu, value_type{0.5}, parameters, output);
+        test.expect(status == (std::isfinite(bound) ? Status::domain_error : Status::non_finite_input) &&
+                        same_state(output, fixture.state),
+                    profile, "invalid unit tolerance is rejected without repair");
+    }
+
+    auto prior = fixture.state;
+    prior.q_nb = non_unit;
+    auto parameters = fixture.parameters;
+    // A deliberately wide TEST tolerance establishes inclusivity, not a
+    // suggested deployment tolerance. The accepted old state is not repaired.
+    parameters.quaternion_squared_norm_tolerance = value_type{0.25};
+    auto output = fixture.state;
+    auto status = try_predict_nominal(prior, fixture.imu, value_type{0.5}, parameters, output);
+    test.expect(status == Status::success && formal_eskf::so3::same_coefficients(prior.q_nb, non_unit), profile,
+                "the exact residual boundary is inclusive and does not mutate the prior");
+    if constexpr (std::is_same_v<Configuration, formal_eskf::configuration::Ins>)
+    {
+        test.expect(output.p_n(2U) == value_type{0.3125} && output.v_n(2U) == value_type{1.25}, profile,
+                    "INS uses the accepted old quaternion without silently normalizing it first");
+    }
+    parameters.quaternion_squared_norm_tolerance = std::nextafter(value_type{0.25}, value_type{0});
+    output = fixture.state;
+    status = try_predict_nominal(prior, fixture.imu, value_type{0.5}, parameters, output);
+    test.expect(status == Status::invalid_quaternion_norm && same_state(output, fixture.state), profile,
+                "a residual just outside the tolerance is rejected");
+
+    auto large = non_unit;
+    for (unsigned step = 0U; step < 32U && std::isfinite(formal_eskf::linalg::squared_norm(large.coefficients()));
+         ++step)
+    {
+        large = large * large;
+    }
+    test.expect(formal_eskf::linalg::all_finite(large.coefficients()) &&
+                    !std::isfinite(formal_eskf::linalg::squared_norm(large.coefficients())),
+                profile, "finite quaternion fixture overflows only its squared norm");
+    prior.q_nb = large;
+    auto const before = prior;
+    status = try_predict_nominal(prior, fixture.imu, value_type{0.5}, fixture.parameters, prior);
+    test.expect(status == Status::non_finite_result && same_state(prior, before), profile,
+                "prior norm overflow preserves in-place output");
+    prior.q_nb = large * large;
+    output = fixture.state;
+    status = try_predict_nominal(prior, fixture.imu, value_type{0.5}, fixture.parameters, output);
+    test.expect(status == Status::non_finite_input && same_state(output, fixture.state), profile,
+                "non-finite prior coefficients are rejected before arithmetic");
+}
+
 template <typename Linalg>
 void run_prediction_tests(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
@@ -346,6 +436,8 @@ void run_prediction_tests(TestContext & test, std::string_view profile, typename
     test_ins_translation<Linalg>(test, profile, tolerance);
     test_prediction_validation<Linalg, formal_eskf::configuration::Ahrs>(test, profile);
     test_prediction_validation<Linalg, formal_eskf::configuration::Ins>(test, profile);
+    test_prior_validation<Linalg, formal_eskf::configuration::Ahrs>(test, profile);
+    test_prior_validation<Linalg, formal_eskf::configuration::Ins>(test, profile);
 }
 
 } /* end namespace */

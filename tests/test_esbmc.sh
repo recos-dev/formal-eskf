@@ -16,9 +16,9 @@ check_count()
 
 check_plan()
 {
-    local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE
+    local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION
     PLAN="$("${RUNNER}" --list)"
-    check_count 246 '^PLAN'
+    check_count 292 '^PLAN'
     check_count 14 'quaternion-binary32-witness'
     check_count 8 'algebra-binary32'
     check_count 8 'algebra-binary64'
@@ -34,6 +34,8 @@ check_plan()
     check_count 4 'injection-binary64'
     check_count 5 'jacobian-binary32'
     check_count 5 'jacobian-binary64'
+    check_count 23 'reset-binary32'
+    check_count 23 'reset-binary64'
     check_count 74 'prediction-binary32|state-binary32|scalar-contract-binary32'
     check_count 74 'prediction-binary64|state-binary64|scalar-contract-binary64'
     check_count 0 'shared'
@@ -45,6 +47,23 @@ check_plan()
     check_count 16 'approx0.*actual-exp-coefficient'
     check_count 66 'approx[01]-standard'
     for BINARY64 in 0 1; do
+        for CONFIGURATION in ahrs ins; do
+            BASE_PROFILE="reset-binary$((32 + 32 * BINARY64))-${CONFIGURATION}"
+            check_count 1 "${BASE_PROFILE}-actual-product"
+            check_count 1 "${BASE_PROFILE}-product-contract-sandwich"
+            check_count 1 "${BASE_PROFILE}-actual-finite"
+            for ALIAS in 0 1; do
+                check_count 1 "${BASE_PROFILE}-actual-finalizer-alias${ALIAS}"
+                for APPROX in 0 1; do
+                    check_count 1 "${BASE_PROFILE}-approx${APPROX}-all-ieee-alias${ALIAS}"
+                done
+            done
+        done
+        check_count 1 "reset-binary$((32 + 32 * BINARY64))-ins-actual-storage"
+        check_count 1 "reset-binary$((32 + 32 * BINARY64))-ins-actual-entry"
+        check_count 1 "reset-binary$((32 + 32 * BINARY64))-ins-actual-vector-storage"
+        check_count 1 "reset-binary$((32 + 32 * BINARY64))-mean-all-ieee"
+        check_count 1 "reset-binary$((32 + 32 * BINARY64))-actual-dot"
         BASE_PROFILE="jacobian-binary$((32 + 32 * BINARY64))"
         check_count 1 "${BASE_PROFILE}-actual-finite-producer"
         check_count 1 "${BASE_PROFILE}-actual-boundary-witnesses"
@@ -89,8 +108,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 68 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 246 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 78 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 292 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -103,7 +122,68 @@ check_plan()
     [[ "$("${RUNNER}" noise --list | wc -l)" == 6 ]] || fail 'noise configuration/dependency coverage changed'
     [[ "$("${RUNNER}" injection --list | wc -l)" == 8 ]] || fail 'injection configuration/alias coverage changed'
     [[ "$("${RUNNER}" jacobian --list | wc -l)" == 10 ]] || fail 'Jacobian flow/entries/dependency coverage changed'
+    [[ "$("${RUNNER}" reset --list | wc -l)" == 46 ]] || fail 'reset configuration/mode/alias/dependency coverage changed'
 }
+
+check_reset_arguments()
+(
+    verify()
+    {
+        local FUNCTION_NAME="$1" EXPECTED_FUNCTION=verify_reset BITS=0 INS=0 UNWIND=10 APPROX
+        local EXPECTED_SOURCE="${PROOF_DIR}/reset.cpp"
+        local -a EXPECTED
+        shift
+        [[ "${PROFILE}" != reset-binary64-* ]] || BITS=1
+        if [[ "${PROFILE}" == *-ins-* ]]; then
+            INS=1
+            UNWIND=226
+        fi
+        EXPECTED=(--proof-unwind "${UNWIND}" -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}" -D "FORMAL_ESKF_PROOF_INS=${INS}")
+        case "${PROFILE}" in
+            *-ins-actual-vector-storage)
+                EXPECTED_FUNCTION=verify_covariance_vector_storage
+                EXPECTED_SOURCE="${PROOF_DIR}/covariance_storage.cpp"
+                EXPECTED=(--proof-unwind 16 -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}")
+                ;;
+            *-ins-actual-storage) EXPECTED_FUNCTION=verify_reset_storage ;;
+            *-ins-actual-entry)
+                EXPECTED_FUNCTION=verify_covariance_entry
+                EXPECTED+=(-D FORMAL_ESKF_PROOF_DOT_CONTRACT=1 -D FORMAL_ESKF_PROOF_ACCESS_CONTRACT=1)
+                ;;
+            *-actual-product)
+                EXPECTED_FUNCTION=verify_covariance_product
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_PRODUCT_ENTRY_CONTRACT=${INS}")
+                ;;
+            *-product-contract-sandwich)
+                EXPECTED_FUNCTION=verify_reset_sandwich
+                EXPECTED+=(-D FORMAL_ESKF_PROOF_PRODUCT_CONTRACT=1)
+                ;;
+            *-actual-finite) EXPECTED_FUNCTION=verify_reset_finite ;;
+            *-mean-all-ieee)
+                EXPECTED_FUNCTION=verify_covariance_mean
+                EXPECTED=(-D "FORMAL_ESKF_PROOF_BINARY64=${BITS}")
+                ;;
+            *-actual-dot)
+                EXPECTED_FUNCTION=verify_covariance_dot
+                EXPECTED=(--proof-unwind 16 -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}")
+                ;;
+            *-actual-finalizer-alias[01])
+                EXPECTED_FUNCTION=verify_reset_finish
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_ALIAS=${PROFILE##*alias}" -D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1)
+                ;;
+            *-approx[01]-all-ieee-alias[01])
+                APPROX="${PROFILE#*-approx}"
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_ALIAS=${PROFILE##*alias}" -D "ESKF_RESET_APPROX=${APPROX%%-*}"
+                    -D FORMAL_ESKF_PROOF_RESET_CONTRACT=1 -D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1)
+                ;;
+            *) fail "unexpected reset profile: ${PROFILE}" ;;
+        esac
+        EXPECTED+=(--multi-property)
+        [[ "${SOURCE_FILE}" == "${EXPECTED_SOURCE}" && "${FUNCTION_NAME}" == "${EXPECTED_FUNCTION}" && "$*" == "${EXPECTED[*]}" ]] ||
+            fail "wrong reset function, scalar, size, alias, mode, boundary or solver arguments: ${PROFILE}"
+    }
+    run_reset_suite
+)
 
 check_jacobian_arguments()
 (
@@ -353,6 +433,87 @@ check_jacobian_contract_guards()
     printf 'ESBMC Jacobian guard tests: pass (four incompatible boundaries rejected)\n'
 )
 
+check_reset_contract_guards()
+(
+    local TEST_WORK_DIR FUNCTION_NAME FLAGS EXPECTED RESULT_COUNT=0
+    local -a ARGUMENTS
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-reset-test.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    SOURCE_FILE="${PROOF_DIR}/reset.cpp"
+    while IFS='|' read -r FUNCTION_NAME FLAGS EXPECTED; do
+        read -r -a ARGUMENTS <<< "${FLAGS}"
+        PROFILE="regression-reset-boundary-${RESULT_COUNT}"
+        verify "${FUNCTION_NAME}" --proof-unwind 226 "${ARGUMENTS[@]}" --multi-property >"${TEST_WORK_DIR}/${RESULT_COUNT}.log" 2>&1
+        RESULT_COUNT=$((RESULT_COUNT + 1))
+        if [[ "${FAILED_CHECKS}" != "${RESULT_COUNT}" ]] ||
+            ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/$((RESULT_COUNT - 1)).log" ||
+            ! grep -F "${EXPECTED}" "${TEST_WORK_DIR}/$((RESULT_COUNT - 1)).log" | grep -q 'FAILED:'; then
+            tail -n 60 "${TEST_WORK_DIR}/$((RESULT_COUNT - 1)).log" >&2
+            fail "reset proof accepted an incompatible boundary: ${FUNCTION_NAME} ${FLAGS}"
+        fi
+    done <<'CASES'
+verify_reset|-D FORMAL_ESKF_PROOF_RESET_CONTRACT=0|Runner error: reset caller requires its explicit callee summaries
+verify_reset|-D FORMAL_ESKF_PROOF_RESET_CONTRACT=1|Runner error: reset caller requires its explicit callee summaries
+verify_reset_sandwich|-D FORMAL_ESKF_PROOF_PRODUCT_CONTRACT=0|Runner error: actual sandwich requires only its product summary
+verify_reset_sandwich|-D FORMAL_ESKF_PROOF_PRODUCT_CONTRACT=1 -D FORMAL_ESKF_PROOF_RESET_CONTRACT=1|Runner error: actual sandwich requires only its product summary
+verify_covariance_product|-D FORMAL_ESKF_PROOF_PRODUCT_CONTRACT=1|Runner error: actual covariance product requires the matching entry boundary
+verify_covariance_product|-D FORMAL_ESKF_PROOF_INS=1|Runner error: actual covariance product requires the matching entry boundary
+verify_covariance_entry|-D FORMAL_ESKF_PROOF_INS=1|Runner error: actual INS entry requires dot and access summaries
+verify_covariance_entry|-D FORMAL_ESKF_PROOF_INS=1 -D FORMAL_ESKF_PROOF_DOT_CONTRACT=1|Runner error: actual INS entry requires dot and access summaries
+verify_covariance_entry|-D FORMAL_ESKF_PROOF_INS=1 -D FORMAL_ESKF_PROOF_ACCESS_CONTRACT=1|Runner error: actual INS entry requires dot and access summaries
+verify_covariance_entry|-D FORMAL_ESKF_PROOF_INS=1 -D FORMAL_ESKF_PROOF_PRODUCT_ENTRY_CONTRACT=1 -D FORMAL_ESKF_PROOF_DOT_CONTRACT=1 -D FORMAL_ESKF_PROOF_ACCESS_CONTRACT=1|Runner error: actual INS entry requires dot and access summaries
+verify_covariance_dot|-D FORMAL_ESKF_PROOF_DOT_CONTRACT=1|Runner error: covariance dot producer must be actual
+verify_reset_finish|-D FORMAL_ESKF_PROOF_FINITE_CONTRACT=0|Runner error: actual covariance finalizer requires only the finite-predicate summary
+verify_reset_finish|-D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1 -D FORMAL_ESKF_PROOF_RESET_CONTRACT=1|Runner error: actual covariance finalizer requires only the finite-predicate summary
+verify_reset_finite|-D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1|Runner error: covariance finite predicate must be actual
+verify_reset_storage|-D FORMAL_ESKF_PROOF_INS=0|Runner error: reset storage producer requires actual INS storage
+verify_reset_storage|-D FORMAL_ESKF_PROOF_INS=1 -D FORMAL_ESKF_PROOF_ACCESS_CONTRACT=1|Runner error: reset storage producer requires actual INS storage
+CASES
+    printf 'ESBMC reset guard tests: pass (%d incompatible boundaries rejected)\n' "${RESULT_COUNT}"
+)
+
+check_reset_regressions()
+(
+    local TEST_WORK_DIR BINARY64 CASE RESULT EXPECTED LABEL FUNCTION_NAME
+    local -a ARGUMENTS
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-reset-regression.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    for BINARY64 in 0 1; do
+        for CASE in copy fault default comparison; do
+            EXPECTED=0
+            LABEL='VERIFICATION SUCCESSFUL'
+            FUNCTION_NAME=verify_reset_regression
+            ARGUMENTS=(-D FORMAL_ESKF_PROOF_INS=1 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}")
+            case "${CASE}" in
+                comparison) FUNCTION_NAME=verify_reset_comparison ;;
+                fault)
+                    EXPECTED=1
+                    LABEL='E-RESET regression: copied IEEE values and the last covariance cell are checked'
+                    ARGUMENTS+=(-D FORMAL_ESKF_TEST_FAULT=1)
+                    ;;
+                default)
+                    EXPECTED=1
+                    LABEL='E-RESET regression: the default is the closed-form right Jacobian'
+                    ARGUMENTS+=(-D ESKF_RESET_APPROX=1)
+                    ;;
+            esac
+            RESULT=0
+            "${ESBMC_COMMAND}" "${TEST_DIR}/esbmc/reset_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
+                --unwind 226 --timeout 120s --memlimit 4g --function "${FUNCTION_NAME}" \
+                "${ARGUMENTS[@]}" --multi-property >"${TEST_WORK_DIR}/${BINARY64}-${CASE}.log" 2>&1 || RESULT=$?
+            if [[ "${RESULT}" != "${EXPECTED}" ]] || ! grep -Fq "${LABEL}" "${TEST_WORK_DIR}/${BINARY64}-${CASE}.log"; then
+                tail -n 60 "${TEST_WORK_DIR}/${BINARY64}-${CASE}.log" >&2
+                fail "reset verifier regression failed: binary64=${BINARY64}, ${CASE}"
+            fi
+        done
+    done
+    printf 'ESBMC reset regressions: pass (IEEE copies; last-cell faults; default mode; all-cell comparison)\n'
+)
+
 RUN_SOLVER=0
 case "${1:-}" in
     '') ;;
@@ -367,8 +528,9 @@ esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
 check_jacobian_arguments
+check_reset_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (246 profiles; 68 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (292 profiles; 78 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards
@@ -378,4 +540,6 @@ if ((RUN_SOLVER)); then
     check_injection_contract_guards
     check_jacobian_solver
     check_jacobian_contract_guards
+    check_reset_contract_guards
+    check_reset_regressions
 fi

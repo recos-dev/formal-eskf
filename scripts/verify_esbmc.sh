@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,11 +37,12 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
                 printf 'jacobian selects flow, entries, final predicate and boundary witnesses; all also runs its norm/scalar dependencies.\n'
+                printf 'reset selects covariance-reset callers and matrix producers; all also runs their right-Jacobian dependencies.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -428,6 +429,60 @@ run_jacobian_suite()
     done
 }
 
+run_reset_suite()
+{
+    local BINARY64 INS ALIAS APPROX BASE_PROFILE UNWIND
+    local -a PROFILE_ARGUMENTS
+    SOURCE_FILE="${PROOF_DIR}/reset.cpp"
+    for BINARY64 in 0 1; do
+        for INS in 0 1; do
+            BASE_PROFILE="reset-binary$((32 + 32 * BINARY64))-ahrs"
+            UNWIND=10
+            if ((INS)); then
+                BASE_PROFILE="reset-binary$((32 + 32 * BINARY64))-ins"
+                # Actual initialization visits all 225 cells; keep its unwind assertion.
+                UNWIND=226
+            fi
+            PROFILE_ARGUMENTS=(-D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_INS=${INS}")
+            if ((INS)); then
+                PROFILE="${BASE_PROFILE}-actual-storage"
+                verify verify_reset_storage --proof-unwind "${UNWIND}" "${PROFILE_ARGUMENTS[@]}" --multi-property
+                PROFILE="${BASE_PROFILE}-actual-entry"
+                verify verify_covariance_entry --proof-unwind "${UNWIND}" "${PROFILE_ARGUMENTS[@]}" \
+                    -D FORMAL_ESKF_PROOF_DOT_CONTRACT=1 -D FORMAL_ESKF_PROOF_ACCESS_CONTRACT=1 --multi-property
+            fi
+            PROFILE="${BASE_PROFILE}-actual-product"
+            verify verify_covariance_product --proof-unwind "${UNWIND}" "${PROFILE_ARGUMENTS[@]}" \
+                -D "FORMAL_ESKF_PROOF_PRODUCT_ENTRY_CONTRACT=${INS}" --multi-property
+            PROFILE="${BASE_PROFILE}-product-contract-sandwich"
+            verify verify_reset_sandwich --proof-unwind "${UNWIND}" "${PROFILE_ARGUMENTS[@]}" \
+                -D FORMAL_ESKF_PROOF_PRODUCT_CONTRACT=1 --multi-property
+            PROFILE="${BASE_PROFILE}-actual-finite"
+            verify verify_reset_finite --proof-unwind "${UNWIND}" "${PROFILE_ARGUMENTS[@]}" --multi-property
+            for ALIAS in 0 1; do
+                PROFILE="${BASE_PROFILE}-actual-finalizer-alias${ALIAS}"
+                verify verify_reset_finish --proof-unwind "${UNWIND}" "${PROFILE_ARGUMENTS[@]}" \
+                    -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" -D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1 --multi-property
+                for APPROX in 0 1; do
+                    PROFILE="${BASE_PROFILE}-approx${APPROX}-all-ieee-alias${ALIAS}"
+                    verify verify_reset --proof-unwind "${UNWIND}" "${PROFILE_ARGUMENTS[@]}" \
+                        -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" -D "ESKF_RESET_APPROX=${APPROX}" \
+                        -D FORMAL_ESKF_PROOF_RESET_CONTRACT=1 -D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1 --multi-property
+                done
+            done
+        done
+        PROFILE="reset-binary$((32 + 32 * BINARY64))-mean-all-ieee"
+        verify verify_covariance_mean -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" --multi-property
+        PROFILE="reset-binary$((32 + 32 * BINARY64))-actual-dot"
+        verify verify_covariance_dot --proof-unwind 16 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" --multi-property
+    done
+    SOURCE_FILE="${PROOF_DIR}/covariance_storage.cpp"
+    for BINARY64 in 0 1; do
+        PROFILE="reset-binary$((32 + 32 * BINARY64))-ins-actual-vector-storage"
+        verify verify_covariance_vector_storage --proof-unwind 16 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" --multi-property
+    done
+}
+
 main()
 {
     parse_arguments "$@"
@@ -456,6 +511,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == jacobian ]]; then
         run_jacobian_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == reset ]]; then
+        run_reset_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

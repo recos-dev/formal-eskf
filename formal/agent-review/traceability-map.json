@@ -3,7 +3,7 @@
   "scalar_models": {
     "lean": "Exact algebra over CommRing, with real-number theorems where required",
     "cpp": "C++20 operations over IEEE-754 binary32 or binary64",
-    "esbmc": "All 15 registered families have binary32 and binary64 source profiles. Quaternion normalization and Exp use explicit pure-callee summaries (including a separately proved three-vector squared norm), each paired with actual producer/constructor proofs; scalar returns in these new flow proofs are arbitrary IEEE values, without accuracy or successful-result assumptions. General Log executes all branch arithmetic with arbitrary scalar returns. Retained binary32 bounded/native-math witnesses are separate from general-domain claims. E-STATE/E-PRED retain both modes and independent aliases, use independent domain/status oracles, and retain their explicit scalar-enclosure assumptions and actual callee profiles. E-NOISE covers the complete AHRS 3x3 and INS 12x12 discretization over arbitrary IEEE inputs and old outputs, including input checks, ordered scaling, every entry and rollback. INS initialization and the output-storage assignment are summarized, paired with an actual 12x12 zero/copy/frame proof in the same backend/scalar. The caller checks every proposed coefficient, commit eligibility and absence of other output writes; AHRS is direct. No numerical operating-range or successful-input assumption is imposed. These are source-semantic claims for the proof backend, not numerical qualification or Eigen/PX4/libm/deployment proofs."
+    "esbmc": "All 16 registered families have binary32 and binary64 source profiles. Quaternion normalization and Exp use explicit pure-callee summaries (including a separately proved three-vector squared norm), each paired with actual producer/constructor proofs; scalar returns in these new flow proofs are arbitrary IEEE values, without accuracy or successful-result assumptions. General Log executes all branch arithmetic with arbitrary scalar returns. Retained binary32 bounded/native-math witnesses are separate from general-domain claims. E-STATE/E-PRED retain both modes and independent aliases, use independent domain/status oracles, and retain their explicit scalar-enclosure assumptions and actual callee profiles. E-NOISE covers the complete AHRS 3x3 and INS 12x12 discretization over arbitrary IEEE inputs and old outputs, including input checks, ordered scaling, every entry and rollback. INS initialization and the output-storage assignment are summarized, paired with an actual 12x12 zero/copy/frame proof in the same backend/scalar. The caller checks every proposed coefficient, commit eligibility and absence of other output writes; AHRS is direct. No numerical operating-range or successful-input assumption is imposed. E-INJECT executes both actual nominal-injection overloads and their attitude helper, with separate and in-place outputs, arbitrary IEEE state/error/threshold inputs and independent opaque Exp/composition outcomes. Existing same-type Exp, Hamilton and normalization producer proofs close the pure callee summaries; all additive entries, argument order, status translation and state/error frames are checked. These are source-semantic claims for the proof backend, not numerical qualification or Eigen/PX4/libm/deployment proofs."
   },
   "review_dimensions": [
     "coefficient ordering",
@@ -1250,6 +1250,108 @@
           {
             "file": "formal/cpp/esbmc/process_noise.cpp",
             "symbol": "verify_ins_storage"
+          }
+        ]
+      }
+    },
+    {
+      "id": "E-INJECT",
+      "title": "Checked INS/AHRS nominal-error injection",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "`E-INJECT`"
+          }
+        ],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/Injection.lean",
+            "symbol": "def injectIns"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Injection.lean",
+            "symbol": "def injectAhrs"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Injection.lean",
+            "symbol": "theorem normalized_localAttitude_eq"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Injection.lean",
+            "symbol": "theorem injectIns_normalized_attitude_eq"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Injection.lean",
+            "symbol": "theorem injectAhrs_normalized_attitude_eq"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Injection.lean",
+            "symbol": "theorem normalized_localAttitude_zero"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Injection.lean",
+            "symbol": "theorem injectIns_hasUnitNorm"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Injection.lean",
+            "symbol": "theorem injectAhrs_hasUnitNorm"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/eskf/injection.hpp",
+            "symbol": "try_inject_attitude"
+          },
+          {
+            "file": "include/formal_eskf/eskf/injection.hpp",
+            "symbol": "Status try_inject_nominal"
+          }
+        ],
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/injection.cpp",
+            "symbol": "verify_ahrs_injection"
+          },
+          {
+            "file": "formal/cpp/esbmc/injection.cpp",
+            "symbol": "verify_ins_injection"
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "verify_exp_behavior"
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "verify_squared_norm_producer"
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "verify_scalar_wrappers"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_composition_general"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_constructor"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_checked_normalization"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_norm_producer"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "verify_division_producer"
+          },
+          {
+            "file": "formal/cpp/esbmc/algebra.cpp",
+            "symbol": "verify_product"
           }
         ]
       }

@@ -18,7 +18,7 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE
     PLAN="$("${RUNNER}" --list)"
-    check_count 228 '^PLAN'
+    check_count 236 '^PLAN'
     check_count 14 'quaternion-binary32-witness'
     check_count 8 'algebra-binary32'
     check_count 8 'algebra-binary64'
@@ -30,6 +30,8 @@ check_plan()
     check_count 5 'rotation-binary64'
     check_count 3 'noise-binary32'
     check_count 3 'noise-binary64'
+    check_count 4 'injection-binary32'
+    check_count 4 'injection-binary64'
     check_count 74 'prediction-binary32|state-binary32|scalar-contract-binary32'
     check_count 74 'prediction-binary64|state-binary64|scalar-contract-binary64'
     check_count 0 'shared'
@@ -48,6 +50,8 @@ check_plan()
         check_count 2 "${BASE_PROFILE}-actual-producer"
         check_count 1 "${BASE_PROFILE}-actual-constructor"
         for ALIAS in 0 1; do
+            check_count 1 "injection-binary$((32 + 32 * BINARY64))-ahrs-all-ieee-alias${ALIAS}"
+            check_count 1 "injection-binary$((32 + 32 * BINARY64))-ins-all-ieee-alias${ALIAS}"
             check_count 1 "${BASE_PROFILE}-checked-vector-alias${ALIAS}"
             check_count 1 "${BASE_PROFILE}-quaternion-wrapper-alias${ALIAS}"
         done
@@ -77,8 +81,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 63 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 228 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 65 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 236 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -89,6 +93,7 @@ check_plan()
     [[ "$("${RUNNER}" prediction32 --list | wc -l)" == 74 ]] || fail 'binary32 selection changed'
     [[ "$("${RUNNER}" prediction64 --list | wc -l)" == 74 ]] || fail 'binary64 selection changed'
     [[ "$("${RUNNER}" noise --list | wc -l)" == 6 ]] || fail 'noise configuration/dependency coverage changed'
+    [[ "$("${RUNNER}" injection --list | wc -l)" == 8 ]] || fail 'injection configuration/alias coverage changed'
 }
 
 check_mode_constants()
@@ -212,6 +217,32 @@ check_noise_contract_guard()
     printf 'ESBMC noise guard test: pass (substituted storage producers rejected)\n'
 )
 
+check_injection_contract_guards()
+(
+    local TEST_WORK_DIR CONTRACT
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-injection-test.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    SOURCE_FILE="${PROOF_DIR}/injection.cpp"
+    # Check both missing callees (0/0) and an extra constructor summary (1/1).
+    # Report all failures: the solver may report a caller mismatch before the
+    # explicit configuration guard, so fail-fast would hide the expected label.
+    for CONTRACT in 0 1; do
+        PROFILE="regression-wrong-injection-contract${CONTRACT}"
+        verify verify_ahrs_injection -D "FORMAL_ESKF_PROOF_INJECTION_CONTRACT=${CONTRACT}" \
+            -D "FORMAL_ESKF_PROOF_CONSTRUCTOR_CONTRACT=${CONTRACT}" --multi-property \
+            >"${TEST_WORK_DIR}/boundary${CONTRACT}.log" 2>&1
+        if [[ "${FAILED_CHECKS}" != "$((CONTRACT + 1))" ]] ||
+            ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/boundary${CONTRACT}.log" ||
+            ! grep -q 'Runner error: injection requires Exp/composition summaries and the matching constructor type' \
+                "${TEST_WORK_DIR}/boundary${CONTRACT}.log"; then
+            fail 'injection proof accepted a missing callee summary or incompatible constructor boundary'
+        fi
+    done
+    printf 'ESBMC injection guard tests: pass (both incompatible boundaries rejected)\n'
+)
+
 RUN_SOLVER=0
 case "${1:-}" in
     '') ;;
@@ -225,11 +256,12 @@ case "${1:-}" in
 esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
-printf 'ESBMC inventory tests: pass (228 profiles; 63 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (236 profiles; 65 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards
     check_normalization_contract_guards
     check_maps_contract_guards
     check_noise_contract_guard
+    check_injection_contract_guards
 fi

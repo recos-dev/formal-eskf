@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,9 +37,10 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
+                printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -367,6 +368,23 @@ run_noise_suite()
     done
 }
 
+run_injection_suite()
+{
+    local BINARY64 ALIAS CONFIGURATION
+    SOURCE_FILE="${PROOF_DIR}/injection.cpp"
+    # Existing maps/normalization/algebra profiles close these callee summaries
+    # in all. Nominal injection depends on neither approximation-mode macro.
+    for BINARY64 in 0 1; do
+        for ALIAS in 0 1; do
+            for CONFIGURATION in ahrs ins; do
+                PROFILE="injection-binary$((32 + 32 * BINARY64))-${CONFIGURATION}-all-ieee-alias${ALIAS}"
+                verify "verify_${CONFIGURATION}_injection" -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                    -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" -D FORMAL_ESKF_PROOF_INJECTION_CONTRACT=1 --multi-property
+            done
+        done
+    done
+}
+
 main()
 {
     parse_arguments "$@"
@@ -389,6 +407,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == noise ]]; then
         run_noise_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == injection ]]; then
+        run_injection_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

@@ -18,7 +18,7 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION
     PLAN="$("${RUNNER}" --list)"
-    check_count 292 '^PLAN'
+    check_count 322 '^PLAN'
     check_count 14 'quaternion-binary32-witness'
     check_count 8 'algebra-binary32'
     check_count 8 'algebra-binary64'
@@ -36,6 +36,8 @@ check_plan()
     check_count 5 'jacobian-binary64'
     check_count 23 'reset-binary32'
     check_count 23 'reset-binary64'
+    check_count 15 'pcov-binary32'
+    check_count 15 'pcov-binary64'
     check_count 74 'prediction-binary32|state-binary32|scalar-contract-binary32'
     check_count 74 'prediction-binary64|state-binary64|scalar-contract-binary64'
     check_count 0 'shared'
@@ -47,6 +49,20 @@ check_plan()
     check_count 16 'approx0.*actual-exp-coefficient'
     check_count 66 'approx[01]-standard'
     for BINARY64 in 0 1; do
+        BASE_PROFILE="pcov-binary$((32 + 32 * BINARY64))"
+        check_count 1 "${BASE_PROFILE}-actual-rotation"
+        check_count 1 "${BASE_PROFILE}-actual-quaternion-validation"
+        check_count 1 "${BASE_PROFILE}-ahrs-actual-noise[[:space:]]"
+        check_count 1 "${BASE_PROFILE}-ins-actual-noise[[:space:]]"
+        check_count 1 "${BASE_PROFILE}-ins-actual-noise-storage"
+        for APPROX in 0 1; do
+            check_count 1 "${BASE_PROFILE}-approx${APPROX}-actual-transition"
+            for CONFIGURATION in ahrs ins; do
+                for ALIAS in 0 1; do
+                    check_count 1 "${BASE_PROFILE}-${CONFIGURATION}-approx${APPROX}-all-ieee-alias${ALIAS}"
+                done
+            done
+        done
         for CONFIGURATION in ahrs ins; do
             BASE_PROFILE="reset-binary$((32 + 32 * BINARY64))-${CONFIGURATION}"
             check_count 1 "${BASE_PROFILE}-actual-product"
@@ -108,8 +124,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 78 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 292 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 82 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 322 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -123,7 +139,61 @@ check_plan()
     [[ "$("${RUNNER}" injection --list | wc -l)" == 8 ]] || fail 'injection configuration/alias coverage changed'
     [[ "$("${RUNNER}" jacobian --list | wc -l)" == 10 ]] || fail 'Jacobian flow/entries/dependency coverage changed'
     [[ "$("${RUNNER}" reset --list | wc -l)" == 46 ]] || fail 'reset configuration/mode/alias/dependency coverage changed'
+    [[ "$("${RUNNER}" pcov --list | wc -l)" == 30 ]] || fail 'covariance prediction configuration/mode/alias/dependency coverage changed'
 }
+
+check_pcov_arguments()
+(
+    verify()
+    {
+        local FUNCTION_NAME="$1" BITS=0 INS=0 UNWIND=10 APPROX EXPECTED_FUNCTION TIME_LIMIT=180s
+        local EXPECTED_SOURCE="${PROOF_DIR}/covariance_transition.cpp"
+        local -a EXPECTED
+        shift
+        [[ "${PROFILE}" != pcov-binary64-* ]] || BITS=1
+        EXPECTED=(-D "FORMAL_ESKF_PROOF_BINARY64=${BITS}")
+        case "${PROFILE}" in
+            *-actual-rotation) EXPECTED_FUNCTION=verify_covariance_rotation ;;
+            *-actual-quaternion-validation) EXPECTED_FUNCTION=verify_covariance_quaternion_validation ;;
+            *-approx[01]-actual-transition)
+                EXPECTED_FUNCTION=verify_covariance_transition
+                APPROX="${PROFILE#*-approx}"
+                EXPECTED+=(-D "ESKF_QUAT_APPROX=${APPROX%%-*}" -D FORMAL_ESKF_PROOF_TRANSITION_CONTRACT=1)
+                ;;
+            *-ahrs-actual-noise)
+                EXPECTED_FUNCTION=verify_ahrs_process_noise
+                EXPECTED_SOURCE="${PROOF_DIR}/process_noise.cpp"
+                EXPECTED+=(-D FORMAL_ESKF_PROOF_OPAQUE_MATH=1)
+                ;;
+            *-ins-actual-noise*)
+                EXPECTED_SOURCE="${PROOF_DIR}/process_noise.cpp"
+                EXPECTED=(--proof-unwind 145 --proof-timeout 180s "${EXPECTED[@]}" -D FORMAL_ESKF_PROOF_OPAQUE_MATH=1)
+                EXPECTED_FUNCTION=verify_ins_storage
+                if [[ "${PROFILE}" == *-actual-noise ]]; then
+                    EXPECTED_FUNCTION=verify_ins_process_noise
+                    if ((BITS)); then TIME_LIMIT=300s; fi
+                    EXPECTED=(--proof-unwind 145 --proof-timeout "${TIME_LIMIT}" -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}"
+                        -D FORMAL_ESKF_PROOF_OPAQUE_MATH=1 -D FORMAL_ESKF_PROOF_STORAGE_CONTRACT=1 --cvc5)
+                fi
+                ;;
+            *-all-ieee-alias[01])
+                EXPECTED_SOURCE="${PROOF_DIR}/covariance_prediction.cpp"
+                EXPECTED_FUNCTION=verify_predict_covariance
+                if [[ "${PROFILE}" == *-ins-* ]]; then INS=1; UNWIND=226; fi
+                if ((INS && BITS)); then TIME_LIMIT=300s; fi
+                APPROX="${PROFILE#*-approx}"
+                EXPECTED=(--proof-unwind "${UNWIND}" --proof-timeout "${TIME_LIMIT}" "${EXPECTED[@]}" -D "FORMAL_ESKF_PROOF_INS=${INS}"
+                    -D "ESKF_QUAT_APPROX=${APPROX%%-*}" -D "FORMAL_ESKF_PROOF_ALIAS=${PROFILE##*alias}"
+                    -D FORMAL_ESKF_PROOF_PCOV_CONTRACT=1)
+                ;;
+            *) fail "unexpected covariance prediction profile: ${PROFILE}" ;;
+        esac
+        EXPECTED+=(--multi-property)
+        [[ "${SOURCE_FILE}" == "${EXPECTED_SOURCE}" && "${FUNCTION_NAME}" == "${EXPECTED_FUNCTION}" && "$*" == "${EXPECTED[*]}" ]] ||
+            fail "wrong covariance prediction source, scalar, size, mode, alias, boundary or solver arguments: ${PROFILE}"
+    }
+    run_pcov_suite
+)
 
 check_reset_arguments()
 (
@@ -514,6 +584,76 @@ check_reset_regressions()
     printf 'ESBMC reset regressions: pass (IEEE copies; last-cell faults; default mode; all-cell comparison)\n'
 )
 
+check_pcov_contract_guards()
+(
+    local TEST_WORK_DIR FILE FUNCTION_NAME FLAGS EXPECTED RESULT_COUNT=0 RESULT
+    local -a ARGUMENTS
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-pcov-guard.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    while IFS='|' read -r FILE FUNCTION_NAME FLAGS EXPECTED; do
+        read -r -a ARGUMENTS <<< "${FLAGS}"
+        RESULT=0
+        "${ESBMC_COMMAND}" "${PROOF_DIR}/${FILE}" "${ESBMC_ARGUMENTS[@]}" \
+            --unwind 10 --timeout 120s --memlimit 4g --function "${FUNCTION_NAME}" \
+            "${ARGUMENTS[@]}" --multi-property >"${TEST_WORK_DIR}/${RESULT_COUNT}.log" 2>&1 || RESULT=$?
+        if [[ "${RESULT}" != 1 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${RESULT_COUNT}.log" ||
+            ! grep -F 'FAILED:' "${TEST_WORK_DIR}/${RESULT_COUNT}.log" | grep -Fq "${EXPECTED}"; then
+            tail -n 30 "${TEST_WORK_DIR}/${RESULT_COUNT}.log" >&2
+            fail "covariance prediction guard did not reject the incompatible boundary: ${FUNCTION_NAME} ${FLAGS}"
+        fi
+        RESULT_COUNT=$((RESULT_COUNT + 1))
+    done <<'CASES'
+covariance_prediction.cpp|verify_predict_covariance|-D FORMAL_ESKF_PROOF_PCOV_CONTRACT=0|Runner error: E-PCOV requires only its explicit caller summaries
+covariance_prediction.cpp|verify_predict_covariance|-D FORMAL_ESKF_PROOF_PCOV_CONTRACT=1 -D FORMAL_ESKF_PROOF_CONSTRUCTOR_CONTRACT=1|Runner error: E-PCOV requires only its explicit caller summaries
+covariance_transition.cpp|verify_covariance_transition|-D FORMAL_ESKF_PROOF_TRANSITION_CONTRACT=0|Runner error: transition producer requires only Exp and rotation summaries
+covariance_transition.cpp|verify_covariance_transition|-D FORMAL_ESKF_PROOF_TRANSITION_CONTRACT=1 -D FORMAL_ESKF_PROOF_CONSTRUCTOR_CONTRACT=1|Runner error: transition producer requires only Exp and rotation summaries
+covariance_transition.cpp|verify_covariance_rotation|-D FORMAL_ESKF_PROOF_TRANSITION_CONTRACT=1|Runner error: covariance rotation producer must execute the actual implementation
+covariance_transition.cpp|verify_covariance_quaternion_validation|-D FORMAL_ESKF_PROOF_TRANSITION_CONTRACT=1|Runner error: covariance quaternion validation must execute the actual implementation
+CASES
+    printf 'ESBMC covariance prediction guards: pass (%d incompatible boundaries rejected)\n' "${RESULT_COUNT}"
+)
+
+check_pcov_regressions()
+(
+    local TEST_WORK_DIR BINARY64 CASE RESULT EXPECTED LABEL
+    local -a ARGUMENTS
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-pcov-regression.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    for BINARY64 in 0 1; do
+        for CASE in ieee fault default; do
+            EXPECTED=0
+            LABEL='VERIFICATION SUCCESSFUL'
+            ARGUMENTS=(-D FORMAL_ESKF_PROOF_INS=1 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}")
+            case "${CASE}" in
+                fault)
+                    EXPECTED=1
+                    LABEL='E-PCOV: all noise blocks and every unaffected covariance entry reach finalization'
+                    ARGUMENTS+=(-D FORMAL_ESKF_TEST_FAULT=1)
+                    ;;
+                default)
+                    EXPECTED=1
+                    LABEL='E-PCOV regression: default prediction uses Exp'
+                    ARGUMENTS+=(-D ESKF_QUAT_APPROX=1)
+                    ;;
+            esac
+            RESULT=0
+            "${ESBMC_COMMAND}" "${TEST_DIR}/esbmc/pcov_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
+                --unwind 226 --timeout 120s --memlimit 4g --function verify_pcov_regression \
+                "${ARGUMENTS[@]}" --multi-property >"${TEST_WORK_DIR}/${BINARY64}-${CASE}.log" 2>&1 || RESULT=$?
+            if [[ "${RESULT}" != "${EXPECTED}" ]] || ! grep -Fq "${LABEL}" "${TEST_WORK_DIR}/${BINARY64}-${CASE}.log" ||
+                { ((EXPECTED)) && ! grep -F 'FAILED:' "${TEST_WORK_DIR}/${BINARY64}-${CASE}.log" | grep -Fq "${LABEL}"; }; then
+                tail -n 30 "${TEST_WORK_DIR}/${BINARY64}-${CASE}.log" >&2
+                fail "covariance prediction regression failed: binary64=${BINARY64}, ${CASE}"
+            fi
+        done
+    done
+    printf 'ESBMC covariance prediction regressions: pass (IEEE candidate, last-cell faults and default mode; both scalars)\n'
+)
+
 RUN_SOLVER=0
 case "${1:-}" in
     '') ;;
@@ -529,8 +669,9 @@ esac
 check_plan
 check_jacobian_arguments
 check_reset_arguments
+check_pcov_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (292 profiles; 78 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (322 profiles; 82 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards
@@ -542,4 +683,6 @@ if ((RUN_SOLVER)); then
     check_jacobian_contract_guards
     check_reset_contract_guards
     check_reset_regressions
+    check_pcov_contract_guards
+    check_pcov_regressions
 fi

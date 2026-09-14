@@ -3,7 +3,7 @@
   "scalar_models": {
     "lean": "Exact algebra over CommRing, with real-number theorems where required",
     "cpp": "C++20 operations over IEEE-754 binary32 or binary64",
-    "esbmc": "All 18 registered families have binary32 and binary64 source profiles. Quaternion normalization and Exp use explicit pure-callee summaries (including a separately proved three-vector squared norm), each paired with actual producer/constructor proofs; scalar returns in these new flow proofs are arbitrary IEEE values, without accuracy or successful-result assumptions. General Log executes all branch arithmetic with arbitrary scalar returns. Retained binary32 bounded/native-math witnesses are separate from general-domain claims. E-STATE/E-PRED retain both modes and independent aliases, use independent domain/status oracles, and retain their explicit scalar-enclosure assumptions and actual callee profiles. E-NOISE covers the complete AHRS 3x3 and INS 12x12 discretization over arbitrary IEEE inputs and old outputs, including input checks, ordered scaling, every entry and rollback. INS initialization and the output-storage assignment are summarized, paired with an actual 12x12 zero/copy/frame proof in the same backend/scalar. The caller checks every proposed coefficient, commit eligibility and absence of other output writes; AHRS is direct. No numerical operating-range or successful-input assumption is imposed. E-INJECT executes both actual nominal-injection overloads and their attitude helper, with separate and in-place outputs, arbitrary IEEE state/error/threshold inputs and independent opaque Exp/composition outcomes. Existing same-type Exp, Hamilton and normalization producer proofs close the pure callee summaries; all additive entries, argument order, status translation and state/error frames are checked. These are source-semantic claims for the proof backend, not numerical qualification or Eigen/PX4/libm/deployment proofs. F-JR pairs an unrestricted source-flow proof with both complete candidate-arithmetic branches, an actual nine-entry finite predicate, and actual-norm zero/cutoff witnesses. The arithmetic premises are exactly the separately proved candidate eligibility, not a finite-result or scalar-accuracy assumption; every candidate/output entry and frame is checked. The existing same-type squared-norm and checked-scalar proofs close its other internal dependency. No ESKF approximation macro affects this operation. E-RESET covers the actual AHRS 3x3 and INS 15x15 covariance-reset callers, both reset modes and separate/in-place outputs over arbitrary IEEE inputs. Paired proofs discharge right-Jacobian, complete sandwich/product routing, actual ordered arithmetic, finite predicates and symmetry-finalizer boundaries. The INS proof backend adds explicitly proved named-field 15x15 storage and a dot-based ordered product; it is not evidence for a deployment backend or the original flat 225-cell representation. Every G entry, cross-covariance, candidate/output entry and error/input frame is checked. The finalizer's finite mean lemma is not an IEEE PSD or accumulated-error bound. Reset alone does not zero the error mean; the combined transaction belongs to E-STEP."
+    "esbmc": "All 19 registered families have binary32 and binary64 source profiles. Quaternion normalization and Exp use explicit pure-callee summaries (including a separately proved three-vector squared norm), each paired with actual producer/constructor proofs; scalar returns in these new flow proofs are arbitrary IEEE values, without accuracy or successful-result assumptions. General Log executes all branch arithmetic with arbitrary scalar returns. Retained binary32 bounded/native-math witnesses are separate from general-domain claims. E-STATE/E-PRED retain both modes and independent aliases, use independent domain/status oracles, and retain their explicit scalar-enclosure assumptions and actual callee profiles. E-NOISE covers the complete AHRS 3x3 and INS 12x12 discretization over arbitrary IEEE inputs and old outputs, including input checks, ordered scaling, every entry and rollback. INS initialization and the output-storage assignment are summarized, paired with an actual 12x12 zero/copy/frame proof in the same backend/scalar. The caller checks every proposed coefficient, commit eligibility and absence of other output writes; AHRS is direct. No numerical operating-range or successful-input assumption is imposed. E-INJECT executes both actual nominal-injection overloads and their attitude helper, with separate and in-place outputs, arbitrary IEEE state/error/threshold inputs and independent opaque Exp/composition outcomes. Existing same-type Exp, Hamilton and normalization producer proofs close the pure callee summaries; all additive entries, argument order, status translation and state/error frames are checked. These are source-semantic claims for the proof backend, not numerical qualification or Eigen/PX4/libm/deployment proofs. F-JR pairs an unrestricted source-flow proof with both complete candidate-arithmetic branches, an actual nine-entry finite predicate, and actual-norm zero/cutoff witnesses. The arithmetic premises are exactly the separately proved candidate eligibility, not a finite-result or scalar-accuracy assumption; every candidate/output entry and frame is checked. The existing same-type squared-norm and checked-scalar proofs close its other internal dependency. No ESKF approximation macro affects this operation. E-RESET covers the actual AHRS 3x3 and INS 15x15 covariance-reset callers, both reset modes and separate/in-place outputs over arbitrary IEEE inputs. Paired proofs discharge right-Jacobian, complete sandwich/product routing, actual ordered arithmetic, finite predicates and symmetry-finalizer boundaries. The INS proof backend adds explicitly proved named-field 15x15 storage and a dot-based ordered product; it is not evidence for a deployment backend or the original flat 225-cell representation. Every G entry, cross-covariance, candidate/output entry and error/input frame is checked. The finalizer's finite mean lemma is not an IEEE PSD or accumulated-error bound. Reset alone does not zero the error mean; the combined transaction belongs to E-STEP. E-PCOV covers AHRS/INS covariance-only prediction in both scalar formats, both attitude modes and separate/in-place output configurations. Its full-domain callers check old-state transition assembly, complete P propagation, anisotropic rotated acceleration-noise injection, every noise/cross-covariance entry, ordered validation/status propagation and complete frames. Exact-type transition, rotation, quaternion-validation and OpaqueMath noise producers close the new summaries; existing same-type Exp and reset matrix/finalizer producers close the other dependencies. The 12x12 initialization producer independently checks every raw backing cell; the shared reset oracles are refreshed. Call-boundary assertions avoid floating-point oracle joins without narrowing positive inputs. This proves the selected truncated model, not the complete nominal-integrator derivative, IEEE PSD preservation or combined nominal/covariance publication (E-STEP)."
   },
   "review_dimensions": [
     "coefficient ordering",
@@ -1434,6 +1434,176 @@
           {
             "file": "formal/cpp/esbmc/maps.cpp",
             "symbol": "verify_scalar_wrappers"
+          }
+        ]
+      }
+    },
+    {
+      "id": "E-PCOV",
+      "title": "Checked INS/AHRS covariance prediction",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "`E-PCOV`"
+          }
+        ],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/CovariancePrediction.lean",
+            "symbol": "def attitudeTransition"
+          },
+          {
+            "file": "formal/lean/FormalESKF/CovariancePrediction.lean",
+            "symbol": "theorem attitudeTransition_exponential_differential"
+          },
+          {
+            "file": "formal/lean/FormalESKF/CovariancePrediction.lean",
+            "symbol": "def insTransitionBlocks"
+          },
+          {
+            "file": "formal/lean/FormalESKF/CovariancePrediction.lean",
+            "symbol": "theorem insTransition_action"
+          },
+          {
+            "file": "formal/lean/FormalESKF/CovariancePrediction.lean",
+            "symbol": "def insNoiseInjection"
+          },
+          {
+            "file": "formal/lean/FormalESKF/CovariancePrediction.lean",
+            "symbol": "theorem insNoiseInjection_expansion"
+          },
+          {
+            "file": "formal/lean/FormalESKF/CovariancePrediction.lean",
+            "symbol": "theorem isotropicNoise_rotation"
+          },
+          {
+            "file": "formal/lean/FormalESKF/CovariancePrediction.lean",
+            "symbol": "def predictInsCovariance"
+          },
+          {
+            "file": "formal/lean/FormalESKF/CovariancePrediction.lean",
+            "symbol": "def predictAhrsCovariance"
+          },
+          {
+            "file": "formal/lean/FormalESKF/CovariancePrediction.lean",
+            "symbol": "theorem predictInsCovariance_posSemidef"
+          },
+          {
+            "file": "formal/lean/FormalESKF/CovariancePrediction.lean",
+            "symbol": "theorem predictAhrsCovariance_posSemidef"
+          },
+          {
+            "file": "formal/lean/FormalESKF/CovariancePrediction.lean",
+            "symbol": "theorem attitudeTransition_hasDerivAt_zero"
+          },
+          {
+            "file": "formal/lean/FormalESKF/CovariancePrediction.lean",
+            "symbol": "theorem predictInsCovariance_zero_step"
+          },
+          {
+            "file": "formal/lean/FormalESKF/CovariancePrediction.lean",
+            "symbol": "theorem predictAhrsCovariance_zero_step"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Covariance.lean",
+            "symbol": "def finishCovariance"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Covariance.lean",
+            "symbol": "theorem finishCovariance_of_posSemidef"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/eskf/covariance_prediction.hpp",
+            "symbol": "Status try_predict_covariance"
+          },
+          {
+            "file": "include/formal_eskf/eskf/covariance_prediction.hpp",
+            "symbol": "Status try_attitude_error_transition"
+          },
+          {
+            "file": "include/formal_eskf/eskf/prediction.hpp",
+            "symbol": "Status validate_prediction_parameters"
+          },
+          {
+            "file": "include/formal_eskf/eskf/prediction.hpp",
+            "symbol": "Status validate_prediction_quaternion"
+          },
+          {
+            "file": "include/formal_eskf/eskf/covariance.hpp",
+            "symbol": "Status try_finish_covariance"
+          }
+        ],
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/covariance_prediction.cpp",
+            "symbol": "verify_predict_covariance"
+          },
+          {
+            "file": "formal/cpp/esbmc/covariance_transition.cpp",
+            "symbol": "verify_covariance_transition"
+          },
+          {
+            "file": "formal/cpp/esbmc/covariance_transition.cpp",
+            "symbol": "verify_covariance_rotation"
+          },
+          {
+            "file": "formal/cpp/esbmc/covariance_transition.cpp",
+            "symbol": "verify_covariance_quaternion_validation"
+          },
+          {
+            "file": "formal/cpp/esbmc/process_noise.cpp",
+            "symbol": "verify_ahrs_process_noise"
+          },
+          {
+            "file": "formal/cpp/esbmc/process_noise.cpp",
+            "symbol": "verify_ins_process_noise"
+          },
+          {
+            "file": "formal/cpp/esbmc/process_noise.cpp",
+            "symbol": "verify_ins_storage"
+          },
+          {
+            "file": "formal/cpp/esbmc/reset.cpp",
+            "symbol": "verify_reset_sandwich"
+          },
+          {
+            "file": "formal/cpp/esbmc/reset.cpp",
+            "symbol": "verify_covariance_product"
+          },
+          {
+            "file": "formal/cpp/esbmc/reset.cpp",
+            "symbol": "verify_covariance_entry"
+          },
+          {
+            "file": "formal/cpp/esbmc/reset.cpp",
+            "symbol": "verify_covariance_dot"
+          },
+          {
+            "file": "formal/cpp/esbmc/reset.cpp",
+            "symbol": "verify_reset_storage"
+          },
+          {
+            "file": "formal/cpp/esbmc/reset.cpp",
+            "symbol": "verify_reset_finite"
+          },
+          {
+            "file": "formal/cpp/esbmc/reset.cpp",
+            "symbol": "verify_reset_finish"
+          },
+          {
+            "file": "formal/cpp/esbmc/reset.cpp",
+            "symbol": "verify_covariance_mean"
+          },
+          {
+            "file": "formal/cpp/esbmc/covariance_storage.cpp",
+            "symbol": "verify_covariance_vector_storage"
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "verify_exp_behavior"
           }
         ]
       }

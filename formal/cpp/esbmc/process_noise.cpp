@@ -6,7 +6,9 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include "support.hpp"
+#include "contracts.hpp"
+
+#include <type_traits>
 
 #include <formal_eskf/eskf/process_noise.hpp>
 
@@ -16,6 +18,9 @@
 #ifndef FORMAL_ESKF_PROOF_STORAGE_CONTRACT
 #define FORMAL_ESKF_PROOF_STORAGE_CONTRACT 0
 #endif
+#ifndef FORMAL_ESKF_PROOF_OPAQUE_MATH
+#define FORMAL_ESKF_PROOF_OPAQUE_MATH 0
+#endif
 
 namespace noise_proof
 {
@@ -24,7 +29,13 @@ using Scalar = double;
 #else
 using Scalar = float;
 #endif
-using Linalg = formal_eskf::verification::FixedArrayLinalg<Scalar>;
+// E-PCOV uses the same storage with an opaque transcendental-math policy.
+// Noise has no transcendental calls; nevertheless instantiate its actual
+// producer with that exact C++ type instead of assuming cross-type coverage.
+using Math = std::conditional_t<FORMAL_ESKF_PROOF_OPAQUE_MATH, contract_proof::OpaqueMath,
+                                formal_eskf::scalar::StandardMath<Scalar>>;
+using Linalg =
+    formal_eskf::verification::FixedArrayLinalg<Scalar, formal_eskf::verification::NoNormObserver<Scalar>, Math>;
 using Vector3 = Linalg::vector_type<3U>;
 using AhrsNoise = formal_eskf::configuration::Ahrs::ProcessNoise<Linalg>;
 using InsNoise = formal_eskf::configuration::Ins::ProcessNoise<Linalg>;
@@ -71,7 +82,9 @@ ScalarArray<noise_proof::Scalar, 144U>::operator=(ScalarArray const & source)
 // INS initialization realizes the proved positive-zero postcondition.
 template <>
 template <>
-inline void FixedArrayLinalg<noise_proof::Scalar>::set_zero<12U, 12U>(storage_type<12U, 12U> & matrix) noexcept
+inline void
+FixedArrayLinalg<noise_proof::Scalar, NoNormObserver<noise_proof::Scalar>, noise_proof::Math>::set_zero<12U, 12U>(
+    storage_type<12U, 12U> & matrix) noexcept
 {
     matrix = {};
 }
@@ -96,6 +109,18 @@ bool same_cells(formal_eskf::verification::ScalarArray<Scalar, Size> const & a,
     {
         bool const rest = same_cells(a.tail, b.tail);
         valid = valid && rest;
+    }
+    return valid;
+}
+
+// The initialization contract is about every backing cell, not just values
+// observed through a getter that could share an indexing error with set_zero.
+template <std::size_t Size> bool positive_zero_cells(formal_eskf::verification::ScalarArray<Scalar, Size> const & cells)
+{
+    bool valid = same(cells.head, Scalar{0});
+    if constexpr (Size > 1U)
+    {
+        valid = positive_zero_cells(cells.tail) && valid;
     }
     return valid;
 }
@@ -285,6 +310,8 @@ void verify_ins_storage(noise_proof::InsCovariance matrix, noise_proof::InsCovar
                    "E-NOISE dependency: actual distinct-matrix assignment copies every cell and returns its target");
     auto & storage = formal_eskf::linalg::detail::MatrixAccess::storage(matrix);
     noise_proof::Linalg::set_zero(storage);
+    __ESBMC_assert(noise_proof::positive_zero_cells(storage.values),
+                   "E-NOISE dependency: actual initialization sets every raw backing cell to positive zero");
     __ESBMC_assert(noise_proof::same(matrix(row, column), noise_proof::Scalar{0}),
                    "E-NOISE dependency: actual 12x12 set_zero overwrites every old cell with positive zero");
     __ESBMC_assert(noise_proof::same_cells(formal_eskf::linalg::detail::MatrixAccess::storage(source).values,

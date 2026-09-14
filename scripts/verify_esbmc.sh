@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,12 +37,13 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
                 printf 'jacobian selects flow, entries, final predicate and boundary witnesses; all also runs its norm/scalar dependencies.\n'
                 printf 'reset selects covariance-reset callers and matrix producers; all also runs their right-Jacobian dependencies.\n'
+                printf 'pcov selects covariance prediction and its new exact-type producers; all also runs its Exp and reset matrix dependencies.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -369,9 +370,11 @@ run_prediction_suite()
 
 run_noise_suite()
 {
-    local BINARY64
+    local BINARY64 INS_TIME_LIMIT
     SOURCE_FILE="${PROOF_DIR}/process_noise.cpp"
     for BINARY64 in 0 1; do
+        INS_TIME_LIMIT=180s
+        if ((BINARY64)); then INS_TIME_LIMIT=300s; fi
         PROFILE="noise-binary$((32 + 32 * BINARY64))-ahrs-all-ieee"
         verify verify_ahrs_process_noise -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" --multi-property
         # The actual 12x12 backing store has 144 recursively stored cells.
@@ -380,7 +383,7 @@ run_noise_suite()
         verify verify_ins_storage --proof-unwind 145 --proof-timeout 180s \
             -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" --multi-property
         PROFILE="noise-binary$((32 + 32 * BINARY64))-ins-all-ieee"
-        verify verify_ins_process_noise --proof-unwind 145 --proof-timeout 180s \
+        verify verify_ins_process_noise --proof-unwind 145 --proof-timeout "${INS_TIME_LIMIT}" \
             -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_STORAGE_CONTRACT=1 --cvc5 --multi-property
     done
 }
@@ -483,6 +486,57 @@ run_reset_suite()
     done
 }
 
+run_pcov_suite()
+{
+    local BINARY64 INS ALIAS APPROX BASE_PROFILE UNWIND INS_TIME_LIMIT CALLER_TIME_LIMIT
+    local -a PROFILE_ARGUMENTS
+    for BINARY64 in 0 1; do
+        INS_TIME_LIMIT=180s
+        if ((BINARY64)); then INS_TIME_LIMIT=300s; fi
+        BASE_PROFILE="pcov-binary$((32 + 32 * BINARY64))"
+        PROFILE_ARGUMENTS=(-D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}")
+        SOURCE_FILE="${PROOF_DIR}/covariance_transition.cpp"
+        PROFILE="${BASE_PROFILE}-actual-rotation"
+        verify verify_covariance_rotation "${PROFILE_ARGUMENTS[@]}" --multi-property
+        PROFILE="${BASE_PROFILE}-actual-quaternion-validation"
+        verify verify_covariance_quaternion_validation "${PROFILE_ARGUMENTS[@]}" --multi-property
+        for APPROX in 0 1; do
+            PROFILE="${BASE_PROFILE}-approx${APPROX}-actual-transition"
+            verify verify_covariance_transition "${PROFILE_ARGUMENTS[@]}" -D "ESKF_QUAT_APPROX=${APPROX}" \
+                -D FORMAL_ESKF_PROOF_TRANSITION_CONTRACT=1 --multi-property
+        done
+        SOURCE_FILE="${PROOF_DIR}/process_noise.cpp"
+        PROFILE="${BASE_PROFILE}-ahrs-actual-noise"
+        verify verify_ahrs_process_noise "${PROFILE_ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_OPAQUE_MATH=1 --multi-property
+        PROFILE="${BASE_PROFILE}-ins-actual-noise-storage"
+        verify verify_ins_storage --proof-unwind 145 --proof-timeout 180s "${PROFILE_ARGUMENTS[@]}" \
+            -D FORMAL_ESKF_PROOF_OPAQUE_MATH=1 --multi-property
+        PROFILE="${BASE_PROFILE}-ins-actual-noise"
+        verify verify_ins_process_noise --proof-unwind 145 --proof-timeout "${INS_TIME_LIMIT}" "${PROFILE_ARGUMENTS[@]}" \
+            -D FORMAL_ESKF_PROOF_OPAQUE_MATH=1 -D FORMAL_ESKF_PROOF_STORAGE_CONTRACT=1 --cvc5 --multi-property
+        SOURCE_FILE="${PROOF_DIR}/covariance_prediction.cpp"
+        for INS in 0 1; do
+            UNWIND=10
+            CALLER_TIME_LIMIT=180s
+            BASE_PROFILE="pcov-binary$((32 + 32 * BINARY64))-ahrs"
+            if ((INS)); then
+                UNWIND=226
+                CALLER_TIME_LIMIT="${INS_TIME_LIMIT}"
+                BASE_PROFILE="pcov-binary$((32 + 32 * BINARY64))-ins"
+            fi
+            for APPROX in 0 1; do
+                for ALIAS in 0 1; do
+                    PROFILE="${BASE_PROFILE}-approx${APPROX}-all-ieee-alias${ALIAS}"
+                    verify verify_predict_covariance --proof-unwind "${UNWIND}" --proof-timeout "${CALLER_TIME_LIMIT}" \
+                        "${PROFILE_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_INS=${INS}" \
+                        -D "ESKF_QUAT_APPROX=${APPROX}" -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" \
+                        -D FORMAL_ESKF_PROOF_PCOV_CONTRACT=1 --multi-property
+                done
+            done
+        done
+    done
+}
+
 main()
 {
     parse_arguments "$@"
@@ -514,6 +568,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == reset ]]; then
         run_reset_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == pcov ]]; then
+        run_pcov_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

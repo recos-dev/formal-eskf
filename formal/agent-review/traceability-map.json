@@ -3,7 +3,7 @@
   "scalar_models": {
     "lean": "Exact algebra over CommRing, with real-number theorems where required",
     "cpp": "C++20 operations over IEEE-754 binary32 or binary64",
-    "esbmc": "All 16 registered families have binary32 and binary64 source profiles. Quaternion normalization and Exp use explicit pure-callee summaries (including a separately proved three-vector squared norm), each paired with actual producer/constructor proofs; scalar returns in these new flow proofs are arbitrary IEEE values, without accuracy or successful-result assumptions. General Log executes all branch arithmetic with arbitrary scalar returns. Retained binary32 bounded/native-math witnesses are separate from general-domain claims. E-STATE/E-PRED retain both modes and independent aliases, use independent domain/status oracles, and retain their explicit scalar-enclosure assumptions and actual callee profiles. E-NOISE covers the complete AHRS 3x3 and INS 12x12 discretization over arbitrary IEEE inputs and old outputs, including input checks, ordered scaling, every entry and rollback. INS initialization and the output-storage assignment are summarized, paired with an actual 12x12 zero/copy/frame proof in the same backend/scalar. The caller checks every proposed coefficient, commit eligibility and absence of other output writes; AHRS is direct. No numerical operating-range or successful-input assumption is imposed. E-INJECT executes both actual nominal-injection overloads and their attitude helper, with separate and in-place outputs, arbitrary IEEE state/error/threshold inputs and independent opaque Exp/composition outcomes. Existing same-type Exp, Hamilton and normalization producer proofs close the pure callee summaries; all additive entries, argument order, status translation and state/error frames are checked. These are source-semantic claims for the proof backend, not numerical qualification or Eigen/PX4/libm/deployment proofs."
+    "esbmc": "All 17 registered families have binary32 and binary64 source profiles. Quaternion normalization and Exp use explicit pure-callee summaries (including a separately proved three-vector squared norm), each paired with actual producer/constructor proofs; scalar returns in these new flow proofs are arbitrary IEEE values, without accuracy or successful-result assumptions. General Log executes all branch arithmetic with arbitrary scalar returns. Retained binary32 bounded/native-math witnesses are separate from general-domain claims. E-STATE/E-PRED retain both modes and independent aliases, use independent domain/status oracles, and retain their explicit scalar-enclosure assumptions and actual callee profiles. E-NOISE covers the complete AHRS 3x3 and INS 12x12 discretization over arbitrary IEEE inputs and old outputs, including input checks, ordered scaling, every entry and rollback. INS initialization and the output-storage assignment are summarized, paired with an actual 12x12 zero/copy/frame proof in the same backend/scalar. The caller checks every proposed coefficient, commit eligibility and absence of other output writes; AHRS is direct. No numerical operating-range or successful-input assumption is imposed. E-INJECT executes both actual nominal-injection overloads and their attitude helper, with separate and in-place outputs, arbitrary IEEE state/error/threshold inputs and independent opaque Exp/composition outcomes. Existing same-type Exp, Hamilton and normalization producer proofs close the pure callee summaries; all additive entries, argument order, status translation and state/error frames are checked. These are source-semantic claims for the proof backend, not numerical qualification or Eigen/PX4/libm/deployment proofs. F-JR pairs an unrestricted source-flow proof with both complete candidate-arithmetic branches, an actual nine-entry finite predicate, and actual-norm zero/cutoff witnesses. The arithmetic premises are exactly the separately proved candidate eligibility, not a finite-result or scalar-accuracy assumption; every candidate/output entry and frame is checked. The existing same-type squared-norm and checked-scalar proofs close its other internal dependency. No ESKF approximation macro affects this operation."
   },
   "review_dimensions": [
     "coefficient ordering",
@@ -1352,6 +1352,88 @@
           {
             "file": "formal/cpp/esbmc/algebra.cpp",
             "symbol": "verify_product"
+          }
+        ]
+      }
+    },
+    {
+      "id": "F-JR",
+      "title": "SO(3) right Jacobian",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "`F-JR`"
+          }
+        ],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/RightJacobian.lean",
+            "symbol": "def rightJacobian"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RightJacobian.lean",
+            "symbol": "def rightJacobianTaylor"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RightJacobian.lean",
+            "symbol": "theorem rightJacobian_zero"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RightJacobian.lean",
+            "symbol": "theorem rightJacobianTaylor_polynomial"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RightJacobian.lean",
+            "symbol": "theorem rightJacobian_halfAngle"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RightJacobianLimits.lean",
+            "symbol": "theorem rightJacobian_hasDerivAt_zero"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RightJacobianLimits.lean",
+            "symbol": "theorem rightJacobianTaylorA_remainder"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RightJacobianLimits.lean",
+            "symbol": "theorem rightJacobianTaylorB_remainder"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ResetDifferential.lean",
+            "symbol": "theorem resetRotationVector_hasFDerivAt"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/so3/right_jacobian.hpp",
+            "symbol": "Status try_right_jacobian"
+          },
+          {
+            "file": "include/formal_eskf/linalg/operations.hpp",
+            "symbol": "bool all_finite"
+          }
+        ],
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/right_jacobian.cpp",
+            "symbol": "verify_right_jacobian("
+          },
+          {
+            "file": "formal/cpp/esbmc/right_jacobian.cpp",
+            "symbol": "verify_right_jacobian_finite"
+          },
+          {
+            "file": "formal/cpp/esbmc/right_jacobian.cpp",
+            "symbol": "verify_right_jacobian_boundaries"
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "verify_squared_norm_producer"
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "verify_scalar_wrappers"
           }
         ]
       }

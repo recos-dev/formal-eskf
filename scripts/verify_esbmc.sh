@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,10 +37,11 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
+                printf 'jacobian selects flow, entries, final predicate and boundary witnesses; all also runs its norm/scalar dependencies.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -75,6 +76,20 @@ check_esbmc_version()
     fi
 }
 
+check_solver_arguments()
+{
+    local ARGUMENT MULTI=0 INCREMENTAL=0
+    for ARGUMENT in "$@"; do
+        case "${ARGUMENT}" in
+            --multi-property) MULTI=1 ;;
+            --smt-during-symex|--smt-symex-guard|--smt-symex-assume|--smt-symex-assert|--smt-thread-guard) INCREMENTAL=1 ;;
+        esac
+    done
+    # ESBMC 8.4.0 can miss a known coefficient mismatch with this combination.
+    # Keep incremental single-query and non-incremental multi-property separate.
+    ((MULTI == 0 || INCREMENTAL == 0)) || fail 'ESBMC 8.4.0: do not combine --multi-property with incremental SMT'
+}
+
 verify()
 {
     local FUNCTION_NAME="$1"
@@ -96,6 +111,7 @@ verify()
             *) break ;;
         esac
     done
+    check_solver_arguments "${ESBMC_ARGUMENTS[@]}" "$@"
     if ((LIST_ONLY)); then
         printf 'PLAN\t%s\t%s\t%s\n' "${SOURCE_FILE#"${REPO_DIR}/"}" "${PROFILE}" "${FUNCTION_NAME}"
         return
@@ -385,6 +401,33 @@ run_injection_suite()
     done
 }
 
+run_jacobian_suite()
+{
+    local BINARY64 BRANCH BASE_PROFILE
+    local -a PROFILE_ARGUMENTS
+    SOURCE_FILE="${PROOF_DIR}/right_jacobian.cpp"
+    for BINARY64 in 0 1; do
+        BASE_PROFILE="jacobian-binary$((32 + 32 * BINARY64))"
+        PROFILE_ARGUMENTS=(-D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}")
+        PROFILE="${BASE_PROFILE}-actual-finite-producer"
+        verify verify_right_jacobian_finite "${PROFILE_ARGUMENTS[@]}" --multi-property
+        PROFILE="${BASE_PROFILE}-actual-boundary-witnesses"
+        verify verify_right_jacobian_boundaries "${PROFILE_ARGUMENTS[@]}" --multi-property
+        PROFILE="${BASE_PROFILE}-all-ieee-flow"
+        verify verify_right_jacobian "${PROFILE_ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_SQUARED_NORM_CONTRACT=1 \
+            -D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1 --multi-property
+        # Flow proves eligibility without input restrictions. These two
+        # coefficient profiles cover exactly the eligible Taylor/regular paths.
+        # Guard solving prunes infeasible paths before encoding FP arithmetic.
+        for BRANCH in 0 1; do
+            PROFILE="${BASE_PROFILE}-entries-branch${BRANCH}"
+            verify verify_right_jacobian "${PROFILE_ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_SQUARED_NORM_CONTRACT=1 \
+                -D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1 -D "FORMAL_ESKF_PROOF_JACOBIAN_BRANCH=${BRANCH}" \
+                --cvc5 --smt-symex-guard
+        done
+    done
+}
+
 main()
 {
     parse_arguments "$@"
@@ -410,6 +453,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == injection ]]; then
         run_injection_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == jacobian ]]; then
+        run_jacobian_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

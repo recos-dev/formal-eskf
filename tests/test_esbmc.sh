@@ -18,7 +18,7 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE
     PLAN="$("${RUNNER}" --list)"
-    check_count 236 '^PLAN'
+    check_count 246 '^PLAN'
     check_count 14 'quaternion-binary32-witness'
     check_count 8 'algebra-binary32'
     check_count 8 'algebra-binary64'
@@ -32,6 +32,8 @@ check_plan()
     check_count 3 'noise-binary64'
     check_count 4 'injection-binary32'
     check_count 4 'injection-binary64'
+    check_count 5 'jacobian-binary32'
+    check_count 5 'jacobian-binary64'
     check_count 74 'prediction-binary32|state-binary32|scalar-contract-binary32'
     check_count 74 'prediction-binary64|state-binary64|scalar-contract-binary64'
     check_count 0 'shared'
@@ -43,6 +45,12 @@ check_plan()
     check_count 16 'approx0.*actual-exp-coefficient'
     check_count 66 'approx[01]-standard'
     for BINARY64 in 0 1; do
+        BASE_PROFILE="jacobian-binary$((32 + 32 * BINARY64))"
+        check_count 1 "${BASE_PROFILE}-actual-finite-producer"
+        check_count 1 "${BASE_PROFILE}-actual-boundary-witnesses"
+        check_count 1 "${BASE_PROFILE}-all-ieee-flow"
+        check_count 1 "${BASE_PROFILE}-entries-branch0"
+        check_count 1 "${BASE_PROFILE}-entries-branch1"
         check_count 1 "noise-binary$((32 + 32 * BINARY64))-ahrs-all-ieee"
         check_count 1 "noise-binary$((32 + 32 * BINARY64))-ins-all-ieee"
         check_count 1 "noise-binary$((32 + 32 * BINARY64))-ins-actual-storage"
@@ -81,8 +89,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 65 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 236 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 68 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 246 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -94,6 +102,47 @@ check_plan()
     [[ "$("${RUNNER}" prediction64 --list | wc -l)" == 74 ]] || fail 'binary64 selection changed'
     [[ "$("${RUNNER}" noise --list | wc -l)" == 6 ]] || fail 'noise configuration/dependency coverage changed'
     [[ "$("${RUNNER}" injection --list | wc -l)" == 8 ]] || fail 'injection configuration/alias coverage changed'
+    [[ "$("${RUNNER}" jacobian --list | wc -l)" == 10 ]] || fail 'Jacobian flow/entries/dependency coverage changed'
+}
+
+check_jacobian_arguments()
+(
+    # Profile names alone cannot establish that both branch/scalar proofs run.
+    verify()
+    {
+        local FUNCTION_NAME="$1" EXPECTED_FUNCTION=verify_right_jacobian BITS=0
+        local -a EXPECTED
+        shift
+        [[ "${PROFILE}" != jacobian-binary64-* ]] || BITS=1
+        EXPECTED=(-D "FORMAL_ESKF_PROOF_BINARY64=${BITS}")
+        case "${PROFILE}" in
+            *-actual-finite-producer) EXPECTED_FUNCTION=verify_right_jacobian_finite ;;
+            *-actual-boundary-witnesses) EXPECTED_FUNCTION=verify_right_jacobian_boundaries ;;
+            *-all-ieee-flow|*-entries-branch[01])
+                EXPECTED+=(-D FORMAL_ESKF_PROOF_SQUARED_NORM_CONTRACT=1 -D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1)
+                if [[ "${PROFILE}" == *-entries-branch[01] ]]; then
+                    EXPECTED+=(-D "FORMAL_ESKF_PROOF_JACOBIAN_BRANCH=${PROFILE##*branch}" --cvc5 --smt-symex-guard)
+                fi
+                ;;
+            *) fail "unexpected Jacobian profile: ${PROFILE}" ;;
+        esac
+        [[ "${PROFILE}" == *-entries-branch[01] ]] || EXPECTED+=(--multi-property)
+        [[ "${FUNCTION_NAME}" == "${EXPECTED_FUNCTION}" && "$*" == "${EXPECTED[*]}" ]] ||
+            fail "wrong Jacobian function, scalar, boundary, branch or solver arguments: ${PROFILE}"
+    }
+    run_jacobian_suite
+)
+
+check_solver_argument_guard()
+{
+    local FLAG RESULT
+    for FLAG in --smt-during-symex --smt-symex-guard --smt-symex-assume --smt-symex-assert --smt-thread-guard; do
+        RESULT=0
+        (check_solver_arguments --multi-property "${FLAG}") >/dev/null 2>&1 || RESULT=$?
+        [[ "${RESULT}" == 127 ]] || fail "accepted unsupported solver combination: ${FLAG}"
+        check_solver_arguments "${FLAG}"
+    done
+    check_solver_arguments --multi-property --cvc5
 }
 
 check_mode_constants()
@@ -243,6 +292,67 @@ check_injection_contract_guards()
     printf 'ESBMC injection guard tests: pass (both incompatible boundaries rejected)\n'
 )
 
+check_jacobian_solver()
+(
+    local TEST_WORK_DIR FAULT
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-jacobian-solver.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    SOURCE_FILE="${TEST_DIR}/esbmc/jacobian_checks.cpp"
+    for FAULT in 0 1; do
+        PROFILE="regression-jacobian-fault${FAULT}"
+        verify verify_jacobian_checks -D "FORMAL_ESKF_PROOF_CHECK_FAULT=${FAULT}" \
+            -D FORMAL_ESKF_PROOF_SQUARED_NORM_CONTRACT=1 -D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1 \
+            -D FORMAL_ESKF_PROOF_JACOBIAN_BRANCH=0 --cvc5 --smt-symex-guard \
+            >"${TEST_WORK_DIR}/fault${FAULT}.log" 2>&1
+    done
+    if [[ "${FAILED_CHECKS}" != 1 ]] || ! grep -q 'VERIFICATION SUCCESSFUL' "${TEST_WORK_DIR}/fault0.log" ||
+        ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/fault1.log" ||
+        ! grep -q 'Regression: a changed Jacobian entry must be rejected' "${TEST_WORK_DIR}/fault1.log"; then
+        tail -n 20 "${TEST_WORK_DIR}/fault0.log" >&2
+        tail -n 20 "${TEST_WORK_DIR}/fault1.log" >&2
+        fail 'Jacobian solver regression must accept the correct matrix and reject a changed entry'
+    fi
+    printf 'ESBMC Jacobian solver regression: pass (correct entries pass; changed entry fails)\n'
+)
+
+check_jacobian_contract_guards()
+(
+    local TEST_WORK_DIR NORM
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-jacobian-test.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    SOURCE_FILE="${PROOF_DIR}/right_jacobian.cpp"
+    for NORM in 0 1; do
+        PROFILE="regression-missing-jacobian-summary${NORM}"
+        verify verify_right_jacobian -D "FORMAL_ESKF_PROOF_SQUARED_NORM_CONTRACT=${NORM}" \
+            -D "FORMAL_ESKF_PROOF_FINITE_CONTRACT=$((1 - NORM))" --multi-property \
+            >"${TEST_WORK_DIR}/caller${NORM}.log" 2>&1
+        if [[ "${FAILED_CHECKS}" != "$((NORM + 1))" ]] ||
+            ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/caller${NORM}.log" ||
+            ! grep -q 'Runner error: right Jacobian requires norm and final-predicate summaries' "${TEST_WORK_DIR}/caller${NORM}.log"; then
+            fail 'Jacobian caller accepted a missing summary'
+        fi
+    done
+    PROFILE=regression-substituted-jacobian-predicate
+    verify verify_right_jacobian_finite -D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1 --multi-property \
+        >"${TEST_WORK_DIR}/producer.log" 2>&1
+    if [[ "${FAILED_CHECKS}" != 3 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/producer.log" ||
+        ! grep -q 'Runner error: matrix-finite producer must be actual' "${TEST_WORK_DIR}/producer.log"; then
+        fail 'Jacobian producer accepted a substituted predicate'
+    fi
+    PROFILE=regression-substituted-jacobian-boundary
+    verify verify_right_jacobian_boundaries -D FORMAL_ESKF_PROOF_SQUARED_NORM_CONTRACT=1 --multi-property \
+        >"${TEST_WORK_DIR}/boundary.log" 2>&1
+    if [[ "${FAILED_CHECKS}" != 4 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/boundary.log" ||
+        ! grep -q 'Runner error: right-Jacobian boundary witnesses require the actual squared norm' "${TEST_WORK_DIR}/boundary.log"; then
+        fail 'Jacobian witnesses accepted a substituted norm'
+    fi
+    printf 'ESBMC Jacobian guard tests: pass (four incompatible boundaries rejected)\n'
+)
+
 RUN_SOLVER=0
 case "${1:-}" in
     '') ;;
@@ -256,7 +366,9 @@ case "${1:-}" in
 esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
-printf 'ESBMC inventory tests: pass (236 profiles; 65 entry points; all shards)\n'
+check_jacobian_arguments
+check_solver_argument_guard
+printf 'ESBMC inventory tests: pass (246 profiles; 68 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards
@@ -264,4 +376,6 @@ if ((RUN_SOLVER)); then
     check_maps_contract_guards
     check_noise_contract_guard
     check_injection_contract_guards
+    check_jacobian_solver
+    check_jacobian_contract_guards
 fi

@@ -18,7 +18,7 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION
     PLAN="$("${RUNNER}" --list)"
-    check_count 322 '^PLAN'
+    check_count 426 '^PLAN'
     check_count 14 'quaternion-binary32-witness'
     check_count 8 'algebra-binary32'
     check_count 8 'algebra-binary64'
@@ -38,6 +38,8 @@ check_plan()
     check_count 23 'reset-binary64'
     check_count 15 'pcov-binary32'
     check_count 15 'pcov-binary64'
+    check_count 52 'step-binary32'
+    check_count 52 'step-binary64'
     check_count 74 'prediction-binary32|state-binary32|scalar-contract-binary32'
     check_count 74 'prediction-binary64|state-binary64|scalar-contract-binary64'
     check_count 0 'shared'
@@ -49,6 +51,18 @@ check_plan()
     check_count 16 'approx0.*actual-exp-coefficient'
     check_count 66 'approx[01]-standard'
     for BINARY64 in 0 1; do
+        for CONFIGURATION in ahrs ins; do
+            for APPROX in 0 1; do
+                BASE_PROFILE="step-binary$((32 + 32 * BINARY64))-${CONFIGURATION}"
+                check_count 1 "${BASE_PROFILE}-quat${APPROX}-nominal-frame"
+                for ALIAS in 0 1 2 3; do
+                    check_count 1 "${BASE_PROFILE}-quat${APPROX}-prediction-alias${ALIAS}"
+                done
+                for ALIAS in 0 1 2 3 4 5 6 7; do
+                    check_count 1 "${BASE_PROFILE}-reset${APPROX}-injection-alias${ALIAS}"
+                done
+            done
+        done
         BASE_PROFILE="pcov-binary$((32 + 32 * BINARY64))"
         check_count 1 "${BASE_PROFILE}-actual-rotation"
         check_count 1 "${BASE_PROFILE}-actual-quaternion-validation"
@@ -124,8 +138,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 82 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 322 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 85 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 426 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -140,7 +154,43 @@ check_plan()
     [[ "$("${RUNNER}" jacobian --list | wc -l)" == 10 ]] || fail 'Jacobian flow/entries/dependency coverage changed'
     [[ "$("${RUNNER}" reset --list | wc -l)" == 46 ]] || fail 'reset configuration/mode/alias/dependency coverage changed'
     [[ "$("${RUNNER}" pcov --list | wc -l)" == 30 ]] || fail 'covariance prediction configuration/mode/alias/dependency coverage changed'
+    [[ "$("${RUNNER}" step --list | wc -l)" == 104 ]] || fail 'step configuration/mode/frame coverage changed'
 }
+
+check_step_arguments()
+(
+    verify()
+    {
+        local FUNCTION_NAME="$1" EXPECTED_FUNCTION BITS=0 INS=0 UNWIND=10 APPROX
+        local -a EXPECTED
+        shift
+        [[ "${PROFILE}" != step-binary64-* ]] || BITS=1
+        if [[ "${PROFILE}" == *-ins-* ]]; then INS=1; UNWIND=226; fi
+        EXPECTED=(--proof-unwind "${UNWIND}" -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}" -D "FORMAL_ESKF_PROOF_INS=${INS}")
+        case "${PROFILE}" in
+            *-quat[01]-nominal-frame)
+                EXPECTED_FUNCTION=verify_nominal_prediction_frame
+                APPROX="${PROFILE#*-quat}"
+                EXPECTED+=(-D "ESKF_QUAT_APPROX=${APPROX%%-*}" -D FORMAL_ESKF_PROOF_STEP_FRAME=1)
+                ;;
+            *-quat[01]-prediction-alias[0-3])
+                EXPECTED_FUNCTION=verify_prediction_step
+                APPROX="${PROFILE#*-quat}"
+                EXPECTED+=(-D "ESKF_QUAT_APPROX=${APPROX%%-*}" -D "FORMAL_ESKF_PROOF_STEP_ALIAS=${PROFILE##*alias}" -D FORMAL_ESKF_PROOF_STEP_CONTRACT=1)
+                ;;
+            *-reset[01]-injection-alias[0-7])
+                EXPECTED_FUNCTION=verify_injection_reset_step
+                APPROX="${PROFILE#*-reset}"
+                EXPECTED+=(-D "ESKF_RESET_APPROX=${APPROX%%-*}" -D "FORMAL_ESKF_PROOF_STEP_ALIAS=${PROFILE##*alias}" -D FORMAL_ESKF_PROOF_STEP_CONTRACT=1)
+                ;;
+            *) fail "unexpected step profile: ${PROFILE}" ;;
+        esac
+        EXPECTED+=(--multi-property)
+        [[ "${SOURCE_FILE}" == "${PROOF_DIR}/step.cpp" && "${FUNCTION_NAME}" == "${EXPECTED_FUNCTION}" && "$*" == "${EXPECTED[*]}" ]] ||
+            fail "wrong step source, scalar, configuration, mode, boundary or solver arguments: ${PROFILE}"
+    }
+    run_step_suite
+)
 
 check_pcov_arguments()
 (
@@ -654,6 +704,59 @@ check_pcov_regressions()
     printf 'ESBMC covariance prediction regressions: pass (IEEE candidate, last-cell faults and default mode; both scalars)\n'
 )
 
+check_step_contract_guards()
+(
+    local TEST_WORK_DIR FUNCTION_NAME FLAGS EXPECTED RESULT COUNT=0
+    local -a ARGUMENTS
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-step-guard.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    while IFS='|' read -r FUNCTION_NAME FLAGS EXPECTED; do
+        read -r -a ARGUMENTS <<< "${FLAGS}"
+        RESULT=0
+        "${ESBMC_COMMAND}" "${PROOF_DIR}/step.cpp" "${ESBMC_ARGUMENTS[@]}" \
+            --unwind 10 --timeout 120s --memlimit 4g --function "${FUNCTION_NAME}" \
+            "${ARGUMENTS[@]}" --multi-property >"${TEST_WORK_DIR}/${COUNT}.log" 2>&1 || RESULT=$?
+        if [[ "${RESULT}" != 1 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${COUNT}.log" ||
+            ! grep -F 'FAILED:' "${TEST_WORK_DIR}/${COUNT}.log" | grep -Fq "${EXPECTED}"; then
+            tail -n 30 "${TEST_WORK_DIR}/${COUNT}.log" >&2
+            fail "step guard did not reject the incompatible boundary: ${FUNCTION_NAME} ${FLAGS}"
+        fi
+        COUNT=$((COUNT + 1))
+    done <<'CASES'
+verify_prediction_step|-D FORMAL_ESKF_PROOF_STEP_CONTRACT=0|Runner error: step caller requires only component summaries
+verify_injection_reset_step|-D FORMAL_ESKF_PROOF_STEP_CONTRACT=0|Runner error: step caller requires only component summaries
+verify_prediction_step|-D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 -D FORMAL_ESKF_PROOF_STEP_FRAME=1|Runner error: step caller requires only component summaries
+verify_nominal_prediction_frame|-D FORMAL_ESKF_PROOF_STEP_FRAME=0|Runner error: nominal frame producer requires only quaternion leaf summaries
+verify_nominal_prediction_frame|-D FORMAL_ESKF_PROOF_STEP_FRAME=1 -D FORMAL_ESKF_PROOF_STEP_CONTRACT=1|Runner error: nominal frame producer requires only quaternion leaf summaries
+verify_prediction_step|-D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 -D FORMAL_ESKF_PROOF_STEP_ALIAS=4|Runner error: prediction has exactly four alias arrangements
+verify_injection_reset_step|-D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 -D FORMAL_ESKF_PROOF_STEP_ALIAS=8|Runner error: injection/reset has exactly eight alias arrangements
+CASES
+    printf 'ESBMC step guards: pass (%d incompatible boundaries/aliases rejected)\n' "${COUNT}"
+)
+
+check_step_regressions()
+(
+    local TEST_WORK_DIR BINARY64
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-step-regression.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    for BINARY64 in 0 1; do
+        if ! "${ESBMC_COMMAND}" "${TEST_DIR}/esbmc/step_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
+            --unwind 226 --timeout 120s --memlimit 4g --function verify_step_regression \
+            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_INS=1 \
+            -D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 -D FORMAL_ESKF_PROOF_STEP_ALIAS=7 \
+            --multi-property >"${TEST_WORK_DIR}/${BINARY64}.log" 2>&1 ||
+            ! grep -q 'VERIFICATION SUCCESSFUL' "${TEST_WORK_DIR}/${BINARY64}.log"; then
+            tail -n 30 "${TEST_WORK_DIR}/${BINARY64}.log" >&2
+            fail "step signed-zero/non-finite/full-in-place fixture failed: binary64=${BINARY64}"
+        fi
+    done
+    printf 'ESBMC step regressions: pass (both transactions, symbolic statuses and full in-place output; both scalars)\n'
+)
+
 RUN_SOLVER=0
 case "${1:-}" in
     '') ;;
@@ -670,8 +773,9 @@ check_plan
 check_jacobian_arguments
 check_reset_arguments
 check_pcov_arguments
+check_step_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (322 profiles; 82 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (426 profiles; 85 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards
@@ -685,4 +789,6 @@ if ((RUN_SOLVER)); then
     check_reset_regressions
     check_pcov_contract_guards
     check_pcov_regressions
+    check_step_contract_guards
+    check_step_regressions
 fi

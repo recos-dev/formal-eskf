@@ -1769,6 +1769,128 @@
           }
         ]
       }
+    },
+    {
+      "id": "E-STEP",
+      "title": "Atomic prediction and injection/reset; correction composition remains open",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### E-STEP: composed-operation requirements"
+          }
+        ],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/Step.lean",
+            "symbol": "def predictInsStep"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Step.lean",
+            "symbol": "def predictAhrsStep"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Step.lean",
+            "symbol": "theorem predictInsStep_valid"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Step.lean",
+            "symbol": "theorem predictAhrsStep_valid"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Injection.lean",
+            "symbol": "def injectAndResetIns"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Injection.lean",
+            "symbol": "def injectAndResetAhrs"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Injection.lean",
+            "symbol": "theorem injectAndResetIns_invariants"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Injection.lean",
+            "symbol": "theorem injectAndResetAhrs_invariants"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Step.lean",
+            "symbol": "theorem correctInsStep_valid"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Step.lean",
+            "symbol": "theorem correctAhrsStep_valid"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/eskf/covariance_prediction.hpp",
+            "symbol": "Status try_predict("
+          },
+          {
+            "file": "include/formal_eskf/eskf/covariance_prediction.hpp",
+            "symbol": "Status try_predict_state_and_covariance"
+          },
+          {
+            "file": "include/formal_eskf/eskf/injection.hpp",
+            "symbol": "Status try_inject_and_reset"
+          },
+          {
+            "file": "include/formal_eskf/eskf/injection.hpp",
+            "symbol": "try_inject_state_and_reset("
+          },
+          {
+            "file": "include/formal_eskf/eskf/correction.hpp",
+            "symbol": "Status try_correct("
+          }
+        ],
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/step.cpp",
+            "symbol": "void verify_prediction_step"
+          },
+          {
+            "file": "formal/cpp/esbmc/step.cpp",
+            "symbol": "void verify_injection_reset_step"
+          },
+          {
+            "file": "formal/cpp/esbmc/step.cpp",
+            "symbol": "void verify_nominal_prediction_frame"
+          },
+          {
+            "file": "formal/cpp/esbmc/covariance_prediction.cpp",
+            "symbol": "void verify_predict_covariance"
+          },
+          {
+            "file": "formal/cpp/esbmc/injection.cpp",
+            "symbol": "void verify_ahrs_injection"
+          },
+          {
+            "file": "formal/cpp/esbmc/injection.cpp",
+            "symbol": "void verify_ins_injection"
+          },
+          {
+            "file": "formal/cpp/esbmc/reset.cpp",
+            "symbol": "void verify_reset("
+          },
+          {
+            "file": "formal/cpp/esbmc/reset.cpp",
+            "symbol": "void verify_reset_storage"
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "void verify_exp_behavior"
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "void verify_composition_general("
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "void verify_constructor("
+          }
+        ]
+      }
     }
   ]
 }

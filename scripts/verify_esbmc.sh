@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,13 +37,14 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
                 printf 'jacobian selects flow, entries, final predicate and boundary witnesses; all also runs its norm/scalar dependencies.\n'
                 printf 'reset selects covariance-reset callers and matrix producers; all also runs their right-Jacobian dependencies.\n'
                 printf 'pcov selects covariance prediction and its new exact-type producers; all also runs its Exp and reset matrix dependencies.\n'
+                printf 'step selects atomic prediction/injection-reset callers and nominal input-frame producers; all also runs their component dependencies. Correction remains outside step coverage.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -537,6 +538,42 @@ run_pcov_suite()
     done
 }
 
+run_step_suite()
+{
+    local BINARY64 INS APPROX ALIAS CONFIGURATION UNWIND BASE_PROFILE
+    local -a PROFILE_ARGUMENTS
+    SOURCE_FILE="${PROOF_DIR}/step.cpp"
+    for BINARY64 in 0 1; do
+        for INS in 0 1; do
+            CONFIGURATION=ahrs
+            UNWIND=10
+            if ((INS)); then CONFIGURATION=ins; UNWIND=226; fi
+            BASE_PROFILE="step-binary$((32 + 32 * BINARY64))-${CONFIGURATION}"
+            PROFILE_ARGUMENTS=(-D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_INS=${INS}")
+            for APPROX in 0 1; do
+                PROFILE="${BASE_PROFILE}-quat${APPROX}-nominal-frame"
+                verify verify_nominal_prediction_frame --proof-unwind "${UNWIND}" "${PROFILE_ARGUMENTS[@]}" \
+                    -D "ESKF_QUAT_APPROX=${APPROX}" -D FORMAL_ESKF_PROOF_STEP_FRAME=1 --multi-property
+                # Partition alias arrangements, not coefficients or numeric
+                # domains. Dynamic aggregate references mis-model/expand badly
+                # in ESBMC 8.4; every legal arrangement is still mandatory.
+                for ALIAS in 0 1 2 3; do
+                    PROFILE="${BASE_PROFILE}-quat${APPROX}-prediction-alias${ALIAS}"
+                    verify verify_prediction_step --proof-unwind "${UNWIND}" "${PROFILE_ARGUMENTS[@]}" \
+                        -D "ESKF_QUAT_APPROX=${APPROX}" -D "FORMAL_ESKF_PROOF_STEP_ALIAS=${ALIAS}" \
+                        -D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 --multi-property
+                done
+                for ALIAS in 0 1 2 3 4 5 6 7; do
+                    PROFILE="${BASE_PROFILE}-reset${APPROX}-injection-alias${ALIAS}"
+                    verify verify_injection_reset_step --proof-unwind "${UNWIND}" "${PROFILE_ARGUMENTS[@]}" \
+                        -D "ESKF_RESET_APPROX=${APPROX}" -D "FORMAL_ESKF_PROOF_STEP_ALIAS=${ALIAS}" \
+                        -D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 --multi-property
+                done
+            done
+        done
+    done
+}
+
 main()
 {
     parse_arguments "$@"
@@ -571,6 +608,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == pcov ]]; then
         run_pcov_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == step ]]; then
+        run_step_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

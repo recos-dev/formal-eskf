@@ -95,6 +95,29 @@ if(FORMAL_ESKF_BUILD_PX4_MATRIX_BACKEND)
     endif()
 endif()
 
+option(FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND "Build the adapter for host-provided CMSIS-DSP" OFF)
+set(FORMAL_ESKF_CMSIS_DSP_TARGET "CMSISDSP::CMSISDSP" CACHE STRING "Existing or installed target providing CMSIS-DSP")
+
+if(FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND)
+    # The embedding build owns CMSIS-DSP and its CPU/FPU/ABI/SIMD configuration.
+    # Accept an existing target or an installed package; never fetch sources.
+    if(FORMAL_ESKF_CMSIS_DSP_TARGET STREQUAL "CMSISDSP::CMSISDSP" AND
+       NOT TARGET CMSISDSP::CMSISDSP)
+        find_package(CMSISDSP CONFIG REQUIRED)
+    endif()
+    if(NOT TARGET "${FORMAL_ESKF_CMSIS_DSP_TARGET}")
+        message(FATAL_ERROR "FORMAL_ESKF_CMSIS_DSP_TARGET must name an existing CMake target")
+    endif()
+    add_library(formal_eskf_linalg_cmsis_dsp INTERFACE)
+    add_library(formal_eskf::linalg_cmsis_dsp ALIAS formal_eskf_linalg_cmsis_dsp)
+    target_link_libraries(
+        formal_eskf_linalg_cmsis_dsp
+        INTERFACE
+            formal_eskf::linalg
+            ${FORMAL_ESKF_CMSIS_DSP_TARGET}
+    )
+endif()
+
 if(PROJECT_IS_TOP_LEVEL)
     include(CTest)
 
@@ -119,9 +142,10 @@ if(PROJECT_IS_TOP_LEVEL)
         formal_eskf_configure_test(test_scalar_standard)
         add_test(NAME formal_eskf.scalar.standard COMMAND test_scalar_standard)
 
-        if(FORMAL_ESKF_BUILD_EIGEN_BACKEND OR FORMAL_ESKF_BUILD_PX4_MATRIX_BACKEND)
+        if(FORMAL_ESKF_BUILD_EIGEN_BACKEND OR FORMAL_ESKF_BUILD_PX4_MATRIX_BACKEND OR
+           FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND)
             # Independent eigenvalue oracle in test_eskf_covariance.cpp only.
-            # PX4 production targets never link Eigen.
+            # PX4/CMSIS-DSP production targets never link Eigen.
             find_package(Eigen3 3.3 CONFIG REQUIRED)
         endif()
 
@@ -146,7 +170,27 @@ if(PROJECT_IS_TOP_LEVEL)
                 string(REGEX REPLACE "\\.eigen$" "" px4_test_name "${test_name}")
                 add_test(NAME ${px4_test_name}.px4_matrix COMMAND ${px4_target})
             endif()
+
+            if(FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND)
+                set(cmsis_target ${target_name}_cmsis_dsp)
+                add_executable(${cmsis_target} tests/${source_name}.cpp)
+                target_link_libraries(${cmsis_target} PRIVATE ${library} formal_eskf::linalg_cmsis_dsp)
+                target_compile_definitions(${cmsis_target} PRIVATE FORMAL_ESKF_TEST_CMSIS_DSP)
+                if(source_name STREQUAL "test_eskf_covariance")
+                    target_link_libraries(${cmsis_target} PRIVATE Eigen3::Eigen)
+                endif()
+                formal_eskf_configure_test(${cmsis_target})
+                string(REGEX REPLACE "\\.eigen$" "" cmsis_test_name "${test_name}")
+                add_test(NAME ${cmsis_test_name}.cmsis_dsp COMMAND ${cmsis_target})
+            endif()
         endfunction()
+
+        if(FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND)
+            add_executable(test_cmsis_dsp_backend tests/test_cmsis_dsp_backend.cpp)
+            target_link_libraries(test_cmsis_dsp_backend PRIVATE formal_eskf::linalg_cmsis_dsp)
+            formal_eskf_configure_test(test_cmsis_dsp_backend)
+            add_test(NAME formal_eskf.linalg.cmsis_dsp.storage COMMAND test_cmsis_dsp_backend)
+        endif()
 
         formal_eskf_add_backend_test(test_linalg_eigen test_linalg_eigen formal_eskf.linalg.eigen formal_eskf::linalg)
         formal_eskf_add_backend_test(test_linalg_spd test_linalg_spd formal_eskf.linalg.spd formal_eskf::linalg)

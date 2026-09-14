@@ -13,6 +13,8 @@
 
 #if defined(FORMAL_ESKF_TEST_PX4_MATRIX)
 #include <formal_eskf/linalg/backend/px4_matrix.hpp>
+#elif defined(FORMAL_ESKF_TEST_CMSIS_DSP)
+#include <formal_eskf/linalg/backend/cmsis_dsp.hpp>
 #else
 #include <formal_eskf/linalg/backend/eigen.hpp>
 #endif
@@ -24,6 +26,8 @@ namespace formal_eskf::test
 template <typename Scalar> using Backend = linalg::Px4MatrixBackend<Scalar>;
 static_assert(std::is_same_v<Backend<float>::storage_type<2U, 3U>, ::matrix::Matrix<float, 2U, 3U>>);
 static_assert(std::is_same_v<Backend<double>::storage_type<2U, 3U>, ::matrix::Matrix<double, 2U, 3U>>);
+#elif defined(FORMAL_ESKF_TEST_CMSIS_DSP)
+template <typename Scalar> using Backend = linalg::CmsisDspBackend<Scalar>;
 #else
 template <typename Scalar> using Backend = linalg::EigenBackend<Scalar>;
 #endif
@@ -32,6 +36,8 @@ inline void configure_backend_test()
 {
 #if defined(FORMAL_ESKF_TEST_PX4_MATRIX)
     std::cout << "Backend: PX4 matrix\n";
+#elif defined(FORMAL_ESKF_TEST_CMSIS_DSP)
+    std::cout << "Backend: CMSIS-DSP\n";
 #else
     Eigen::internal::set_is_malloc_allowed(false);
     std::cout << "Backend: Eigen (runtime allocation guard enabled)\n";

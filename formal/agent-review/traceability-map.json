@@ -3,7 +3,7 @@
   "scalar_models": {
     "lean": "Exact algebra over CommRing, with real-number theorems where required",
     "cpp": "C++20 operations over IEEE-754 binary32 or binary64",
-    "esbmc": "All 14 registered families have binary32 and binary64 source profiles. Quaternion normalization and Exp use explicit pure-callee summaries (including a separately proved three-vector squared norm), each paired with actual producer/constructor proofs; scalar returns in these new flow proofs are arbitrary IEEE values, without accuracy or successful-result assumptions. General Log executes all branch arithmetic with arbitrary scalar returns. Retained binary32 bounded/native-math witnesses are separate from general-domain claims. E-STATE/E-PRED retain both modes and independent aliases, use independent domain/status oracles, and retain their explicit scalar-enclosure assumptions and actual callee profiles. These are source-semantic claims for the proof backend, not numerical qualification or Eigen/PX4/libm/deployment proofs."
+    "esbmc": "All 15 registered families have binary32 and binary64 source profiles. Quaternion normalization and Exp use explicit pure-callee summaries (including a separately proved three-vector squared norm), each paired with actual producer/constructor proofs; scalar returns in these new flow proofs are arbitrary IEEE values, without accuracy or successful-result assumptions. General Log executes all branch arithmetic with arbitrary scalar returns. Retained binary32 bounded/native-math witnesses are separate from general-domain claims. E-STATE/E-PRED retain both modes and independent aliases, use independent domain/status oracles, and retain their explicit scalar-enclosure assumptions and actual callee profiles. E-NOISE covers the complete AHRS 3x3 and INS 12x12 discretization over arbitrary IEEE inputs and old outputs, including input checks, ordered scaling, every entry and rollback. INS initialization and the output-storage assignment are summarized, paired with an actual 12x12 zero/copy/frame proof in the same backend/scalar. The caller checks every proposed coefficient, commit eligibility and absence of other output writes; AHRS is direct. No numerical operating-range or successful-input assumption is imposed. These are source-semantic claims for the proof backend, not numerical qualification or Eigen/PX4/libm/deployment proofs."
   },
   "review_dimensions": [
     "coefficient ordering",
@@ -1176,6 +1176,80 @@
           {
             "file": "formal/cpp/esbmc/prediction.cpp",
             "symbol": "verify_sqrt_special_values"
+          }
+        ]
+      }
+    },
+    {
+      "id": "E-NOISE",
+      "title": "Checked INS/AHRS process-noise discretization",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "`E-NOISE`"
+          }
+        ],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/ProcessNoise.lean",
+            "symbol": "def measurementImpulse"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ProcessNoise.lean",
+            "symbol": "def biasImpulse"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ProcessNoise.lean",
+            "symbol": "def insProcessNoise"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ProcessNoise.lean",
+            "symbol": "theorem measurementImpulse_scaling"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ProcessNoise.lean",
+            "symbol": "theorem biasImpulse_scaling"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ProcessNoise.lean",
+            "symbol": "theorem insProcessNoise_blocks"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ProcessNoise.lean",
+            "symbol": "theorem insProcessNoise_posSemidef"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ProcessNoise.lean",
+            "symbol": "theorem insProcessNoise_zero"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/eskf/process_noise.hpp",
+            "symbol": "Status validate_noise_step"
+          },
+          {
+            "file": "include/formal_eskf/eskf/process_noise.hpp",
+            "symbol": "Status validate_noise_variances"
+          },
+          {
+            "file": "include/formal_eskf/eskf/process_noise.hpp",
+            "symbol": "Status try_discretize_process_noise"
+          }
+        ],
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/process_noise.cpp",
+            "symbol": "verify_ahrs_process_noise"
+          },
+          {
+            "file": "formal/cpp/esbmc/process_noise.cpp",
+            "symbol": "verify_ins_process_noise"
+          },
+          {
+            "file": "formal/cpp/esbmc/process_noise.cpp",
+            "symbol": "verify_ins_storage"
           }
         ]
       }

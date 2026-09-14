@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,7 +37,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 exit 0
@@ -349,6 +349,24 @@ run_prediction_suite()
     done
 }
 
+run_noise_suite()
+{
+    local BINARY64
+    SOURCE_FILE="${PROOF_DIR}/process_noise.cpp"
+    for BINARY64 in 0 1; do
+        PROFILE="noise-binary$((32 + 32 * BINARY64))-ahrs-all-ieee"
+        verify verify_ahrs_process_noise -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" --multi-property
+        # The actual 12x12 backing store has 144 recursively stored cells.
+        # Keep unwinding assertions enabled, including initialization/copy.
+        PROFILE="noise-binary$((32 + 32 * BINARY64))-ins-actual-storage"
+        verify verify_ins_storage --proof-unwind 145 --proof-timeout 180s \
+            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" --multi-property
+        PROFILE="noise-binary$((32 + 32 * BINARY64))-ins-all-ieee"
+        verify verify_ins_process_noise --proof-unwind 145 --proof-timeout 180s \
+            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_STORAGE_CONTRACT=1 --cvc5 --multi-property
+    done
+}
+
 main()
 {
     parse_arguments "$@"
@@ -368,6 +386,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == prediction* ]]; then
         run_prediction_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == noise ]]; then
+        run_noise_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

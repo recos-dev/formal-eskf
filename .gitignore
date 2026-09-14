@@ -1,6 +1,7 @@
 *.sw*
 /report.json
 /build/
+/output/
 
 /formal/lean/.lake/
 /tools/bootstrap/

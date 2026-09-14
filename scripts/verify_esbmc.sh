@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,7 +37,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -45,6 +45,7 @@ parse_arguments()
                 printf 'reset selects covariance-reset callers and matrix producers; all also runs their right-Jacobian dependencies.\n'
                 printf 'pcov selects covariance prediction and its new exact-type producers; all also runs its Exp and reset matrix dependencies.\n'
                 printf 'step selects atomic prediction/injection-reset callers and nominal input-frame producers; all also runs their component dependencies. Correction remains outside step coverage.\n'
+                printf 'solve selects scalar producers, every Cholesky coefficient/column, orchestration and public solve/alias proofs. Root accuracy and numerical residual bounds are outside this source-level claim.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -574,6 +575,58 @@ run_step_suite()
     done
 }
 
+run_solve_suite()
+{
+    local BINARY64 SIZE COLUMNS COLUMN ALIAS BASE_PROFILE
+    local -a PROFILE_ARGUMENTS SHAPE_ARGUMENTS
+    for BINARY64 in 0 1; do
+        BASE_PROFILE="solve-binary$((32 + 32 * BINARY64))"
+        SOURCE_FILE="${PROOF_DIR}/solve.cpp"
+        PROFILE="${BASE_PROFILE}-arithmetic"
+        verify verify_cholesky_arithmetic -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        for SIZE in 1 2 3; do
+            PROFILE_ARGUMENTS=(--proof-unwind 50 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_SIZE=${SIZE}")
+            SOURCE_FILE="${PROOF_DIR}/solve_coefficients.cpp"
+            PROFILE="${BASE_PROFILE}-factor${SIZE}-coefficients"
+            verify verify_factor_equations "${PROFILE_ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_ARITHMETIC_CONTRACT=1
+            SOURCE_FILE="${PROOF_DIR}/solve_flow.cpp"
+            PROFILE="${BASE_PROFILE}-symmetry${SIZE}"
+            verify verify_solve_symmetry "${PROFILE_ARGUMENTS[@]}" --multi-property
+            for COLUMNS in 1 2 3 15; do
+                if ((COLUMNS != SIZE && COLUMNS != 3 && COLUMNS != 15)); then continue; fi
+                SHAPE_ARGUMENTS=("${PROFILE_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_COLUMNS=${COLUMNS}")
+                SOURCE_FILE="${PROOF_DIR}/solve_coefficients.cpp"
+                # Partition the finite index domain, not numerical inputs.
+                # Every column is mandatory; no representative-column shortcut.
+                for ((COLUMN=0; COLUMN<COLUMNS; ++COLUMN)); do
+                    PROFILE="${BASE_PROFILE}-forward${SIZE}x${COLUMNS}-column${COLUMN}"
+                    verify verify_forward_equations "${SHAPE_ARGUMENTS[@]}" \
+                        -D FORMAL_ESKF_PROOF_ARITHMETIC_CONTRACT=1 -D "FORMAL_ESKF_PROOF_COLUMN=${COLUMN}"
+                    PROFILE="${BASE_PROFILE}-backward${SIZE}x${COLUMNS}-column${COLUMN}"
+                    verify verify_backward_equations "${SHAPE_ARGUMENTS[@]}" \
+                        -D FORMAL_ESKF_PROOF_ARITHMETIC_CONTRACT=1 -D "FORMAL_ESKF_PROOF_COLUMN=${COLUMN}"
+                done
+                SOURCE_FILE="${PROOF_DIR}/solve_flow.cpp"
+                for ALIAS in 0 1; do
+                    if ((ALIAS == 1 && SIZE != COLUMNS)); then continue; fi
+                    PROFILE="${BASE_PROFILE}-orchestration${SIZE}x${COLUMNS}-alias${ALIAS}"
+                    verify verify_solve_orchestration "${SHAPE_ARGUMENTS[@]}" \
+                        -D FORMAL_ESKF_PROOF_SOLVE_BOUNDARY=1 -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}"
+                done
+                for ALIAS in 0 1 2 3 4; do
+                    if ((ALIAS >= 2 && SIZE != COLUMNS)); then continue; fi
+                    PROFILE="${BASE_PROFILE}-left${SIZE}x${COLUMNS}-alias${ALIAS}"
+                    verify verify_left_solve "${SHAPE_ARGUMENTS[@]}" \
+                        -D FORMAL_ESKF_PROOF_SOLVE_BOUNDARY=2 -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}"
+                    PROFILE="${BASE_PROFILE}-right${SIZE}x${COLUMNS}-alias${ALIAS}"
+                    verify verify_right_solve "${SHAPE_ARGUMENTS[@]}" \
+                        -D FORMAL_ESKF_PROOF_SOLVE_BOUNDARY=3 -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}"
+                done
+            done
+        done
+    done
+}
+
 main()
 {
     parse_arguments "$@"
@@ -611,6 +664,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == step ]]; then
         run_step_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == solve ]]; then
+        run_solve_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

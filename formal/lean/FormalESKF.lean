@@ -12,6 +12,7 @@ import FormalESKF.RotationVector
 import FormalESKF.State
 import FormalESKF.Prediction
 import FormalESKF.Covariance
+import FormalESKF.Solve
 import FormalESKF.ProcessNoise
 import FormalESKF.CovariancePrediction
 import FormalESKF.RightJacobian

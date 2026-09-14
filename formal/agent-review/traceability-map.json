@@ -3,7 +3,7 @@
   "scalar_models": {
     "lean": "Exact algebra over CommRing, with real-number theorems where required",
     "cpp": "C++20 operations over IEEE-754 binary32 or binary64",
-    "esbmc": "All 19 registered families have binary32 and binary64 source profiles. Quaternion normalization and Exp use explicit pure-callee summaries (including a separately proved three-vector squared norm), each paired with actual producer/constructor proofs; scalar returns in these new flow proofs are arbitrary IEEE values, without accuracy or successful-result assumptions. General Log executes all branch arithmetic with arbitrary scalar returns. Retained binary32 bounded/native-math witnesses are separate from general-domain claims. E-STATE/E-PRED retain both modes and independent aliases, use independent domain/status oracles, and retain their explicit scalar-enclosure assumptions and actual callee profiles. E-NOISE covers the complete AHRS 3x3 and INS 12x12 discretization over arbitrary IEEE inputs and old outputs, including input checks, ordered scaling, every entry and rollback. INS initialization and the output-storage assignment are summarized, paired with an actual 12x12 zero/copy/frame proof in the same backend/scalar. The caller checks every proposed coefficient, commit eligibility and absence of other output writes; AHRS is direct. No numerical operating-range or successful-input assumption is imposed. E-INJECT executes both actual nominal-injection overloads and their attitude helper, with separate and in-place outputs, arbitrary IEEE state/error/threshold inputs and independent opaque Exp/composition outcomes. Existing same-type Exp, Hamilton and normalization producer proofs close the pure callee summaries; all additive entries, argument order, status translation and state/error frames are checked. These are source-semantic claims for the proof backend, not numerical qualification or Eigen/PX4/libm/deployment proofs. F-JR pairs an unrestricted source-flow proof with both complete candidate-arithmetic branches, an actual nine-entry finite predicate, and actual-norm zero/cutoff witnesses. The arithmetic premises are exactly the separately proved candidate eligibility, not a finite-result or scalar-accuracy assumption; every candidate/output entry and frame is checked. The existing same-type squared-norm and checked-scalar proofs close its other internal dependency. No ESKF approximation macro affects this operation. E-RESET covers the actual AHRS 3x3 and INS 15x15 covariance-reset callers, both reset modes and separate/in-place outputs over arbitrary IEEE inputs. Paired proofs discharge right-Jacobian, complete sandwich/product routing, actual ordered arithmetic, finite predicates and symmetry-finalizer boundaries. The INS proof backend adds explicitly proved named-field 15x15 storage and a dot-based ordered product; it is not evidence for a deployment backend or the original flat 225-cell representation. Every G entry, cross-covariance, candidate/output entry and error/input frame is checked. The finalizer's finite mean lemma is not an IEEE PSD or accumulated-error bound. Reset alone does not zero the error mean; the combined transaction belongs to E-STEP. E-PCOV covers AHRS/INS covariance-only prediction in both scalar formats, both attitude modes and separate/in-place output configurations. Its full-domain callers check old-state transition assembly, complete P propagation, anisotropic rotated acceleration-noise injection, every noise/cross-covariance entry, ordered validation/status propagation and complete frames. Exact-type transition, rotation, quaternion-validation and OpaqueMath noise producers close the new summaries; existing same-type Exp and reset matrix/finalizer producers close the other dependencies. The 12x12 initialization producer independently checks every raw backing cell; the shared reset oracles are refreshed. Call-boundary assertions avoid floating-point oracle joins without narrowing positive inputs. This proves the selected truncated model, not the complete nominal-integrator derivative, IEEE PSD preservation or combined nominal/covariance publication (E-STEP)."
+    "esbmc": "Accepted ESBMC families have binary32 and binary64 source profiles. E-STEP remains partial; F-SOLVE covers the extracted production Cholesky kernel and public left/right solves on the fixed-array proof backend, binary32/binary64, system sizes 1/2/3 and RHS shapes 1x1/1x3/1x15/2x2/2x3/2x15/3x3/3x15. Actual scalar multiply-subtract/division producers pair with coefficient observers checking every operand, ordered recurrence, finite check, status and partial-write frame. Every RHS column is an explicit finite index partition; inspected output cells are universally quantified. Helper summaries pair with full factor/forward/backward proofs; kernel orchestration checks column order, first failure, original-input forwarding and disjoint workspaces. Public wrappers check finite/symmetry validation, every candidate coefficient, exact status precedence, transpose orientation and atomic publication/rollback under every dimension-compatible whole-object alias. The actual zero-tolerance symmetry predicate is proved separately. Scalar root returns are arbitrary IEEE values, including non-finite values; finite positive root arguments and diagonal publication are checked, not root accuracy. All other finite predicates execute actual StandardMath. No finite-input, successful-result or conditioning assumption narrows these source checks. Lean proves exact-real recurrence implications, using a zero-extended lower triangle and explicit nonzero-diagonal/factorization premises. Neither this correspondence nor producer-summary composition is a machine-checked Lean-to-C++ refinement. Numerical conditioning/residual bounds, target libm and deployed Eigen/PX4/CMSIS storage/internals remain outside this claim; the PX4 adapter invokes the same production kernel but native conformance is not a proof of PX4. Quaternion normalization and Exp use explicit pure-callee summaries (including a separately proved three-vector squared norm), each paired with actual producer/constructor proofs; scalar returns in these new flow proofs are arbitrary IEEE values, without accuracy or successful-result assumptions. General Log executes all branch arithmetic with arbitrary scalar returns. Retained binary32 bounded/native-math witnesses are separate from general-domain claims. E-STATE/E-PRED retain both modes and independent aliases, use independent domain/status oracles, and retain their explicit scalar-enclosure assumptions and actual callee profiles. E-NOISE covers the complete AHRS 3x3 and INS 12x12 discretization over arbitrary IEEE inputs and old outputs, including input checks, ordered scaling, every entry and rollback. INS initialization and the output-storage assignment are summarized, paired with an actual 12x12 zero/copy/frame proof in the same backend/scalar. The caller checks every proposed coefficient, commit eligibility and absence of other output writes; AHRS is direct. No numerical operating-range or successful-input assumption is imposed. E-INJECT executes both actual nominal-injection overloads and their attitude helper, with separate and in-place outputs, arbitrary IEEE state/error/threshold inputs and independent opaque Exp/composition outcomes. Existing same-type Exp, Hamilton and normalization producer proofs close the pure callee summaries; all additive entries, argument order, status translation and state/error frames are checked. These are source-semantic claims for the proof backend, not numerical qualification or Eigen/PX4/libm/deployment proofs. F-JR pairs an unrestricted source-flow proof with both complete candidate-arithmetic branches, an actual nine-entry finite predicate, and actual-norm zero/cutoff witnesses. The arithmetic premises are exactly the separately proved candidate eligibility, not a finite-result or scalar-accuracy assumption; every candidate/output entry and frame is checked. The existing same-type squared-norm and checked-scalar proofs close its other internal dependency. No ESKF approximation macro affects this operation. E-RESET covers the actual AHRS 3x3 and INS 15x15 covariance-reset callers, both reset modes and separate/in-place outputs over arbitrary IEEE inputs. Paired proofs discharge right-Jacobian, complete sandwich/product routing, actual ordered arithmetic, finite predicates and symmetry-finalizer boundaries. The INS proof backend adds explicitly proved named-field 15x15 storage and a dot-based ordered product; it is not evidence for a deployment backend or the original flat 225-cell representation. Every G entry, cross-covariance, candidate/output entry and error/input frame is checked. The finalizer's finite mean lemma is not an IEEE PSD or accumulated-error bound. Reset alone does not zero the error mean; the combined transaction belongs to E-STEP. E-PCOV covers AHRS/INS covariance-only prediction in both scalar formats, both attitude modes and separate/in-place output configurations. Its full-domain callers check old-state transition assembly, complete P propagation, anisotropic rotated acceleration-noise injection, every noise/cross-covariance entry, ordered validation/status propagation and complete frames. Exact-type transition, rotation, quaternion-validation and OpaqueMath noise producers close the new summaries; existing same-type Exp and reset matrix/finalizer producers close the other dependencies. The 12x12 initialization producer independently checks every raw backing cell; the shared reset oracles are refreshed. Call-boundary assertions avoid floating-point oracle joins without narrowing positive inputs. This proves the selected truncated model, not the complete nominal-integrator derivative, IEEE PSD preservation or combined nominal/covariance publication (E-STEP)."
   },
   "review_dimensions": [
     "coefficient ordering",
@@ -1739,14 +1739,14 @@
             "file": "formal/cpp/esbmc/reset.cpp",
             "symbol": "void verify_reset_finite"
           },
-        {
-          "file": "formal/cpp/esbmc/reset.cpp",
-          "symbol": "void verify_covariance_mean"
-        },
-        {
-          "file": "formal/cpp/esbmc/covariance_storage.cpp",
-          "symbol": "void verify_covariance_vector_storage"
-        },
+          {
+            "file": "formal/cpp/esbmc/reset.cpp",
+            "symbol": "void verify_covariance_mean"
+          },
+          {
+            "file": "formal/cpp/esbmc/covariance_storage.cpp",
+            "symbol": "void verify_covariance_vector_storage"
+          },
           {
             "file": "formal/cpp/esbmc/right_jacobian.cpp",
             "symbol": "verify_right_jacobian("
@@ -1888,6 +1888,128 @@
           {
             "file": "formal/cpp/esbmc/normalization.cpp",
             "symbol": "void verify_constructor("
+          }
+        ]
+      }
+    },
+    {
+      "id": "F-SOLVE",
+      "title": "Cholesky recurrences, solve composition and atomic public left/right solve; numerical guarantees separate",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "`F-SOLVE`"
+          },
+          {
+            "file": "docs/spec/eskf-linear-algebra-abstraction-layer.md",
+            "symbol": "### 9. Symmetric positive-definite solve"
+          }
+        ],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/Solve.lean",
+            "symbol": "theorem cholesky_product_entry"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Solve.lean",
+            "symbol": "theorem choleskyRecurrences_factor"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Solve.lean",
+            "symbol": "theorem cholesky_positive_pivot"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Solve.lean",
+            "symbol": "theorem forwardSubstitution_equation"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Solve.lean",
+            "symbol": "theorem backwardSubstitution_equation"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Solve.lean",
+            "symbol": "theorem choleskySubstitutions_solve"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Solve.lean",
+            "symbol": "theorem choleskySubstitutions_rightSolve"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/linalg/solve.hpp",
+            "symbol": "Status solve_spd("
+          },
+          {
+            "file": "include/formal_eskf/linalg/solve.hpp",
+            "symbol": "Status right_solve_spd("
+          },
+          {
+            "file": "include/formal_eskf/linalg/backend/px4_matrix.hpp",
+            "symbol": "Status Px4MatrixBackend<Scalar>::solve_spd("
+          },
+          {
+            "file": "include/formal_eskf/linalg/backend/cholesky.hpp",
+            "symbol": "static Status factorize("
+          },
+          {
+            "file": "include/formal_eskf/linalg/backend/cholesky.hpp",
+            "symbol": "static Status forward_substitute("
+          },
+          {
+            "file": "include/formal_eskf/linalg/backend/cholesky.hpp",
+            "symbol": "static Status backward_substitute("
+          },
+          {
+            "file": "include/formal_eskf/linalg/backend/cholesky.hpp",
+            "symbol": "static value_type subtract_product("
+          },
+          {
+            "file": "include/formal_eskf/linalg/backend/cholesky.hpp",
+            "symbol": "static value_type quotient("
+          },
+          {
+            "file": "include/formal_eskf/linalg/backend/cholesky.hpp",
+            "symbol": "static Status solve("
+          },
+          {
+            "file": "include/formal_eskf/linalg/operations.hpp",
+            "symbol": "bool is_symmetric("
+          }
+        ],
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/solve.cpp",
+            "symbol": "void verify_cholesky_arithmetic("
+          },
+          {
+            "file": "formal/cpp/esbmc/solve_coefficients.cpp",
+            "symbol": "void verify_factor_equations("
+          },
+          {
+            "file": "formal/cpp/esbmc/solve_coefficients.cpp",
+            "symbol": "void verify_forward_equations("
+          },
+          {
+            "file": "formal/cpp/esbmc/solve_coefficients.cpp",
+            "symbol": "void verify_backward_equations("
+          },
+          {
+            "file": "formal/cpp/esbmc/solve_flow.cpp",
+            "symbol": "void verify_solve_symmetry("
+          },
+          {
+            "file": "formal/cpp/esbmc/solve_flow.cpp",
+            "symbol": "void verify_solve_orchestration("
+          },
+          {
+            "file": "formal/cpp/esbmc/solve_flow.cpp",
+            "symbol": "void verify_left_solve("
+          },
+          {
+            "file": "formal/cpp/esbmc/solve_flow.cpp",
+            "symbol": "void verify_right_solve("
           }
         ]
       }

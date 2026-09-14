@@ -18,6 +18,7 @@
 
 #include <matrix/Vector.hpp>
 
+#include <formal_eskf/linalg/backend/cholesky.hpp>
 #include <formal_eskf/linalg/linalg.hpp>
 #include <formal_eskf/scalar/backend/standard.hpp>
 
@@ -235,75 +236,7 @@ Status Px4MatrixBackend<Scalar>::solve_spd(storage_type<Size, Size> const & syst
                                            storage_type<Size, RightColumns> const & right_hand_side,
                                            storage_type<Size, RightColumns> & solution) noexcept
 {
-    // Checked LLT on PX4 storage. Do not use PX4's choleskyInv: this API
-    // neither forms an inverse nor imposes an absolute pivot cutoff.
-    // All accumulation remains in value_type (including binary64).
-    storage_type<Size, Size> factor;
-    for (std::size_t column = 0U; column < Size; ++column)
-    {
-        for (std::size_t row = column; row < Size; ++row)
-        {
-            value_type residual = system(row, column);
-            for (std::size_t inner = 0U; inner < column; ++inner)
-            {
-                residual -= factor(row, inner) * factor(column, inner);
-            }
-            if (!scalar_math_type::is_finite(residual))
-            {
-                return Status::non_finite_result;
-            }
-            if (row == column)
-            {
-                if (residual <= value_type{0})
-                {
-                    return Status::not_positive_definite;
-                }
-                factor(row, column) = scalar_math_type::sqrt(residual);
-            }
-            else
-            {
-                factor(row, column) = residual / factor(column, column);
-            }
-            if (!scalar_math_type::is_finite(factor(row, column)))
-            {
-                return Status::non_finite_result;
-            }
-        }
-    }
-
-    // The public solve_spd wrapper passes a separate candidate and provides
-    // rollback and alias safety. Reuse that candidate for both substitutions.
-    for (std::size_t column = 0U; column < RightColumns; ++column)
-    {
-        for (std::size_t row = 0U; row < Size; ++row)
-        {
-            value_type residual = right_hand_side(row, column);
-            for (std::size_t inner = 0U; inner < row; ++inner)
-            {
-                residual -= factor(row, inner) * solution(inner, column);
-            }
-            solution(row, column) = residual / factor(row, row);
-            if (!scalar_math_type::is_finite(solution(row, column)))
-            {
-                return Status::non_finite_result;
-            }
-        }
-        for (std::size_t remaining = Size; remaining > 0U; --remaining)
-        {
-            std::size_t const row = remaining - 1U;
-            value_type residual = solution(row, column);
-            for (std::size_t inner = row + 1U; inner < Size; ++inner)
-            {
-                residual -= factor(inner, row) * solution(inner, column);
-            }
-            solution(row, column) = residual / factor(row, row);
-            if (!scalar_math_type::is_finite(solution(row, column)))
-            {
-                return Status::non_finite_result;
-            }
-        }
-    }
-    return Status::success;
+    return Cholesky<Px4MatrixBackend<Scalar>>::template solve<Size, RightColumns>(system, right_hand_side, solution);
 }
 
 } /* end namespace formal_eskf::linalg */

@@ -16,9 +16,9 @@ check_count()
 
 check_plan()
 {
-    local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION
+    local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN
     PLAN="$("${RUNNER}" --list)"
-    check_count 426 '^PLAN'
+    check_count 790 '^PLAN'
     check_count 14 'quaternion-binary32-witness'
     check_count 8 'algebra-binary32'
     check_count 8 'algebra-binary64'
@@ -40,6 +40,8 @@ check_plan()
     check_count 15 'pcov-binary64'
     check_count 52 'step-binary32'
     check_count 52 'step-binary64'
+    check_count 182 'solve-binary32'
+    check_count 182 'solve-binary64'
     check_count 74 'prediction-binary32|state-binary32|scalar-contract-binary32'
     check_count 74 'prediction-binary64|state-binary64|scalar-contract-binary64'
     check_count 0 'shared'
@@ -51,6 +53,28 @@ check_plan()
     check_count 16 'approx0.*actual-exp-coefficient'
     check_count 66 'approx[01]-standard'
     for BINARY64 in 0 1; do
+        BASE_PROFILE="solve-binary$((32 + 32 * BINARY64))"
+        check_count 1 "${BASE_PROFILE}-arithmetic"
+        for SIZE in 1 2 3; do
+            check_count 1 "${BASE_PROFILE}-factor${SIZE}-coefficients"
+            check_count 1 "${BASE_PROFILE}-symmetry${SIZE}"
+            for COLUMNS in 1 2 3 15; do
+                if ((COLUMNS != SIZE && COLUMNS != 3 && COLUMNS != 15)); then continue; fi
+                for ((COLUMN=0; COLUMN<COLUMNS; ++COLUMN)); do
+                    check_count 1 "${BASE_PROFILE}-forward${SIZE}x${COLUMNS}-column${COLUMN}[[:space:]]"
+                    check_count 1 "${BASE_PROFILE}-backward${SIZE}x${COLUMNS}-column${COLUMN}[[:space:]]"
+                done
+                check_count 1 "${BASE_PROFILE}-orchestration${SIZE}x${COLUMNS}-alias0"
+                if ((SIZE == COLUMNS)); then
+                    check_count 1 "${BASE_PROFILE}-orchestration${SIZE}x${COLUMNS}-alias1"
+                fi
+                for ALIAS in 0 1 2 3 4; do
+                    if ((ALIAS >= 2 && SIZE != COLUMNS)); then continue; fi
+                    check_count 1 "${BASE_PROFILE}-left${SIZE}x${COLUMNS}-alias${ALIAS}"
+                    check_count 1 "${BASE_PROFILE}-right${SIZE}x${COLUMNS}-alias${ALIAS}"
+                done
+            done
+        done
         for CONFIGURATION in ahrs ins; do
             for APPROX in 0 1; do
                 BASE_PROFILE="step-binary$((32 + 32 * BINARY64))-${CONFIGURATION}"
@@ -138,8 +162,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 85 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 426 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 93 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 790 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -155,7 +179,56 @@ check_plan()
     [[ "$("${RUNNER}" reset --list | wc -l)" == 46 ]] || fail 'reset configuration/mode/alias/dependency coverage changed'
     [[ "$("${RUNNER}" pcov --list | wc -l)" == 30 ]] || fail 'covariance prediction configuration/mode/alias/dependency coverage changed'
     [[ "$("${RUNNER}" step --list | wc -l)" == 104 ]] || fail 'step configuration/mode/frame coverage changed'
+    [[ "$("${RUNNER}" solve --list | wc -l)" == 364 ]] || fail 'solve scalar/column/alias coverage changed'
 }
+
+check_solve_arguments()
+(
+    verify()
+    {
+        local FUNCTION_NAME="$1" BITS SIZE KIND EXPECTED_FUNCTION EXPECTED_SOURCE
+        local -a EXPECTED
+        shift
+        [[ "${PROFILE}" =~ ^solve-binary(32|64)-(.+)$ ]] || fail "unexpected solve profile: ${PROFILE}"
+        BITS="$((BASH_REMATCH[1] / 32 - 1))"
+        KIND="${BASH_REMATCH[2]}"
+        EXPECTED=(-D "FORMAL_ESKF_PROOF_BINARY64=${BITS}")
+        EXPECTED_SOURCE=solve_flow.cpp
+        if [[ "${KIND}" == arithmetic ]]; then
+            EXPECTED_SOURCE=solve.cpp
+            EXPECTED_FUNCTION=verify_cholesky_arithmetic
+        else
+            [[ "${KIND}" =~ ^(factor|symmetry|forward|backward|orchestration|left|right)([123])(.*)$ ]] || fail "invalid solve kind: ${KIND}"
+            SIZE="${BASH_REMATCH[2]}"
+            EXPECTED=(--proof-unwind 50 "${EXPECTED[@]}" -D "FORMAL_ESKF_PROOF_SIZE=${SIZE}")
+            if [[ "${KIND}" == factor* ]]; then
+                EXPECTED_SOURCE=solve_coefficients.cpp
+                EXPECTED_FUNCTION=verify_factor_equations
+                EXPECTED+=(-D FORMAL_ESKF_PROOF_ARITHMETIC_CONTRACT=1)
+            elif [[ "${KIND}" == symmetry* ]]; then
+                EXPECTED_FUNCTION=verify_solve_symmetry
+                EXPECTED+=(--multi-property)
+            elif [[ "${KIND}" =~ ^(forward|backward)[123]x([0-9]+)-column([0-9]+)$ ]]; then
+                EXPECTED_SOURCE=solve_coefficients.cpp
+                EXPECTED_FUNCTION="verify_${BASH_REMATCH[1]}_equations"
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_COLUMNS=${BASH_REMATCH[2]}" -D FORMAL_ESKF_PROOF_ARITHMETIC_CONTRACT=1 -D "FORMAL_ESKF_PROOF_COLUMN=${BASH_REMATCH[3]}")
+            elif [[ "${KIND}" =~ ^(orchestration|left|right)[123]x([0-9]+)-alias([0-4])$ ]]; then
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_COLUMNS=${BASH_REMATCH[2]}")
+                case "${BASH_REMATCH[1]}" in
+                    orchestration) EXPECTED_FUNCTION=verify_solve_orchestration; EXPECTED+=(-D FORMAL_ESKF_PROOF_SOLVE_BOUNDARY=1) ;;
+                    left) EXPECTED_FUNCTION=verify_left_solve; EXPECTED+=(-D FORMAL_ESKF_PROOF_SOLVE_BOUNDARY=2) ;;
+                    right) EXPECTED_FUNCTION=verify_right_solve; EXPECTED+=(-D FORMAL_ESKF_PROOF_SOLVE_BOUNDARY=3) ;;
+                esac
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_ALIAS=${BASH_REMATCH[3]}")
+            else
+                fail "invalid solve shape/partition: ${KIND}"
+            fi
+        fi
+        [[ "${SOURCE_FILE}" == "${PROOF_DIR}/${EXPECTED_SOURCE}" && "${FUNCTION_NAME}" == "${EXPECTED_FUNCTION}" && "$*" == "${EXPECTED[*]}" ]] ||
+            fail "wrong solve source, scalar, dimensions or solver flags: ${PROFILE}"
+    }
+    run_solve_suite
+)
 
 check_step_arguments()
 (
@@ -757,6 +830,69 @@ check_step_regressions()
     printf 'ESBMC step regressions: pass (both transactions, symbolic statuses and full in-place output; both scalars)\n'
 )
 
+check_solve_contract_guards()
+(
+    local TEST_WORK_DIR SOURCE_NAME FUNCTION_NAME FLAGS EXPECTED RESULT COUNT=0
+    local -a ARGUMENTS
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-solve-guard.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    while IFS='|' read -r SOURCE_NAME FUNCTION_NAME FLAGS EXPECTED; do
+        read -r -a ARGUMENTS <<< "${FLAGS}"
+        RESULT=0
+        "${ESBMC_COMMAND}" "${PROOF_DIR}/${SOURCE_NAME}" "${ESBMC_ARGUMENTS[@]}" \
+            --unwind 10 --timeout 120s --memlimit 4g --function "${FUNCTION_NAME}" \
+            -D FORMAL_ESKF_PROOF_SIZE=1 -D FORMAL_ESKF_PROOF_COLUMNS=1 \
+            "${ARGUMENTS[@]}" --multi-property >"${TEST_WORK_DIR}/${COUNT}.log" 2>&1 || RESULT=$?
+        if [[ "${RESULT}" != 1 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${COUNT}.log" ||
+            ! grep -F 'FAILED:' "${TEST_WORK_DIR}/${COUNT}.log" | grep -Fq "${EXPECTED}"; then
+            tail -n 30 "${TEST_WORK_DIR}/${COUNT}.log" >&2
+            fail "solve guard did not reject the incompatible boundary: ${FUNCTION_NAME} ${FLAGS}"
+        fi
+        COUNT=$((COUNT + 1))
+    done <<'CASES'
+solve.cpp|verify_cholesky_arithmetic|-D FORMAL_ESKF_PROOF_ARITHMETIC_CONTRACT=1|Runner error: arithmetic producer must be actual
+solve_coefficients.cpp|verify_factor_equations||Runner error: equations require arithmetic contracts
+solve_coefficients.cpp|verify_forward_equations||Runner error: equations require arithmetic contracts
+solve_coefficients.cpp|verify_backward_equations||Runner error: equations require arithmetic contracts
+solve_flow.cpp|verify_solve_orchestration||Runner error: orchestration requires only helper summaries
+solve_flow.cpp|verify_left_solve||Runner error: left solve requires kernel and symmetry summaries
+solve_flow.cpp|verify_right_solve||Runner error: right solve requires only left solve summary
+solve_flow.cpp|verify_solve_symmetry|-D FORMAL_ESKF_PROOF_SOLVE_BOUNDARY=2|Runner error: symmetry producer must be actual
+solve_flow.cpp|verify_solve_orchestration|-D FORMAL_ESKF_PROOF_SOLVE_BOUNDARY=1 -D FORMAL_ESKF_PROOF_ALIAS=2|Runner error: kernel supports separate/identical read-only inputs
+CASES
+    printf 'ESBMC solve guards: pass (%d incompatible boundaries/aliases rejected)\n' "${COUNT}"
+)
+
+check_solve_regressions()
+(
+    local TEST_WORK_DIR BINARY64 FAULT RESULT
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-solve-regression.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    for BINARY64 in 0 1; do
+        for FAULT in 0 1; do
+            RESULT=0
+            "${ESBMC_COMMAND}" "${TEST_DIR}/esbmc/solve_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
+                --unwind 10 --timeout 120s --memlimit 4g --function verify_solve_regression \
+                -D FORMAL_ESKF_PROOF_SIZE=2 -D FORMAL_ESKF_PROOF_COLUMNS=3 \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_CHECK_FAULT=${FAULT}" \
+                --multi-property >"${TEST_WORK_DIR}/${BINARY64}-${FAULT}.log" 2>&1 || RESULT=$?
+            if ((FAULT == 0)); then
+                [[ "${RESULT}" == 0 ]] && grep -q 'VERIFICATION SUCCESSFUL' "${TEST_WORK_DIR}/${BINARY64}-${FAULT}.log" ||
+                    fail 'Cholesky success/failure regression did not pass'
+            else
+                [[ "${RESULT}" != 0 ]] && grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${BINARY64}-${FAULT}.log" &&
+                    grep -q 'Regression: all solution coefficients, including last-cell faults' "${TEST_WORK_DIR}/${BINARY64}-${FAULT}.log" ||
+                    fail 'Cholesky last-cell fault was not detected'
+            fi
+        done
+    done
+    printf 'ESBMC solve regressions: pass (success/failure witnesses and last-cell faults; both scalars)\n'
+)
+
 RUN_SOLVER=0
 case "${1:-}" in
     '') ;;
@@ -774,8 +910,9 @@ check_jacobian_arguments
 check_reset_arguments
 check_pcov_arguments
 check_step_arguments
+check_solve_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (426 profiles; 85 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (790 profiles; 93 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards
@@ -791,4 +928,6 @@ if ((RUN_SOLVER)); then
     check_pcov_regressions
     check_step_contract_guards
     check_step_regressions
+    check_solve_contract_guards
+    check_solve_regressions
 fi

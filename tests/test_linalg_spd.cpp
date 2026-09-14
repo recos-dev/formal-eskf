@@ -357,11 +357,56 @@ template <typename Linalg> void test_factor_overflow(TestContext & test, std::st
     expect_failure(test, profile, system, matrix_type::identity(), Status::non_finite_result);
 }
 
+#if defined(FORMAL_ESKF_TEST_PX4_MATRIX)
+// Backend scratch is intentionally not transactional. Preserve the original
+// per-column forward/backward ordering even when substitution overflows.
+template <typename Linalg> void test_partial_workspace(TestContext & test, std::string_view profile)
+{
+    using value_type = typename Linalg::value_type;
+    using matrix_type = typename Linalg::template matrix_type<2U, 2U>;
+    using formal_eskf::linalg::detail::MatrixAccess;
+    value_type const largest = std::numeric_limits<value_type>::max();
+    matrix_type system = matrix_type::identity();
+    system(0U, 0U) = value_type{0.25};
+    matrix_type rhs = matrix_type::identity();
+    rhs(0U, 0U) = largest * value_type{0.375};
+    rhs(1U, 0U) = value_type{0.75};
+    matrix_type output = matrix_type::identity() * value_type{7};
+    output(0U, 1U) = -value_type{0};
+    matrix_type expected = output;
+    expected(0U, 0U) = std::numeric_limits<value_type>::infinity();
+    expected(1U, 0U) = value_type{0.75};
+    Status status = Linalg::template solve_spd<2U, 2U>(MatrixAccess::storage(system), MatrixAccess::storage(rhs),
+                                                       MatrixAccess::storage(output));
+    test.expect(status == Status::non_finite_result && same_bits(output, expected), profile,
+                "backward failure stops before forward substitution of the next column");
+
+    system(1U, 1U) = value_type{0.25};
+    rhs(0U, 0U) = value_type{1};
+    rhs(1U, 0U) = largest;
+    expected(0U, 0U) = value_type{2};
+    expected(1U, 0U) = std::numeric_limits<value_type>::infinity();
+    status = Linalg::template solve_spd<2U, 2U>(MatrixAccess::storage(system), MatrixAccess::storage(rhs),
+                                                MatrixAccess::storage(output));
+    test.expect(status == Status::non_finite_result && same_bits(output, expected), profile,
+                "forward failure preserves its partial column and does not run backward substitution");
+
+    system(1U, 1U) = value_type{-1};
+    status = Linalg::template solve_spd<2U, 2U>(MatrixAccess::storage(system), MatrixAccess::storage(rhs),
+                                                MatrixAccess::storage(output));
+    test.expect(status == Status::not_positive_definite && same_bits(output, expected), profile,
+                "factorization failure does not touch solution workspace");
+}
+#endif
+
 template <typename Linalg> void run_conformance_tests(TestContext & test, std::string_view profile)
 {
     test_dimensions<Linalg, 1U, 1U>(test, profile);
     test_dimensions<Linalg, 1U, 3U>(test, profile);
+    test_dimensions<Linalg, 1U, 15U>(test, profile);
+    test_dimensions<Linalg, 2U, 2U>(test, profile);
     test_dimensions<Linalg, 2U, 3U>(test, profile);
+    test_dimensions<Linalg, 2U, 15U>(test, profile);
     test_dimensions<Linalg, 3U, 3U>(test, profile);
     test_dimensions<Linalg, 3U, 15U>(test, profile);
     test_dimensions<Linalg, 6U, 15U>(test, profile);
@@ -371,6 +416,9 @@ template <typename Linalg> void run_conformance_tests(TestContext & test, std::s
     test_scaling<Linalg>(test, profile);
     test_scalar_precision<Linalg>(test, profile);
     test_factor_overflow<Linalg>(test, profile);
+#if defined(FORMAL_ESKF_TEST_PX4_MATRIX)
+    test_partial_workspace<Linalg>(test, profile);
+#endif
 }
 
 } /* end namespace */

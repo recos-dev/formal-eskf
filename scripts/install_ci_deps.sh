@@ -15,7 +15,7 @@ install_dependencies()
 
     case "${GROUP}" in
         format) PACKAGES=(clang-format-14) ;;
-        checks) PACKAGES=(shellcheck python3-jsonschema jq ripgrep) ;;
+        checks) PACKAGES=(shellcheck python3-jsonschema jq ripgrep clang-18 python3-clang-18) ;;
         cppcheck) PACKAGES=(cmake g++ libeigen3-dev make python3 curl) ;;
         cpp) PACKAGES+=(clang-14) ;;
         asan) ;;

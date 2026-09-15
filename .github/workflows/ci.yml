@@ -52,6 +52,7 @@ jobs:
         run: |
           ./tests/test_esbmc.sh
           ./tests/test_agent_review.sh
+          python3 tests/test_cpp_inventory.py
 
   cppcheck:
     name: Cppcheck

@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "source_roots": ["include/formal_eskf"],
+  "extensions": [".h", ".hpp", ".cpp", ".cc", ".cxx"],
+  "tracked_macros": ["ESKF_QUAT_APPROX", "ESKF_RESET_APPROX"]
+}

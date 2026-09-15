@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,7 +37,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -49,6 +49,7 @@ parse_arguments()
                 printf 'correction selects pre-injection validation, gain/Joseph routing, unpack and exact-type matrix producers. all also runs F-SOLVE and the finite-mean dependency; correction publication through injection/reset remains E-STEP.\n'
                 printf 'step-correction selects full correction transactions and same-type injection/reset input frames. Mode-independent callers reuse both reset-mode producers; all also runs E-CORRECT/F-SOLVE dependencies.\n'
                 printf 'linalg selects actual storage/access, block/segment, arithmetic and reduction producers for the enumerated shapes. all also runs the reused normalization, product and covariance dependencies.\n'
+                printf 'scalar selects IEEE primitives, observed StandardMath dispatch and checked wrappers/aliases, plus reused wrapper/root dependencies. Pure libm summaries do not prove target library accuracy.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -824,6 +825,47 @@ run_linalg_suite()
     done
 }
 
+run_scalar_suite()
+{
+    local BINARY64 KIND ALIAS MAX_ALIAS BASE_PROFILE
+    for BINARY64 in 0 1; do
+        SOURCE_FILE="${PROOF_DIR}/scalar.cpp"
+        BASE_PROFILE="scalar-binary$((32 + 32 * BINARY64))"
+        PROFILE="${BASE_PROFILE}-primitives"
+        verify verify_scalar_primitives -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        PROFILE="${BASE_PROFILE}-backend"
+        verify verify_scalar_backend -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_SCALAR_LIBM=1
+        for KIND in sqrt sin_cos atan2; do
+            case "${KIND}" in
+                sqrt) MAX_ALIAS=1 ;;
+                sin_cos) MAX_ALIAS=2 ;;
+                atan2) MAX_ALIAS=3 ;;
+            esac
+            for ((ALIAS=0; ALIAS<=MAX_ALIAS; ++ALIAS)); do
+                PROFILE="${BASE_PROFILE}-${KIND}-alias${ALIAS}"
+                verify "verify_scalar_${KIND}" -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                    -D FORMAL_ESKF_PROOF_SCALAR_LIBM=1 -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}"
+            done
+        done
+        # Same source, flags and identity as maps/prediction. The standalone
+        # selector includes these dependencies; all must not duplicate them.
+        if [[ "${SUITE}" == scalar ]]; then
+            SOURCE_FILE="${PROOF_DIR}/maps.cpp"
+            PROFILE="maps-binary$((32 + 32 * BINARY64))-all-ieee"
+            verify verify_scalar_wrappers -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" --multi-property
+            SOURCE_FILE="${PROOF_DIR}/prediction.cpp"
+            PROFILE="scalar-contract-binary$((32 + 32 * BINARY64))-actual-ieee"
+            for KIND in envelope squared_envelope special_values; do
+                verify "verify_sqrt_${KIND}" --proof-unwind "$((17 + 16 * BINARY64))" \
+                    -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+            done
+            PROFILE="scalar-contract-binary$((32 + 32 * BINARY64))-dispatch"
+            verify verify_scalar_boundary_dispatch --proof-unwind "$((17 + 16 * BINARY64))" \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_SCALAR_BOUNDARY=1
+        fi
+    done
+}
+
 main()
 {
     parse_arguments "$@"
@@ -873,6 +915,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == linalg ]]; then
         run_linalg_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == scalar ]]; then
+        run_scalar_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

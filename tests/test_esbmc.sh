@@ -18,7 +18,9 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1434 '^PLAN'
+    check_count 1456 '^PLAN'
+    check_count 11 'scalar-binary32-'
+    check_count 11 'scalar-binary64-'
     check_count 174 'linalg-binary32'
     check_count 174 'linalg-binary64'
     check_count 184 'linalg-binary(32|64)-opaque'
@@ -201,8 +203,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 119 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1434 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 124 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1456 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -222,7 +224,34 @@ check_plan()
     [[ "$("${RUNNER}" solve --list | wc -l)" == 364 ]] || fail 'solve scalar/column/alias coverage changed'
     [[ "$("${RUNNER}" correction --list | wc -l)" == 212 ]] || fail 'correction caller/producer coverage changed'
     [[ "$("${RUNNER}" linalg --list | wc -l)" == 348 ]] || fail 'linalg operation/backend/shape coverage changed'
+    [[ "$("${RUNNER}" scalar --list | wc -l)" == 32 ]] || fail 'scalar format/alias/dependency coverage changed'
+    # The standalone scalar selection reuses, rather than duplicates, old proofs.
+    [[ -z "$(comm -23 <("${RUNNER}" scalar --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] ||
+        fail 'scalar dependency profile is not in the full inventory'
 }
+
+check_scalar_arguments()
+(
+    verify()
+    {
+        local FUNCTION_NAME="$1" BINARY64 KIND ALIAS
+        local -a EXPECTED
+        shift
+        [[ "${PROFILE}" =~ ^scalar-binary(32|64)-(primitives|backend|sqrt-alias[01]|sin_cos-alias[012]|atan2-alias[0123])$ ]] ||
+            fail "unexpected scalar profile: ${PROFILE}"
+        BINARY64=$(( (BASH_REMATCH[1] - 32) / 32 )); KIND="${BASH_REMATCH[2]}"
+        EXPECTED=(-D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}")
+        if [[ "${KIND}" != primitives ]]; then EXPECTED+=(-D FORMAL_ESKF_PROOF_SCALAR_LIBM=1); fi
+        if [[ "${KIND}" == *-alias* ]]; then
+            ALIAS="${KIND##*-alias}"; KIND="${KIND%-alias*}"
+            EXPECTED+=(-D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}")
+        fi
+        [[ "${SOURCE_FILE}" == "${PROOF_DIR}/scalar.cpp" && "${FUNCTION_NAME}" == "verify_scalar_${KIND}" && "$*" == "${EXPECTED[*]}" ]] ||
+            fail "wrong scalar source, primitive, boundary, format or alias: ${PROFILE}"
+    }
+    SUITE=all
+    run_scalar_suite
+)
 
 check_linalg_arguments()
 (
@@ -1215,6 +1244,38 @@ check_linalg_contract_guards()
     printf 'ESBMC linalg guards: pass (%d incompatible producer summaries rejected)\n' "${COUNT}"
 )
 
+check_scalar_contract_guards()
+(
+    local TEST_WORK_DIR BINARY64 KIND MODE ALIAS LABEL RESULT COUNT=0
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-scalar-guard.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    for BINARY64 in 0 1; do
+        for KIND in primitives backend sqrt sin_cos atan2 sqrt-alias sin_cos-alias atan2-alias; do
+            MODE=0; ALIAS=0
+            case "${KIND}" in
+                primitives) MODE=1 ;;
+                *-alias) MODE=1; ALIAS=4 ;;
+            esac
+            KIND="${KIND%-alias}"
+            LABEL="${KIND/sin_cos/sincos}"
+            RESULT=0
+            "${ESBMC_COMMAND}" "${PROOF_DIR}/scalar.cpp" "${ESBMC_ARGUMENTS[@]}" \
+                --unwind 10 --timeout 120s --memlimit 4g --function "verify_scalar_${KIND}" \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_SCALAR_LIBM=${MODE}" \
+                -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" >"${TEST_WORK_DIR}/${COUNT}.log" 2>&1 || RESULT=$?
+            if [[ "${RESULT}" != 1 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${COUNT}.log" ||
+                ! grep -Fq "Runner error: scalar ${LABEL}" "${TEST_WORK_DIR}/${COUNT}.log"; then
+                tail -n 30 "${TEST_WORK_DIR}/${COUNT}.log" >&2
+                fail "scalar proof admitted wrong model/alias: ${KIND} binary64=${BINARY64} alias=${ALIAS}"
+            fi
+            COUNT=$((COUNT + 1))
+        done
+    done
+    printf 'ESBMC scalar guards: pass (%d incompatible models/aliases rejected)\n' "${COUNT}"
+)
+
 RUN_SOLVER=0
 case "${1:-}" in
     '') ;;
@@ -1236,8 +1297,9 @@ check_solve_arguments
 check_correction_arguments
 check_step_correction_arguments
 check_linalg_arguments
+check_scalar_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1434 profiles; 119 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1456 profiles; 124 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards
@@ -1260,4 +1322,5 @@ if ((RUN_SOLVER)); then
     check_correction_contract_guards
     check_correction_regressions
     check_linalg_contract_guards
+    check_scalar_contract_guards
 fi

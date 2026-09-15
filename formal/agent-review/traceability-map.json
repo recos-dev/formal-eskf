@@ -3,7 +3,7 @@
   "scalar_models": {
     "lean": "Exact algebra over CommRing, with real-number theorems where required",
     "cpp": "C++20 operations over IEEE-754 binary32 or binary64",
-    "esbmc": "Accepted ESBMC families have binary32 and binary64 source profiles. E-STEP covers combined prediction, injection/reset and full public correction source transactions under their stated component contracts; numerical invariants remain separate. F-SOLVE covers the extracted production Cholesky kernel and public left/right solves on the fixed-array proof backend, binary32/binary64, system sizes 1/2/3 and RHS shapes 1x1/1x3/1x15/2x2/2x3/2x15/3x3/3x15. Actual scalar multiply-subtract/division producers pair with coefficient observers checking every operand, ordered recurrence, finite check, status and partial-write frame. Every RHS column is an explicit finite index partition; inspected output cells are universally quantified. Helper summaries pair with full factor/forward/backward proofs; kernel orchestration checks column order, first failure, original-input forwarding and disjoint workspaces. Public wrappers check finite/symmetry validation, every candidate coefficient, exact status precedence, transpose orientation and atomic publication/rollback under every dimension-compatible whole-object alias. The actual zero-tolerance symmetry predicate is proved separately. Scalar root returns are arbitrary IEEE values, including non-finite values; finite positive root arguments and diagonal publication are checked, not root accuracy. All other finite predicates execute actual StandardMath. No finite-input, successful-result or conditioning assumption narrows these source checks. Lean proves exact-real recurrence implications, using a zero-extended lower triangle and explicit nonzero-diagonal/factorization premises. Neither this correspondence nor producer-summary composition is a machine-checked Lean-to-C++ refinement. Numerical conditioning/residual bounds, target libm and deployed Eigen/PX4/CMSIS storage/internals remain outside this claim; the PX4 adapter invokes the same production kernel but native conformance is not a proof of PX4. Quaternion normalization and Exp use explicit pure-callee summaries (including a separately proved three-vector squared norm), each paired with actual producer/constructor proofs; scalar returns in these new flow proofs are arbitrary IEEE values, without accuracy or successful-result assumptions. General Log executes all branch arithmetic with arbitrary scalar returns. Retained binary32 bounded/native-math witnesses are separate from general-domain claims. E-STATE/E-PRED retain both modes and independent aliases, use independent domain/status oracles, and retain their explicit scalar-enclosure assumptions and actual callee profiles. E-NOISE covers the complete AHRS 3x3 and INS 12x12 discretization over arbitrary IEEE inputs and old outputs, including input checks, ordered scaling, every entry and rollback. INS initialization and the output-storage assignment are summarized, paired with an actual 12x12 zero/copy/frame proof in the same backend/scalar. The caller checks every proposed coefficient, commit eligibility and absence of other output writes; AHRS is direct. No numerical operating-range or successful-input assumption is imposed. E-INJECT executes both actual nominal-injection overloads and their attitude helper, with separate and in-place outputs, arbitrary IEEE state/error/threshold inputs and independent opaque Exp/composition outcomes. Existing same-type Exp, Hamilton and normalization producer proofs close the pure callee summaries; all additive entries, argument order, status translation and state/error frames are checked. These are source-semantic claims for the proof backend, not numerical qualification or Eigen/PX4/libm/deployment proofs. F-JR pairs an unrestricted source-flow proof with both complete candidate-arithmetic branches, an actual nine-entry finite predicate, and actual-norm zero/cutoff witnesses. The arithmetic premises are exactly the separately proved candidate eligibility, not a finite-result or scalar-accuracy assumption; every candidate/output entry and frame is checked. The existing same-type squared-norm and checked-scalar proofs close its other internal dependency. No ESKF approximation macro affects this operation. E-RESET covers the actual AHRS 3x3 and INS 15x15 covariance-reset callers, both reset modes and separate/in-place outputs over arbitrary IEEE inputs. Paired proofs discharge right-Jacobian, complete sandwich/product routing, actual ordered arithmetic, finite predicates and symmetry-finalizer boundaries. The INS proof backend adds explicitly proved named-field 15x15 storage and a dot-based ordered product; it is not evidence for a deployment backend or the original flat 225-cell representation. Every G entry, cross-covariance, candidate/output entry and error/input frame is checked. The finalizer's finite mean lemma is not an IEEE PSD or accumulated-error bound. Reset alone does not zero the error mean; the combined transaction belongs to E-STEP. E-PCOV covers AHRS/INS covariance-only prediction in both scalar formats, both attitude modes and separate/in-place output configurations. Its full-domain callers check old-state transition assembly, complete P propagation, anisotropic rotated acceleration-noise injection, every noise/cross-covariance entry, ordered validation/status propagation and complete frames. Exact-type transition, rotation, quaternion-validation and OpaqueMath noise producers close the new summaries; existing same-type Exp and reset matrix/finalizer producers close the other dependencies. The 12x12 initialization producer independently checks every raw backing cell; the shared reset oracles are refreshed. Call-boundary assertions avoid floating-point oracle joins without narrowing positive inputs. This proves the selected truncated model, not the complete nominal-integrator derivative, IEEE PSD preservation or combined nominal/covariance publication (E-STEP). E-CORRECT covers the pre-injection correction helper only: binary32/binary64, AHRS/INS error sizes 3/15 and measurement sizes 1/2/3, on solve_proof::Backend with the matching Cholesky system size. Validation and caller profiles cover arbitrary IEEE inputs, full correlated V, the same prior P in the gain and Joseph term, ordered statuses, all error coordinates and scratch publication/rollback. Independent universal observation coordinates cover every matrix entry and never affect production control flow. Actual finite, exact-symmetry, elementwise, in-place finalizer, sandwich, ordered-product assembly, entry-access and dot producers close the matrix summaries; the universal finite-mean and zero-difference scalar lemmas are explicit dependencies. Multiplication and named-field 15x15 storage specialize only the proof backend; they do not alter the previously proved Cholesky bodies or system/RHS storage. F-SOLVE supplies the same-type right-solve contract, not a root-accuracy assumption. Existing Lean innovation-positivity, gain-equation, Joseph-expansion/PSD, finalizer and unpack theorems supply exact mathematics, not IEEE PSD or residual bounds. E-STEP-CORRECT executes the actual public try_correct, unpack and combined injection/reset bodies on the matching solve_proof::Backend, with 3/15 error states, 1/2/3 measurements and binary32/binary64. Three pure component summaries admit arbitrary IEEE scratch results and arbitrary failure statuses, including scratch writes on failure. The caller checks every forwarded input/error coordinate, correction-before-injection-before-reset ordering, first-failure status, no later-stage calls after failure, complete publication/rollback and all four independent state/covariance whole-object aliases. E-CORRECT supplies the matching correction input frame. New same-type actual injection and reset input-frame producers execute quaternion code and reset validation/Jacobian/finalization; only the reset sandwich uses its matching E-CORRECT producer contract. A proof-only norm<4> specialization uses standard scalar-library sqrt instead of the positive-pivot Cholesky root observer; no primitive consumed by E-CORRECT/F-SOLVE changes. Frame-only sin/cos/sqrt models are pure with fresh arbitrary IEEE returns; libm purity is an explicit scalar-library boundary, not a numerical accuracy proof. The other checked-root observer is initialized separately in each frame producer. Both actual reset modes are mandatory dependencies; mode-independent callers are not duplicated. This adds 48 caller and 36 input-frame profiles, not new numerical injection/reset coefficient proofs on this backend. Existing exact-real Step correction theorems remain mathematical evidence, not a proof of IEEE unit norm or PSD. This is reviewed producer-summary correspondence, not machine-checked Lean/C++ refinement or proof of deployed Eigen/PX4/CMSIS/libm internals. F-LINALG adds actual source checks for the explicitly enumerated operation/shape pairs in run_linalg_suite on contract_proof::Linalg (opaque) and solve_proof::Backend (solve), binary32/binary64. Raw backing-cell oracles check zero/row-major/value ownership, bounded coefficient access, block/segment extraction and complete replacement frames, eager arithmetic, rectangular transpose, ordered dot/product/trace, diagonal, finite/max-absolute predicates, cross product and symmetry behavior. All IEEE values are admitted; runtime accessor bounds are caller premises. Matching existing normalization (four-vector), product/sandwich and large add/subtract producers are reused, not inferred across backend types. The OpaqueMath three-vector norm checks root argument/result forwarding with an arbitrary IEEE return; the solve backend positive-pivot observer is not a general norm model. NaNs are compared by classification, signed zero by representation; no NaN-payload or padding claim. Raw division is unchecked IEEE division. Symmetrize uses (A + transpose(A)) * 0.5 and can overflow; it is not the checked covariance finalizer. Compile-time block rectangles and instantiated dimensions are finite coverage, not a proof of all template arguments: unused 6/16-dimensional and nominal-Jacobian surfaces listed in the design spec are not discharged here. Lean adds generic exact indexing/block frame and arithmetic-entry theorems, not C++ layout or IEEE error bounds. Existing F-SOLVE supplies solves. Neither deployment-backend internals nor libm accuracy, arbitrary runtime out-of-bounds access, numerical conditioning/PSD or machine-checked Lean/C++ refinement is claimed."
+    "esbmc": "Accepted ESBMC families have binary32 and binary64 source profiles. E-STEP covers combined prediction, injection/reset and full public correction source transactions under their stated component contracts; numerical invariants remain separate. F-SOLVE covers the extracted production Cholesky kernel and public left/right solves on the fixed-array proof backend, binary32/binary64, system sizes 1/2/3 and RHS shapes 1x1/1x3/1x15/2x2/2x3/2x15/3x3/3x15. Actual scalar multiply-subtract/division producers pair with coefficient observers checking every operand, ordered recurrence, finite check, status and partial-write frame. Every RHS column is an explicit finite index partition; inspected output cells are universally quantified. Helper summaries pair with full factor/forward/backward proofs; kernel orchestration checks column order, first failure, original-input forwarding and disjoint workspaces. Public wrappers check finite/symmetry validation, every candidate coefficient, exact status precedence, transpose orientation and atomic publication/rollback under every dimension-compatible whole-object alias. The actual zero-tolerance symmetry predicate is proved separately. Scalar root returns are arbitrary IEEE values, including non-finite values; finite positive root arguments and diagonal publication are checked, not root accuracy. All other finite predicates execute actual StandardMath. No finite-input, successful-result or conditioning assumption narrows these source checks. Lean proves exact-real recurrence implications, using a zero-extended lower triangle and explicit nonzero-diagonal/factorization premises. Neither this correspondence nor producer-summary composition is a machine-checked Lean-to-C++ refinement. Numerical conditioning/residual bounds, target libm and deployed Eigen/PX4/CMSIS storage/internals remain outside this claim; the PX4 adapter invokes the same production kernel but native conformance is not a proof of PX4. Quaternion normalization and Exp use explicit pure-callee summaries (including a separately proved three-vector squared norm), each paired with actual producer/constructor proofs; scalar returns in these new flow proofs are arbitrary IEEE values, without accuracy or successful-result assumptions. General Log executes all branch arithmetic with arbitrary scalar returns. Retained binary32 bounded/native-math witnesses are separate from general-domain claims. E-STATE/E-PRED retain both modes and independent aliases, use independent domain/status oracles, and retain their explicit scalar-enclosure assumptions and actual callee profiles. E-NOISE covers the complete AHRS 3x3 and INS 12x12 discretization over arbitrary IEEE inputs and old outputs, including input checks, ordered scaling, every entry and rollback. INS initialization and the output-storage assignment are summarized, paired with an actual 12x12 zero/copy/frame proof in the same backend/scalar. The caller checks every proposed coefficient, commit eligibility and absence of other output writes; AHRS is direct. No numerical operating-range or successful-input assumption is imposed. E-INJECT executes both actual nominal-injection overloads and their attitude helper, with separate and in-place outputs, arbitrary IEEE state/error/threshold inputs and independent opaque Exp/composition outcomes. Existing same-type Exp, Hamilton and normalization producer proofs close the pure callee summaries; all additive entries, argument order, status translation and state/error frames are checked. These are source-semantic claims for the proof backend, not numerical qualification or Eigen/PX4/libm/deployment proofs. F-JR pairs an unrestricted source-flow proof with both complete candidate-arithmetic branches, an actual nine-entry finite predicate, and actual-norm zero/cutoff witnesses. The arithmetic premises are exactly the separately proved candidate eligibility, not a finite-result or scalar-accuracy assumption; every candidate/output entry and frame is checked. The existing same-type squared-norm and checked-scalar proofs close its other internal dependency. No ESKF approximation macro affects this operation. E-RESET covers the actual AHRS 3x3 and INS 15x15 covariance-reset callers, both reset modes and separate/in-place outputs over arbitrary IEEE inputs. Paired proofs discharge right-Jacobian, complete sandwich/product routing, actual ordered arithmetic, finite predicates and symmetry-finalizer boundaries. The INS proof backend adds explicitly proved named-field 15x15 storage and a dot-based ordered product; it is not evidence for a deployment backend or the original flat 225-cell representation. Every G entry, cross-covariance, candidate/output entry and error/input frame is checked. The finalizer's finite mean lemma is not an IEEE PSD or accumulated-error bound. Reset alone does not zero the error mean; the combined transaction belongs to E-STEP. E-PCOV covers AHRS/INS covariance-only prediction in both scalar formats, both attitude modes and separate/in-place output configurations. Its full-domain callers check old-state transition assembly, complete P propagation, anisotropic rotated acceleration-noise injection, every noise/cross-covariance entry, ordered validation/status propagation and complete frames. Exact-type transition, rotation, quaternion-validation and OpaqueMath noise producers close the new summaries; existing same-type Exp and reset matrix/finalizer producers close the other dependencies. The 12x12 initialization producer independently checks every raw backing cell; the shared reset oracles are refreshed. Call-boundary assertions avoid floating-point oracle joins without narrowing positive inputs. This proves the selected truncated model, not the complete nominal-integrator derivative, IEEE PSD preservation or combined nominal/covariance publication (E-STEP). E-CORRECT covers the pre-injection correction helper only: binary32/binary64, AHRS/INS error sizes 3/15 and measurement sizes 1/2/3, on solve_proof::Backend with the matching Cholesky system size. Validation and caller profiles cover arbitrary IEEE inputs, full correlated V, the same prior P in the gain and Joseph term, ordered statuses, all error coordinates and scratch publication/rollback. Independent universal observation coordinates cover every matrix entry and never affect production control flow. Actual finite, exact-symmetry, elementwise, in-place finalizer, sandwich, ordered-product assembly, entry-access and dot producers close the matrix summaries; the universal finite-mean and zero-difference scalar lemmas are explicit dependencies. Multiplication and named-field 15x15 storage specialize only the proof backend; they do not alter the previously proved Cholesky bodies or system/RHS storage. F-SOLVE supplies the same-type right-solve contract, not a root-accuracy assumption. Existing Lean innovation-positivity, gain-equation, Joseph-expansion/PSD, finalizer and unpack theorems supply exact mathematics, not IEEE PSD or residual bounds. E-STEP-CORRECT executes the actual public try_correct, unpack and combined injection/reset bodies on the matching solve_proof::Backend, with 3/15 error states, 1/2/3 measurements and binary32/binary64. Three pure component summaries admit arbitrary IEEE scratch results and arbitrary failure statuses, including scratch writes on failure. The caller checks every forwarded input/error coordinate, correction-before-injection-before-reset ordering, first-failure status, no later-stage calls after failure, complete publication/rollback and all four independent state/covariance whole-object aliases. E-CORRECT supplies the matching correction input frame. New same-type actual injection and reset input-frame producers execute quaternion code and reset validation/Jacobian/finalization; only the reset sandwich uses its matching E-CORRECT producer contract. A proof-only norm<4> specialization uses standard scalar-library sqrt instead of the positive-pivot Cholesky root observer; no primitive consumed by E-CORRECT/F-SOLVE changes. Frame-only sin/cos/sqrt models are pure with fresh arbitrary IEEE returns; libm purity is an explicit scalar-library boundary, not a numerical accuracy proof. The other checked-root observer is initialized separately in each frame producer. Both actual reset modes are mandatory dependencies; mode-independent callers are not duplicated. This adds 48 caller and 36 input-frame profiles, not new numerical injection/reset coefficient proofs on this backend. Existing exact-real Step correction theorems remain mathematical evidence, not a proof of IEEE unit norm or PSD. This is reviewed producer-summary correspondence, not machine-checked Lean/C++ refinement or proof of deployed Eigen/PX4/CMSIS/libm internals. F-LINALG adds actual source checks for the explicitly enumerated operation/shape pairs in run_linalg_suite on contract_proof::Linalg (opaque) and solve_proof::Backend (solve), binary32/binary64. Raw backing-cell oracles check zero/row-major/value ownership, bounded coefficient access, block/segment extraction and complete replacement frames, eager arithmetic, rectangular transpose, ordered dot/product/trace, diagonal, finite/max-absolute predicates, cross product and symmetry behavior. All IEEE values are admitted; runtime accessor bounds are caller premises. Matching existing normalization (four-vector), product/sandwich and large add/subtract producers are reused, not inferred across backend types. The OpaqueMath three-vector norm checks root argument/result forwarding with an arbitrary IEEE return; the solve backend positive-pivot observer is not a general norm model. NaNs are compared by classification, signed zero by representation; no NaN-payload or padding claim. Raw division is unchecked IEEE division. Symmetrize uses (A + transpose(A)) * 0.5 and can overflow; it is not the checked covariance finalizer. Compile-time block rectangles and instantiated dimensions are finite coverage, not a proof of all template arguments: unused 6/16-dimensional and nominal-Jacobian surfaces listed in the design spec are not discharged here. Lean adds generic exact indexing/block frame and arithmetic-entry theorems, not C++ layout or IEEE error bounds. Existing F-SOLVE supplies solves. Neither deployment-backend internals nor libm accuracy, arbitrary runtime out-of-bounds access, numerical conditioning/PSD or machine-checked Lean/C++ refinement is claimed. F-SCALAR separates abstract checked-publication and exact-real elementary/constant theorems from source checks. New scalar.cpp profiles admit all IEEE inputs, old outputs and independent arbitrary libm returns in binary32/binary64; no successful-result or accuracy premise is assumed. Independent exponent/sign/fraction oracles check finite, absolute, pi encoding, domains, status precedence, original arguments, exact-once/order dispatch, whole-output publication/rollback and supported scalar/component aliases. Primitive profiles use ESBMC's standard header/intrinsic model. The observed-library profiles alpha-rename only sqrt/sin/cos/atan2 tokens in the two production scalar headers and harness so ESBMC cannot silently replace member calls with intrinsics; production bodies and types are unchanged. Renamed std endpoints observe matching float/double overloads and return arbitrary IEEE values, not implementations of libm. Dispatch assertions and negative checks are necessary evidence for this instrumentation. Existing maps.cpp opaque-wrapper and prediction.cpp IEEE-root/dispatch profiles are reused without duplicate entries in all. IEEE-root intrinsic properties do not prove the StandardMath body or target sqrt implementation. Pi rational half-ULP theorems pair with explicit bit patterns and native constant tests by reviewed correspondence only. Exact Arg uses (-pi,pi]; signed-zero sides of the IEEE negative-axis cut are native-library tests, not a Real-model distinction. Native tests, including branch-cut and alias regressions, are not formal evidence of target libm accuracy. NaNs compare by classification; no payload, signalling/quiet, fenv, errno, target-libm purity/accuracy, runtime rounding-mode/FTZ behavior or machine-checked Lean/C++ refinement is claimed."
   },
   "review_dimensions": [
     "coefficient ordering",
@@ -16,6 +16,176 @@
     "ESBMC assumptions and vacuity risk"
   ],
   "requirements": [
+    {
+      "id": "F-SCALAR",
+      "title": "Elementary scalar semantics and checked publication",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "- `F-SCALAR`"
+          },
+          {
+            "file": "docs/spec/scalar-ieee754-and-failure-semantics.md",
+            "symbol": "## Summary"
+          }
+        ],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/Scalar.lean",
+            "symbol": "def checked "
+          },
+          {
+            "file": "formal/lean/FormalESKF/Scalar.lean",
+            "symbol": "theorem checked_success_iff"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Scalar.lean",
+            "symbol": "theorem checked_failure_preserves"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Scalar.lean",
+            "symbol": "theorem checked_success_publishes"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Scalar.lean",
+            "symbol": "theorem checked_error_precedence"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Scalar.lean",
+            "symbol": "theorem checkedSqrt_success"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Scalar.lean",
+            "symbol": "theorem checkedSinCos_success"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Scalar.lean",
+            "symbol": "theorem checkedAtan2_success"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Scalar.lean",
+            "symbol": "theorem sqrt_spec"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Scalar.lean",
+            "symbol": "theorem sinCos_unit"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Scalar.lean",
+            "symbol": "theorem sinCos_zero"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Scalar.lean",
+            "symbol": "theorem atan2_range"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Scalar.lean",
+            "symbol": "theorem atan2_direction"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Scalar.lean",
+            "symbol": "theorem atan2_negative_axis"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Scalar.lean",
+            "symbol": "theorem pi32_half_ulp"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Scalar.lean",
+            "symbol": "theorem pi64_half_ulp"
+          }
+        ],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/scalar/backend/standard.hpp",
+            "symbol": "class StandardMath"
+          },
+          {
+            "file": "include/formal_eskf/scalar/math.hpp",
+            "symbol": "struct SinCos"
+          },
+          {
+            "file": "include/formal_eskf/scalar/math.hpp",
+            "symbol": "pi()"
+          },
+          {
+            "file": "include/formal_eskf/scalar/math.hpp",
+            "symbol": "is_finite("
+          },
+          {
+            "file": "include/formal_eskf/scalar/math.hpp",
+            "symbol": "absolute("
+          },
+          {
+            "file": "include/formal_eskf/scalar/math.hpp",
+            "symbol": "try_sqrt("
+          },
+          {
+            "file": "include/formal_eskf/scalar/math.hpp",
+            "symbol": "try_sin_cos("
+          },
+          {
+            "file": "include/formal_eskf/scalar/math.hpp",
+            "symbol": "try_atan2("
+          }
+        ],
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/scalar.cpp",
+            "symbol": "void verify_scalar_primitives("
+          },
+          {
+            "file": "formal/cpp/esbmc/scalar.cpp",
+            "symbol": "void verify_scalar_backend("
+          },
+          {
+            "file": "formal/cpp/esbmc/scalar.cpp",
+            "symbol": "void verify_scalar_sqrt("
+          },
+          {
+            "file": "formal/cpp/esbmc/scalar.cpp",
+            "symbol": "void verify_scalar_sin_cos("
+          },
+          {
+            "file": "formal/cpp/esbmc/scalar.cpp",
+            "symbol": "void verify_scalar_atan2("
+          },
+          {
+            "file": "formal/cpp/esbmc/scalar_support.hpp",
+            "symbol": "struct Libm"
+          },
+          {
+            "file": "formal/cpp/esbmc/scalar_support.hpp",
+            "symbol": "inline bool finite("
+          },
+          {
+            "file": "formal/cpp/esbmc/scalar_support.hpp",
+            "symbol": "#define sqrt formal_eskf_proof_sqrt"
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "void verify_scalar_wrappers("
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "void verify_sqrt_envelope("
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "void verify_sqrt_squared_envelope("
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "void verify_sqrt_special_values("
+          },
+          {
+            "file": "formal/cpp/esbmc/prediction.cpp",
+            "symbol": "void verify_scalar_boundary_dispatch("
+          }
+        ]
+      }
+    },
     {
       "id": "Q-IDENTITY",
       "title": "Quaternion identity",

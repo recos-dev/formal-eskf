@@ -6,10 +6,13 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <limits>
 #include <string_view>
+#include <type_traits>
 
 #include <formal_eskf/scalar/backend/standard.hpp>
 #include <formal_eskf/scalar/math.hpp>
@@ -54,6 +57,83 @@ template <typename Math> void test_backend_sqrt(TestContext & test, std::string_
                 profile, "backend sqrt preserves infinity and NaN classifications");
     test.expect(std::isnan(Math::sqrt(value_type{-1})) && std::isnan(Math::sqrt(-infinity)), profile,
                 "negative backend sqrt inputs return NaN without an unchecked libm call");
+}
+
+template <typename Math> void test_ieee_edges(TestContext & test, std::string_view profile)
+{
+    using value_type = typename Math::value_type;
+    using bits_type = std::conditional_t<std::is_same_v<value_type, float>, std::uint32_t, std::uint64_t>;
+    constexpr bits_type pi_bits = []
+    {
+        if constexpr (std::is_same_v<value_type, float>)
+            return bits_type{0x40490fdbU};
+        else
+            return bits_type{0x400921fb54442d18ULL};
+    }();
+    test.expect(std::bit_cast<bits_type>(Math::pi()) == pi_bits &&
+                    std::bit_cast<bits_type>(formal_eskf::scalar::pi<Math>()) == pi_bits,
+                profile, "native standard pi matches the independently specified IEEE encoding");
+    value_type const subnormal = std::numeric_limits<value_type>::denorm_min();
+    test.expect(Math::is_finite(subnormal) && Math::is_finite(-subnormal) && Math::absolute(-subnormal) == subnormal &&
+                    !std::signbit(Math::absolute(-value_type{0})),
+                profile, "finite and absolute preserve subnormals and clear negative zero");
+    value_type const infinity = std::numeric_limits<value_type>::infinity();
+    test.expect(!Math::is_finite(-infinity) && Math::absolute(-infinity) == infinity &&
+                    std::isnan(Math::absolute(std::numeric_limits<value_type>::quiet_NaN())),
+                profile, "negative infinity and NaN classification");
+    for (value_type y : {value_type{0}, -value_type{0}})
+    {
+        for (value_type x : {value_type{0}, -value_type{0}})
+        {
+            value_type output{7};
+            auto const status = formal_eskf::scalar::try_atan2<Math>(y, x, output);
+            test.expect(status == formal_eskf::Status::domain_error && output == value_type{7}, profile,
+                        "atan2 rejects all four signed-zero origins without publication");
+        }
+        value_type output{7};
+        auto const status = formal_eskf::scalar::try_atan2<Math>(y, value_type{-1}, output);
+        test.expect(status == formal_eskf::Status::success && std::signbit(output) == std::signbit(y) &&
+                        Math::absolute(output) == Math::pi(),
+                    profile, "native atan2 preserves both sides of the negative-axis branch cut");
+    }
+}
+
+template <typename Math> void test_aliases(TestContext & test, std::string_view profile)
+{
+    using value_type = typename Math::value_type;
+    using pair_type = formal_eskf::scalar::SinCos<value_type>;
+    value_type root{4};
+    auto status = formal_eskf::scalar::try_sqrt<Math>(root, root);
+    test.expect(status == formal_eskf::Status::success && root == value_type{2}, profile, "in-place sqrt");
+    root = -value_type{0};
+    status = formal_eskf::scalar::try_sqrt<Math>(root, root);
+    test.expect(status == formal_eskf::Status::success && std::signbit(root), profile, "in-place negative-zero sqrt");
+    root = value_type{-1};
+    status = formal_eskf::scalar::try_sqrt<Math>(root, root);
+    test.expect(status == formal_eskf::Status::domain_error && root == value_type{-1}, profile,
+                "failed in-place sqrt preserves input");
+    for (bool sine_alias : {false, true})
+    {
+        pair_type output{value_type{1}, value_type{2}};
+        value_type const input = sine_alias ? output.sine : output.cosine;
+        status = formal_eskf::scalar::try_sin_cos<Math>(sine_alias ? output.sine : output.cosine, output);
+        test.expect(status == formal_eskf::Status::success && output.sine == Math::sin(input) &&
+                        output.cosine == Math::cos(input),
+                    profile, "sincos copies an aliased angle before publishing either component");
+    }
+    for (bool y_alias : {false, true})
+    {
+        value_type y{1}, x{-2};
+        value_type const expected = Math::atan2(y, x);
+        status = formal_eskf::scalar::try_atan2<Math>(y, x, y_alias ? y : x);
+        test.expect(status == formal_eskf::Status::success && (y_alias ? y : x) == expected &&
+                        (y_alias ? x == value_type{-2} : y == value_type{1}),
+                    profile, "atan2 can publish to either input while preserving the other");
+    }
+    value_type shared{1};
+    status = formal_eskf::scalar::try_atan2<Math>(shared, shared, shared);
+    test.expect(status == formal_eskf::Status::success && shared == Math::atan2(value_type{1}, value_type{1}), profile,
+                "atan2 permits both inputs and output to share one object");
 }
 
 template <typename Math>
@@ -109,15 +189,21 @@ void test_checked_trigonometry(TestContext & test, std::string_view profile, typ
                 "atan2 at the zero pair fails without changing output");
 }
 
-template <typename Scalar> class NonFiniteResultMath
+template <typename Scalar, bool CosineFails = false> class NonFiniteResultMath
 {
 public:
     using value_type = Scalar;
 
     [[nodiscard]] static bool is_finite(value_type value) noexcept { return std::isfinite(value); }
     [[nodiscard]] static value_type sqrt(value_type) noexcept { return std::numeric_limits<value_type>::quiet_NaN(); }
-    [[nodiscard]] static value_type sin(value_type) noexcept { return std::numeric_limits<value_type>::quiet_NaN(); }
-    [[nodiscard]] static value_type cos(value_type) noexcept { return value_type{1}; }
+    [[nodiscard]] static value_type sin(value_type) noexcept
+    {
+        return CosineFails ? value_type{1} : std::numeric_limits<value_type>::quiet_NaN();
+    }
+    [[nodiscard]] static value_type cos(value_type) noexcept
+    {
+        return CosineFails ? std::numeric_limits<value_type>::quiet_NaN() : value_type{1};
+    }
     [[nodiscard]] static value_type atan2(value_type, value_type) noexcept
     {
         return std::numeric_limits<value_type>::quiet_NaN();
@@ -149,8 +235,16 @@ void run_conformance_tests(TestContext & test, std::string_view profile, typenam
 {
     test_primitives<Math>(test, profile, tolerance);
     test_backend_sqrt<Math>(test, profile);
+    test_ieee_edges<Math>(test, profile);
+    test_aliases<Math>(test, profile);
     test_checked_sqrt<Math>(test, profile, tolerance);
     test_checked_trigonometry<Math>(test, profile, tolerance);
+    using value_type = typename Math::value_type;
+    formal_eskf::scalar::SinCos<value_type> output{value_type{1}, value_type{2}};
+    auto const status = formal_eskf::scalar::try_sin_cos<NonFiniteResultMath<value_type, true>>(output.sine, output);
+    test.expect(status == formal_eskf::Status::non_finite_result && output.sine == value_type{1} &&
+                    output.cosine == value_type{2},
+                profile, "failed cosine preserves the entire pair even when the angle aliases its sine");
 }
 
 } /* end namespace */

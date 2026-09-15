@@ -24,3 +24,4 @@ import FormalESKF.Correction
 import FormalESKF.Observations
 import FormalESKF.Step
 import FormalESKF.LinearAlgebra
+import FormalESKF.Scalar

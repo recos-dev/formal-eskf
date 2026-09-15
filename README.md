@@ -1,8 +1,15 @@
 # formal-eskf
 
-A portable C++20 error-state Kalman filter for attitude and inertial navigation.
+A portable C++20 error-state Kalman filter (ESKF) for attitude and inertial navigation.
 
 Development of formal-eskf is specification-driven. It combines Lean 4 proofs, C++ verification with ESBMC, and agent-assisted review of verification evidence and traceability between specifications, proofs, and code.
+
+## Key Concepts
+
+- **Verifiable ESKF:** formal verification for trustworthy robotic state estimation.
+- **VeriCoding-inspired development:** combine AI-assisted code and proof construction with explicit specifications and machine verification.
+- **Traceability-backed quality assurance:** connect requirements, code, Lean proofs, ESBMC checks, and test evidence for agent-assisted review.
+- **Portable by design:** keep a shared C++ estimator core independent of linear-algebra backends and deployment platforms.
 
 ## Build
 
@@ -63,6 +70,12 @@ python3 examples/replay_kitti.py "2011_10_03/${DRIVE_ID}_extract" --plot
 ```
 
 OXTS GPS/INS estimates initialize and correct the filter; they are not independent ground truth.
+
+## References
+
+- [Quaternion kinematics for the error-state Kalman filter](https://arxiv.org/abs/1711.02508). 2017.
+- [A Computationally Efficient GNSS/INS Design of Multirotor based on Error-state Kalman Filter](https://doi.org/10.23919/SICE59929.2023.10354209). 2023.
+- [A benchmark for vericoding: formally verified program synthesis](https://arxiv.org/abs/2509.22908). 2025.
 
 ## License
 

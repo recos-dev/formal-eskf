@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,16 +37,17 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
                 printf 'jacobian selects flow, entries, final predicate and boundary witnesses; all also runs its norm/scalar dependencies.\n'
                 printf 'reset selects covariance-reset callers and matrix producers; all also runs their right-Jacobian dependencies.\n'
                 printf 'pcov selects covariance prediction and its new exact-type producers; all also runs its Exp and reset matrix dependencies.\n'
-                printf 'step selects atomic prediction/injection-reset callers and nominal input-frame producers; all also runs their component dependencies. Correction remains outside step coverage.\n'
+                printf 'step selects prediction, injection/reset and correction transactions; all also runs their component dependencies.\n'
                 printf 'solve selects scalar producers, every Cholesky coefficient/column, orchestration and public solve/alias proofs. Root accuracy and numerical residual bounds are outside this source-level claim.\n'
                 printf 'correction selects pre-injection validation, gain/Joseph routing, unpack and exact-type matrix producers. all also runs F-SOLVE and the finite-mean dependency; correction publication through injection/reset remains E-STEP.\n'
+                printf 'step-correction selects full correction transactions and same-type injection/reset input frames. Mode-independent callers reuse both reset-mode producers; all also runs E-CORRECT/F-SOLVE dependencies.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -576,6 +577,39 @@ run_step_suite()
     done
 }
 
+run_step_correction_suite()
+{
+    local BINARY64 SIZE MEASUREMENT ALIAS APPROX BASE_PROFILE
+    local -a PROFILE_ARGUMENTS
+    for BINARY64 in 0 1; do
+        for SIZE in 3 15; do
+            for MEASUREMENT in 1 2 3; do
+                BASE_PROFILE="step-correction-binary$((32 + 32 * BINARY64))-${SIZE}x${MEASUREMENT}"
+                PROFILE_ARGUMENTS=(--proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                    -D "FORMAL_ESKF_PROOF_STATE_SIZE=${SIZE}" -D "FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${MEASUREMENT}" \
+                    -D "FORMAL_ESKF_PROOF_SIZE=${MEASUREMENT}")
+                SOURCE_FILE="${PROOF_DIR}/step_correction.cpp"
+                # The reset summary admits every result/status, independent of
+                # the approximation macro. Prove routing/aliases once; both
+                # actual reset-mode frame producers below remain mandatory.
+                for ALIAS in 0 1 2 3; do
+                    PROFILE="${BASE_PROFILE}-caller-alias${ALIAS}"
+                    verify verify_correction_step "${PROFILE_ARGUMENTS[@]}" \
+                        -D "FORMAL_ESKF_PROOF_STEP_ALIAS=${ALIAS}" -D FORMAL_ESKF_PROOF_STEP_CONTRACT=1
+                done
+                SOURCE_FILE="${PROOF_DIR}/step_correction_frames.cpp"
+                PROFILE="${BASE_PROFILE}-injection-frame"
+                verify verify_correction_injection_frame "${PROFILE_ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_STEP_FRAME=1
+                for APPROX in 0 1; do
+                    PROFILE="${BASE_PROFILE}-reset${APPROX}-frame"
+                    verify verify_correction_reset_frame "${PROFILE_ARGUMENTS[@]}" \
+                        -D "ESKF_RESET_APPROX=${APPROX}" -D FORMAL_ESKF_PROOF_STEP_FRAME=2
+                done
+            done
+        done
+    done
+}
+
 run_solve_suite()
 {
     local BINARY64 SIZE COLUMNS COLUMN ALIAS BASE_PROFILE
@@ -740,6 +774,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == correction ]]; then
         run_correction_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == step || "${SUITE}" == step-correction ]]; then
+        run_step_correction_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

@@ -18,7 +18,7 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1002 '^PLAN'
+    check_count 1086 '^PLAN'
     check_count 14 'quaternion-binary32-witness'
     check_count 8 'algebra-binary32'
     check_count 8 'algebra-binary64'
@@ -42,8 +42,10 @@ check_plan()
     check_count 52 'step-binary64'
     check_count 182 'solve-binary32'
     check_count 182 'solve-binary64'
-    check_count 106 'correction-binary32'
-    check_count 106 'correction-binary64'
+    check_count 106 '[[:space:]]correction-binary32'
+    check_count 106 '[[:space:]]correction-binary64'
+    check_count 42 'step-correction-binary32'
+    check_count 42 'step-correction-binary64'
     check_count 74 'prediction-binary32|state-binary32|scalar-contract-binary32'
     check_count 74 'prediction-binary64|state-binary64|scalar-contract-binary64'
     check_count 0 'shared'
@@ -55,6 +57,18 @@ check_plan()
     check_count 16 'approx0.*actual-exp-coefficient'
     check_count 66 'approx[01]-standard'
     for BINARY64 in 0 1; do
+        for SIZE in 3 15; do
+            for COLUMNS in 1 2 3; do
+                BASE_PROFILE="step-correction-binary$((32 + 32 * BINARY64))-${SIZE}x${COLUMNS}"
+                for ALIAS in 0 1 2 3; do
+                    check_count 1 "${BASE_PROFILE}-caller-alias${ALIAS}[[:space:]]"
+                done
+                check_count 1 "${BASE_PROFILE}-injection-frame[[:space:]]"
+                for APPROX in 0 1; do
+                    check_count 1 "${BASE_PROFILE}-reset${APPROX}-frame[[:space:]]"
+                done
+            done
+        done
         BASE_PROFILE="correction-binary$((32 + 32 * BINARY64))"
         for SIZE in 3 15; do
             for COLUMNS in 1 2 3; do
@@ -174,8 +188,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 107 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1002 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 110 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1086 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -190,10 +204,42 @@ check_plan()
     [[ "$("${RUNNER}" jacobian --list | wc -l)" == 10 ]] || fail 'Jacobian flow/entries/dependency coverage changed'
     [[ "$("${RUNNER}" reset --list | wc -l)" == 46 ]] || fail 'reset configuration/mode/alias/dependency coverage changed'
     [[ "$("${RUNNER}" pcov --list | wc -l)" == 30 ]] || fail 'covariance prediction configuration/mode/alias/dependency coverage changed'
-    [[ "$("${RUNNER}" step --list | wc -l)" == 104 ]] || fail 'step configuration/mode/frame coverage changed'
+    [[ "$("${RUNNER}" step --list | wc -l)" == 188 ]] || fail 'step configuration/mode/frame coverage changed'
+    [[ "$("${RUNNER}" step-correction --list | wc -l)" == 84 ]] || fail 'correction transaction/frame coverage changed'
     [[ "$("${RUNNER}" solve --list | wc -l)" == 364 ]] || fail 'solve scalar/column/alias coverage changed'
     [[ "$("${RUNNER}" correction --list | wc -l)" == 212 ]] || fail 'correction caller/producer coverage changed'
 }
+
+check_step_correction_arguments()
+(
+    verify()
+    {
+        local FUNCTION_NAME="$1" BINARY64 SIZE MEASUREMENT KIND EXPECTED_FUNCTION EXPECTED_SOURCE
+        local -a EXPECTED
+        shift
+        [[ "${PROFILE}" =~ ^step-correction-binary(32|64)-(3|15)x([123])-(.+)$ ]] ||
+            fail "unexpected correction step profile: ${PROFILE}"
+        BINARY64=$(( (BASH_REMATCH[1] - 32) / 32 ))
+        SIZE="${BASH_REMATCH[2]}"; MEASUREMENT="${BASH_REMATCH[3]}"; KIND="${BASH_REMATCH[4]}"
+        EXPECTED=(--proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+            -D "FORMAL_ESKF_PROOF_STATE_SIZE=${SIZE}" -D "FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${MEASUREMENT}" \
+            -D "FORMAL_ESKF_PROOF_SIZE=${MEASUREMENT}")
+        EXPECTED_SOURCE=step_correction_frames.cpp
+        if [[ "${KIND}" =~ ^caller-alias([0123])$ ]]; then
+            EXPECTED_SOURCE=step_correction.cpp; EXPECTED_FUNCTION=verify_correction_step
+            EXPECTED+=(-D "FORMAL_ESKF_PROOF_STEP_ALIAS=${BASH_REMATCH[1]}" -D FORMAL_ESKF_PROOF_STEP_CONTRACT=1)
+        elif [[ "${KIND}" == injection-frame ]]; then
+            EXPECTED_FUNCTION=verify_correction_injection_frame
+            EXPECTED+=(-D FORMAL_ESKF_PROOF_STEP_FRAME=1)
+        elif [[ "${KIND}" =~ ^reset([01])-frame$ ]]; then
+            EXPECTED_FUNCTION=verify_correction_reset_frame
+            EXPECTED+=(-D "ESKF_RESET_APPROX=${BASH_REMATCH[1]}" -D FORMAL_ESKF_PROOF_STEP_FRAME=2)
+        else fail "invalid correction step profile: ${KIND}"; fi
+        [[ "${SOURCE_FILE}" == "${PROOF_DIR}/${EXPECTED_SOURCE}" && "${FUNCTION_NAME}" == "${EXPECTED_FUNCTION}" && "$*" == "${EXPECTED[*]}" ]] ||
+            fail "wrong correction step source, scalar, dimensions, alias or boundaries: ${PROFILE}"
+    }
+    run_step_correction_suite
+)
 
 check_correction_arguments()
 (
@@ -894,6 +940,60 @@ check_step_regressions()
     printf 'ESBMC step regressions: pass (both transactions, symbolic statuses and full in-place output; both scalars)\n'
 )
 
+check_step_correction_contract_guards()
+(
+    local TEST_WORK_DIR SOURCE_NAME FUNCTION_NAME FLAGS EXPECTED RESULT COUNT=0
+    local -a ARGUMENTS
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-step-correction-guard.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    while IFS='|' read -r SOURCE_NAME FUNCTION_NAME FLAGS EXPECTED; do
+        read -r -a ARGUMENTS <<< "${FLAGS}"
+        RESULT=0
+        "${ESBMC_COMMAND}" "${PROOF_DIR}/${SOURCE_NAME}.cpp" "${ESBMC_ARGUMENTS[@]}" \
+            --unwind 10 --timeout 120s --memlimit 4g --function "${FUNCTION_NAME}" \
+            "${ARGUMENTS[@]}" --multi-property >"${TEST_WORK_DIR}/${COUNT}.log" 2>&1 || RESULT=$?
+        if [[ "${RESULT}" != 1 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${COUNT}.log" ||
+            ! grep -F 'FAILED:' "${TEST_WORK_DIR}/${COUNT}.log" | grep -Fq "${EXPECTED}"; then
+            tail -n 30 "${TEST_WORK_DIR}/${COUNT}.log" >&2
+            fail "correction step guard did not reject the incompatible configuration: ${FLAGS}"
+        fi
+        COUNT=$((COUNT + 1))
+    done <<'CASES'
+step_correction|verify_correction_step|-D FORMAL_ESKF_PROOF_STEP_CONTRACT=0|Runner error: correction step requires only three component summaries and a valid alias
+step_correction|verify_correction_step|-D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 -D FORMAL_ESKF_PROOF_STEP_FRAME=1|Runner error: correction step requires only three component summaries and a valid alias
+step_correction|verify_correction_step|-D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 -D FORMAL_ESKF_PROOF_STEP_ALIAS=4|Runner error: correction step requires only three component summaries and a valid alias
+step_correction|verify_correction_step|-D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 -D FORMAL_ESKF_PROOF_ARITHMETIC_CONTRACT=1|Runner error: correction step requires only three component summaries and a valid alias
+step_correction_frames|verify_correction_injection_frame|-D FORMAL_ESKF_PROOF_STEP_FRAME=0|Runner error: correction injection frame requires actual component and quaternion code
+step_correction_frames|verify_correction_injection_frame|-D FORMAL_ESKF_PROOF_STEP_FRAME=1 -D FORMAL_ESKF_PROOF_STEP_CONTRACT=1|Runner error: correction injection frame requires actual component and quaternion code
+step_correction_frames|verify_correction_reset_frame|-D FORMAL_ESKF_PROOF_STEP_FRAME=1|Runner error: correction reset frame requires only the same-type sandwich summary
+step_correction_frames|verify_correction_reset_frame|-D FORMAL_ESKF_PROOF_STEP_FRAME=2 -D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1|Runner error: correction reset frame requires only the same-type sandwich summary
+CASES
+    printf 'ESBMC correction step guards: pass (%d incompatible boundaries/aliases rejected)\n' "${COUNT}"
+)
+
+check_step_correction_regressions()
+(
+    local TEST_WORK_DIR BINARY64
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-step-correction-regression.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    for BINARY64 in 0 1; do
+        if ! "${ESBMC_COMMAND}" "${TEST_DIR}/esbmc/step_correction_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
+            --unwind 226 --timeout 120s --memlimit 4g --function verify_correction_step_regression \
+            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_STATE_SIZE=15 \
+            -D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 -D FORMAL_ESKF_PROOF_STEP_ALIAS=3 \
+            --multi-property >"${TEST_WORK_DIR}/${BINARY64}.log" 2>&1 ||
+            ! grep -q 'VERIFICATION SUCCESSFUL' "${TEST_WORK_DIR}/${BINARY64}.log"; then
+            tail -n 30 "${TEST_WORK_DIR}/${BINARY64}.log" >&2
+            fail "correction step IEEE/full-in-place fixture failed: binary64=${BINARY64}"
+        fi
+    done
+    printf 'ESBMC correction step regressions: pass (three symbolic statuses, signed zero, last-cell NaN and in-place outputs; both scalars)\n'
+)
+
 check_solve_contract_guards()
 (
     local TEST_WORK_DIR SOURCE_NAME FUNCTION_NAME FLAGS EXPECTED RESULT COUNT=0
@@ -1051,8 +1151,9 @@ check_pcov_arguments
 check_step_arguments
 check_solve_arguments
 check_correction_arguments
+check_step_correction_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1002 profiles; 107 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1086 profiles; 110 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards
@@ -1068,6 +1169,8 @@ if ((RUN_SOLVER)); then
     check_pcov_regressions
     check_step_contract_guards
     check_step_regressions
+    check_step_correction_contract_guards
+    check_step_correction_regressions
     check_solve_contract_guards
     check_solve_regressions
     check_correction_contract_guards

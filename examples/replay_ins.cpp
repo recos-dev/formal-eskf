@@ -44,10 +44,10 @@
 #define ACCEL_BIAS_RW_VAR_DENSITY 1e-6 // m^2/s^5.
 #define GYRO_BIAS_RW_VAR_DENSITY 1e-8  // rad^2/s^3.
 
-// GNSS standard-deviation floors, shared by initialization and correction.
-#define GNSS_POS_XY_STD_MIN 1.0 // m.
-#define GNSS_POS_Z_STD_MIN 1.5  // m.
-#define GNSS_VEL_STD_MIN 0.3    // m/s.
+// Navigation standard-deviation floors, shared by initialization and correction.
+#define POS_XY_STD_MIN 1.0 // m.
+#define POS_Z_STD_MIN 1.5  // m.
+#define VEL_STD_MIN 0.3    // m/s.
 
 // Initial local attitude-error and bias variances (already squared).
 #define INIT_ATTITUDE_XY_VAR 0.04 // rad^2, body X/Y.
@@ -155,7 +155,7 @@ double variance(double accuracy, double floor)
 {
     if (!(accuracy > 0.0))
     {
-        throw std::runtime_error("GNSS accuracy must be positive");
+        throw std::runtime_error("Navigation accuracy must be positive");
     }
     double const sigma = std::max(accuracy, floor);
     return sigma * sigma;
@@ -180,9 +180,9 @@ Types::parameter_type parameters()
 
 Covariance initial_covariance(double horizontal_accuracy, double vertical_accuracy, double speed_accuracy)
 {
-    double const position_xy = variance(horizontal_accuracy, GNSS_POS_XY_STD_MIN);
-    double const position_z = variance(vertical_accuracy, GNSS_POS_Z_STD_MIN);
-    double const velocity = variance(speed_accuracy, GNSS_VEL_STD_MIN);
+    double const position_xy = variance(horizontal_accuracy, POS_XY_STD_MIN);
+    double const position_z = variance(vertical_accuracy, POS_Z_STD_MIN);
+    double const velocity = variance(speed_accuracy, VEL_STD_MIN);
     // INS error-state order: [delta_p_n, delta_v_n, delta_theta_b, delta_b_a, delta_b_g].
     std::array<double, Types::error_state_dimension> const diagonal{
         position_xy,
@@ -209,21 +209,20 @@ Covariance initial_covariance(double horizontal_accuracy, double vertical_accura
     return result;
 }
 
-void correct_gnss(State & state, Covariance & covariance, std::array<double, 10U> const & row, std::uint64_t time)
+void correct_navigation(State & state, Covariance & covariance, std::array<double, 10U> const & row, std::uint64_t time)
 {
-    // Receiver accuracy estimates are approximated as independent axis sigmas
-    // with fixed floors (m, m/s). The log does not provide a full joint 6x6 V.
+    // Adapter-provided standard deviations use independent axes and fixed
+    // floors (m, m/s), not a full joint 6x6 observation covariance.
     auto const position = Linalg::vector_type<2U>::from_row_major({row[1U], row[2U]});
-    double const horizontal_variance = variance(row[7U], GNSS_POS_XY_STD_MIN);
+    double const horizontal_variance = variance(row[7U], POS_XY_STD_MIN);
     auto const position_noise = Linalg::matrix_type<2U, 2U>::identity() * horizontal_variance;
     check_status(formal_eskf::try_correct_horizontal_position(state, covariance, position, position_noise,
                                                               QUAT_MIN_NORM, state, covariance),
                  "horizontal position", time);
-    check_status(formal_eskf::try_correct_vertical_position(state, covariance, row[3U],
-                                                            variance(row[8U], GNSS_POS_Z_STD_MIN), QUAT_MIN_NORM, state,
-                                                            covariance),
+    check_status(formal_eskf::try_correct_vertical_position(
+                     state, covariance, row[3U], variance(row[8U], POS_Z_STD_MIN), QUAT_MIN_NORM, state, covariance),
                  "vertical position", time);
-    auto const velocity_noise = Linalg::matrix_type<3U, 3U>::identity() * variance(row[9U], GNSS_VEL_STD_MIN);
+    auto const velocity_noise = Linalg::matrix_type<3U, 3U>::identity() * variance(row[9U], VEL_STD_MIN);
     check_status(formal_eskf::try_correct_velocity(state, covariance, vector3(row[4U], row[5U], row[6U]),
                                                    velocity_noise, QUAT_MIN_NORM, state, covariance),
                  "velocity", time);
@@ -277,10 +276,10 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
 {
     auto initial = open_csv(input / "initial.csv", "timestamp_us,q0,q1,q2,q3,vn,ve,vd,eph,epv,speed_accuracy");
     auto imu = open_csv(input / "imu.csv", "timestamp_us,integral_dt_us,fx,fy,fz,wx,wy,wz");
-    auto gnss = open_csv(input / "gnss.csv", "timestamp_us,pn,pe,pd,vn,ve,vd,eph,epv,speed_accuracy");
+    auto navigation = open_csv(input / "navigation.csv", "timestamp_us,pn,pe,pd,vn,ve,vd,eph,epv,speed_accuracy");
     std::array<double, 11U> seed{};
     std::array<double, 8U> imu_row{};
-    std::array<double, 10U> gnss_row{};
+    std::array<double, 10U> navigation_row{};
     if (!read_row(initial, seed) || !read_row(imu, imu_row))
     {
         throw std::runtime_error("empty initial state or IMU input");
@@ -304,14 +303,14 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     auto covariance = initial_covariance(horizontal_accuracy, vertical_accuracy, speed_accuracy);
     auto const settings = parameters();
     auto previous_imu = imu_sample(imu_row);
-    std::uint64_t last_gnss_time = time;
-    bool has_gnss = read_row(gnss, gnss_row);
+    std::uint64_t last_navigation_time = time;
+    bool has_navigation = read_row(navigation, navigation_row);
     if (!std::filesystem::create_directory(output))
     {
         throw std::runtime_error("output directory already exists: " + output.string());
     }
     std::ofstream states(output / "state.csv");
-    std::ofstream updates(output / "gnss_updates.csv");
+    std::ofstream updates(output / "navigation_updates.csv");
     states.exceptions(std::ios::failbit | std::ios::badbit);
     updates.exceptions(std::ios::failbit | std::ios::badbit);
     states << std::setprecision(17);
@@ -353,29 +352,29 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         previous_imu = sample;
         ++predictions;
         check_state(state, covariance);
-        // First-version timing approximation: each NEW GNSS event is fused
+        // First-version timing approximation: each NEW navigation event is fused
         // at the following IMU tick. Do not split sampled-noise IMU steps or
         // pretend this compensates receiver latency. Report alignment error.
-        while (has_gnss && timestamp(gnss_row[0U]) <= time)
+        while (has_navigation && timestamp(navigation_row[0U]) <= time)
         {
-            auto const source_time = timestamp(gnss_row[0U]);
-            if (source_time <= last_gnss_time)
+            auto const source_time = timestamp(navigation_row[0U]);
+            if (source_time <= last_navigation_time)
             {
-                throw std::runtime_error("GNSS timestamps must increase after initialization");
+                throw std::runtime_error("Navigation timestamps must increase after initialization");
             }
-            correct_gnss(state, covariance, gnss_row, time);
+            correct_navigation(state, covariance, navigation_row, time);
             check_state(state, covariance);
             updates << source_time << ',' << time << '\n';
             max_alignment_us = std::max(max_alignment_us, time - source_time);
-            last_gnss_time = source_time;
+            last_navigation_time = source_time;
             ++corrections;
-            has_gnss = read_row(gnss, gnss_row);
+            has_navigation = read_row(navigation, navigation_row);
         }
         write_state(states, time, state, covariance);
     }
-    if (has_gnss || predictions == 0U || corrections == 0U)
+    if (has_navigation || predictions == 0U || corrections == 0U)
     {
-        throw std::runtime_error("replay incomplete: unconsumed GNSS or no prediction/correction steps");
+        throw std::runtime_error("replay incomplete: unconsumed navigation or no prediction/correction steps");
     }
     states.close();
     updates.close();
@@ -384,16 +383,16 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     summary << std::setprecision(17) << "{\n  \"result\": \"smoke_pass\",\n  \"accuracy_validated\": false,"
             << "\n  \"linalg_backend\": \"" << backend_name << "\","
             << "\n  \"duration_s\": " << static_cast<double>(time - start_time) * 1e-6
-            << ",\n  \"imu_predictions\": " << predictions << ",\n  \"gnss_events\": " << corrections
+            << ",\n  \"imu_predictions\": " << predictions << ",\n  \"navigation_events\": " << corrections
             << ",\n  \"horizontal_position_corrections\": " << corrections
             << ",\n  \"vertical_position_corrections\": " << corrections
             << ",\n  \"velocity_corrections\": " << corrections << ",\n  \"imu_gap_holds\": " << gaps
-            << ",\n  \"imu_gap_us\": " << gap_us << ",\n  \"gnss_max_alignment_us\": " << max_alignment_us
-            << ",\n  \"gnss_delay_compensation_ms\": 0\n}\n";
+            << ",\n  \"imu_gap_us\": " << gap_us << ",\n  \"navigation_max_alignment_us\": " << max_alignment_us
+            << ",\n  \"navigation_delay_compensation_ms\": 0\n}\n";
     summary.close();
-    std::cout << "IMU predictions: " << predictions << "\nGNSS events: " << corrections
-              << " (horizontal position + vertical position + 3D velocity)\nIMU gap holds: " << gaps << " (" << gap_us
-              << " us)\nGNSS maximum tick alignment: " << max_alignment_us
+    std::cout << "IMU predictions: " << predictions << "\nNavigation events: " << corrections
+              << " (horizontal position + vertical position + 3D velocity)\nCSV interval gap holds: " << gaps << " ("
+              << gap_us << " us)\nNavigation maximum tick alignment: " << max_alignment_us
               << " us; receiver latency compensation OFF\n";
 }
 
@@ -403,7 +402,7 @@ int main(int argc, char ** argv)
 {
     if (argc != 3)
     {
-        std::cerr << "Usage: replay_px4 INPUT_DIR NEW_OUTPUT_DIR\n";
+        std::cerr << "Usage: replay_ins INPUT_DIR NEW_OUTPUT_DIR\n";
         return 2;
     }
     try

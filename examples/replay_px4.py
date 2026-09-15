@@ -7,7 +7,6 @@ only; this first replay does not fuse magnetometer or accelerometer corrections.
 """
 
 import argparse
-import csv
 import hashlib
 import json
 import math
@@ -16,11 +15,8 @@ from pathlib import Path
 import shutil
 import subprocess
 
-
-IMU_HEADER = "timestamp_us,integral_dt_us,fx,fy,fz,wx,wy,wz"
-GNSS_HEADER = "timestamp_us,pn,pe,pd,vn,ve,vd,eph,epv,speed_accuracy"
-INITIAL_HEADER = "timestamp_us,q0,q1,q2,q3,vn,ve,vd,eph,epv,speed_accuracy"
-PROGRESS_FORMAT = "{desc}: {bar} {n_fmt}/{total_fmt} stages [{elapsed}]"
+from replay_common import (IMU_HEADER, INITIAL_HEADER, NAVIGATION_HEADER, PROGRESS_FORMAT,
+                           dot, ecef, ned_basis, plot_replay, write_csv)
 
 
 def topic(ULOG, NAME):
@@ -70,26 +66,6 @@ def initial_quaternion(ACCEL, MAG, DECLINATION):
             CR * SP * CY + SR * CP * SY, CR * CP * SY - SR * SP * CY]
 
 
-def ecef(LAT, LON, ALT):
-    """WGS84; latitude/longitude in radians, ellipsoidal altitude in metres."""
-    A = 6378137.0
-    E2 = (1.0 / 298.257223563) * (2.0 - 1.0 / 298.257223563)
-    N = A / math.sqrt(1.0 - E2 * math.sin(LAT) ** 2)
-    return [(N + ALT) * math.cos(LAT) * math.cos(LON),
-            (N + ALT) * math.cos(LAT) * math.sin(LON),
-            (N * (1.0 - E2) + ALT) * math.sin(LAT)]
-
-
-def ned_basis(LAT, LON):
-    return [[-math.sin(LAT) * math.cos(LON), -math.sin(LAT) * math.sin(LON), math.cos(LAT)],
-            [-math.sin(LON), math.cos(LON), 0.0],
-            [-math.cos(LAT) * math.cos(LON), -math.cos(LAT) * math.sin(LON), -math.sin(LAT)]]
-
-
-def dot(A, B):
-    return sum(X * Y for X, Y in zip(A, B))
-
-
 def gps_reading(GPS, INDEX):
     LAT = math.radians(float(GPS["lat"][INDEX]) * 1e-7)
     LON = math.radians(float(GPS["lon"][INDEX]) * 1e-7)
@@ -101,13 +77,6 @@ def gps_reading(GPS, INDEX):
             or abs(LAT) > math.pi / 2 or abs(LON) > math.pi or min(ACCURACY) <= 0):
         return None
     return LAT, LON, ALT, VELOCITY, ACCURACY
-
-
-def write_csv(PATH, HEADER, ROWS):
-    with PATH.open("x", newline="") as STREAM:
-        WRITER = csv.writer(STREAM)
-        WRITER.writerow(HEADER.split(","))
-        WRITER.writerows(ROWS)
 
 
 def prepare(ULOG, OUTPUT):
@@ -165,7 +134,7 @@ def prepare(ULOG, OUTPUT):
     OUTPUT.mkdir(parents=True, exist_ok=False)
     write_csv(OUTPUT / "initial.csv", INITIAL_HEADER, [[START, *Q, *V0, *ACCURACY0]])
     write_csv(OUTPUT / "imu.csv", IMU_HEADER, IMU_ROWS)
-    write_csv(OUTPUT / "gnss.csv", GNSS_HEADER, GPS_ROWS)
+    write_csv(OUTPUT / "navigation.csv", NAVIGATION_HEADER, GPS_ROWS)
     return {"start_timestamp_us": START, "end_timestamp_us": IMU_TIMES[-1],
             "imu_rows": len(IMU_ROWS), "gnss_rows": len(GPS_ROWS),
             "gnss_invalid_rows": len(GPS_TIMES) - len(VALID),
@@ -228,107 +197,12 @@ def run_replay(LOG_FILE, BINARY):
     return OUTPUT
 
 
-def plot_replay(OUTPUT):
-    """Adapt the original plot.py views to this demo's NED/quaternion CSVs."""
-    import matplotlib.pyplot as PLOT
-    import numpy as NP
-    from tqdm import tqdm as TQDM
-
-    with TQDM(total=9, desc="Read plot CSV", dynamic_ncols=True, bar_format=PROGRESS_FORMAT) as PROGRESS:
-        STATE = NP.genfromtxt(OUTPUT / "result/state.csv", delimiter=",", names=True, ndmin=1)
-        GNSS = NP.genfromtxt(OUTPUT / "input/gnss.csv", delimiter=",", names=True, ndmin=1)
-        START = STATE["timestamp_us"][0]
-        TIME = (STATE["timestamp_us"] - START) * 1e-6
-        GPS_TIME = (GNSS["timestamp_us"] - START) * 1e-6
-        FIGURES = []
-
-        PROGRESS.update(1)
-        PROGRESS.set_description_str("Build position / velocity")
-        FIGURE, AXES = PLOT.subplots(3, 2, sharex=True, figsize=(11, 8), constrained_layout=True)
-        FIGURE.suptitle("Position / velocity (fixed local NED) - GNSS inputs, not ground truth")
-        for ROW, (AXIS, LABEL) in enumerate(zip("ned", ("North", "East", "Down"))):
-            for COLUMN, (PREFIX, UNIT) in enumerate((("p", "m"), ("v", "m/s"))):
-                AX = AXES[ROW, COLUMN]
-                AX.plot(TIME, STATE[PREFIX + AXIS], label="ESKF", linewidth=1)
-                AX.plot(GPS_TIME, GNSS[PREFIX + AXIS], ".", label="GNSS measurements", markersize=2)
-                AX.set_ylabel(f"{LABEL} [{UNIT}]")
-                AX.grid(True, alpha=0.3)
-        for COLUMN, TITLE in enumerate(("Position", "Velocity")):
-            AXES[0, COLUMN].set_title(TITLE)
-            AXES[0, COLUMN].legend()
-            AXES[2, COLUMN].set_xlabel("Time since replay start [s]")
-        FIGURES.append(("position_velocity", FIGURE))
-
-        PROGRESS.update(1)
-        PROGRESS.set_description_str("Build attitude")
-        # Scalar-first q_nb; display ZYX Euler angles without changing the state.
-        Q0, Q1, Q2, Q3 = (STATE[KEY] for KEY in ("q0", "q1", "q2", "q3"))
-        ROLL = NP.arctan2(2 * (Q0 * Q1 + Q2 * Q3), 1 - 2 * (Q1 * Q1 + Q2 * Q2))
-        PITCH = NP.arcsin(NP.clip(2 * (Q0 * Q2 - Q3 * Q1), -1, 1))
-        YAW = NP.unwrap(NP.arctan2(2 * (Q0 * Q3 + Q1 * Q2), 1 - 2 * (Q2 * Q2 + Q3 * Q3)))
-        FIGURE, AXES = PLOT.subplots(3, 1, sharex=True, figsize=(10, 7), constrained_layout=True)
-        FIGURE.suptitle("Estimated attitude - no independent attitude reference")
-        for AX, VALUES, LABEL in zip(AXES, (ROLL, PITCH, YAW), ("Roll", "Pitch", "Yaw (unwrapped)")):
-            AX.plot(TIME, NP.degrees(VALUES), linewidth=1)
-            AX.set_ylabel(f"{LABEL} [deg]")
-            AX.grid(True, alpha=0.3)
-        AXES[-1].set_xlabel("Time since replay start [s]")
-        FIGURES.append(("attitude", FIGURE))
-
-        PROGRESS.update(1)
-        PROGRESS.set_description_str("Build trajectory")
-        FIGURE, AX = PLOT.subplots(figsize=(7, 7), constrained_layout=True)
-        AX.plot(STATE["pe"], STATE["pn"], label="ESKF", linewidth=1)
-        AX.plot(GNSS["pe"], GNSS["pn"], ".", label="GNSS measurements", markersize=2)
-        AX.set(title="Horizontal trajectory - GNSS inputs, not ground truth", xlabel="East [m]", ylabel="North [m]")
-        AX.set_aspect("equal", adjustable="datalim")
-        AX.grid(True, alpha=0.3)
-        AX.legend()
-        FIGURES.append(("trajectory", FIGURE))
-
-        PROGRESS.update(1)
-        PROGRESS.set_description_str("Build 3D trajectory")
-        FIGURE, AX = PLOT.subplots(figsize=(9, 8), subplot_kw={"projection": "3d"}, constrained_layout=True)
-        # Equal metre scales on all axes, including stationary/planar trajectories.
-        # Set limits before plotting: our explicit bounds need no 3D autoscaling,
-        # whose internals are incompatible across some Matplotlib installations.
-        POINTS = NP.vstack((NP.column_stack((STATE["pe"], STATE["pn"], -STATE["pd"])),
-                            NP.column_stack((GNSS["pe"], GNSS["pn"], -GNSS["pd"]))))
-        LOWER, UPPER = POINTS.min(axis=0), POINTS.max(axis=0)
-        CENTER = (LOWER + UPPER) / 2
-        RADIUS = max(float(NP.max(UPPER - LOWER)) * 0.55, 0.5)
-        AX.set(xlim=(CENTER[0] - RADIUS, CENTER[0] + RADIUS),
-               ylim=(CENTER[1] - RADIUS, CENTER[1] + RADIUS),
-               zlim=(CENTER[2] - RADIUS, CENTER[2] + RADIUS), autoscale_on=False)
-        AX.set_box_aspect((1, 1, 1))
-        # Display ENU (East, North, Up) so height increases upward; stored data stays NED.
-        AX.plot(STATE["pe"], STATE["pn"], -STATE["pd"], label="ESKF", linewidth=1)
-        AX.plot(GNSS["pe"], GNSS["pn"], -GNSS["pd"], ".", label="GNSS measurements", markersize=2)
-        AX.set(title="3D trajectory - GNSS inputs, not ground truth",
-               xlabel="East [m]", ylabel="North [m]", zlabel="Up (-Down) [m]")
-        AX.legend()
-        FIGURES.append(("trajectory_3d", FIGURE))
-
-        PROGRESS.update(1)
-        PLOT_DIR = OUTPUT / "plots"
-        PLOT_DIR.mkdir(exist_ok=False)
-        for NAME, FIGURE in FIGURES:
-            PROGRESS.set_description_str(f"Save {NAME}.png")
-            FIGURE.savefig(PLOT_DIR / f"{NAME}.png", dpi=150)
-            PROGRESS.update(1)
-        PROGRESS.set_description_str("Plots complete")
-    print(f"Plots: {PLOT_DIR}", flush=True)
-    if PLOT.get_backend().lower() != "agg":
-        print("Displaying plots; close the plot windows to finish.", flush=True)
-        PLOT.show()
-
-
 def main():
     PARSER = argparse.ArgumentParser(description=__doc__,
                                      epilog="Results replace output/<ulog filename without .ulg>/ on each run.")
     PARSER.add_argument("ulog", type=Path)
-    PARSER.add_argument("--binary", type=Path, default=Path("build/demo/replay_px4"),
-                        help="prebuilt C++ executable (default: build/demo/replay_px4)")
+    PARSER.add_argument("--binary", type=Path, default=Path("build/demo/replay_ins"),
+                        help="prebuilt C++ executable (default: build/demo/replay_ins)")
     PARSER.add_argument("--plot", action="store_true", help="save PNG plots and display them with matplotlib")
     ARGS = PARSER.parse_args()
     try:

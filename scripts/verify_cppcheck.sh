@@ -49,6 +49,28 @@ EXPECTED_INACTIVE_CHECKERS=(
     CheckUnusedFunctions::check
 )
 
+usage()
+{
+    printf 'Usage: %s [--help]\n' "${0##*/}"
+    printf 'Check C++ sources on unix32 and unix64 without modifying source files.\n'
+    printf 'Bootstraps the pinned Cppcheck version if it is not available.\n'
+    printf 'Set FORMAL_ESKF_CPPCHECK to use an existing executable of that version.\n'
+}
+
+parse_arguments()
+{
+    if (($# == 0)); then
+        return
+    fi
+    if (($# == 1)) && [[ "$1" == --help || "$1" == -h ]]; then
+        usage
+        exit 0
+    fi
+    printf 'error: unexpected arguments: %s\n' "$*" >&2
+    usage >&2
+    exit 2
+}
+
 fail()
 {
     printf 'error: %s\n' "$*" >&2
@@ -247,6 +269,7 @@ run_analysis()
 
 main()
 {
+    parse_arguments "$@"
     cd -- "${REPO_DIR}"
     select_cppcheck
     check_cppcheck_version

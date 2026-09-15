@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  format:
+    name: clang-format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install formatting dependencies
+        run: ./scripts/install_ci_deps.sh format
+      - name: Check C++ formatting
+        env:
+          CLANG_FORMAT: clang-format-14
+        run: ./scripts/format_cpp.sh --check
+
+  script_tests:
+    name: Script tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install check dependencies
+        run: ./scripts/install_ci_deps.sh checks
+      - name: Check scripts
+        run: |
+          shellcheck scripts/*.sh tests/*.sh
+          python3 -m compileall -q examples
+      - name: Run offline verification-tool tests
+        run: |
+          ./tests/test_esbmc.sh
+          ./tests/test_agent_review.sh
+
+  cppcheck:
+    name: Cppcheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install Cppcheck dependencies
+        run: ./scripts/install_ci_deps.sh cppcheck
+      - name: Analyze unix32 and unix64
+        run: ./scripts/verify_cppcheck.sh
+
+  build_and_test:
+    name: Build and test (${{ matrix.cxx }}, ${{ matrix.build_type }}, quat=${{ matrix.quat_approx }}, reset=${{ matrix.reset_approx }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        cxx: [g++-11]
+        build_type: [Debug]
+        quat_approx: ['OFF', 'ON']
+        reset_approx: ['OFF', 'ON']
+        include:
+          - cxx: clang++-14
+            build_type: Release
+            quat_approx: 'OFF'
+            reset_approx: 'OFF'
+    env:
+      CXX: ${{ matrix.cxx }}
+      BUILD_TYPE: ${{ matrix.build_type }}
+      QUAT_APPROX: ${{ matrix.quat_approx }}
+      RESET_APPROX: ${{ matrix.reset_approx }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install build dependencies
+        run: ./scripts/install_ci_deps.sh cpp
+      - name: Build
+        run: |
+          cmake -S . -B build/ci \
+              -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+              -DCMAKE_CXX_FLAGS=-Werror \
+              -DBUILD_TESTING=ON \
+              -DFORMAL_ESKF_BUILD_EIGEN_BACKEND=ON \
+              -DFORMAL_ESKF_BUILD_EXAMPLES=ON \
+              -DESKF_QUAT_APPROX="${QUAT_APPROX}" \
+              -DESKF_RESET_APPROX="${RESET_APPROX}"
+          cmake --build build/ci --parallel "$(nproc)"
+      - name: Test
+        run: ctest --test-dir build/ci --output-on-failure --no-tests=error
+
+  asan:
+    name: ASan and UBSan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CXX: g++-11
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install build dependencies
+        run: ./scripts/install_ci_deps.sh asan
+      - name: Run sanitizer suite
+        run: ./scripts/verify_asan.sh
+
+  lean:
+    name: Lean
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      MATHLIB_NO_CACHE_ON_UPDATE: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Check Lean proofs
+        run: |
+          ./scripts/verify_lean.sh --cache --wfail
+          git diff --exit-code -- formal/lean/lake-manifest.json

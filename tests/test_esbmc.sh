@@ -1132,12 +1132,14 @@ check_solve_regressions()
                 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_CHECK_FAULT=${FAULT}" \
                 --multi-property >"${TEST_WORK_DIR}/${BINARY64}-${FAULT}.log" 2>&1 || RESULT=$?
             if ((FAULT == 0)); then
-                [[ "${RESULT}" == 0 ]] && grep -q 'VERIFICATION SUCCESSFUL' "${TEST_WORK_DIR}/${BINARY64}-${FAULT}.log" ||
+                if [[ "${RESULT}" != 0 ]] || ! grep -q 'VERIFICATION SUCCESSFUL' "${TEST_WORK_DIR}/${BINARY64}-${FAULT}.log"; then
                     fail 'Cholesky success/failure regression did not pass'
+                fi
             else
-                [[ "${RESULT}" != 0 ]] && grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${BINARY64}-${FAULT}.log" &&
-                    grep -q 'Regression: all solution coefficients, including last-cell faults' "${TEST_WORK_DIR}/${BINARY64}-${FAULT}.log" ||
+                if [[ "${RESULT}" == 0 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${BINARY64}-${FAULT}.log" ||
+                    ! grep -q 'Regression: all solution coefficients, including last-cell faults' "${TEST_WORK_DIR}/${BINARY64}-${FAULT}.log"; then
                     fail 'Cholesky last-cell fault was not detected'
+                fi
             fi
         done
     done

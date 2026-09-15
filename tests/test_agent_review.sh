@@ -193,6 +193,8 @@ run_mocked_review()
     # status logic run against the synthetic files prepared above.
     check_prerequisites() { :; }
     prepare_output() { :; }
+    # Called indirectly by the sourced runner's EXIT handler.
+    # shellcheck disable=SC2317
     clean_up() { :; }
     run_verifiers() { :; }
     validate_execution_inventory() { :; }
@@ -264,6 +266,8 @@ check_assembled_failure()
 
 run_mocked_prerequisite_failure()
 {
+    # Called indirectly by the sourced runner's EXIT handler.
+    # shellcheck disable=SC2317
     clean_up() { :; }
     check_prerequisites() { fail 'synthetic missing prerequisite'; }
     main
@@ -319,6 +323,8 @@ check_verifier_output()
     local EXPECTED="$1" NAME="$2" STEP="$3" ACTUAL=0 OUTPUT REVIEW_WORK_DIR START_SECONDS
     REVIEW_WORK_DIR="$(mktemp -d "${TEST_ROOT}/verifier.XXXXXX")" || return 1
     START_SECONDS=${SECONDS}
+    # Passed as a command argument to run_verifier.
+    # shellcheck disable=SC2317
     synthetic_check_output()
     {
         local INDEX
@@ -439,6 +445,8 @@ check_assembled_audit()
 check_agent_invocation()
 {
     # A local CLI stand-in checks the schema/output handoff, not AI semantics.
+    # Invoked through CODEX_COMMAND by the sourced runner.
+    # shellcheck disable=SC2317
     fixture_codex()
     {
         local SCHEMA_PATH="" OUTPUT_PATH=""

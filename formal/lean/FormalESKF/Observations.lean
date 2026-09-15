@@ -191,6 +191,122 @@ theorem insAccelerometerJacobian_hasDerivAt (s : InsState) (w g : Vector3 ℝ) (
   simpa [insAccelerometerModel, injectIns, insErrorScale, insAccelerometerJacobian,
     accelerometerJacobian_mulVec, hz, localAttitude_zero, inverseRotate] using! h
 
+/-- Matrix action in the finite-dimensional local error chart. -/
+def observationLinearMap {n m : ℕ} (H : Matrix (Fin m) (Fin n) ℝ) :
+    (Fin n → ℝ) →L[ℝ] (Fin m → ℝ) := (Matrix.toLin' H).toContinuousLinearMap
+
+private theorem inverseRotate_local_differentiableAt
+    {E : Type*} [NormedAddCommGroup E] [NormedSpace ℝ E]
+    {d v : E → Vector3 ℝ} {x : E} (q : Quaternion ℝ)
+    (hd : DifferentiableAt ℝ d x) (hv : DifferentiableAt ℝ v x) :
+    DifferentiableAt ℝ (fun e => inverseRotate (localAttitude q (d e)) (v e)) x := by
+  have h0 := (quaternionExp_scalar_differentiableAt (d x)).comp x hd
+  have hh := (quaternionExp_vector_differentiableAt (d x)).comp x hd
+  have h1 : DifferentiableAt ℝ (fun e => (quaternionExp (d e)).q1) x := by
+    simpa [vectorPart] using! differentiableAt_pi.mp hh 0
+  have h2 : DifferentiableAt ℝ (fun e => (quaternionExp (d e)).q2) x := by
+    simpa [vectorPart] using! differentiableAt_pi.mp hh 1
+  have h3 : DifferentiableAt ℝ (fun e => (quaternionExp (d e)).q3) x := by
+    simpa [vectorPart] using! differentiableAt_pi.mp hh 2
+  have hv0 := differentiableAt_pi.mp hv 0
+  have hv1 := differentiableAt_pi.mp hv 1
+  have hv2 := differentiableAt_pi.mp hv 2
+  apply differentiableAt_pi.mpr
+  intro i
+  fin_cases i <;>
+    simp [inverseRotate, rotationMatrix, Matrix.mulVec,
+      dotProduct, Fin.sum_univ_succ] <;> fun_prop
+
+-- Directional derivatives identify a Frechet derivative only AFTER joint
+-- differentiability has been established. Do not infer it from rays alone.
+private theorem observation_hasFDerivAt {n m : ℕ}
+    {f : (Fin n → ℝ) → (Fin m → ℝ)} {H : Matrix (Fin m) (Fin n) ℝ}
+    (hd : DifferentiableAt ℝ f 0)
+    (hr : ∀ v i, HasDerivAt (fun t : ℝ => f (t • v) i) ((H *ᵥ v) i) 0) :
+    HasFDerivAt f (observationLinearMap H) 0 := by
+  apply hd.hasFDerivAt.congr_fderiv
+  ext v i
+  have h := (hasFDerivAt_pi'.mp hd.hasFDerivAt i).hasLineDerivAt v
+  have hh : HasDerivAt (fun t : ℝ => f (t • v) i) ((fderiv ℝ f 0) v i) 0 := by
+    simpa [HasLineDerivAt] using! h
+  exact hh.unique (hr v i)
+
+theorem ahrsMagnetometerJacobian_hasFDerivAt (s : AhrsState) (m_n : Vector3 ℝ) :
+    HasFDerivAt (fun e => magnetometerModel (localAttitude s.q_nb e) m_n)
+      (observationLinearMap (ahrsMagnetometerJacobian s m_n)) 0 := by
+  apply observation_hasFDerivAt
+  · exact inverseRotate_local_differentiableAt s.q_nb differentiableAt_id (differentiableAt_const m_n)
+  · intro v i
+    simpa [ahrsMagnetometerJacobian, vectorScale] using! magnetometerModel_hasDerivAt s.q_nb m_n v i
+
+theorem ahrsAccelerometerJacobian_hasFDerivAt (s : AhrsState) (g_n : Vector3 ℝ) :
+    HasFDerivAt (fun e => ahrsAccelerometerModel (localAttitude s.q_nb e) g_n)
+      (observationLinearMap (ahrsAccelerometerJacobian s g_n)) 0 := by
+  apply observation_hasFDerivAt
+  · exact (inverseRotate_local_differentiableAt s.q_nb differentiableAt_id (differentiableAt_const g_n)).neg
+  · intro v i
+    simpa [ahrsAccelerometerJacobian, vectorScale] using! ahrsAccelerometerModel_hasDerivAt s.q_nb g_n v i
+
+private theorem unpackInsError_scale (t : ℝ) (e : Fin 15 → ℝ) :
+    unpackInsError (t • e) = insErrorScale t (unpackInsError e) := by
+  ext i <;> fin_cases i <;> simp [unpackInsError, insErrorScale, vectorScale]
+
+theorem insMagnetometerJacobian_hasFDerivAt (s : InsState) (m_n : Vector3 ℝ) :
+    HasFDerivAt (fun e => magnetometerModel (injectIns s (unpackInsError e)).q_nb m_n)
+      (observationLinearMap (insMagnetometerJacobian s m_n)) 0 := by
+  apply observation_hasFDerivAt
+  · apply inverseRotate_local_differentiableAt s.q_nb _ (differentiableAt_const m_n)
+    apply differentiableAt_pi.mpr
+    intro i
+    fin_cases i <;> simp [unpackInsError] <;> fun_prop
+  · intro v i
+    simpa [unpackInsError_scale, pack_unpack_insError] using!
+      insMagnetometerJacobian_hasDerivAt s m_n (unpackInsError v) i
+
+theorem insAccelerometerJacobian_hasFDerivAt (s : InsState) (w g : Vector3 ℝ) :
+    HasFDerivAt (fun e => insAccelerometerModel (injectIns s (unpackInsError e)) w g)
+      (observationLinearMap (insAccelerometerJacobian s w g)) 0 := by
+  apply observation_hasFDerivAt
+  · have hd : DifferentiableAt ℝ (fun e => (unpackInsError e).delta_theta_b) 0 := by
+      apply differentiableAt_pi.mpr
+      intro i
+      fin_cases i <;> simp [unpackInsError] <;> fun_prop
+    have hv : DifferentiableAt ℝ (fun e => (injectIns s (unpackInsError e)).v_n) 0 := by
+      apply differentiableAt_pi.mpr
+      intro i
+      fin_cases i <;> simp [injectIns, unpackInsError] <;> fun_prop
+    have hbody := inverseRotate_local_differentiableAt s.q_nb hd hv
+    have hgravity := inverseRotate_local_differentiableAt s.q_nb hd
+      (differentiableAt_const (c := g))
+    have hw : DifferentiableAt ℝ (fun e => w - (injectIns s (unpackInsError e)).b_g) 0 := by
+      apply differentiableAt_pi.mpr
+      intro i
+      fin_cases i <;> simp [injectIns, unpackInsError] <;> fun_prop
+    have hb : DifferentiableAt ℝ (fun e => (injectIns s (unpackInsError e)).b_a) 0 := by
+      apply differentiableAt_pi.mpr
+      intro i
+      fin_cases i <;> simp [injectIns, unpackInsError] <;> fun_prop
+    have hc : DifferentiableAt ℝ (fun e =>
+        cross (w - (injectIns s (unpackInsError e)).b_g)
+          (inverseRotate (localAttitude s.q_nb (unpackInsError e).delta_theta_b)
+            (injectIns s (unpackInsError e)).v_n)) 0 := by
+      have hv0 := differentiableAt_pi.mp hbody 0
+      have hv1 := differentiableAt_pi.mp hbody 1
+      have hv2 := differentiableAt_pi.mp hbody 2
+      have hw0 := differentiableAt_pi.mp hw 0
+      have hw1 := differentiableAt_pi.mp hw 1
+      have hw2 := differentiableAt_pi.mp hw 2
+      apply differentiableAt_pi.mpr
+      intro i
+      fin_cases i
+      · exact (hw1.mul hv2).sub (hw2.mul hv1)
+      · exact (hw2.mul hv0).sub (hw0.mul hv2)
+      · exact (hw0.mul hv1).sub (hw1.mul hv0)
+    exact (hc.sub hgravity).add hb
+  · intro v i
+    simpa [unpackInsError_scale, pack_unpack_insError] using!
+      insAccelerometerJacobian_hasDerivAt s w g (unpackInsError v) i
+
 end
 
 end FormalESKF.ESKF

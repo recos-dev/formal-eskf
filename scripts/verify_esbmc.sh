@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,7 +37,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -50,6 +50,7 @@ parse_arguments()
                 printf 'step-correction selects full correction transactions and same-type injection/reset input frames. Mode-independent callers reuse both reset-mode producers; all also runs E-CORRECT/F-SOLVE dependencies.\n'
                 printf 'linalg selects actual storage/access, block/segment, arithmetic and reduction producers for the enumerated shapes. all also runs the reused normalization, product and covariance dependencies.\n'
                 printf 'scalar selects IEEE primitives, observed StandardMath dispatch and checked wrappers/aliases, plus reused wrapper/root dependencies. Pure libm summaries do not prove target library accuracy.\n'
+                printf 'observations selects eight current sensor models/Jacobians and checked wrappers with all state/covariance aliases. all also runs the matching E-STEP-CORRECT/E-CORRECT/F-SOLVE dependencies; physical model validity and future projection are not claimed.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -825,6 +826,45 @@ run_linalg_suite()
     done
 }
 
+run_observations_suite()
+{
+    local BINARY64 MODEL SIZE MEASUREMENT ALIAS BASE_PROFILE
+    local -a ARGUMENTS
+    for BINARY64 in 0 1; do
+        SOURCE_FILE="${PROOF_DIR}/observation_models.cpp"
+        PROFILE="observations-binary$((32 + 32 * BINARY64))-rotation-producer"
+        verify verify_observation_rotation --proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+            -D FORMAL_ESKF_PROOF_OBSERVATION=4
+        PROFILE="observations-binary$((32 + 32 * BINARY64))-terms-producer"
+        # Z3 avoids Bitwuzla's memory blow-up on these IEEE sign/product
+        # identities. Other observation profiles retain the default solver.
+        verify verify_observation_terms --proof-unwind 226 --z3 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+            -D FORMAL_ESKF_PROOF_OBSERVATION=7 -D FORMAL_ESKF_PROOF_STATE_SIZE=15
+        for MODEL in 0 1 2 3 4 5 6 7; do
+            SIZE=15
+            MEASUREMENT=3
+            if ((MODEL == 4 || MODEL == 6)); then SIZE=3; fi
+            if ((MODEL == 0 || MODEL == 2)); then MEASUREMENT=2; fi
+            if ((MODEL == 1)); then MEASUREMENT=1; fi
+            BASE_PROFILE="observations-binary$((32 + 32 * BINARY64))-model${MODEL}"
+            ARGUMENTS=(--proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+                -D "FORMAL_ESKF_PROOF_STATE_SIZE=${SIZE}" -D "FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${MEASUREMENT}"
+                -D "FORMAL_ESKF_PROOF_SIZE=${MEASUREMENT}" -D "FORMAL_ESKF_PROOF_OBSERVATION=${MODEL}")
+            if ((MODEL >= 4)); then ARGUMENTS+=(-D FORMAL_ESKF_PROOF_OBSERVATION_ROTATION=1); fi
+            if ((MODEL == 7)); then ARGUMENTS+=(-D FORMAL_ESKF_PROOF_OBSERVATION_TERMS=1); fi
+            SOURCE_FILE="${PROOF_DIR}/observation_models.cpp"
+            PROFILE="${BASE_PROFILE}-jacobian"
+            verify verify_observation_jacobian "${ARGUMENTS[@]}"
+            SOURCE_FILE="${PROOF_DIR}/observations.cpp"
+            for ALIAS in 0 1 2 3; do
+                PROFILE="${BASE_PROFILE}-caller-alias${ALIAS}"
+                verify verify_observation "${ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_OBSERVATION_CONTRACT=1 \
+                    -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}"
+            done
+        done
+    done
+}
+
 run_scalar_suite()
 {
     local BINARY64 KIND ALIAS MAX_ALIAS BASE_PROFILE
@@ -918,6 +958,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == scalar ]]; then
         run_scalar_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == observations ]]; then
+        run_observations_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

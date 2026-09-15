@@ -100,7 +100,8 @@ private theorem vectorNorm_differentiableAt {a : Vector3 ℝ} (ha : vectorNorm a
     fun_prop
   simpa [vectorNorm] using! hd.sqrt hs
 
-private theorem exp_scalar_differentiableAt (a : Vector3 ℝ) :
+/-- The Exp scalar coordinate is differentiable, including the radial origin. -/
+theorem quaternionExp_scalar_differentiableAt (a : Vector3 ℝ) :
     DifferentiableAt ℝ (fun v => (quaternionExp v).q0) a := by
   simp only [quaternionExp_regularized, fromScalarVector]
   by_cases h : vectorNorm a = 0
@@ -110,7 +111,8 @@ private theorem exp_scalar_differentiableAt (a : Vector3 ℝ) :
     simpa using ((hasDerivAt_id (0 : ℝ)).div_const 2).cos
   · simpa [div_eq_mul_inv] using! ((vectorNorm_differentiableAt h).mul_const (2 : ℝ)⁻¹).cos
 
-private theorem exp_vector_differentiableAt (a : Vector3 ℝ) :
+/-- The Exp vector coordinates are differentiable, including the radial origin. -/
+theorem quaternionExp_vector_differentiableAt (a : Vector3 ℝ) :
     DifferentiableAt ℝ (fun v => vectorPart (quaternionExp v)) a := by
   simp only [quaternionExp_regularized, vectorPart_fromScalarVector]
   change DifferentiableAt ℝ (fun v : Vector3 ℝ => expScale (vectorNorm v) • v) a
@@ -139,9 +141,9 @@ private theorem resetQuaternion_differentiableAt (a : Vector3 ℝ) :
       DifferentiableAt ℝ (fun e => vectorPart (resetQuaternion a e)) 0 := by
   have hl : DifferentiableAt ℝ (fun e : Vector3 ℝ => a + e) 0 := by fun_prop
   have h0 : DifferentiableAt ℝ (fun e => (quaternionExp (a + e)).q0) 0 := by
-    simpa using! (exp_scalar_differentiableAt (a + 0)).comp (0 : Vector3 ℝ) hl
+    simpa using! (quaternionExp_scalar_differentiableAt (a + 0)).comp (0 : Vector3 ℝ) hl
   have hv : DifferentiableAt ℝ (fun e => vectorPart (quaternionExp (a + e))) 0 := by
-    simpa using! (exp_vector_differentiableAt (a + 0)).comp (0 : Vector3 ℝ) hl
+    simpa using! (quaternionExp_vector_differentiableAt (a + 0)).comp (0 : Vector3 ℝ) hl
   have h1 : DifferentiableAt ℝ (fun e => (quaternionExp (a + e)).q1) 0 := by
     simpa [vectorPart] using! differentiableAt_pi.mp hv 0
   have h2 : DifferentiableAt ℝ (fun e => (quaternionExp (a + e)).q2) 0 := by

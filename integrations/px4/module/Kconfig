@@ -1,0 +1,6 @@
+menuconfig MODULES_FORMAL_ESKF
+	bool "formal_eskf"
+	default n
+	depends on PLATFORM_POSIX
+	---help---
+		Single-instance formal-eskf INS adapter for the PX4 SITL POC.

@@ -53,7 +53,7 @@ list_sources()
 {
     # Include new, non-ignored sources as well as tracked ones. Keep vendor and
     # generated files outside the formatting boundary.
-    git ls-files -z --cached --others --exclude-standard -- include/ src/ examples/ tests/ formal/cpp/
+    git ls-files -z --cached --others --exclude-standard -- include/ src/ examples/ tests/ formal/cpp/ integrations/px4/module/
 }
 
 fix_sources()

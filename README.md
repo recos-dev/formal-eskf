@@ -27,6 +27,18 @@ cmake -S . -B build/demo -DBUILD_TESTING=ON -DFORMAL_ESKF_BUILD_EXAMPLES=ON
 cmake --build build/demo --parallel $(nproc)
 ```
 
+## Run as the PX4 estimator
+
+The [PX4 SITL integration](integrations/px4/README.md) contains the live estimator wrapper, board configuration, package installer and flight tests. It copies the wrapper and core headers into PX4, where the dedicated build replaces EKF2:
+
+```bash
+PX4_ROOT="$(pwd)/../PX4-Autopilot"
+./integrations/px4/setup.sh "$PX4_ROOT"
+make -C "$PX4_ROOT" px4_sitl_formal_eskf -j8
+```
+
+See the integration README for automatic and interactive flight commands, standalone package export, and the SITL verification boundary. SIH dynamics run inside the PX4 executable. The numerical core stays independent of the PX4 adapter.
+
 ## Run PX4 Replay
 
 Replay a local ULog file and display the plots (flight logs are not bundled):

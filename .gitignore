@@ -8,3 +8,4 @@
 /tools/cppcheck-2.21.0/
 /tools/elan/
 /tools/esbmc-8.4.0/
+__pycache__/

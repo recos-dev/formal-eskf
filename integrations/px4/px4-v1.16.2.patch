@@ -1,0 +1,60 @@
+diff --git a/ROMFS/px4fmu_common/init.d-posix/rcS b/ROMFS/px4fmu_common/init.d-posix/rcS
+index fed292b..51e7c86 100644
+--- a/ROMFS/px4fmu_common/init.d-posix/rcS
++++ b/ROMFS/px4fmu_common/init.d-posix/rcS
+@@ -264,7 +264,15 @@ commander start
+ 
+ #
+ # state estimator selection
+-if param compare -s EKF2_EN 1
++if param compare -s FESKF_EN 1
++then
++	# Single owner of vehicle estimates; EKF2 is not started in this branch.
++	param set SENS_IMU_MODE 1
++	if param compare -s EKF2_EN 1; then param set EKF2_EN 0; fi
++	if param compare -s LPE_EN 1; then param set LPE_EN 0; fi
++	if param compare -s ATT_EN 1; then param set ATT_EN 0; fi
++	formal_eskf start
++elif param compare -s EKF2_EN 1
+ then
+ 	ekf2 start &
+ fi
+@@ -354,7 +362,11 @@ fi
+ [ -e "$autostart_file".post ] && . "$autostart_file".post
+ 
+ # Run script to start logging
+-if param compare -s EKF2_EN 1
++if param compare -s FESKF_EN 1
++then
++	# SIH lockstep logger must progress while the estimator is aligning.
++	set LOGGER_ARGS "-p vehicle_imu"
++elif param compare -s EKF2_EN 1
+ then
+ 	set LOGGER_ARGS "-p ekf2_timestamps"
+ else
+diff --git a/src/modules/logger/logged_topics.cpp b/src/modules/logger/logged_topics.cpp
+index ac146f5..468b2d7 100644
+--- a/src/modules/logger/logged_topics.cpp
++++ b/src/modules/logger/logged_topics.cpp
+@@ -181,6 +181,9 @@ void LoggedTopics::add_default_topics()
+ 	add_optional_topic_multi("estimator_sensor_bias", 1000);
+ 	add_optional_topic_multi("estimator_status", 200);
+ 	add_optional_topic_multi("estimator_status_flags", 10);
++#ifdef CONFIG_MODULES_FORMAL_ESKF
++	add_topic("vehicle_odometry", 20);
++#endif
+ 	add_optional_topic_multi("yaw_estimator_status", 1000);
+ 
+ 	// log all raw sensors at minimal rate (at least 1 Hz)
+diff --git a/src/modules/simulation/simulator_sih/CMakeLists.txt b/src/modules/simulation/simulator_sih/CMakeLists.txt
+index 7ae8483..6a53346 100644
+--- a/src/modules/simulation/simulator_sih/CMakeLists.txt
++++ b/src/modules/simulation/simulator_sih/CMakeLists.txt
+@@ -45,6 +45,7 @@ px4_add_module(
+ 		drivers_accelerometer
+ 		drivers_gyroscope
+ 		geo
++		lat_lon_alt
+ 	)
+ 
+ if(PX4_PLATFORM MATCHES "posix")

@@ -18,7 +18,20 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1086 '^PLAN'
+    check_count 1434 '^PLAN'
+    check_count 174 'linalg-binary32'
+    check_count 174 'linalg-binary64'
+    check_count 184 'linalg-binary(32|64)-opaque'
+    check_count 164 'linalg-binary(32|64)-solve'
+    check_count 70 'linalg-.*-storage-'
+    check_count 66 'linalg-.*-access-'
+    check_count 20 'linalg-.*-elementwise-'
+    check_count 48 'linalg-.*-transpose-'
+    check_count 24 'linalg-.*-reductions-'
+    check_count 16 'linalg-.*-symmetry-'
+    check_count 96 'linalg-.*-block-'
+    check_count 4 'linalg-.*-vector3'
+    check_count 4 'linalg-.*-product-'
     check_count 14 'quaternion-binary32-witness'
     check_count 8 'algebra-binary32'
     check_count 8 'algebra-binary64'
@@ -188,8 +201,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 110 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1086 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 119 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1434 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -208,7 +221,52 @@ check_plan()
     [[ "$("${RUNNER}" step-correction --list | wc -l)" == 84 ]] || fail 'correction transaction/frame coverage changed'
     [[ "$("${RUNNER}" solve --list | wc -l)" == 364 ]] || fail 'solve scalar/column/alias coverage changed'
     [[ "$("${RUNNER}" correction --list | wc -l)" == 212 ]] || fail 'correction caller/producer coverage changed'
+    [[ "$("${RUNNER}" linalg --list | wc -l)" == 348 ]] || fail 'linalg operation/backend/shape coverage changed'
 }
+
+check_linalg_arguments()
+(
+    verify()
+    {
+        local FUNCTION_NAME="$1" BINARY64 BACKEND KIND SHAPE ROWS COLUMNS START_ROW START_COLUMN BLOCK_ROWS BLOCK_COLUMNS OTHER_COLUMNS PART
+        local -a EXPECTED
+        shift
+        [[ "${PROFILE}" =~ ^linalg-binary(32|64)-(opaque|solve)-([a-z]+)(.*)$ ]] || fail "unexpected linalg profile: ${PROFILE}"
+        BINARY64=$(( (BASH_REMATCH[1] - 32) / 32 ))
+        BACKEND=0
+        if [[ "${BASH_REMATCH[2]}" == solve ]]; then BACKEND=1; fi
+        KIND="${BASH_REMATCH[3]}"; SHAPE="${BASH_REMATCH[4]#-}"
+        PART=""
+        if [[ "${SHAPE}" =~ ^12x12-part([123])$ ]]; then
+            PART="${BASH_REMATCH[1]}"; SHAPE=12x12
+        fi
+        EXPECTED=()
+        if [[ "${KIND}" == storage || "${KIND}" == access || "${KIND}" == symmetry ]]; then
+            EXPECTED+=(--proof-timeout 300s)
+        fi
+        EXPECTED+=(--proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_LINALG_BACKEND=${BACKEND}")
+        if [[ "${KIND}" == vector ]]; then
+            [[ "${SHAPE}" == 3 ]] || fail 'only three-dimensional vector products are scheduled'
+        else
+            IFS=x read -r ROWS COLUMNS START_ROW START_COLUMN BLOCK_ROWS BLOCK_COLUMNS <<<"${SHAPE}"
+            EXPECTED+=(-D "FORMAL_ESKF_PROOF_ROWS=${ROWS}" -D "FORMAL_ESKF_PROOF_PRODUCT_COLUMNS=${COLUMNS}")
+            case "${KIND}" in
+                block)
+                    EXPECTED+=(-D "FORMAL_ESKF_PROOF_START_ROW=${START_ROW}" -D "FORMAL_ESKF_PROOF_START_COLUMN=${START_COLUMN}" \
+                        -D "FORMAL_ESKF_PROOF_BLOCK_ROWS=${BLOCK_ROWS}" -D "FORMAL_ESKF_PROOF_BLOCK_COLUMNS=${BLOCK_COLUMNS}") ;;
+                product)
+                    OTHER_COLUMNS="${START_ROW}"
+                    EXPECTED+=(-D "FORMAL_ESKF_PROOF_OTHER_COLUMNS=${OTHER_COLUMNS}") ;;
+                storage|access|elementwise|transpose|reductions|symmetry) ;;
+                *) fail "unexpected linalg operation: ${KIND}" ;;
+            esac
+        fi
+        if [[ -n "${PART}" ]]; then EXPECTED+=(-D "FORMAL_ESKF_PROOF_STORAGE_PART=${PART}"); fi
+        [[ "${SOURCE_FILE}" == "${PROOF_DIR}/linalg.cpp" && "${FUNCTION_NAME}" == "verify_linalg_${KIND}" && "$*" == "${EXPECTED[*]}" ]] ||
+            fail "wrong linalg source, operation, scalar, backend, shape or bounds: ${PROFILE}"
+    }
+    run_linalg_suite
+)
 
 check_step_correction_arguments()
 (
@@ -1132,6 +1190,31 @@ check_correction_regressions()
     printf 'ESBMC correction regressions: pass (%d coupled 3-state witnesses/last-cell faults; both scalars)\n' "${COUNT}"
 )
 
+check_linalg_contract_guards()
+(
+    local TEST_WORK_DIR KIND BACKEND RESULT COUNT=0
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-linalg-guard.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    for KIND in storage access elementwise transpose block reductions symmetry vector product; do
+        for BACKEND in 0 1; do
+            RESULT=0
+            "${ESBMC_COMMAND}" "${PROOF_DIR}/linalg.cpp" "${ESBMC_ARGUMENTS[@]}" \
+                --unwind 226 --timeout 120s --memlimit 4g --function "verify_linalg_${KIND}" \
+                -D "FORMAL_ESKF_PROOF_LINALG_BACKEND=${BACKEND}" -D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1 \
+                >"${TEST_WORK_DIR}/${COUNT}.log" 2>&1 || RESULT=$?
+            if [[ "${RESULT}" != 1 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${COUNT}.log" ||
+                ! grep -Fq "Runner error: linalg ${KIND/elementwise/arithmetic}" "${TEST_WORK_DIR}/${COUNT}.log"; then
+                tail -n 30 "${TEST_WORK_DIR}/${COUNT}.log" >&2
+                fail "linalg producer admitted a summary: ${KIND} backend=${BACKEND}"
+            fi
+            COUNT=$((COUNT + 1))
+        done
+    done
+    printf 'ESBMC linalg guards: pass (%d incompatible producer summaries rejected)\n' "${COUNT}"
+)
+
 RUN_SOLVER=0
 case "${1:-}" in
     '') ;;
@@ -1152,8 +1235,9 @@ check_step_arguments
 check_solve_arguments
 check_correction_arguments
 check_step_correction_arguments
+check_linalg_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1086 profiles; 110 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1434 profiles; 119 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards
@@ -1175,4 +1259,5 @@ if ((RUN_SOLVER)); then
     check_solve_regressions
     check_correction_contract_guards
     check_correction_regressions
+    check_linalg_contract_guards
 fi

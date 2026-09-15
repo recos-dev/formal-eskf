@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,7 +37,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -48,6 +48,7 @@ parse_arguments()
                 printf 'solve selects scalar producers, every Cholesky coefficient/column, orchestration and public solve/alias proofs. Root accuracy and numerical residual bounds are outside this source-level claim.\n'
                 printf 'correction selects pre-injection validation, gain/Joseph routing, unpack and exact-type matrix producers. all also runs F-SOLVE and the finite-mean dependency; correction publication through injection/reset remains E-STEP.\n'
                 printf 'step-correction selects full correction transactions and same-type injection/reset input frames. Mode-independent callers reuse both reset-mode producers; all also runs E-CORRECT/F-SOLVE dependencies.\n'
+                printf 'linalg selects actual storage/access, block/segment, arithmetic and reduction producers for the enumerated shapes. all also runs the reused normalization, product and covariance dependencies.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -731,6 +732,98 @@ run_correction_suite()
     done
 }
 
+run_linalg_suite()
+{
+    local BINARY64 BACKEND KIND SHAPE ROWS COLUMNS OFFSET BLOCK_ROWS BLOCK_COLUMNS START_ROW START_COLUMN OTHER_COLUMNS
+    local BASE_PROFILE NAME PART
+    local -a ARGUMENTS SHAPES
+    SOURCE_FILE="${PROOF_DIR}/linalg.cpp"
+    for BINARY64 in 0 1; do
+        for BACKEND in 0 1; do
+            NAME=opaque
+            if ((BACKEND)); then NAME=solve; fi
+            BASE_PROFILE="linalg-binary$((32 + 32 * BINARY64))-${NAME}"
+            ARGUMENTS=(--proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                -D "FORMAL_ESKF_PROOF_LINALG_BACKEND=${BACKEND}")
+            SHAPES=(1x1 2x1 3x1 4x1 15x1 1x3 2x3 3x2 3x3 1x15 2x15 3x15 15x2 15x3 2x2 15x15)
+            if ((BACKEND == 0)); then SHAPES+=(12x12); fi
+            for SHAPE in "${SHAPES[@]}"; do
+                IFS=x read -r ROWS COLUMNS <<<"${SHAPE}"
+                for KIND in storage access; do
+                    if [[ "${SHAPE}" == 12x12 && "${KIND}" == storage ]]; then
+                        for PART in 1 2 3; do
+                            PROFILE="${BASE_PROFILE}-storage-${SHAPE}-part${PART}"
+                            verify verify_linalg_storage --proof-timeout 300s "${ARGUMENTS[@]}" \
+                                -D FORMAL_ESKF_PROOF_ROWS=12 -D FORMAL_ESKF_PROOF_PRODUCT_COLUMNS=12 \
+                                -D "FORMAL_ESKF_PROOF_STORAGE_PART=${PART}"
+                        done
+                        continue
+                    fi
+                    PROFILE="${BASE_PROFILE}-${KIND}-${SHAPE}"
+                    verify "verify_linalg_${KIND}" --proof-timeout 300s "${ARGUMENTS[@]}" \
+                        -D "FORMAL_ESKF_PROOF_ROWS=${ROWS}" -D "FORMAL_ESKF_PROOF_PRODUCT_COLUMNS=${COLUMNS}"
+                done
+            done
+            # Elementwise vector/attitude operations. Large Joseph add/subtract
+            # already have exact-type producers; unused large scale/divide
+            # combinations are not added just to populate a Cartesian grid.
+            for SHAPE in 1x1 2x1 3x1 4x1 3x3; do
+                IFS=x read -r ROWS COLUMNS <<<"${SHAPE}"
+                PROFILE="${BASE_PROFILE}-elementwise-${SHAPE}"
+                verify verify_linalg_elementwise "${ARGUMENTS[@]}" \
+                    -D "FORMAL_ESKF_PROOF_ROWS=${ROWS}" -D "FORMAL_ESKF_PROOF_PRODUCT_COLUMNS=${COLUMNS}"
+            done
+            for SHAPE in 1x3 2x3 3x1 3x2 3x3 1x15 2x15 3x15 15x1 15x2 15x3 15x15; do
+                IFS=x read -r ROWS COLUMNS <<<"${SHAPE}"
+                PROFILE="${BASE_PROFILE}-transpose-${SHAPE}"
+                verify verify_linalg_transpose "${ARGUMENTS[@]}" \
+                    -D "FORMAL_ESKF_PROOF_ROWS=${ROWS}" -D "FORMAL_ESKF_PROOF_PRODUCT_COLUMNS=${COLUMNS}"
+            done
+            for SHAPE in 1x1 2x2 3x3 15x15 3x1 4x1; do
+                IFS=x read -r ROWS COLUMNS <<<"${SHAPE}"
+                PROFILE="${BASE_PROFILE}-reductions-${SHAPE}"
+                verify verify_linalg_reductions "${ARGUMENTS[@]}" \
+                    -D "FORMAL_ESKF_PROOF_ROWS=${ROWS}" -D "FORMAL_ESKF_PROOF_PRODUCT_COLUMNS=${COLUMNS}"
+                if ((ROWS == COLUMNS)); then
+                    PROFILE="${BASE_PROFILE}-symmetry-${SHAPE}"
+                    verify verify_linalg_symmetry --proof-timeout 300s "${ARGUMENTS[@]}" \
+                        -D "FORMAL_ESKF_PROOF_ROWS=${ROWS}" -D "FORMAL_ESKF_PROOF_PRODUCT_COLUMNS=${COLUMNS}"
+                fi
+            done
+            # Compile-time rectangles used by transition, noise, reset and
+            # observation assembly; every destination coordinate is checked.
+            SHAPES=(15x15x0x3x3x3 15x15x3x6x3x3 15x15x3x9x3x3 15x15x6x6x3x3 \
+                15x15x6x12x3x3 15x15x3x3x3x3 15x15x9x9x3x3 15x15x12x12x3x3 \
+                2x15x0x0x2x2 2x15x0x3x2x2 3x1x0x0x2x1 3x3x0x0x3x3)
+            for OFFSET in 0 3 6 9 12; do
+                SHAPES+=("3x15x0x${OFFSET}x3x3" "15x1x${OFFSET}x0x3x1")
+            done
+            if ((BACKEND == 0)); then
+                for OFFSET in 0 3 6 9; do SHAPES+=("12x12x${OFFSET}x${OFFSET}x3x3"); done
+            fi
+            for SHAPE in "${SHAPES[@]}"; do
+                IFS=x read -r ROWS COLUMNS START_ROW START_COLUMN BLOCK_ROWS BLOCK_COLUMNS <<<"${SHAPE}"
+                PROFILE="${BASE_PROFILE}-block-${SHAPE}"
+                verify verify_linalg_block "${ARGUMENTS[@]}" \
+                    -D "FORMAL_ESKF_PROOF_ROWS=${ROWS}" -D "FORMAL_ESKF_PROOF_PRODUCT_COLUMNS=${COLUMNS}" \
+                    -D "FORMAL_ESKF_PROOF_START_ROW=${START_ROW}" -D "FORMAL_ESKF_PROOF_START_COLUMN=${START_COLUMN}" \
+                    -D "FORMAL_ESKF_PROOF_BLOCK_ROWS=${BLOCK_ROWS}" -D "FORMAL_ESKF_PROOF_BLOCK_COLUMNS=${BLOCK_COLUMNS}"
+            done
+            PROFILE="${BASE_PROFILE}-vector3"
+            verify verify_linalg_vector "${ARGUMENTS[@]}"
+            if ((BACKEND == 0)); then
+                for SHAPE in 3x3x1 3x1x3; do
+                    IFS=x read -r ROWS COLUMNS OTHER_COLUMNS <<<"${SHAPE}"
+                    PROFILE="${BASE_PROFILE}-product-${SHAPE}"
+                    verify verify_linalg_product "${ARGUMENTS[@]}" \
+                        -D "FORMAL_ESKF_PROOF_ROWS=${ROWS}" -D "FORMAL_ESKF_PROOF_PRODUCT_COLUMNS=${COLUMNS}" \
+                        -D "FORMAL_ESKF_PROOF_OTHER_COLUMNS=${OTHER_COLUMNS}"
+                done
+            fi
+        done
+    done
+}
+
 main()
 {
     parse_arguments "$@"
@@ -777,6 +870,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == step || "${SUITE}" == step-correction ]]; then
         run_step_correction_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == linalg ]]; then
+        run_linalg_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

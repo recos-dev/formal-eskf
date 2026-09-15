@@ -63,6 +63,7 @@ template <typename Linalg, typename Configuration, std::size_t MeasurementSize> 
 {
     using types = formal_eskf::EskfTypes<Linalg, Configuration>;
     using value_type = typename Linalg::value_type;
+    using correction_type = formal_eskf::linalg::Matrix<Linalg, types::error_state_dimension, 1U>;
     using state_type = typename types::nominal_state_type;
     using covariance_type = typename types::error_covariance_type;
     static constexpr bool is_ins = std::is_same_v<Configuration, formal_eskf::configuration::Ins>;
@@ -173,6 +174,7 @@ template <typename Matrix> [[nodiscard]] Dense<Matrix::row_count, Matrix::column
 template <std::size_t Size> struct ReferenceCorrection
 {
     Dense<Size, 1U> delta_x{};
+    Dense<Size, Size> joseph_covariance{};
     Dense<Size, Size> covariance{};
     bool valid = false;
 };
@@ -259,6 +261,7 @@ template <typename Fixture>
             joseph[row][column] += noise[row][column];
         }
     }
+    result.joseph_covariance = joseph;
     long double const x = result.delta_x[offset][0U];
     long double const y = result.delta_x[offset + 1U][0U];
     long double const z = result.delta_x[offset + 2U][0U];
@@ -362,6 +365,31 @@ void check_success(TestContext & test, std::string_view profile, Fixture const &
     auto const reference = reference_correction(fixture);
     test.expect(reference.valid && fixture.attitude_status == Status::success, profile,
                 "valid correction fixture and oracle");
+    typename Fixture::correction_type delta;
+    typename Fixture::covariance_type joseph;
+    Status const linear_status = formal_eskf::detail::try_compute_correction(fixture.P, fixture.r, fixture.H, fixture.V,
+                                                                             Fixture::minimum_norm, delta, joseph);
+    bool linear_matches = linear_status == Status::success;
+    for (std::size_t row = 0U; row < Fixture::size; ++row)
+    {
+        linear_matches =
+            near(delta(row), static_cast<typename Fixture::value_type>(reference.delta_x[row][0U]), tolerance) &&
+            linear_matches;
+        for (std::size_t column = 0U; column < Fixture::size; ++column)
+        {
+            linear_matches =
+                near(joseph(row, column),
+                     static_cast<typename Fixture::value_type>(reference.joseph_covariance[row][column]), tolerance) &&
+                linear_matches;
+        }
+    }
+    test.expect(linear_matches, profile, "pre-injection error and full Joseph covariance match independent oracle");
+    auto const saved_delta = delta;
+    auto const saved_joseph = joseph;
+    Status const rejected = formal_eskf::detail::try_compute_correction(fixture.P, fixture.r, fixture.H, fixture.V,
+                                                                        typename Fixture::value_type{0}, delta, joseph);
+    test.expect(rejected == Status::domain_error && same_bits(delta, saved_delta) && same_bits(joseph, saved_joseph),
+                profile, "pre-injection failure preserves both scratch outputs");
     for (unsigned aliases = 0U; aliases < 4U; ++aliases)
     {
         auto input = fixture;

@@ -39,18 +39,16 @@ void unpack_correction(linalg::Matrix<Linalg, 15U, 1U> const & delta_x,
     error.delta_b_g = delta_x.template segment<12U, 3U>();
 }
 
-template <typename Error, typename Linalg, typename State, std::size_t Size, std::size_t MeasurementSize>
-[[nodiscard]] Status
-try_correct_state_and_covariance(State const & state, linalg::Matrix<Linalg, Size, Size> const & covariance,
-                                 linalg::Matrix<Linalg, MeasurementSize, 1U> const & r,
-                                 linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
-                                 linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
-                                 typename Linalg::value_type minimum_quaternion_norm, State & state_output,
-                                 linalg::Matrix<Linalg, Size, Size> & covariance_output) noexcept
+/** Input checks only; PSD/PD remain caller preconditions. */
+template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
+[[nodiscard]] Status validate_correction_inputs(linalg::Matrix<Linalg, Size, Size> const & covariance,
+                                                linalg::Matrix<Linalg, MeasurementSize, 1U> const & r,
+                                                linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
+                                                linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
+                                                typename Linalg::value_type minimum_quaternion_norm) noexcept
 {
     using value_type = typename Linalg::value_type;
     using scalar_math_type = typename Linalg::scalar_math_type;
-    using covariance_type = linalg::Matrix<Linalg, Size, Size>;
 
     if (!linalg::all_finite(covariance) || !linalg::all_finite(r) || !linalg::all_finite(H) || !linalg::all_finite(V) ||
         !scalar::is_finite<scalar_math_type>(minimum_quaternion_norm))
@@ -77,6 +75,31 @@ try_correct_state_and_covariance(State const & state, linalg::Matrix<Linalg, Siz
         {
             return Status::domain_error;
         }
+    }
+
+    return Status::success;
+}
+
+/**
+ * Checked linearized correction before nominal injection and coordinate reset.
+ * Outputs are internal scratch objects, disjoint from all inputs and each other.
+ * Publish the error vector and Joseph covariance only after every check succeeds.
+ * The norm bound is validated here to preserve the public API's validation order.
+ */
+template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
+[[nodiscard]] Status try_compute_correction(linalg::Matrix<Linalg, Size, Size> const & covariance,
+                                            linalg::Matrix<Linalg, MeasurementSize, 1U> const & r,
+                                            linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
+                                            linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
+                                            typename Linalg::value_type minimum_quaternion_norm,
+                                            linalg::Matrix<Linalg, Size, 1U> & correction_output,
+                                            linalg::Matrix<Linalg, Size, Size> & covariance_output) noexcept
+{
+    using covariance_type = linalg::Matrix<Linalg, Size, Size>;
+    Status const input_status = validate_correction_inputs(covariance, r, H, V, minimum_quaternion_norm);
+    if (!succeeded(input_status))
+    {
+        return input_status;
     }
 
     // Sola (274): K = P H^T (H P H^T + V)^-1. Reuse the cross-covariance
@@ -110,13 +133,37 @@ try_correct_state_and_covariance(State const & state, linalg::Matrix<Linalg, Siz
     }
     // Sola footnote 26: Joseph form, using the same PRIOR P as in the gain.
     // Keep the complete V, including off-diagonal measurement correlations.
-    auto P_corrected = linalg::sandwich(A, covariance) + linalg::sandwich(K, V);
+    auto const prior_term = linalg::sandwich(A, covariance);
+    auto const noise_term = linalg::sandwich(K, V);
+    auto P_corrected = prior_term + noise_term;
     Status const covariance_status = try_finish_covariance(P_corrected, P_corrected);
     if (!succeeded(covariance_status))
     {
         return covariance_status;
     }
 
+    correction_output = delta_x;
+    covariance_output = P_corrected;
+    return Status::success;
+}
+
+template <typename Error, typename Linalg, typename State, std::size_t Size, std::size_t MeasurementSize>
+[[nodiscard]] Status
+try_correct_state_and_covariance(State const & state, linalg::Matrix<Linalg, Size, Size> const & covariance,
+                                 linalg::Matrix<Linalg, MeasurementSize, 1U> const & r,
+                                 linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
+                                 linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
+                                 typename Linalg::value_type minimum_quaternion_norm, State & state_output,
+                                 linalg::Matrix<Linalg, Size, Size> & covariance_output) noexcept
+{
+    linalg::Matrix<Linalg, Size, 1U> delta_x;
+    linalg::Matrix<Linalg, Size, Size> P_corrected;
+    Status const correction_status =
+        try_compute_correction(covariance, r, H, V, minimum_quaternion_norm, delta_x, P_corrected);
+    if (!succeeded(correction_status))
+    {
+        return correction_status;
+    }
     Error error;
     unpack_correction(delta_x, error);
     Error reset_error;

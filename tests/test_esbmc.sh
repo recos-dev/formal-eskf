@@ -16,9 +16,9 @@ check_count()
 
 check_plan()
 {
-    local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN
+    local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 790 '^PLAN'
+    check_count 1002 '^PLAN'
     check_count 14 'quaternion-binary32-witness'
     check_count 8 'algebra-binary32'
     check_count 8 'algebra-binary64'
@@ -42,6 +42,8 @@ check_plan()
     check_count 52 'step-binary64'
     check_count 182 'solve-binary32'
     check_count 182 'solve-binary64'
+    check_count 106 'correction-binary32'
+    check_count 106 'correction-binary64'
     check_count 74 'prediction-binary32|state-binary32|scalar-contract-binary32'
     check_count 74 'prediction-binary64|state-binary64|scalar-contract-binary64'
     check_count 0 'shared'
@@ -53,6 +55,16 @@ check_plan()
     check_count 16 'approx0.*actual-exp-coefficient'
     check_count 66 'approx[01]-standard'
     for BINARY64 in 0 1; do
+        BASE_PROFILE="correction-binary$((32 + 32 * BINARY64))"
+        for SIZE in 3 15; do
+            for COLUMNS in 1 2 3; do
+                # Independent derivation from P, r, H, V, PHt, delta and I-KH.
+                for SHAPE in "${SIZE}x${SIZE}" "${COLUMNS}x1" "${COLUMNS}x${SIZE}" \
+                    "${COLUMNS}x${COLUMNS}" "${SIZE}x${COLUMNS}" "${SIZE}x1"; do
+                    check_count 1 "${BASE_PROFILE}-finite${SHAPE}[[:space:]]"
+                done
+            done
+        done
         BASE_PROFILE="solve-binary$((32 + 32 * BINARY64))"
         check_count 1 "${BASE_PROFILE}-arithmetic"
         for SIZE in 1 2 3; do
@@ -162,8 +174,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 93 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 790 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 107 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1002 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -180,7 +192,59 @@ check_plan()
     [[ "$("${RUNNER}" pcov --list | wc -l)" == 30 ]] || fail 'covariance prediction configuration/mode/alias/dependency coverage changed'
     [[ "$("${RUNNER}" step --list | wc -l)" == 104 ]] || fail 'step configuration/mode/frame coverage changed'
     [[ "$("${RUNNER}" solve --list | wc -l)" == 364 ]] || fail 'solve scalar/column/alias coverage changed'
+    [[ "$("${RUNNER}" correction --list | wc -l)" == 212 ]] || fail 'correction caller/producer coverage changed'
 }
+
+check_correction_arguments()
+(
+    verify()
+    {
+        local FUNCTION_NAME="$1" BINARY64 KIND SIZE MEASUREMENT ROWS INNER COLUMNS EXPECTED_FUNCTION EXPECTED_SOURCE
+        local -a EXPECTED
+        shift
+        [[ "${PROFILE}" =~ ^correction-binary(32|64)-(.+)$ ]] || fail "unexpected correction profile: ${PROFILE}"
+        BINARY64=$(( (BASH_REMATCH[1] - 32) / 32 ))
+        KIND="${BASH_REMATCH[2]}"
+        EXPECTED=(--proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}")
+        EXPECTED_SOURCE=correction_matrix.cpp
+        if [[ "${KIND}" =~ ^(caller|validation)(3|15)x([123])$ ]]; then
+            SIZE="${BASH_REMATCH[2]}"; MEASUREMENT="${BASH_REMATCH[3]}"
+            EXPECTED_SOURCE=correction.cpp
+            EXPECTED+=(-D "FORMAL_ESKF_PROOF_STATE_SIZE=${SIZE}" -D "FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${MEASUREMENT}" -D "FORMAL_ESKF_PROOF_SIZE=${MEASUREMENT}")
+            if [[ "${BASH_REMATCH[1]}" == caller ]]; then
+                EXPECTED_FUNCTION=verify_correction; EXPECTED=(--proof-timeout 300s "${EXPECTED[@]}" -D FORMAL_ESKF_PROOF_CORRECTION_CONTRACT=1)
+            else
+                EXPECTED_FUNCTION=verify_correction_validation; EXPECTED+=(-D FORMAL_ESKF_PROOF_CORRECTION_CONTRACT=2)
+            fi
+        elif [[ "${KIND}" =~ ^unpack(3|15)$ ]]; then
+            EXPECTED_SOURCE=correction.cpp; EXPECTED_FUNCTION=verify_correction_unpack
+            EXPECTED+=(-D "FORMAL_ESKF_PROOF_STATE_SIZE=${BASH_REMATCH[1]}")
+        elif [[ "${KIND}" =~ ^sandwich(3|15)x(1|2|3|15)$ ]]; then
+            EXPECTED_SOURCE=correction_sandwich.cpp; EXPECTED_FUNCTION=verify_correction_sandwich
+            EXPECTED+=(-D "FORMAL_ESKF_PROOF_STATE_SIZE=${BASH_REMATCH[1]}" -D "FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${BASH_REMATCH[2]}" -D FORMAL_ESKF_PROOF_CORRECTION_CONTRACT=1)
+        elif [[ "${KIND}" =~ ^(finish|symmetry|dot|add|subtract)(1|2|3|15)$ ]]; then
+            EXPECTED_FUNCTION="verify_correction_${BASH_REMATCH[1]}"; SIZE="${BASH_REMATCH[2]}"
+            if [[ "${BASH_REMATCH[1]}" == dot ]]; then EXPECTED+=(-D "FORMAL_ESKF_PROOF_INNER=${SIZE}")
+            else EXPECTED+=(-D "FORMAL_ESKF_PROOF_ROWS=${SIZE}"); fi
+            if [[ "${KIND}" == finish* ]]; then EXPECTED+=(-D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1); fi
+        elif [[ "${KIND}" =~ ^finite(1|2|3|15)x(1|2|3|15)$ ]]; then
+            EXPECTED_FUNCTION=verify_correction_finite
+            EXPECTED+=(-D "FORMAL_ESKF_PROOF_ROWS=${BASH_REMATCH[1]}" -D "FORMAL_ESKF_PROOF_PRODUCT_COLUMNS=${BASH_REMATCH[2]}")
+        elif [[ "${KIND}" =~ ^(product|entry)(1|2|3|15)x(1|2|3|15)x(1|2|3|15)$ ]]; then
+            EXPECTED_FUNCTION="verify_correction_${BASH_REMATCH[1]}"
+            ROWS="${BASH_REMATCH[2]}"; INNER="${BASH_REMATCH[3]}"; COLUMNS="${BASH_REMATCH[4]}"
+            if [[ "${KIND}" == entry* ]]; then EXPECTED=(--proof-timeout 300s "${EXPECTED[@]}"); fi
+            EXPECTED+=(-D "FORMAL_ESKF_PROOF_ROWS=${ROWS}" -D "FORMAL_ESKF_PROOF_INNER=${INNER}" -D "FORMAL_ESKF_PROOF_PRODUCT_COLUMNS=${COLUMNS}")
+            if [[ "${KIND}" == entry* ]]; then EXPECTED+=(-D FORMAL_ESKF_PROOF_PRODUCT_BOUNDARY=2)
+            else EXPECTED+=(-D FORMAL_ESKF_PROOF_PRODUCT_BOUNDARY=1); fi
+        elif [[ "${KIND}" == equality ]]; then EXPECTED_FUNCTION=verify_correction_equality
+        elif [[ "${KIND}" == zero-difference ]]; then EXPECTED_FUNCTION=verify_correction_zero_difference
+        else fail "invalid correction profile: ${KIND}"; fi
+        [[ "${SOURCE_FILE}" == "${PROOF_DIR}/${EXPECTED_SOURCE}" && "${FUNCTION_NAME}" == "${EXPECTED_FUNCTION}" && "$*" == "${EXPECTED[*]}" ]] ||
+            fail "wrong correction source, scalar, dimensions or contract boundaries: ${PROFILE}"
+    }
+    run_correction_suite
+)
 
 check_solve_arguments()
 (
@@ -893,6 +957,81 @@ check_solve_regressions()
     printf 'ESBMC solve regressions: pass (success/failure witnesses and last-cell faults; both scalars)\n'
 )
 
+check_correction_contract_guards()
+(
+    local TEST_WORK_DIR SOURCE_NAME FUNCTION_NAME FLAGS EXPECTED RESULT COUNT=0
+    local -a ARGUMENTS
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-correction-guard.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    while IFS='|' read -r SOURCE_NAME FUNCTION_NAME FLAGS EXPECTED; do
+        read -r -a ARGUMENTS <<< "${FLAGS}"
+        RESULT=0
+        "${ESBMC_COMMAND}" "${PROOF_DIR}/${SOURCE_NAME}" "${ESBMC_ARGUMENTS[@]}" \
+            --unwind 226 --timeout 120s --memlimit 4g --function "${FUNCTION_NAME}" \
+            "${ARGUMENTS[@]}" >"${TEST_WORK_DIR}/${COUNT}.log" 2>&1 || RESULT=$?
+        if [[ "${RESULT}" != 1 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${COUNT}.log" ||
+            ! grep -Fq "${EXPECTED}" "${TEST_WORK_DIR}/${COUNT}.log"; then
+            tail -n 30 "${TEST_WORK_DIR}/${COUNT}.log" >&2
+            fail "correction guard did not reject incompatible boundaries: ${FUNCTION_NAME} ${FLAGS}"
+        fi
+        COUNT=$((COUNT + 1))
+    done <<'CASES'
+correction.cpp|verify_correction||Runner error: correction requires only
+correction.cpp|verify_correction|-D FORMAL_ESKF_PROOF_CORRECTION_CONTRACT=2|Runner error: correction requires only
+correction.cpp|verify_correction|-D FORMAL_ESKF_PROOF_CORRECTION_CONTRACT=1 -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=15|Runner error: correction requires only
+correction.cpp|verify_correction_validation|-D FORMAL_ESKF_PROOF_CORRECTION_CONTRACT=1|Runner error: correction validation requires only
+correction.cpp|verify_correction_unpack|-D FORMAL_ESKF_PROOF_CORRECTION_CONTRACT=1|Runner error: correction unpack must be actual
+correction_sandwich.cpp|verify_correction_sandwich||Runner error: sandwich requires only
+correction_matrix.cpp|verify_correction_finite|-D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1|Runner error: correction finite predicate must be actual
+correction_matrix.cpp|verify_correction_finish||Runner error: correction finalizer must be actual
+correction_matrix.cpp|verify_correction_symmetry|-D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1|Runner error: correction symmetry producer must be actual
+correction_matrix.cpp|verify_correction_product||Runner error: correction product requires only
+correction_matrix.cpp|verify_correction_entry|-D FORMAL_ESKF_PROOF_PRODUCT_BOUNDARY=1|Runner error: correction entry requires only
+correction_matrix.cpp|verify_correction_dot|-D FORMAL_ESKF_PROOF_PRODUCT_BOUNDARY=2|Runner error: correction dot must be actual
+correction_matrix.cpp|verify_correction_add|-D FORMAL_ESKF_PROOF_CORRECTION_CONTRACT=1|Runner error: correction elementwise producer must be actual
+correction_matrix.cpp|verify_correction_subtract|-D FORMAL_ESKF_PROOF_PRODUCT_BOUNDARY=1|Runner error: correction elementwise producer must be actual
+CASES
+    printf 'ESBMC correction guards: pass (%d incompatible boundaries/shapes rejected)\n' "${COUNT}"
+)
+
+check_correction_regressions()
+(
+    local TEST_WORK_DIR BINARY64 FAULT RESULT EXPECTED LABEL COUNT=0
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-correction-regression.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    for BINARY64 in 0 1; do
+        # A small actual-LLT witness supplements the arbitrary-input, composed
+        # 3/15-state proofs. Do not expand a second monolithic 15-state proof:
+        # full-size numerical integration is covered by test_eskf_correction.
+        for FAULT in 0 1 2; do
+            RESULT=0
+            EXPECTED=1
+            case "${FAULT}" in
+                0) EXPECTED=0; LABEL='VERIFICATION SUCCESSFUL' ;;
+                1) LABEL='Regression: full correlated Joseph covariance, including last-cell faults' ;;
+                2) LABEL='Regression: every correction coordinate, including the last' ;;
+            esac
+            "${ESBMC_COMMAND}" "${TEST_DIR}/esbmc/correction_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
+                --unwind 226 --timeout 180s --memlimit 4g --function verify_correction_regression \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_STATE_SIZE=3 \
+                -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=1 -D FORMAL_ESKF_PROOF_SIZE=1 \
+                -D "FORMAL_ESKF_PROOF_CHECK_FAULT=${FAULT}" >"${TEST_WORK_DIR}/${COUNT}.log" 2>&1 || RESULT=$?
+            if [[ "${RESULT}" != "${EXPECTED}" ]] ||
+                ! grep -Fq "${LABEL}" "${TEST_WORK_DIR}/${COUNT}.log" ||
+                { ((FAULT != 0)) && ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${COUNT}.log"; }; then
+                tail -n 30 "${TEST_WORK_DIR}/${COUNT}.log" >&2
+                fail "correction witness/fault failed: binary64=${BINARY64} fault=${FAULT}"
+            fi
+            COUNT=$((COUNT + 1))
+        done
+    done
+    printf 'ESBMC correction regressions: pass (%d coupled 3-state witnesses/last-cell faults; both scalars)\n' "${COUNT}"
+)
+
 RUN_SOLVER=0
 case "${1:-}" in
     '') ;;
@@ -911,8 +1050,9 @@ check_reset_arguments
 check_pcov_arguments
 check_step_arguments
 check_solve_arguments
+check_correction_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (790 profiles; 93 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1002 profiles; 107 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards
@@ -930,4 +1070,6 @@ if ((RUN_SOLVER)); then
     check_step_regressions
     check_solve_contract_guards
     check_solve_regressions
+    check_correction_contract_guards
+    check_correction_regressions
 fi

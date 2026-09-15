@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,7 +37,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -46,6 +46,7 @@ parse_arguments()
                 printf 'pcov selects covariance prediction and its new exact-type producers; all also runs its Exp and reset matrix dependencies.\n'
                 printf 'step selects atomic prediction/injection-reset callers and nominal input-frame producers; all also runs their component dependencies. Correction remains outside step coverage.\n'
                 printf 'solve selects scalar producers, every Cholesky coefficient/column, orchestration and public solve/alias proofs. Root accuracy and numerical residual bounds are outside this source-level claim.\n'
+                printf 'correction selects pre-injection validation, gain/Joseph routing, unpack and exact-type matrix producers. all also runs F-SOLVE and the finite-mean dependency; correction publication through injection/reset remains E-STEP.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -627,6 +628,75 @@ run_solve_suite()
     done
 }
 
+run_correction_suite()
+{
+    local BINARY64 SIZE MEASUREMENT SHAPE ROWS INNER COLUMNS BASE_PROFILE
+    local -a SCALAR_ARGUMENTS SHAPE_ARGUMENTS
+    for BINARY64 in 0 1; do
+        BASE_PROFILE="correction-binary$((32 + 32 * BINARY64))"
+        SCALAR_ARGUMENTS=(--proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}")
+        SOURCE_FILE="${PROOF_DIR}/correction.cpp"
+        for SIZE in 3 15; do
+            PROFILE="${BASE_PROFILE}-unpack${SIZE}"
+            verify verify_correction_unpack "${SCALAR_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_STATE_SIZE=${SIZE}"
+            for MEASUREMENT in 1 2 3; do
+                SHAPE_ARGUMENTS=("${SCALAR_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_STATE_SIZE=${SIZE}" \
+                    -D "FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${MEASUREMENT}" -D "FORMAL_ESKF_PROOF_SIZE=${MEASUREMENT}")
+                PROFILE="${BASE_PROFILE}-validation${SIZE}x${MEASUREMENT}"
+                verify verify_correction_validation "${SHAPE_ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_CORRECTION_CONTRACT=2
+                PROFILE="${BASE_PROFILE}-caller${SIZE}x${MEASUREMENT}"
+                verify verify_correction --proof-timeout 300s "${SHAPE_ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_CORRECTION_CONTRACT=1
+            done
+        done
+        SOURCE_FILE="${PROOF_DIR}/correction_sandwich.cpp"
+        for SHAPE in 3x1 3x2 3x3 15x1 15x2 15x3 15x15; do
+            IFS=x read -r SIZE MEASUREMENT <<<"${SHAPE}"
+            PROFILE="${BASE_PROFILE}-sandwich${SHAPE}"
+            verify verify_correction_sandwich "${SCALAR_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_STATE_SIZE=${SIZE}" \
+                -D "FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${MEASUREMENT}" -D FORMAL_ESKF_PROOF_CORRECTION_CONTRACT=1
+        done
+        SOURCE_FILE="${PROOF_DIR}/correction_matrix.cpp"
+        PROFILE="${BASE_PROFILE}-equality"
+        verify verify_correction_equality "${SCALAR_ARGUMENTS[@]}"
+        PROFILE="${BASE_PROFILE}-zero-difference"
+        verify verify_correction_zero_difference "${SCALAR_ARGUMENTS[@]}"
+        for SIZE in 1 2 3 15; do
+            PROFILE="${BASE_PROFILE}-finish${SIZE}"
+            verify verify_correction_finish "${SCALAR_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_ROWS=${SIZE}" \
+                -D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1
+            PROFILE="${BASE_PROFILE}-symmetry${SIZE}"
+            verify verify_correction_symmetry "${SCALAR_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_ROWS=${SIZE}"
+            PROFILE="${BASE_PROFILE}-dot${SIZE}"
+            verify verify_correction_dot "${SCALAR_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_INNER=${SIZE}"
+            PROFILE="${BASE_PROFILE}-add${SIZE}"
+            verify verify_correction_add "${SCALAR_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_ROWS=${SIZE}"
+            if ((SIZE == 3 || SIZE == 15)); then
+                PROFILE="${BASE_PROFILE}-subtract${SIZE}"
+                verify verify_correction_subtract "${SCALAR_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_ROWS=${SIZE}"
+            fi
+        done
+        for SHAPE in 1x1 2x1 3x1 15x1 1x3 2x3 3x2 3x3 1x15 2x15 3x15 15x2 15x3 2x2 15x15; do
+            IFS=x read -r ROWS COLUMNS <<<"${SHAPE}"
+            PROFILE="${BASE_PROFILE}-finite${SHAPE}"
+            verify verify_correction_finite "${SCALAR_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_ROWS=${ROWS}" \
+                -D "FORMAL_ESKF_PROOF_PRODUCT_COLUMNS=${COLUMNS}"
+        done
+        # Unique product shapes shared by innovation, delta, I-KH and both
+        # Joseph terms. Prove each once, independently of sensor/config labels.
+        for SHAPE in 15x15x1 15x15x15 15x15x2 15x15x3 15x1x1 15x1x15 15x2x1 15x2x15 15x2x2 15x3x1 15x3x15 15x3x3 \
+            1x15x1 1x3x1 2x15x2 2x3x2 3x15x3 3x1x1 3x1x3 3x2x1 3x2x2 3x2x3 3x3x1 3x3x2 3x3x3; do
+            IFS=x read -r ROWS INNER COLUMNS <<<"${SHAPE}"
+            SHAPE_ARGUMENTS=("${SCALAR_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_ROWS=${ROWS}" \
+                -D "FORMAL_ESKF_PROOF_INNER=${INNER}" -D "FORMAL_ESKF_PROOF_PRODUCT_COLUMNS=${COLUMNS}")
+            PROFILE="${BASE_PROFILE}-product${SHAPE}"
+            verify verify_correction_product "${SHAPE_ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_PRODUCT_BOUNDARY=1
+            PROFILE="${BASE_PROFILE}-entry${SHAPE}"
+            verify verify_correction_entry --proof-timeout 300s "${SHAPE_ARGUMENTS[@]}" \
+                -D FORMAL_ESKF_PROOF_PRODUCT_BOUNDARY=2
+        done
+    done
+}
+
 main()
 {
     parse_arguments "$@"
@@ -667,6 +737,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == solve ]]; then
         run_solve_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == correction ]]; then
+        run_correction_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

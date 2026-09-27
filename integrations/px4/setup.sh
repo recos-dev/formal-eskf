@@ -7,9 +7,14 @@ PX4_COMMIT=54f0455ffcd755534539a7cf33a09a20bf71d29d
 
 main()
 {
-    if [[ $# != 1 || "${1:-}" == --help ]]; then
-        echo "Usage: $0 /path/to/PX4-Autopilot"
+    if [[ "${1:-}" == --help ]]; then
+        echo "Usage: $0 /path/to/PX4-Autopilot [--gazebo]"
+        echo "--gazebo also downloads PX4's pinned Gazebo models/worlds."
         return 0
+    fi
+    if [[ $# -lt 1 || $# -gt 2 || ( $# == 2 && "$2" != --gazebo ) ]]; then
+        echo "Usage: $0 /path/to/PX4-Autopilot [--gazebo]" >&2
+        return 1
     fi
     local PX4_ROOT="$1"
     if [[ ! -e "${PX4_ROOT}" ]]; then
@@ -22,6 +27,9 @@ main()
     fi
     git -C "${PX4_ROOT}" submodule update --init --recursive --depth 1 \
         src/modules/mavlink/mavlink src/lib/events/libevents src/lib/heatshrink/heatshrink
+    if [[ "${2:-}" == --gazebo ]]; then
+        git -C "${PX4_ROOT}" submodule update --init --recursive --depth 1 Tools/simulation/gz
+    fi
     python3 "${SCRIPT_DIR}/install.py" --px4 "${PX4_ROOT}"
 }
 

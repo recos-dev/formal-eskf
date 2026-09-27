@@ -2,7 +2,7 @@
 
 This directory owns the PX4 wrapper, board configuration, installation tools and flight tests. The numerical core remains in `include/formal_eskf/`. Installing copies both the wrapper and core headers into PX4; the PX4 build does not reference the original formal-eskf checkout.
 
-The supported target is **PX4 v1.16.2**, commit `54f0455ffcd755534539a7cf33a09a20bf71d29d`, on Linux with GCC 11 or newer and C++20. The dedicated `px4_sitl_formal_eskf` board replaces EKF2 with a single-instance formal-eskf INS using the PX4 matrix backend and double precision.
+The supported target is **PX4 v1.16.2**, commit `54f0455ffcd755534539a7cf33a09a20bf71d29d`, on Linux with GCC 11 or newer and C++20. The dedicated `px4_sitl_formal_eskf` (SIH) and `px4_sitl_gz_formal_eskf` (Gazebo Harmonic) boards replace EKF2 with a single-instance formal-eskf INS using the PX4 matrix backend and double precision.
 
 ## Source ownership
 
@@ -12,9 +12,57 @@ The supported target is **PX4 v1.16.2**, commit `54f0455ffcd755534539a7cf33a09a2
 | `include/formal_eskf/` | `src/modules/formal_eskf/core/include/formal_eskf/` | Complete header-only numerical core |
 | `LICENSE` | `src/modules/formal_eskf/core/LICENSE` | Core and adapter license |
 | `integrations/px4/formal_eskf.px4board` | `boards/px4/sitl/formal_eskf.px4board` | SIH build with EKF2 disabled |
+| `integrations/px4/gz_formal_eskf.px4board` | `boards/px4/sitl/gz_formal_eskf.px4board` | Gazebo bridge/plugins with EKF2 disabled |
 | `integrations/px4/px4-v1.16.2.patch` | Three existing PX4 files | Startup selection, odometry logging and SIH link dependency |
 
 Edit the source in formal-eskf, run the installer again, and rebuild PX4. Changes in formal-eskf do not automatically change an already installed package. PX4 receives regular copied files, with no symlinks, submodule or `FORMAL_ESKF_ROOT` dependency.
+
+## Gazebo X500 experience
+
+Run from a desktop terminal. The script opens Gazebo, normally arms the X500, takes off to 5 m, flies an 8 x 8 m square with a heading change, lands, waits for automatic disarming and closes its simulation. It then checks the original ULog against simulator ground truth and generates `flight.png`. The estimator is formal-eskf; EKF2 is excluded from this build.
+
+On Ubuntu 22.04/24.04, first install [Gazebo Harmonic](https://gazebosim.org/docs/harmonic/install_ubuntu/) from its signed official repository, plus the build dependencies:
+
+```bash
+sudo apt-get install build-essential cmake ninja-build git python3-venv \
+    libeigen3-dev libxml2-utils libopencv-dev pkg-config
+./integrations/px4/run_gazebo.sh --setup
+```
+
+`--setup` downloads the pinned PX4 and Gazebo submodules under `build/px4-gazebo/`, creates a Python virtual environment there, installs the Python requirements, builds and runs. It does not install system packages. The first build needs internet access, including PX4's upstream Gazebo plugin dependencies. Existing PX4 work is subject to the installer's conflict checks.
+
+After setup, the experience is one command:
+
+```bash
+./integrations/px4/run_gazebo.sh
+```
+
+Other modes:
+
+```bash
+./integrations/px4/run_gazebo.sh --headless
+./integrations/px4/run_gazebo.sh --world windy
+./integrations/px4/run_gazebo.sh --px4 /path/to/PX4-Autopilot --jobs 4
+```
+
+Each run installs the current package, rebuilds it, and writes a new evidence directory under `build/gazebo-*`; use `--output NEW_DIRECTORY` to choose its location. Both the live flight and ULog analyzer must pass. Thresholds are the same as the SIH square test. The window requires a working desktop display/OpenGL environment; `--headless` runs the same flight without a window. Ctrl-C stops the run and cleans up its simulation processes.
+
+The runner uses a unique Gazebo transport partition, so it does not attach to another running world. The GUI follows the X500. Simulation runs at a requested real-time factor of one; startup can take up to 180 seconds. It does not force-arm or disable estimator arming checks.
+
+Use the mouse wheel to zoom the view. The default run closes the window after landing; the flight plot and raw logs remain in its evidence directory.
+
+For existing automation, select Gazebo explicitly; SIH remains the default:
+
+```bash
+PYTHON=build/px4-gazebo/venv/bin/python
+PX4_ROOT="$PWD/build/px4-gazebo/PX4-Autopilot"
+RUN_DIR="$PWD/build/gazebo-manual-$(date -u +%Y%m%d-%H%M%S)"
+"$PYTHON" integrations/px4/sitl_flight.py --px4 "$PX4_ROOT" \
+    --simulator gazebo --gui --world default --startup-timeout 180 --output "$RUN_DIR"
+"$PYTHON" integrations/px4/analyze_flight.py "$RUN_DIR"
+```
+
+Gazebo's sensor publishers differ from SIH's. `--check-faults` is therefore rejected for Gazebo until separate fault injection is implemented and validated. This support provides a closed-loop simulation case, not a claim of Gazebo verification, hardware flight, or in-flight fault tolerance. The analyzer uses a valid geographic reference recorded before takeoff and rejects reference changes during flight; it never fits an origin to minimize estimation error.
 
 ## Setup and build
 
@@ -146,6 +194,38 @@ python3 integrations/px4/test_package.py --px4 "$PX4_ROOT"
 ```
 
 Package checks exercise a clean pinned PX4 fixture, standalone export/install, repeat installation, update handling, conflict preservation, revision rejection and exclusion of editor scratch files. Core checks use the existing native suite with the PX4 matrix backend. Run the flight and analyzer above after rebuilding to validate the complete control loop.
+
+To check the Gazebo build and the truth-reference regression cases:
+
+```bash
+./integrations/px4/test_core.sh "$PX4_ROOT" build/core-px4-gazebo \
+    "$PX4_ROOT/build/px4_sitl_gz_formal_eskf"
+build/px4-gazebo/venv/bin/python integrations/px4/test_flight_analysis.py
+shellcheck integrations/px4/run_gazebo.sh integrations/px4/setup.sh integrations/px4/test_core.sh
+```
+
+## Gazebo local validation: 2026-09-27
+
+Validated on Ubuntu 24.04 ARM64, GCC 13.3, Python 3.12 and Gazebo Harmonic 8.15.0. The pinned PX4 Gazebo models revision is `e05f4312d3f28aa621157610584a4870406cb6d3`.
+
+| Check | Result |
+| --- | --- |
+| Package installation/export tests | 8 passed, including both boards and conflict preservation |
+| Native core tests with PX4 matrix and Gazebo build headers | 14 passed |
+| Ground-truth reference regression tests | 5 passed |
+| Bash syntax, ShellCheck, Python compilation | Passed for the affected scripts |
+| Gazebo headless, `default` world | Normal arming, square, landing/disarming and 18 ULog checks passed |
+| Gazebo GUI, `default` world | Normal arming, square, landing/disarming and 18 ULog checks passed |
+| Gazebo GUI, `windy` world | Camera follow acknowledged; normal arming, square, landing/disarming and 18 ULog checks passed |
+| Existing SIH regression | Normal arming, square, landing/disarming, 18 ULog checks and 6 ground fault/recovery checks passed |
+
+The GUI default-world run recorded position / velocity / attitude RMSE of **0.064 m / 0.164 m/s / 4.618 degrees**. The windy-world run recorded **0.194 m / 0.180 m/s / 4.042 degrees**. These are individual integration trials, not statistical robustness or fault-tolerance results. Both had zero logged numerical fault flags, airborne failsafes and ULog dropouts. The airborne valid-estimate fractions were 99.71% and 99.87%, respectively; the existing acceptance threshold remains above 99%.
+
+Evidence is under `build/px4-gazebo/flight-gui-01/`, `build/px4-gazebo/flight-windy-01/` and `build/px4-gazebo/flight-default-04/`: `flight.json`, `provenance.json`, original ULog, `analysis.json`, `flight.png` and, for GUI runs, a captured Gazebo window. Build, package and native-test logs are under `build/px4-gazebo/`. Early failed attempts are retained separately and are not counted as passes. In particular, board labels must not extend the SIH label because PX4's selector uses prefix matching, and the Gazebo board must include the gimbal parameters required by `gz_bridge`.
+
+The SIH compatibility run, including `faults.json`, is under `build/px4-gazebo/flight-sih-regression/`. It used the unchanged SIH board and the updated shared runner/analyzer.
+
+The reduced board may print missing optional-module parameter messages from PX4's shared startup script. If GStreamer development packages are absent, the upstream optional camera plugin also reports a missing library; the camera-free X500 does not use it. This is distinct from the Gazebo GUI camera and does not relax any flight acceptance checks.
 
 ## Local validation: 2026-09-15
 

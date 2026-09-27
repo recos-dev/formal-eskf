@@ -13,6 +13,8 @@ import sys
 PX4_COMMIT = "54f0455ffcd755534539a7cf33a09a20bf71d29d"
 MODULE = "src/modules/formal_eskf"
 BOARD = "boards/px4/sitl/formal_eskf.px4board"
+GAZEBO_BOARD = "boards/px4/sitl/gz_formal_eskf.px4board"
+BOARDS = (BOARD, GAZEBO_BOARD)
 RECEIPT = f"{MODULE}/package-manifest.json"
 SCRIPT_DIR = Path(__file__).resolve().parent
 MODULE_FILES = ("CMakeLists.txt", "FormalEskf.cpp", "FormalEskf.hpp", "Kconfig", "formal_eskf_params.c")
@@ -30,7 +32,7 @@ def git(PX4, *ARGS, INPUT=None):
 def owned_path(NAME):
     PARTS = PurePosixPath(NAME)
     if (PARTS.is_absolute() or ".." in PARTS.parts or str(PARTS) != NAME
-            or not (NAME.startswith(MODULE + "/") or NAME == BOARD)
+            or not (NAME.startswith(MODULE + "/") or NAME in BOARDS)
             or NAME == RECEIPT):
         raise ValueError(f"Invalid package path: {NAME}")
     return NAME
@@ -57,7 +59,8 @@ def source_package():
         if FILE.is_file() and FILE.suffix in HEADER_SUFFIXES and not FILE.name.startswith("."):
             FILES[f"{MODULE}/core/include/{FILE.relative_to(REPO / 'include').as_posix()}"] = FILE.read_bytes()
     FILES[f"{MODULE}/core/LICENSE"] = (REPO / "LICENSE").read_bytes()
-    FILES[BOARD] = (SCRIPT_DIR / "formal_eskf.px4board").read_bytes()
+    for NAME in BOARDS:
+        FILES[NAME] = (SCRIPT_DIR / Path(NAME).name).read_bytes()
     REVISION = git(REPO, "rev-parse", "HEAD")
     STATUS = git(REPO, "status", "--porcelain")
     MANIFEST = {
@@ -90,6 +93,8 @@ def export_package(OUTPUT, MANIFEST, FILES, PATCH):
         "Requires PX4 v1.16.2 at " + PX4_COMMIT + ".\n"
         "Install: python3 install.py --px4 /path/to/PX4-Autopilot\n"
         "Build: make -C /path/to/PX4-Autopilot px4_sitl_formal_eskf -j8\n"
+        "Gazebo build: make -C /path/to/PX4-Autopilot px4_sitl_gz_formal_eskf -j8\n"
+        "Gazebo requires Harmonic and the pinned Tools/simulation/gz submodule.\n"
         "The original formal-eskf checkout is not required.\n"
     )
     print(f"Exported {len(FILES)} files to {OUTPUT}")
@@ -158,6 +163,7 @@ def install_package(PX4, MANIFEST, FILES, PATCH, CHECK):
     MARKER.write_bytes(json_bytes(MANIFEST))
     print(f"Installed {len(FILES)} files into {PX4}")
     print(f"Build: make -C {PX4} px4_sitl_formal_eskf -j8")
+    print(f"Gazebo build: make -C {PX4} px4_sitl_gz_formal_eskf -j8")
 
 
 def main():

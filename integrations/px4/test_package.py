@@ -11,7 +11,7 @@ import sys
 import tempfile
 import unittest
 
-from install import BOARD, MODULE, PX4_COMMIT, RECEIPT
+from install import BOARDS, GAZEBO_BOARD, MODULE, PX4_COMMIT, RECEIPT
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -70,6 +70,10 @@ class PackageTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256((self.PX4 / NAME).read_bytes()).hexdigest(), HASH)
         self.assertIn("core/include", (self.PX4 / MODULE / "CMakeLists.txt").read_text())
         self.assertNotIn("FORMAL_ESKF_ROOT", (self.PX4 / MODULE / "CMakeLists.txt").read_text())
+        self.assertTrue(all(NAME in MANIFEST["files"] for NAME in BOARDS))
+        GAZEBO_CONFIG = (self.PX4 / GAZEBO_BOARD).read_text()
+        self.assertIn("CONFIG_MODULES_SIMULATION_GZ_BRIDGE=y", GAZEBO_CONFIG)
+        self.assertIn("CONFIG_MODULES_EKF2=n", GAZEBO_CONFIG)
         BEFORE = self.snapshot()
         self.install()
         self.install("--check")
@@ -78,7 +82,7 @@ class PackageTests(unittest.TestCase):
 
     def test_local_edits_are_preserved(self):
         self.install()
-        for NAME in (f"{MODULE}/FormalEskf.cpp", BOARD):
+        for NAME in (f"{MODULE}/FormalEskf.cpp", *BOARDS):
             FILE = self.PX4 / NAME
             ORIGINAL = FILE.read_bytes()
             FILE.write_bytes(ORIGINAL + b"\n// Local change\n")
@@ -115,7 +119,7 @@ class PackageTests(unittest.TestCase):
         REPO = self.ROOT / "source-with-editor-files"
         SOURCE = REPO / "integrations/px4"
         SOURCE.mkdir(parents=True)
-        for NAME in ("install.py", "px4-v1.16.2.patch", "formal_eskf.px4board"):
+        for NAME in ("install.py", "px4-v1.16.2.patch", *(Path(BOARD).name for BOARD in BOARDS)):
             shutil.copy2(SCRIPT_DIR / NAME, SOURCE / NAME)
         shutil.copytree(SCRIPT_DIR / "module", SOURCE / "module")
         shutil.copytree(SCRIPT_DIR.parents[1] / "include", REPO / "include")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Independently check logged SIH truth against estimator and flight state."""
+"""Independently check logged simulator truth against estimator and flight state."""
 import argparse
 import json
 from pathlib import Path
@@ -24,8 +24,25 @@ def rms(VECTOR):
     return float(np.sqrt(np.mean(np.sum(VECTOR**2, axis=1))))
 
 
+def flight_reference(DATA, START, END):
+    """Use a valid preflight origin; Gazebo initially publishes NaN references."""
+    REFERENCES = columns(DATA, ["ref_lat", "ref_lon", "ref_alt"])
+    # A reference initialized at simulation time zero is valid. Use the
+    # publisher's reference-valid flags, not a nonzero wall-clock assumption.
+    VALID = np.isfinite(REFERENCES).all(axis=1) & DATA["xy_global"].astype(bool) & DATA["z_global"].astype(bool)
+    INDICES = np.flatnonzero(VALID & (DATA["timestamp"] <= START))
+    if not len(INDICES):
+        raise RuntimeError("No valid geographic reference before takeoff")
+    REFERENCE = REFERENCES[INDICES[-1]]
+    IN_FLIGHT = (DATA["timestamp"] >= START) & (DATA["timestamp"] <= END)
+    if not IN_FLIGHT.any() or not VALID[IN_FLIGHT].all() or not (REFERENCES[IN_FLIGHT] == REFERENCE).all():
+        raise RuntimeError("Missing or changing geographic reference during flight")
+    return REFERENCE
+
+
 def analyze(DIRECTORY):
     FLIGHT = json.loads((DIRECTORY / "flight.json").read_text())
+    SIMULATOR = FLIGHT.get("simulator", "PX4 SIH quadx")
     if FLIGHT["result"] != "flight_pass_pending_ulog_analysis":
         raise RuntimeError("Live flight checks did not pass")
     PATHS = [DIRECTORY / PATH for PATH in FLIGHT["ulogs"]]
@@ -54,11 +71,12 @@ def analyze(DIRECTORY):
     # Account for independently initialized local origins. Translation comes
     # from the logged geographic references, never fitted to flight errors.
     RADIUS = 6371000.
+    EST_REF = flight_reference(LOCAL, START, END)
+    TRUE_REF = flight_reference(TRUTH, START, END)
     ORIGIN_OFFSET = np.array([
-        np.deg2rad(float(LOCAL["ref_lat"][0] - TRUTH["ref_lat"][0])) * RADIUS,
-        np.deg2rad(float(LOCAL["ref_lon"][0] - TRUTH["ref_lon"][0])) * RADIUS
-        * np.cos(np.deg2rad(float(TRUTH["ref_lat"][0]))),
-        float(TRUTH["ref_alt"][0] - LOCAL["ref_alt"][0]),
+        np.deg2rad(float(EST_REF[0] - TRUE_REF[0])) * RADIUS,
+        np.deg2rad(float(EST_REF[1] - TRUE_REF[1])) * RADIUS * np.cos(np.deg2rad(float(TRUE_REF[0]))),
+        float(TRUE_REF[2] - EST_REF[2]),
     ])
     P_EST_IN_TRUTH_FRAME = P_EST + ORIGIN_OFFSET
     POSITION_ERROR = P_EST_IN_TRUTH_FRAME - P_TRUE
@@ -118,15 +136,15 @@ def analyze(DIRECTORY):
     }
     REPORT = {"result": "pass" if all(CHECKS.values()) else "fail", "checks": CHECKS, "metrics": VALUES,
               "ulog": str(PATHS[0].relative_to(DIRECTORY)),
-              "scope": "PX4 v1.16.2 SIH quadx, default simulated sensor noise, single IMU/GNSS/magnetometer/barometer. No hardware or fault-tolerance qualification."}
+              "scope": f"PX4 v1.16.2, {SIMULATOR}, world={FLIGHT.get('world') or 'SIH'}, single IMU/GNSS/magnetometer/barometer. No hardware or fault-tolerance qualification."}
     (DIRECTORY / "analysis.json").write_text(json.dumps(REPORT, indent=2, allow_nan=False))
     FIG, AXES = plt.subplots(2, 2, figsize=(12, 8), constrained_layout=True)
-    AXES[0, 0].plot(P_TRUE[:, 1], P_TRUE[:, 0], label="SIH truth")
+    AXES[0, 0].plot(P_TRUE[:, 1], P_TRUE[:, 0], label="Simulator truth")
     AXES[0, 0].plot(P_EST_IN_TRUTH_FRAME[:, 1], P_EST_IN_TRUTH_FRAME[:, 0], label="formal-eskf", alpha=.8)
     AXES[0, 0].set(xlabel="East (m)", ylabel="North (m)", title="Closed-loop square flight", aspect="equal")
     AXES[0, 0].legend()
     SECONDS = (T - START) * 1e-6
-    AXES[0, 1].plot(SECONDS, -P_TRUE[:, 2], label="SIH truth")
+    AXES[0, 1].plot(SECONDS, -P_TRUE[:, 2], label="Simulator truth")
     AXES[0, 1].plot(SECONDS, -P_EST_IN_TRUTH_FRAME[:, 2], label="formal-eskf", alpha=.8)
     AXES[0, 1].set(xlabel="Airborne time (s)", ylabel="Height (m)", title="Takeoff, hover, auto-land")
     AXES[0, 1].legend()
@@ -138,7 +156,7 @@ def analyze(DIRECTORY):
     AXES[1, 1].set(xlabel="Airborne time (s)", ylabel="Quaternion angle error (deg)", title="Attitude estimation error")
     for AX in AXES.flat:
         AX.grid(alpha=.3)
-    FIG.suptitle(f"formal-eskf replaces EKF2 | PX4 SIH | {REPORT['result'].upper()}")
+    FIG.suptitle(f"formal-eskf replaces EKF2 | {SIMULATOR} | {REPORT['result'].upper()}")
     FIG.savefig(DIRECTORY / "flight.png", dpi=160)
     plt.close(FIG)
     print(json.dumps({"result": REPORT["result"], "checks": CHECKS,

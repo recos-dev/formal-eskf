@@ -39,6 +39,13 @@ make -C "$PX4_ROOT" px4_sitl_formal_eskf -j8
 
 See the integration README for automatic and interactive flight commands, standalone package export, and the SITL verification boundary. SIH dynamics run inside the PX4 executable. The numerical core stays independent of the PX4 adapter.
 
+For a Gazebo Harmonic X500 flight with a GUI, install the [Gazebo prerequisites](integrations/px4/README.md#gazebo-x500-experience), then run:
+
+```bash
+./integrations/px4/run_gazebo.sh --setup  # First run: prepare dependencies, build and fly.
+./integrations/px4/run_gazebo.sh          # Subsequent runs; also accepts --headless or --world windy.
+```
+
 ## Run PX4 Replay
 
 Replay a local ULog file and display the plots (flight logs are not bundled):

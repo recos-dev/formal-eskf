@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run PX4 SIH, normal arming, offboard square and auto-land; preserve evidence."""
+"""Run PX4 SIH or Gazebo, normal arming, offboard square and auto-land."""
 import argparse
 import hashlib
 import json
@@ -7,6 +7,7 @@ import math
 import os
 from pathlib import Path
 import signal
+import shutil
 import subprocess
 import time
 
@@ -17,11 +18,15 @@ from pymavlink import mavutil
 class Flight:
     def __init__(self, ARGS):
         self.args = ARGS
-        self.build = ARGS.px4 / "build/px4_sitl_formal_eskf"
+        BOARD = "px4_sitl_gz_formal_eskf" if ARGS.simulator == "gazebo" else "px4_sitl_formal_eskf"
+        self.build = ARGS.px4 / "build" / BOARD
         self.output = ARGS.output.resolve()
         self.output.mkdir(parents=True, exist_ok=False)
         self.rootfs = self.output / "rootfs"
         self.rootfs.mkdir()
+        if ARGS.simulator == "gazebo":
+            # PX4's boot script sources this file from its working directory.
+            shutil.copy2(self.build / "rootfs/gz_env.sh", self.rootfs / "gz_env.sh")
         self.conn = mavutil.mavlink_connection(
             f"udpin:127.0.0.1:{14540 + ARGS.instance}", source_system=250, source_component=190)
         self.target = ARGS.instance + 1
@@ -111,7 +116,7 @@ class Flight:
         return bool(ITEM and ITEM[1].base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
 
     def pump_simulation(self, DURATION):
-        """Sensor expiry uses the SIH clock, which can pause on a busy host."""
+        """Sensor expiry uses simulation time, which can pause on a busy host."""
         START = self.messages["LOCAL_POSITION_NED"][1].time_boot_ms
         TARGET = START + round(DURATION * 1000)
         self.wait_for(lambda: self.messages["LOCAL_POSITION_NED"][1].time_boot_ms >= TARGET,
@@ -180,11 +185,24 @@ class Flight:
 
     def run(self):
         ENV = os.environ.copy()
+        for KEY in ("PX4_SYS_AUTOSTART", "PX4_GZ_STANDALONE", "PX4_GZ_MODEL_NAME", "PX4_GZ_MODEL_POSE", "PX4_GZ_FOLLOW"):
+            ENV.pop(KEY, None)
         ENV.update(PX4_SIM_MODEL="sihsim_quadx", PX4_SIMULATOR="sihsim",
                    PX4_PARAM_FESKF_EN="1", PX4_PARAM_SENS_IMU_MODE="1",
                    PX4_PARAM_COM_RC_IN_MODE="4", PX4_PARAM_SDLOG_MODE="1",
-                   PX4_PARAM_SDLOG_PROFILE="3")
-        RESULT = {"result": "fail", "simulator": "PX4 SIH quadx", "instance": self.args.instance,
+                   PX4_PARAM_SDLOG_PROFILE="3", PX4_SIM_SPEED_FACTOR="1")
+        SIMULATOR = "PX4 SIH quadx"
+        if self.args.simulator == "gazebo":
+            ENV.update(PX4_SIM_MODEL="gz_x500", PX4_SIMULATOR="gz", PX4_SYS_AUTOSTART="4001",
+                       PX4_GZ_WORLD=self.args.world, GZ_IP="127.0.0.1", GZ_DISTRO="harmonic",
+                       GZ_PARTITION=f"formal_eskf_{os.getpid()}_{self.args.instance}")
+            if self.args.gui:
+                ENV.pop("HEADLESS", None)
+            else:
+                ENV["HEADLESS"] = "1"
+            SIMULATOR = "PX4 Gazebo Harmonic x500"
+        RESULT = {"result": "fail", "simulator": SIMULATOR, "instance": self.args.instance,
+                  "world": self.args.world if self.args.simulator == "gazebo" else None,
                   "normal_arming": True, "phases": []}
         PROVENANCE = {
             "px4_commit": subprocess.check_output(["git", "-C", str(self.args.px4), "rev-parse", "HEAD"], text=True).strip(),
@@ -192,8 +210,13 @@ class Flight:
             "binary_sha256": hashlib.sha256((self.build / "bin/px4").read_bytes()).hexdigest(),
             "startup_timeout_s": self.args.startup_timeout,
             "board_config": (self.build / "px4_boardconfig.h").read_text(),
-            "px4_environment": {KEY: VALUE for KEY, VALUE in ENV.items() if KEY.startswith("PX4_")},
+            "px4_environment": {KEY: VALUE for KEY, VALUE in ENV.items()
+                                if KEY.startswith(("PX4_", "GZ_")) or KEY == "HEADLESS"},
         }
+        if self.args.simulator == "gazebo":
+            PROVENANCE["gazebo_version"] = subprocess.check_output(["gz", "sim", "--versions"], text=True).strip()
+            PROVENANCE["gazebo_models_commit"] = subprocess.check_output(
+                ["git", "-C", str(self.args.px4 / "Tools/simulation/gz"), "rev-parse", "HEAD"], text=True).strip()
         (self.output / "provenance.json").write_text(json.dumps(PROVENANCE, indent=2))
         FAILURE = None
         CONSOLE = (self.output / "px4.log").open("w")
@@ -206,6 +229,23 @@ class Flight:
             self.wait_for(lambda: "LOCAL_POSITION_NED" in self.messages and "HEARTBEAT" in self.messages,
                           self.args.startup_timeout, "Estimator telemetry available")
             self.pump(10.)
+            if self.args.gui:
+                # GUI services may not exist when PX4's startup script spawns
+                # the model. Configure and check follow only after startup.
+                RESULT["camera"] = []
+                for SERVICE, TYPE, REQUEST in [
+                    ("/gui/follow", "gz.msgs.StringMsg", f'data: "x500_{self.args.instance}"'),
+                    ("/gui/follow/offset", "gz.msgs.Vector3d", "x: -2, y: -2, z: 2"),
+                ]:
+                    CAMERA = subprocess.run(["gz", "service", "-s", SERVICE, "--reqtype", TYPE,
+                                             "--reptype", "gz.msgs.Boolean", "--timeout", "5000", "--req", REQUEST],
+                                            env=ENV, capture_output=True, text=True, timeout=7)
+                    RESULT["camera"].append({"service": SERVICE, "returncode": CAMERA.returncode,
+                                             "response": CAMERA.stdout, "stderr": CAMERA.stderr})
+                    if CAMERA.returncode or "data: true" not in CAMERA.stdout:
+                        raise RuntimeError(f"Gazebo GUI camera unavailable: {SERVICE}; use headless mode if no GUI is available")
+                self.event("Gazebo GUI camera follows the X500")
+                self.pump(1.)
             STARTUP = [self.cli("formal_eskf", "status"), self.cli("listener", "vehicle_local_position", "-n", "1"),
                        self.cli("listener", "estimator_status", "-n", "1"),
                        self.cli("commander", "status"), self.cli("uorb", "top", "-1")]
@@ -244,7 +284,8 @@ class Flight:
             self.event(f"FAIL: {ERROR}")
             if self.process and self.process.poll() is None:
                 RESULT["failure_status"] = [self.cli("formal_eskf", "status"), self.cli("commander", "status"),
-                                            self.cli("simulator_sih", "status"), self.cli("logger", "status"),
+                                            self.cli("gz_bridge" if self.args.simulator == "gazebo" else "simulator_sih", "status"),
+                                            self.cli("logger", "status"),
                                             self.cli("listener", "failsafe_flags", "-n", "1")]
                 if self.armed():
                     try:
@@ -254,13 +295,25 @@ class Flight:
                     except Exception as CLEANUP_ERROR:
                         RESULT["cleanup_error"] = str(CLEANUP_ERROR)
         finally:
-            if self.process and self.process.poll() is None:
-                RESULT["shutdown"] = self.cli("shutdown")
+            if self.process:
                 try:
-                    self.process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    os.killpg(self.process.pid, signal.SIGTERM)
-                    self.process.wait(timeout=5)
+                    if self.process.poll() is None:
+                        RESULT["shutdown"] = self.cli("shutdown")
+                        self.process.wait(timeout=10)
+                except (OSError, subprocess.TimeoutExpired) as ERROR:
+                    RESULT["shutdown_error"] = str(ERROR)
+                finally:
+                    # PX4's boot script starts Gazebo children in this session.
+                    # Reap those even when PX4 already exited; never pkill gz.
+                    try:
+                        os.killpg(self.process.pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                    try:
+                        self.process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        os.killpg(self.process.pid, signal.SIGKILL)
+                        self.process.wait(timeout=5)
             CONSOLE.close()
             self.conn.close()
             RESULT["events"] = self.events
@@ -278,11 +331,20 @@ def main():
     PARSER.add_argument("--px4", type=Path, required=True, help="PX4 checkout containing the installed and built package")
     PARSER.add_argument("--output", type=Path, required=True, help="New evidence directory")
     PARSER.add_argument("--instance", type=int, default=1, choices=range(1, 10))
+    PARSER.add_argument("--simulator", choices=("sih", "gazebo"), default="sih")
+    PARSER.add_argument("--world", choices=("default", "windy"), default="default", help="Gazebo world")
+    PARSER.add_argument("--gui", action="store_true", help="Show Gazebo and follow the X500 during the flight")
     PARSER.add_argument("--startup-timeout", type=float, default=60., help="Seconds allowed for startup on a busy host (default: 60)")
     PARSER.add_argument("--check-faults", action="store_true", help="After landing, test GNSS/magnetometer rejection, timeouts and recovery")
     ARGS = PARSER.parse_args()
     if not math.isfinite(ARGS.startup_timeout) or ARGS.startup_timeout <= 0:
         PARSER.error("--startup-timeout must be finite and positive")
+    if ARGS.simulator == "gazebo" and ARGS.check_faults:
+        PARSER.error("--check-faults currently requires SIH's sensor publishers; Gazebo faults are not implemented")
+    if ARGS.simulator == "sih" and (ARGS.gui or ARGS.world != "default"):
+        PARSER.error("--gui and --world require --simulator gazebo")
+    if ARGS.gui and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        PARSER.error("Gazebo GUI needs DISPLAY or WAYLAND_DISPLAY; omit --gui on a headless host")
     ARGS.px4 = ARGS.px4.resolve()
     Flight(ARGS).run()
 

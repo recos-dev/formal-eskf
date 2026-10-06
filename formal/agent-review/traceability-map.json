@@ -2903,6 +2903,34 @@
       }
     },
     {
+      "id": "R-IMU-BIAS-LEARNING",
+      "title": "Per-axis IMU bias-learning inhibition and recovery; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-IMU-BIAS-LEARNING: bias-learning qualification"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/imu_bias_learning.hpp",
+            "symbol": "class ImuBiasLearning"
+          },
+          {
+            "file": "include/formal_eskf/runtime/imu_bias_learning.hpp",
+            "symbol": "ImuBiasLearning::Result ImuBiasLearning::update("
+          },
+          {
+            "file": "include/formal_eskf/runtime/imu_bias_learning.hpp",
+            "symbol": "bool ImuBiasLearning::update_axis("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "R-GNSS-QUALITY",
       "title": "GNSS quality checks and health qualification; Lean and ESBMC evidence pending",
       "references": {

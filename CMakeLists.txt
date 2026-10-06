@@ -37,10 +37,6 @@ target_include_directories(
 target_compile_features(formal_eskf_so3 INTERFACE cxx_std_20)
 target_link_libraries(formal_eskf_so3 INTERFACE formal_eskf::linalg)
 
-add_library(formal_eskf_runtime INTERFACE)
-add_library(formal_eskf::runtime ALIAS formal_eskf_runtime)
-target_link_libraries(formal_eskf_runtime INTERFACE formal_eskf::linalg)
-
 add_library(formal_eskf_core INTERFACE)
 add_library(formal_eskf::core ALIAS formal_eskf_core)
 
@@ -61,6 +57,10 @@ target_compile_definitions(
         ESKF_QUAT_APPROX=$<BOOL:${ESKF_QUAT_APPROX}>
         ESKF_RESET_APPROX=$<BOOL:${ESKF_RESET_APPROX}>
 )
+
+add_library(formal_eskf_runtime INTERFACE)
+add_library(formal_eskf::runtime ALIAS formal_eskf_runtime)
+target_link_libraries(formal_eskf_runtime INTERFACE formal_eskf::core)
 
 option(FORMAL_ESKF_BUILD_EIGEN_BACKEND "Build the Eigen linear-algebra backend" ON)
 
@@ -229,6 +229,7 @@ if(PROJECT_IS_TOP_LEVEL)
         formal_eskf_add_backend_test(test_eskf_correction test_eskf_correction formal_eskf.correction.eigen formal_eskf::core)
         formal_eskf_add_backend_test(test_eskf_innovation test_eskf_innovation formal_eskf.innovation.eigen formal_eskf::core)
         formal_eskf_add_backend_test(test_gnss_quality test_gnss_quality formal_eskf.gnss_quality.eigen formal_eskf::runtime)
+        formal_eskf_add_backend_test(test_imu_bias_learning test_imu_bias_learning formal_eskf.imu_bias_learning.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_eskf_position test_eskf_position formal_eskf.position.eigen formal_eskf::core)
         formal_eskf_add_backend_test(test_eskf_velocity test_eskf_velocity formal_eskf.velocity.eigen formal_eskf::core)
         formal_eskf_add_backend_test(test_eskf_magnetometer test_eskf_magnetometer formal_eskf.magnetometer.eigen formal_eskf::core)

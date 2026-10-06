@@ -47,9 +47,21 @@ inline Status try_correct<observation_proof::backend_type, observation_proof::me
     observation_proof::state_type const & state, observation_proof::covariance_type const & covariance,
     observation_proof::residual_type const & r, observation_proof::jacobian_type const & H,
     observation_proof::noise_type const & V, observation_proof::value_type minimum,
-    observation_proof::state_type & state_output, observation_proof::covariance_type & covariance_output) noexcept
+    observation_proof::state_type & state_output, observation_proof::covariance_type & covariance_output
+#if FORMAL_ESKF_PROOF_STATE_SIZE == 15
+    ,
+    configuration::Ins::BiasUpdate const & bias_update
+#endif
+    ) noexcept
 {
     using namespace observation_proof;
+#if FORMAL_ESKF_PROOF_STATE_SIZE == 15
+    for (std::size_t axis = 0U; axis < 3U; ++axis)
+    {
+        __ESBMC_assert(bias_update.accelerometer[axis] && bias_update.gyroscope[axis],
+                       "E-OBS: sensor wrappers retain unrestricted bias updates");
+    }
+#endif
     __ESBMC_assert(Call::count++ == 0U, "E-OBS: exactly one correction delegation");
     __ESBMC_assert(same_state(state, *Call::state) && same_matrix(covariance, *Call::covariance) &&
                        same_matrix(V, *Call::V) && same(minimum, Call::minimum),

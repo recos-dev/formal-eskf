@@ -2654,7 +2654,7 @@
     },
     {
       "id": "E-CORRECT",
-      "title": "Pre-injection validation, innovation/gain/error and Joseph covariance; composed correction and numerical qualification separate",
+      "title": "Unrestricted pre-injection validation, innovation/gain/error and Joseph covariance; bias-update control and numerical qualification separate",
       "references": {
         "spec": [
           {
@@ -2845,6 +2845,34 @@
           {
             "file": "include/formal_eskf/eskf/innovation.hpp",
             "symbol": "Status try_check_innovation("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
+      "id": "E-BIAS-UPDATE",
+      "title": "INS per-axis bias-update control and consistent Joseph covariance; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### E-BIAS-UPDATE: INS bias-update control"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/eskf/configuration/ins.hpp",
+            "symbol": "struct BiasUpdate"
+          },
+          {
+            "file": "include/formal_eskf/eskf/correction.hpp",
+            "symbol": "Status try_compute_correction("
+          },
+          {
+            "file": "include/formal_eskf/eskf/correction.hpp",
+            "symbol": "configuration::Ins::BiasUpdate const & bias_update = {}"
           }
         ],
         "esbmc": []

@@ -13,6 +13,8 @@
  * Shared fixed-size measurement correction for AHRS and INS.
  */
 
+#include <array>
+
 #include <formal_eskf/eskf/injection.hpp>
 
 namespace formal_eskf
@@ -85,6 +87,7 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
  * Outputs are internal scratch objects, disjoint from all inputs and each other.
  * Publish the error vector and Joseph covariance only after every check succeeds.
  * The norm bound is validated here to preserve the public API's validation order.
+ * enabled_rows is borrowed for this call; nullptr leaves every gain row enabled.
  */
 template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
 [[nodiscard]] Status try_compute_correction(linalg::Matrix<Linalg, Size, Size> const & covariance,
@@ -93,7 +96,8 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
                                             linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
                                             typename Linalg::value_type minimum_quaternion_norm,
                                             linalg::Matrix<Linalg, Size, 1U> & correction_output,
-                                            linalg::Matrix<Linalg, Size, Size> & covariance_output) noexcept
+                                            linalg::Matrix<Linalg, Size, Size> & covariance_output,
+                                            std::array<bool, Size> const * enabled_rows = nullptr) noexcept
 {
     using covariance_type = linalg::Matrix<Linalg, Size, Size>;
     Status const input_status = validate_correction_inputs(covariance, r, H, V, minimum_quaternion_norm);
@@ -122,6 +126,21 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
     if (!succeeded(solve_status))
     {
         return solve_status;
+    }
+
+    // Constrain K before both the error and Joseph update; leave P and H intact.
+    if (enabled_rows != nullptr)
+    {
+        for (std::size_t row = 0U; row < Size; ++row)
+        {
+            if (!(*enabled_rows)[row])
+            {
+                for (std::size_t column = 0U; column < MeasurementSize; ++column)
+                {
+                    K.set(row, column, typename Linalg::value_type{0});
+                }
+            }
+        }
     }
 
     // Sola (275): the prior error mean is zero after the previous reset.
@@ -154,12 +173,13 @@ try_correct_state_and_covariance(State const & state, linalg::Matrix<Linalg, Siz
                                  linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
                                  linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
                                  typename Linalg::value_type minimum_quaternion_norm, State & state_output,
-                                 linalg::Matrix<Linalg, Size, Size> & covariance_output) noexcept
+                                 linalg::Matrix<Linalg, Size, Size> & covariance_output,
+                                 std::array<bool, Size> const * enabled_rows = nullptr) noexcept
 {
     linalg::Matrix<Linalg, Size, 1U> delta_x;
     linalg::Matrix<Linalg, Size, Size> P_corrected;
     Status const correction_status =
-        try_compute_correction(covariance, r, H, V, minimum_quaternion_norm, delta_x, P_corrected);
+        try_compute_correction(covariance, r, H, V, minimum_quaternion_norm, delta_x, P_corrected, enabled_rows);
     if (!succeeded(correction_status))
     {
         return correction_status;
@@ -223,6 +243,9 @@ template <typename Linalg, std::size_t MeasurementSize>
  * Uses the same correction as AHRS with 15 error coordinates. The resulting
  * full covariance, including attitude cross-covariances, is reset after
  * injection. Preconditions and failure atomicity follow the AHRS overload.
+ * Optional bias permissions default to all enabled. Disabled axes retain their
+ * bias estimates; the same constrained gain is used for the Joseph covariance.
+ * This does not freeze prediction's bias random walk or decide IMU health.
  */
 template <typename Linalg, std::size_t MeasurementSize>
 [[nodiscard]] Status try_correct(configuration::Ins::NominalState<Linalg> const & state,
@@ -232,10 +255,18 @@ template <typename Linalg, std::size_t MeasurementSize>
                                  linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
                                  typename Linalg::value_type minimum_quaternion_norm,
                                  configuration::Ins::NominalState<Linalg> & state_output,
-                                 linalg::Matrix<Linalg, 15U, 15U> & covariance_output) noexcept
+                                 linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
+                                 configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
 {
+    std::array<bool, configuration::Ins::error_state_dimension> enabled_rows{};
+    enabled_rows.fill(true);
+    for (std::size_t axis = 0U; axis < 3U; ++axis)
+    {
+        enabled_rows[9U + axis] = bias_update.accelerometer[axis];
+        enabled_rows[12U + axis] = bias_update.gyroscope[axis];
+    }
     return detail::try_correct_state_and_covariance<configuration::Ins::ErrorState<Linalg>>(
-        state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output);
+        state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output, &enabled_rows);
 }
 
 } /* end namespace formal_eskf */

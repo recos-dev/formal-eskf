@@ -53,9 +53,15 @@ inline Status try_compute_correction<step_correction_proof::Backend, step_correc
     step_correction_proof::Covariance const & P, step_correction_proof::Residual const & r,
     step_correction_proof::Jacobian const & H, step_correction_proof::Noise const & V,
     step_correction_proof::Scalar minimum, step_correction_proof::Correction & delta,
-    step_correction_proof::Covariance & output) noexcept
+    step_correction_proof::Covariance & output,
+    std::array<bool, step_correction_proof::state_size> const * enabled_rows) noexcept
 {
     using namespace step_correction_proof;
+    for (std::size_t row = 0U; row < state_size; ++row)
+    {
+        __ESBMC_assert(enabled_rows == nullptr || (*enabled_rows)[row],
+                       "E-STEP-CORRECT: existing summary covers unrestricted gain only");
+    }
     __ESBMC_assert(Calls::correction++ == 0U && Calls::injection == 0U && Calls::reset == 0U,
                    "E-STEP-CORRECT: linear correction executes first and once");
     __ESBMC_assert(same_matrix(P, *Calls::covariance) && same_matrix(r, *Calls::residual) &&

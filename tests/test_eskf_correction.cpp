@@ -180,7 +180,8 @@ template <std::size_t Size> struct ReferenceCorrection
 };
 
 template <typename Fixture>
-[[nodiscard]] ReferenceCorrection<Fixture::size> reference_correction(Fixture const & fixture)
+[[nodiscard]] ReferenceCorrection<Fixture::size>
+reference_correction(Fixture const & fixture, formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {})
 {
     constexpr std::size_t n = Fixture::size;
     constexpr std::size_t m = Fixture::measurement_size;
@@ -242,6 +243,21 @@ template <typename Fixture>
         {
             K[row][column] = augmented[column][m + row];
         }
+    }
+    if constexpr (Fixture::is_ins)
+    {
+        // Independent dense projection oracle, not the production row-zeroing loop.
+        Dense<n, n> selection{};
+        for (std::size_t row = 0U; row < n; ++row)
+        {
+            selection[row][row] = 1.0L;
+        }
+        for (std::size_t axis = 0U; axis < 3U; ++axis)
+        {
+            selection[9U + axis][9U + axis] = bias_update.accelerometer[axis] ? 1.0L : 0.0L;
+            selection[12U + axis][12U + axis] = bias_update.gyroscope[axis] ? 1.0L : 0.0L;
+        }
+        K = product(selection, K);
     }
     result.delta_x = product(K, copied(fixture.r));
     auto A = product(K, H);
@@ -651,6 +667,121 @@ void test_correction_failures(TestContext & test, std::string_view profile)
     }
 }
 
+template <typename Linalg, std::size_t MeasurementSize>
+void test_bias_update(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
+{
+    using Ins = formal_eskf::configuration::Ins;
+    using fixture_type = CorrectionFixture<Linalg, Ins, MeasurementSize>;
+    fixture_type fixture;
+    typename fixture_type::state_type unrestricted_state;
+    typename fixture_type::covariance_type unrestricted_covariance;
+    test.expect(try_correct(fixture.state, fixture.P, fixture.r, fixture.H, fixture.V, fixture_type::minimum_norm,
+                            unrestricted_state, unrestricted_covariance) == Status::success,
+                profile, "unrestricted bias-update baseline");
+    typename fixture_type::state_type default_state;
+    typename fixture_type::covariance_type default_covariance;
+    test.expect(try_correct(fixture.state, fixture.P, fixture.r, fixture.H, fixture.V, fixture_type::minimum_norm,
+                            default_state, default_covariance, Ins::BiasUpdate{}) == Status::success &&
+                    same_state(default_state, unrestricted_state) &&
+                    same_bits(default_covariance, unrestricted_covariance),
+                profile, "explicit default bias permissions equal the omitted argument");
+
+    // Every combination of six body-axis permissions, with dense P and correlated V.
+    for (unsigned permissions = 0U; permissions < 64U; ++permissions)
+    {
+        Ins::BiasUpdate bias_update;
+        for (std::size_t axis = 0U; axis < 3U; ++axis)
+        {
+            bias_update.accelerometer[axis] = (permissions & (1U << axis)) != 0U;
+            bias_update.gyroscope[axis] = (permissions & (1U << (3U + axis))) != 0U;
+        }
+        auto const reference = reference_correction(fixture, bias_update);
+        for (unsigned aliases = 0U; aliases < 4U; ++aliases)
+        {
+            auto input = fixture;
+            typename fixture_type::state_type separate_state;
+            typename fixture_type::covariance_type separate_covariance;
+            auto & state_output = (aliases & 1U) != 0U ? input.state : separate_state;
+            auto & covariance_output = (aliases & 2U) != 0U ? input.P : separate_covariance;
+            Status const status = try_correct(input.state, input.P, input.r, input.H, input.V,
+                                              fixture_type::minimum_norm, state_output, covariance_output, bias_update);
+            test.expect(status == Status::success &&
+                            matches_reference(fixture, reference, state_output, covariance_output, tolerance),
+                        profile, "all bias permissions and aliases match independent constrained-gain/Joseph oracle");
+            bool preserved = true;
+            for (std::size_t axis = 0U; axis < 3U; ++axis)
+            {
+                if (!bias_update.accelerometer[axis])
+                {
+                    preserved = preserved && state_output.b_a(axis) == fixture.state.b_a(axis) &&
+                                covariance_output(9U + axis, 9U + axis) == fixture.P(9U + axis, 9U + axis);
+                }
+                if (!bias_update.gyroscope[axis])
+                {
+                    preserved = preserved && state_output.b_g(axis) == fixture.state.b_g(axis) &&
+                                covariance_output(12U + axis, 12U + axis) == fixture.P(12U + axis, 12U + axis);
+                }
+            }
+            test.expect(preserved, profile, "inhibited biases retain their estimates and variances, not zero them");
+            bool const immutable = same_bits(input.r, fixture.r) && same_bits(input.H, fixture.H) &&
+                                   same_bits(input.V, fixture.V) &&
+                                   ((aliases & 1U) != 0U || same_state(input.state, fixture.state)) &&
+                                   ((aliases & 2U) != 0U || same_bits(input.P, fixture.P));
+            test.expect(immutable, profile, "controlled correction preserves distinct inputs");
+            if (permissions == 63U)
+            {
+                test.expect(same_state(state_output, unrestricted_state) &&
+                                same_bits(covariance_output, unrestricted_covariance),
+                            profile, "all-enabled bias control is bitwise equivalent to unrestricted correction");
+            }
+        }
+    }
+}
+
+template <typename Linalg> void test_bias_update_failures(TestContext & test, std::string_view profile)
+{
+    using Ins = formal_eskf::configuration::Ins;
+    using fixture_type = CorrectionFixture<Linalg, Ins, 2U>;
+    using value_type = typename Linalg::value_type;
+    fixture_type fixture;
+    Ins::BiasUpdate const bias_update{.accelerometer = {false, true, false}, .gyroscope = {true, false, true}};
+    auto fail = [&](fixture_type const & bad, Status expected)
+    {
+        for (unsigned aliases = 0U; aliases < 4U; ++aliases)
+        {
+            auto input = bad;
+            auto separate_state = fixture.state;
+            auto separate_covariance = fixture.P;
+            auto & state_output = (aliases & 1U) != 0U ? input.state : separate_state;
+            auto & covariance_output = (aliases & 2U) != 0U ? input.P : separate_covariance;
+            Status const status = try_correct(input.state, input.P, input.r, input.H, input.V,
+                                              fixture_type::minimum_norm, state_output, covariance_output, bias_update);
+            test.expect(status == expected && same_state(input.state, bad.state) && same_bits(input.P, bad.P) &&
+                            same_bits(input.r, bad.r) && same_bits(input.H, bad.H) && same_bits(input.V, bad.V) &&
+                            same_state(separate_state, fixture.state) && same_bits(separate_covariance, fixture.P),
+                        profile, "controlled correction rejects atomically for every output alias");
+        }
+    };
+    auto bad = fixture;
+    bad.H.set(0U, 9U, std::numeric_limits<value_type>::quiet_NaN());
+    fail(bad, Status::non_finite_input); // Disabled row must not conceal invalid inputs.
+    bad = fixture;
+    bad.H = {};
+    bad.V.set(0U, 1U, value_type{2});
+    bad.V.set(1U, 0U, value_type{2});
+    fail(bad, Status::not_positive_definite);
+    bad = fixture;
+    bad.state.b_a.set(0U, std::numeric_limits<value_type>::infinity());
+    fail(bad, Status::non_finite_input); // Even an inhibited nominal bias must be valid.
+    bad = fixture;
+    bad.P = fixture_type::covariance_type::identity();
+    bad.H = {};
+    bad.H.set(0U, 6U, value_type{1});
+    bad.V = decltype(bad.V)::identity();
+    bad.r.set(0U, std::numeric_limits<value_type>::max());
+    fail(bad, Status::non_finite_result); // Late injection failure cannot publish Joseph covariance.
+}
+
 template <typename Linalg, typename Configuration>
 void run_correction_tests(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
@@ -661,6 +792,14 @@ void run_correction_tests(TestContext & test, std::string_view profile, typename
     test_repeated_scalar_correction<Linalg, Configuration>(test, profile, tolerance);
     test_joseph_cancellation<Linalg, Configuration>(test, profile);
     test_correction_failures<Linalg, Configuration>(test, profile);
+    if constexpr (std::is_same_v<Configuration, formal_eskf::configuration::Ins>)
+    {
+        test_bias_update<Linalg, 1U>(test, profile, tolerance);
+        test_bias_update<Linalg, 2U>(test, profile, tolerance);
+        test_bias_update<Linalg, 3U>(test, profile, tolerance);
+        test_bias_update<Linalg, 6U>(test, profile, tolerance);
+        test_bias_update_failures<Linalg>(test, profile);
+    }
 }
 
 } /* end namespace */

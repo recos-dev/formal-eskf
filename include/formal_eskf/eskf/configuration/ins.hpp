@@ -13,6 +13,7 @@
  * Full inertial-navigation ESKF configuration.
  */
 
+#include <array>
 #include <cstddef>
 
 #include <formal_eskf/so3/unit_quaternion.hpp>
@@ -33,6 +34,13 @@ struct Ins
     static constexpr std::size_t nominal_state_dimension = 16U;
     static constexpr std::size_t error_state_dimension = 15U;
     static constexpr std::size_t process_noise_dimension = 12U;
+
+    /** Per-correction permission to update body-axis bias estimates. */
+    struct BiasUpdate
+    {
+        std::array<bool, 3U> accelerometer{true, true, true};
+        std::array<bool, 3U> gyroscope{true, true, true};
+    };
 
     /** Nominal state x = [p_n, v_n, q_nb, b_a, b_g]. */
     template <typename Linalg> struct NominalState

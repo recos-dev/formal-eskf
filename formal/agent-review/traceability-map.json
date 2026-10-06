@@ -2829,6 +2829,26 @@
           }
         ]
       }
+    },
+    {
+      "id": "E-INNOV",
+      "title": "Componentwise innovation gate and atomic diagnostics; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### E-INNOV: componentwise innovation gate"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/eskf/innovation.hpp",
+            "symbol": "Status try_check_innovation("
+          }
+        ],
+        "esbmc": []
+      }
     }
   ]
 }

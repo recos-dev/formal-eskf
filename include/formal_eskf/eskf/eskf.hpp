@@ -21,6 +21,7 @@
 #include <formal_eskf/eskf/covariance_prediction.hpp>
 #include <formal_eskf/eskf/injection.hpp>
 #include <formal_eskf/eskf/correction.hpp>
+#include <formal_eskf/eskf/innovation.hpp>
 #include <formal_eskf/eskf/position.hpp>
 #include <formal_eskf/eskf/velocity.hpp>
 #include <formal_eskf/eskf/magnetometer.hpp>

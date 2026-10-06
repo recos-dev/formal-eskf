@@ -2849,6 +2849,38 @@
         ],
         "esbmc": []
       }
+    },
+    {
+      "id": "R-GNSS-QUALITY",
+      "title": "GNSS quality checks and health qualification; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-GNSS-QUALITY: GNSS quality checks and health qualification"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/gnss_quality.hpp",
+            "symbol": "typename GnssQuality<Linalg>::result_type GnssQuality<Linalg>::update("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_quality.hpp",
+            "symbol": "typename GnssQuality<Linalg>::result_type GnssQuality<Linalg>::check_sample("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_quality.hpp",
+            "symbol": "Status GnssQuality<Linalg>::update_motion_checks("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_quality.hpp",
+            "symbol": "void GnssQuality<Linalg>::update_health("
+          }
+        ],
+        "esbmc": []
+      }
     }
   ]
 }

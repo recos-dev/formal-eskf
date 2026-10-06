@@ -58,6 +58,7 @@ template <typename Linalg> [[nodiscard]] linalg::Matrix<Linalg, 3U, 15U> velocit
  * Full V, including cross-axis correlations, is passed through unchanged.
  * Velocity can correct other state components through prior cross-covariances,
  * but this model does not directly observe absolute position.
+ * Optional bias-update permissions are forwarded to try_correct unchanged.
  *
  * P must be symmetric PSD, V symmetric SPD, and the prior error mean zero, as
  * required by try_correct. Its input checks and failure statuses apply here.
@@ -72,7 +73,8 @@ try_correct_velocity(configuration::Ins::NominalState<Linalg> const & state,
                      linalg::Matrix<Linalg, 15U, 15U> const & covariance, linalg::Matrix<Linalg, 3U, 1U> const & z_v_n,
                      linalg::Matrix<Linalg, 3U, 3U> const & V, typename Linalg::value_type minimum_quaternion_norm,
                      configuration::Ins::NominalState<Linalg> & state_output,
-                     linalg::Matrix<Linalg, 15U, 15U> & covariance_output) noexcept
+                     linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
+                     configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
 {
     if (!linalg::all_finite(state.v_n) || !linalg::all_finite(z_v_n))
     {
@@ -84,7 +86,7 @@ try_correct_velocity(configuration::Ins::NominalState<Linalg> const & state,
         return Status::non_finite_result;
     }
     return try_correct(state, covariance, r, velocity_jacobian<Linalg>(), V, minimum_quaternion_norm, state_output,
-                       covariance_output);
+                       covariance_output, bias_update);
 }
 
 /**
@@ -108,7 +110,8 @@ template <typename Linalg>
                                                      linalg::Matrix<Linalg, 2U, 2U> const & V,
                                                      typename Linalg::value_type minimum_quaternion_norm,
                                                      configuration::Ins::NominalState<Linalg> & state_output,
-                                                     linalg::Matrix<Linalg, 15U, 15U> & covariance_output) noexcept
+                                                     linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
+                                                     configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
 {
     if (!linalg::all_finite(state.v_n) || !linalg::all_finite(z_v_ne))
     {
@@ -120,7 +123,7 @@ template <typename Linalg>
         return Status::non_finite_result;
     }
     return try_correct(state, covariance, r, horizontal_velocity_jacobian<Linalg>(), V, minimum_quaternion_norm,
-                       state_output, covariance_output);
+                       state_output, covariance_output, bias_update);
 }
 
 } /* end namespace formal_eskf */

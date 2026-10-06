@@ -95,10 +95,11 @@ template <typename Linalg> struct HorizontalVelocityFixture
     [[nodiscard]] static Status correct(state_type const & prior, covariance_type const & covariance,
                                         measurement_type const & observation, measurement_covariance_type const & noise,
                                         value_type norm_bound, state_type & posterior,
-                                        covariance_type & posterior_covariance) noexcept
+                                        covariance_type & posterior_covariance,
+                                        formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
     {
         return formal_eskf::try_correct_horizontal_velocity(prior, covariance, observation, noise, norm_bound,
-                                                            posterior, posterior_covariance);
+                                                            posterior, posterior_covariance, bias_update);
     }
 };
 
@@ -144,10 +145,11 @@ template <typename Linalg> struct VelocityFixture
     [[nodiscard]] static Status correct(state_type const & prior, covariance_type const & covariance,
                                         measurement_type const & observation, measurement_covariance_type const & noise,
                                         value_type norm_bound, state_type & posterior,
-                                        covariance_type & posterior_covariance) noexcept
+                                        covariance_type & posterior_covariance,
+                                        formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
     {
         return formal_eskf::try_correct_velocity(prior, covariance, observation, noise, norm_bound, posterior,
-                                                 posterior_covariance);
+                                                 posterior_covariance, bias_update);
     }
 };
 
@@ -357,6 +359,42 @@ template <typename Fixture> void test_velocity_delegation(TestContext & test, st
                 profile, "measurement from in-place state succeeds");
     test.expect(same_state(zero_residual.state, fixture.state) && zero_residual.P(3U, 3U) < fixture.P(3U, 3U), profile,
                 "zero residual leaves state unchanged but still reduces velocity uncertainty");
+
+    // Check wrapper wiring separately from the independent generic-correction oracle.
+    for (unsigned permissions = 0U; permissions < 64U; ++permissions)
+    {
+        formal_eskf::configuration::Ins::BiasUpdate bias_update;
+        for (std::size_t axis = 0U; axis < 3U; ++axis)
+        {
+            bias_update.accelerometer[axis] = (permissions & (1U << axis)) != 0U;
+            bias_update.gyroscope[axis] = (permissions & (1U << (3U + axis))) != 0U;
+        }
+        test.expect(formal_eskf::try_correct(fixture.state, fixture.P, r, H, fixture.V, Fixture::minimum_norm,
+                                             expected_state, expected_P, bias_update) == Status::success,
+                    profile, "controlled generic correction reference succeeds");
+        for (unsigned aliases = 0U; aliases < 4U; ++aliases)
+        {
+            auto input = fixture;
+            typename Fixture::state_type separate_state;
+            typename Fixture::covariance_type separate_P;
+            auto & state_output = (aliases & 1U) != 0U ? input.state : separate_state;
+            auto & P_output = (aliases & 2U) != 0U ? input.P : separate_P;
+            test.expect(Fixture::correct(input.state, input.P, input.z, input.V, Fixture::minimum_norm, state_output,
+                                         P_output, bias_update) == Status::success &&
+                            same_state(state_output, expected_state) && same_bits(P_output, expected_P),
+                        profile, "every bias permission and output alias reaches correction unchanged");
+            test.expect(((aliases & 1U) != 0U || same_state(input.state, fixture.state)) &&
+                            ((aliases & 2U) != 0U || same_bits(input.P, fixture.P)) && same_bits(input.z, fixture.z) &&
+                            same_bits(input.V, fixture.V),
+                        profile, "bias control preserves distinct inputs");
+            auto const saved_state = state_output;
+            auto const saved_P = P_output;
+            test.expect(Fixture::correct(input.state, input.P, input.z, input.V, value_type{0}, state_output, P_output,
+                                         bias_update) == Status::domain_error &&
+                            same_state(state_output, saved_state) && same_bits(P_output, saved_P),
+                        profile, "bias control preserves outputs on downstream failure");
+        }
+    }
 }
 
 template <typename Fixture> void test_velocity_failures(TestContext & test, std::string_view profile)

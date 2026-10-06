@@ -286,6 +286,47 @@ void test_magnetometer_delegation(TestContext & test, std::string_view profile, 
     test.expect(formal_eskf::so3::same_rotation(opposite.state.q_nb, expected_state.q_nb, tolerance) &&
                     formal_eskf::linalg::max_abs(opposite.P - expected_P) <= tolerance,
                 profile, "q and -q yield the same physical update and covariance");
+
+    if constexpr (Fixture::size == 15U)
+    {
+        for (unsigned permissions = 0U; permissions < 64U; ++permissions)
+        {
+            formal_eskf::configuration::Ins::BiasUpdate bias_update;
+            for (unsigned axis = 0U; axis < 3U; ++axis)
+            {
+                bias_update.accelerometer[axis] = (permissions & (1U << axis)) != 0U;
+                bias_update.gyroscope[axis] = (permissions & (1U << (3U + axis))) != 0U;
+            }
+            test.expect(formal_eskf::try_correct(fixture.state, fixture.P, residual, H, fixture.V,
+                                                 Fixture::minimum_norm, expected_state, expected_P,
+                                                 bias_update) == Status::success,
+                        profile, "controlled generic correction succeeds");
+            for (unsigned aliases = 0U; aliases < 4U; ++aliases)
+            {
+                auto input = fixture;
+                typename Fixture::state_type separate_state;
+                typename Fixture::covariance_type separate_P;
+                auto & state_output = (aliases & 1U) != 0U ? input.state : separate_state;
+                auto & P_output = (aliases & 2U) != 0U ? input.P : separate_P;
+                test.expect(try_correct_magnetometer(input.state, input.P, input.m_b, input.m_n, input.V,
+                                                     Fixture::minimum_norm, state_output, P_output,
+                                                     bias_update) == Status::success &&
+                                same_state(state_output, expected_state) && same_bits(P_output, expected_P),
+                            profile, "all bias permissions and aliases match controlled generic correction");
+                test.expect(((aliases & 1U) != 0U || same_state(input.state, fixture.state)) &&
+                                ((aliases & 2U) != 0U || same_bits(input.P, fixture.P)) &&
+                                same_bits(input.m_b, fixture.m_b) && same_bits(input.m_n, fixture.m_n) &&
+                                same_bits(input.V, fixture.V),
+                            profile, "controlled correction preserves non-output inputs");
+                auto const state_before = state_output;
+                auto const P_before = P_output;
+                test.expect(try_correct_magnetometer(input.state, input.P, input.m_b, input.m_n, input.V, value_type{0},
+                                                     state_output, P_output, bias_update) == Status::domain_error &&
+                                same_state(state_output, state_before) && same_bits(P_output, P_before),
+                            profile, "controlled correction preserves both outputs on downstream failure");
+            }
+        }
+    }
 }
 
 template <typename Linalg, typename Configuration>

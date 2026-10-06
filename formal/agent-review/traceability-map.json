@@ -2873,6 +2873,30 @@
           {
             "file": "include/formal_eskf/eskf/correction.hpp",
             "symbol": "configuration::Ins::BiasUpdate const & bias_update = {}"
+          },
+          {
+            "file": "include/formal_eskf/eskf/position.hpp",
+            "symbol": "try_correct_horizontal_position("
+          },
+          {
+            "file": "include/formal_eskf/eskf/position.hpp",
+            "symbol": "try_correct_vertical_position("
+          },
+          {
+            "file": "include/formal_eskf/eskf/velocity.hpp",
+            "symbol": "try_correct_horizontal_velocity("
+          },
+          {
+            "file": "include/formal_eskf/eskf/velocity.hpp",
+            "symbol": "try_correct_velocity("
+          },
+          {
+            "file": "include/formal_eskf/eskf/magnetometer.hpp",
+            "symbol": "Status try_correct_magnetometer("
+          },
+          {
+            "file": "include/formal_eskf/eskf/accelerometer.hpp",
+            "symbol": "configuration::Ins::BiasUpdate const & bias_update = {}"
           }
         ],
         "esbmc": []

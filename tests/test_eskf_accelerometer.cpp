@@ -87,8 +87,8 @@ template <typename Linalg, typename Configuration> struct AccelerometerFixture
         }
     }
 
-    [[nodiscard]] Status correct(state_type & output, covariance_type & P_output,
-                                 value_type norm = minimum_norm) const noexcept
+    [[nodiscard]] Status correct(state_type & output, covariance_type & P_output, value_type norm = minimum_norm,
+                                 formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {}) const noexcept
     {
         if constexpr (size == 3U)
         {
@@ -96,7 +96,8 @@ template <typename Linalg, typename Configuration> struct AccelerometerFixture
         }
         else
         {
-            return formal_eskf::try_correct_accelerometer(state, P, f_b, omega_m, g_n, V, norm, output, P_output);
+            return formal_eskf::try_correct_accelerometer(state, P, f_b, omega_m, g_n, V, norm, output, P_output,
+                                                          bias_update);
         }
     }
 
@@ -392,6 +393,45 @@ void test_accelerometer_delegation(TestContext & test, std::string_view profile,
                     formal_eskf::so3::same_rotation(opposite.state.q_nb, expected_state.q_nb, tolerance) &&
                     formal_eskf::linalg::max_abs(opposite.P - expected_P) <= tolerance,
                 profile, "q and -q give the same physical correction and covariance");
+
+    if constexpr (Fixture::size == 15U)
+    {
+        for (unsigned permissions = 0U; permissions < 64U; ++permissions)
+        {
+            formal_eskf::configuration::Ins::BiasUpdate bias_update;
+            for (unsigned axis = 0U; axis < 3U; ++axis)
+            {
+                bias_update.accelerometer[axis] = (permissions & (1U << axis)) != 0U;
+                bias_update.gyroscope[axis] = (permissions & (1U << (3U + axis))) != 0U;
+            }
+            test.expect(formal_eskf::try_correct(fixture.state, fixture.P, r, fixture.jacobian(), fixture.V,
+                                                 Fixture::minimum_norm, expected_state, expected_P,
+                                                 bias_update) == Status::success,
+                        profile, "controlled generic correction succeeds");
+            for (unsigned aliases = 0U; aliases < 4U; ++aliases)
+            {
+                auto input = fixture;
+                typename Fixture::state_type separate_state;
+                typename Fixture::covariance_type separate_P;
+                auto & state_output = (aliases & 1U) != 0U ? input.state : separate_state;
+                auto & P_output = (aliases & 2U) != 0U ? input.P : separate_P;
+                test.expect(input.correct(state_output, P_output, Fixture::minimum_norm, bias_update) ==
+                                    Status::success &&
+                                same_state(state_output, expected_state) && same_bits(P_output, expected_P),
+                            profile, "all bias permissions and aliases match controlled generic correction");
+                test.expect(((aliases & 1U) != 0U || same_state(input.state, fixture.state)) &&
+                                ((aliases & 2U) != 0U || same_bits(input.P, fixture.P)) &&
+                                same_bits(input.f_b, fixture.f_b) && same_bits(input.g_n, fixture.g_n) &&
+                                same_bits(input.omega_m, fixture.omega_m) && same_bits(input.V, fixture.V),
+                            profile, "controlled correction preserves non-output inputs");
+                auto const state_before = state_output;
+                auto const P_before = P_output;
+                test.expect(input.correct(state_output, P_output, value_type{0}, bias_update) == Status::domain_error &&
+                                same_state(state_output, state_before) && same_bits(P_output, P_before),
+                            profile, "controlled correction preserves both outputs on downstream failure");
+            }
+        }
+    }
 }
 
 template <typename Linalg> void test_ins_motion_model(TestContext & test, typename Linalg::value_type tolerance)

@@ -13,6 +13,8 @@
  * Full three-axis magnetic-field measurement for AHRS and INS.
  */
 
+#include <type_traits>
+
 #include <formal_eskf/eskf/correction.hpp>
 
 namespace formal_eskf
@@ -36,7 +38,8 @@ template <std::size_t AttitudeOffset, typename Linalg, typename State, std::size
     State const & state, linalg::Matrix<Linalg, Size, Size> const & covariance,
     linalg::Matrix<Linalg, 3U, 1U> const & m_b, linalg::Matrix<Linalg, 3U, 1U> const & m_n,
     linalg::Matrix<Linalg, 3U, 3U> const & V, typename Linalg::value_type minimum_quaternion_norm, State & state_output,
-    linalg::Matrix<Linalg, Size, Size> & covariance_output) noexcept
+    linalg::Matrix<Linalg, Size, Size> & covariance_output,
+    configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
 {
     using value_type = typename Linalg::value_type;
     if (!linalg::all_finite(state.q_nb.coefficients()) || !linalg::all_finite(m_b) || !linalg::all_finite(m_n))
@@ -60,7 +63,15 @@ template <std::size_t AttitudeOffset, typename Linalg, typename State, std::size
         return Status::non_finite_result;
     }
     auto const H = magnetometer_jacobian_from_prediction<Size, AttitudeOffset>(h_m_b);
-    return try_correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output);
+    if constexpr (std::is_same_v<State, configuration::Ins::NominalState<Linalg>>)
+    {
+        return try_correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output,
+                           bias_update);
+    }
+    else
+    {
+        return try_correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output);
+    }
 }
 
 } /* end namespace detail */
@@ -136,20 +147,20 @@ try_correct_magnetometer(configuration::Ahrs::NominalState<Linalg> const & state
 /**
  * INS overload of full magnetic-field correction. Although H directly observes
  * attitude only, all state components may be corrected through prior cross-
- * covariances. No gain entries are discarded. Preconditions, units and failure
- * atomicity follow the AHRS overload.
+ * covariances. Optional bias permissions follow try_correct and default to all
+ * enabled; they do not provide heading-only or tilt protection. Preconditions,
+ * units and failure atomicity follow the AHRS overload.
  */
 template <typename Linalg>
-[[nodiscard]] Status
-try_correct_magnetometer(configuration::Ins::NominalState<Linalg> const & state,
-                         linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-                         linalg::Matrix<Linalg, 3U, 1U> const & m_b, linalg::Matrix<Linalg, 3U, 1U> const & m_n,
-                         linalg::Matrix<Linalg, 3U, 3U> const & V, typename Linalg::value_type minimum_quaternion_norm,
-                         configuration::Ins::NominalState<Linalg> & state_output,
-                         linalg::Matrix<Linalg, 15U, 15U> & covariance_output) noexcept
+[[nodiscard]] Status try_correct_magnetometer(
+    configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
+    linalg::Matrix<Linalg, 3U, 1U> const & m_b, linalg::Matrix<Linalg, 3U, 1U> const & m_n,
+    linalg::Matrix<Linalg, 3U, 3U> const & V, typename Linalg::value_type minimum_quaternion_norm,
+    configuration::Ins::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
+    configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
 {
     return detail::try_correct_magnetometer_state_and_covariance<6U>(
-        state, covariance, m_b, m_n, V, minimum_quaternion_norm, state_output, covariance_output);
+        state, covariance, m_b, m_n, V, minimum_quaternion_norm, state_output, covariance_output, bias_update);
 }
 
 } /* end namespace formal_eskf */

@@ -154,13 +154,15 @@ Compositional caller proofs may abstract a callee's result and status, but must 
 
 INS `try_correct` accepts an optional trailing `Ins::BiasUpdate` with three body-axis permissions each for accelerometer and gyroscope biases. Every permission defaults to `true`; omitting the argument retains unrestricted correction. AHRS has no bias states and does not accept this control.
 
+INS horizontal/vertical position, horizontal/3D velocity, magnetometer and accelerometer correction APIs accept the same optional trailing permissions and forward them unchanged. Their observation models, Jacobians and validation remain unchanged.
+
 - Compute the same innovation covariance and unconstrained gain as `E-CORRECT`. After a successful checked solve, set every entry of each disabled bias gain row to zero. Error-state rows 9..11 are accelerometer bias and 12..14 are gyroscope bias; position, velocity and attitude rows are untouched.
 - Use the resulting `K_eff` for both `delta_x = K_eff r` and the full Joseph update `(I-K_eff H) P (I-K_eff H)^T + K_eff V K_eff^T`, then perform the existing injection/reset. Keep the same prior P and full correlated V; do not alter H or erase covariance rows/columns.
 - A disabled bias receives zero correction, retaining its numerical estimate. Its uncertainty is not set to zero; cross-covariances may change. This is per-call correction control, not a freeze of prediction's bias random walk or a persistent health state.
 - Disabling bias updates does not bypass input checks or solve failures. Preserve the existing validation order, statuses, whole-state/covariance alias support and atomic publication on success; all failures preserve both outputs.
 - All-enabled permissions must agree with unrestricted correction. Test all 64 permission combinations against an independent constrained-gain/Joseph/injection/reset oracle, including nonzero cross-covariance, correlated measurement noise and both reset modes.
 
-The caller owns the learning policy. Sensor-specific correction wrappers still use unrestricted correction; their policy wiring, IMU fault detection, recovery timing and adaptive process noise are separate work. Native tests are supporting evidence only. Existing `E-CORRECT` and `E-STEP` ESBMC profiles exercise unrestricted gain; they do not prove the new controlled path. New Lean/ESBMC evidence remains pending.
+The caller owns the learning policy. Runtime policy wiring, IMU fault detection, recovery timing and adaptive process noise are separate work. Native tests check all 64 permission combinations and whole-state/covariance aliases through each INS sensor wrapper; they are supporting evidence only. Existing `E-CORRECT`, `E-STEP` and `E-OBS` ESBMC profiles exercise unrestricted correction; they do not prove the controlled path. New Lean/ESBMC evidence remains pending.
 
 ### E-INNOV: componentwise innovation gate
 

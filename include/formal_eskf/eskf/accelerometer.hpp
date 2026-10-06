@@ -149,8 +149,9 @@ template <typename Linalg>
  * generally violates that assumption; doing so is an explicit statistical
  * approximation, NOT an implemented correlated-noise update. Supplying V alone
  * does not remove the correlation. No differencing or automatic noise assembly
- * is performed. All state gains are retained; numerical checks, caller-owned
- * motion gating and failure atomicity follow the AHRS overload.
+ * is performed. Optional bias permissions follow try_correct and default to all
+ * enabled. Numerical checks, caller-owned motion gating and failure atomicity
+ * follow the AHRS overload.
  */
 template <typename Linalg>
 [[nodiscard]] Status try_correct_accelerometer(
@@ -158,7 +159,8 @@ template <typename Linalg>
     linalg::Matrix<Linalg, 3U, 1U> const & specific_force_b, linalg::Matrix<Linalg, 3U, 1U> const & angular_rate_b,
     linalg::Matrix<Linalg, 3U, 1U> const & gravity_n, linalg::Matrix<Linalg, 3U, 3U> const & V,
     typename Linalg::value_type minimum_quaternion_norm, configuration::Ins::NominalState<Linalg> & state_output,
-    linalg::Matrix<Linalg, 15U, 15U> & covariance_output) noexcept
+    linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
+    configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
 {
     using value_type = typename Linalg::value_type;
     if (!linalg::all_finite(state.q_nb.coefficients()) || !linalg::all_finite(state.v_n) ||
@@ -186,7 +188,8 @@ template <typename Linalg>
     {
         return Status::non_finite_result;
     }
-    return try_correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output);
+    return try_correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output,
+                       bias_update);
 }
 
 } /* end namespace formal_eskf */

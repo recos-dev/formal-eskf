@@ -2903,6 +2903,50 @@
       }
     },
     {
+      "id": "R-MEASUREMENT-FUSION",
+      "title": "Same-prior gated correction and independent observation groups; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-MEASUREMENT-FUSION: gated correction of one observation group"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/measurement_fusion.hpp",
+            "symbol": "struct FusionResult"
+          },
+          {
+            "file": "include/formal_eskf/runtime/measurement_fusion.hpp",
+            "symbol": "check_fusion_gate("
+          },
+          {
+            "file": "include/formal_eskf/runtime/measurement_fusion.hpp",
+            "symbol": "fuse_measurement("
+          },
+          {
+            "file": "include/formal_eskf/runtime/position.hpp",
+            "symbol": "fuse_horizontal_position("
+          },
+          {
+            "file": "include/formal_eskf/runtime/position.hpp",
+            "symbol": "fuse_vertical_position("
+          },
+          {
+            "file": "include/formal_eskf/runtime/velocity.hpp",
+            "symbol": "fuse_horizontal_velocity("
+          },
+          {
+            "file": "include/formal_eskf/runtime/velocity.hpp",
+            "symbol": "fuse_velocity("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "R-IMU-DYNAMICS",
       "title": "Bias-corrected instantaneous IMU magnitude checks; Lean and ESBMC evidence pending",
       "references": {

@@ -18,7 +18,7 @@
   "requirements": [
     {
       "id": "E-OBS",
-      "title": "Current observation models, local-error Jacobians and checked correction delegation",
+      "title": "Observation models, local-error Jacobians and checked correction delegation with ESKF_MAG_TILT=0",
       "references": {
         "spec": [
           {
@@ -2828,6 +2828,42 @@
             "symbol": "void verify_covariance_mean("
           }
         ]
+      }
+    },
+    {
+      "id": "E-MAG-TILT",
+      "title": "Magnetic tilt-protected gain and consistent Joseph covariance; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### E-MAG-TILT: magnetic tilt protection"
+          },
+          {
+            "file": "docs/magnetometer-tilt-protection.md",
+            "symbol": "## Projection in our attitude coordinates"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/eskf/magnetometer.hpp",
+            "symbol": "#ifndef ESKF_MAG_TILT"
+          },
+          {
+            "file": "include/formal_eskf/eskf/magnetometer.hpp",
+            "symbol": "struct MagneticTiltProjection"
+          },
+          {
+            "file": "include/formal_eskf/eskf/magnetometer.hpp",
+            "symbol": "Status try_correct_magnetometer_state_and_covariance("
+          },
+          {
+            "file": "include/formal_eskf/eskf/correction.hpp",
+            "symbol": "Status try_compute_correction("
+          }
+        ],
+        "esbmc": []
       }
     },
     {

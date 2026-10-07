@@ -16,6 +16,7 @@ Evidence mappings belong to the [traceability map](../../formal/agent-review/tra
 - `E-RESET` — Reset of the estimated error mean and transformation of the full covariance into post-injection error coordinates, including cross-covariances.
 - `E-CORRECT` — Innovation, Kalman gain, estimated error and Joseph-form covariance update from the same prior estimate, before nominal injection and coordinate reset.
 - `E-BIAS-UPDATE` — Explicit per-axis INS bias-update permissions applied consistently to the correction vector and Joseph covariance.
+- `E-MAG-TILT` — Optional magnetic attitude-gain projection onto navigation Down, with consistent correction and Joseph covariance.
 - `E-INNOV` — Componentwise innovation gate and checked, failure-atomic diagnostics, separate from correction.
 - `E-OBS` — Supported sensor observation models, residual conventions and Jacobians with respect to the local error state.
 - `E-STEP` — Composition of nominal/covariance prediction and correction/injection/reset, preserving component preconditions and committing all outputs only when the whole operation succeeds.
@@ -154,7 +155,7 @@ Compositional caller proofs may abstract a callee's result and status, but must 
 
 INS `try_correct` accepts an optional trailing `Ins::BiasUpdate` with three body-axis permissions each for accelerometer and gyroscope biases. Every permission defaults to `true`; omitting the argument retains unrestricted correction. AHRS has no bias states and does not accept this control.
 
-INS horizontal/vertical position, horizontal/3D velocity, magnetometer and accelerometer correction APIs accept the same optional trailing permissions and forward them unchanged. Their observation models, Jacobians and validation remain unchanged.
+INS horizontal/vertical position, horizontal/3D velocity, magnetometer and accelerometer correction APIs accept the same optional trailing permissions and forward them unchanged. Magnetic tilt protection is selected separately by the build-wide `ESKF_MAG_TILT` macro. Their observation models and Jacobians remain unchanged.
 
 - Compute the same innovation covariance and unconstrained gain as `E-CORRECT`. After a successful checked solve, set every entry of each disabled bias gain row to zero. Error-state rows 9..11 are accelerometer bias and 12..14 are gyroscope bias; position, velocity and attitude rows are untouched.
 - Use the resulting `K_eff` for both `delta_x = K_eff r` and the full Joseph update `(I-K_eff H) P (I-K_eff H)^T + K_eff V K_eff^T`, then perform the existing injection/reset. Keep the same prior P and full correlated V; do not alter H or erase covariance rows/columns.
@@ -163,6 +164,18 @@ INS horizontal/vertical position, horizontal/3D velocity, magnetometer and accel
 - All-enabled permissions must agree with unrestricted correction. Test all 64 permission combinations against an independent constrained-gain/Joseph/injection/reset oracle, including nonzero cross-covariance, correlated measurement noise and both reset modes.
 
 The caller owns the learning policy. Runtime policy wiring, IMU fault detection, recovery timing and adaptive process noise are separate work. Native tests check all 64 permission combinations and whole-state/covariance aliases through each INS sensor wrapper; they are supporting evidence only. Existing `E-CORRECT`, `E-STEP` and `E-OBS` ESBMC profiles exercise unrestricted correction; they do not prove the controlled path. New Lean/ESBMC evidence remains pending.
+
+### E-MAG-TILT: magnetic tilt protection
+
+AHRS/INS magnetic correction uses compile-time `ESKF_MAG_TILT=1` by default; `0` selects the original unrestricted full-field update. Both use the same full-vector residual, Jacobian and observation covariance; protection is not a scalar heading-observation model. No runtime mode argument or selection branch is permitted. The setting must be consistent across translation units, with values other than 0/1 rejected at compile time. See [the geometric explanation and API](../magnetometer-tilt-protection.md).
+
+- Under the existing unit-prior premise, form `u_b = R(q_nb)^T * [0,0,1]^T` from the prior attitude. After the gain solve, replace only its attitude block by `K_theta' = (u_b * u_b^T) * K_theta`. Use AHRS rows 0..2 and INS rows 6..8. Do not select body X/Y axes or change H.
+- Preserve other INS gain rows, except for disabled bias rows under `E-BIAS-UPDATE`. Use this same final gain in the error correction and full Joseph update, followed by existing right-multiplicative injection and covariance reset.
+- In exact arithmetic, the injected rotation preserves `R(q_nb)^T * [0,0,1]^T`; only the navigation-vertical rotation component changes. A floating-point tilt-error bound is a separate obligation. Other-state updates, later prediction and magnetic observability are not constrained by this identity.
+- When protection is enabled, check the computed vertical axis, projector and projected gain for non-finite results, returning `non_finite_result`. Retain existing input/covariance checks and downstream status propagation. Unit prior and PSD/SPD remain caller premises; no implicit repair is introduced.
+- Publish state and covariance together only on success. Preserve both on any failure and support all four independent whole-state/covariance alias arrangements. `ESKF_MAG_TILT=0` must agree with the original full-field behavior and must not compile the projection path.
+
+Native tests in both macro configurations are supporting evidence only. Projection identities and the new constrained-gain C++ path require new Lean/ESBMC evidence; existing unrestricted `E-OBS`/`E-CORRECT` proofs do not discharge this requirement. E-OBS execution explicitly selects `ESKF_MAG_TILT=0`, not the new default.
 
 ### E-INNOV: componentwise innovation gate
 

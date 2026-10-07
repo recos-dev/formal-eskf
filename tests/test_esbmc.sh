@@ -253,6 +253,7 @@ check_observations_arguments()
             else
                 EXPECTED+=(-D FORMAL_ESKF_PROOF_OBSERVATION=7 -D FORMAL_ESKF_PROOF_STATE_SIZE=15)
             fi
+            EXPECTED+=(-D ESKF_MAG_TILT=0)
             [[ "${SOURCE_FILE}" == "${PROOF_DIR}/observation_models.cpp" && "${FUNCTION_NAME}" == "verify_observation_${KIND}" &&
                 "$*" == "${EXPECTED[*]}" ]] || fail 'wrong observation actual producer'
             return
@@ -269,7 +270,8 @@ check_observations_arguments()
         esac
         EXPECTED=(--proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
             -D "FORMAL_ESKF_PROOF_STATE_SIZE=${SIZE}" -D "FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${MEASUREMENT}"
-            -D "FORMAL_ESKF_PROOF_SIZE=${MEASUREMENT}" -D "FORMAL_ESKF_PROOF_OBSERVATION=${MODEL}")
+            -D "FORMAL_ESKF_PROOF_SIZE=${MEASUREMENT}" -D "FORMAL_ESKF_PROOF_OBSERVATION=${MODEL}"
+            -D ESKF_MAG_TILT=0)
         if ((MODEL >= 4)); then EXPECTED+=(-D FORMAL_ESKF_PROOF_OBSERVATION_ROTATION=1); fi
         if ((MODEL == 7)); then EXPECTED+=(-D FORMAL_ESKF_PROOF_OBSERVATION_TERMS=1); fi
         SOURCE=observation_models.cpp
@@ -1346,7 +1348,7 @@ check_observation_contract_guards()
         RESULT=0
         "${ESBMC_COMMAND}" "${PROOF_DIR}/${SOURCE}.cpp" "${ESBMC_ARGUMENTS[@]}" \
             --unwind 226 --timeout 120s --memlimit 4g --function "${FUNCTION_NAME}" \
-            "${ARGUMENTS[@]}" >"${TEST_WORK_DIR}/${COUNT}.log" 2>&1 || RESULT=$?
+            -D ESKF_MAG_TILT=0 "${ARGUMENTS[@]}" >"${TEST_WORK_DIR}/${COUNT}.log" 2>&1 || RESULT=$?
         if [[ "${RESULT}" != 1 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${COUNT}.log" ||
             ! grep -Fq 'Runner error: observation' "${TEST_WORK_DIR}/${COUNT}.log"; then
             tail -n 30 "${TEST_WORK_DIR}/${COUNT}.log" >&2

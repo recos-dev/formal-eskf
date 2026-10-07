@@ -54,7 +54,8 @@ inline Status try_compute_correction<step_correction_proof::Backend, step_correc
     step_correction_proof::Jacobian const & H, step_correction_proof::Noise const & V,
     step_correction_proof::Scalar minimum, step_correction_proof::Correction & delta,
     step_correction_proof::Covariance & output,
-    std::array<bool, step_correction_proof::state_size> const * enabled_rows) noexcept
+    std::array<bool, step_correction_proof::state_size> const * enabled_rows,
+    std::nullptr_t const & /* gain_constraint */) noexcept
 {
     using namespace step_correction_proof;
     for (std::size_t row = 0U; row < state_size; ++row)

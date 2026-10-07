@@ -10,18 +10,46 @@
 
 /**
  * @file
- * Full three-axis magnetic-field measurement for AHRS and INS.
+ * Three-axis magnetic-field measurement with optional attitude tilt protection.
  */
 
 #include <type_traits>
 
 #include <formal_eskf/eskf/correction.hpp>
 
+// Select one magnetic correction policy for the complete build, not per call.
+#ifndef ESKF_MAG_TILT
+#define ESKF_MAG_TILT 1
+#endif
+
+static_assert(ESKF_MAG_TILT == 0 || ESKF_MAG_TILT == 1, "ESKF_MAG_TILT must be 0 or 1");
+
 namespace formal_eskf
 {
 
 namespace detail
 {
+
+#if ESKF_MAG_TILT
+/** Project body-frame attitude gain onto navigation Down; preserve all other rows. */
+template <typename Linalg, std::size_t AttitudeOffset> struct MagneticTiltProjection
+{
+    linalg::Matrix<Linalg, 3U, 3U> projector;
+
+    template <std::size_t Size, std::size_t MeasurementSize>
+    [[nodiscard]] Status apply(linalg::Matrix<Linalg, Size, MeasurementSize> & gain) const noexcept
+    {
+        static_assert(AttitudeOffset + 3U <= Size);
+        auto const attitude_gain = projector * gain.template block<AttitudeOffset, 0U, 3U, MeasurementSize>();
+        if (!linalg::all_finite(attitude_gain))
+        {
+            return Status::non_finite_result;
+        }
+        gain.template set_block<AttitudeOffset, 0U>(attitude_gain);
+        return Status::success;
+    }
+};
+#endif
 
 template <std::size_t Size, std::size_t AttitudeOffset, typename Linalg>
 [[nodiscard]] linalg::Matrix<Linalg, 3U, Size>
@@ -63,6 +91,33 @@ template <std::size_t AttitudeOffset, typename Linalg, typename State, std::size
         return Status::non_finite_result;
     }
     auto const H = magnetometer_jacobian_from_prediction<Size, AttitudeOffset>(h_m_b);
+#if ESKF_MAG_TILT
+    using vector_type = linalg::Matrix<Linalg, 3U, 1U>;
+    auto const down_n = vector_type::from_row_major({value_type{0}, value_type{0}, value_type{1}});
+    auto const down_b = so3::inverse_rotate(state.q_nb, down_n);
+    if (!linalg::all_finite(down_b))
+    {
+        return Status::non_finite_result;
+    }
+    // Unit prior remains a caller precondition, as in the full-field model.
+    // Do not normalize/repair the prior or replace the observation Jacobian.
+    MagneticTiltProjection<Linalg, AttitudeOffset> const projection{down_b * linalg::transpose(down_b)};
+    if (!linalg::all_finite(projection.projector))
+    {
+        return Status::non_finite_result;
+    }
+    using error_type =
+        std::conditional_t<std::is_same_v<State, configuration::Ins::NominalState<Linalg>>,
+                           configuration::Ins::ErrorState<Linalg>, configuration::Ahrs::ErrorState<Linalg>>;
+    std::array<bool, Size> enabled_rows{};
+    enabled_rows.fill(true);
+    if constexpr (std::is_same_v<State, configuration::Ins::NominalState<Linalg>>)
+    {
+        enabled_rows = correction_bias_rows(bias_update);
+    }
+    return try_correct_state_and_covariance<error_type>(state, covariance, r, H, V, minimum_quaternion_norm,
+                                                        state_output, covariance_output, &enabled_rows, projection);
+#else
     if constexpr (std::is_same_v<State, configuration::Ins::NominalState<Linalg>>)
     {
         return try_correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output,
@@ -72,6 +127,7 @@ template <std::size_t AttitudeOffset, typename Linalg, typename State, std::size
     {
         return try_correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output);
     }
+#endif
 }
 
 } /* end namespace detail */
@@ -119,15 +175,21 @@ magnetometer_jacobian(configuration::Ins::NominalState<Linalg> const & state,
  * must satisfy try_correct's assumptions, including independence from prior
  * state error. A nonzero field alone does not observe all three attitude DOFs.
  *
- * Uses the full three-axis residual, H and V in one batch try_correct call.
- * No gain projection is applied: magnetic observations can change tilt as well
- * as heading. Cholesky, Joseph, right-multiplicative Exp injection and covariance
- * reset follow try_correct. P must be symmetric PSD and V symmetric SPD.
+ * Uses the full three-axis residual, H and V in one batch correction.
+ * ESKF_MAG_TILT=0 can change tilt and heading. ESKF_MAG_TILT=1 (default) projects
+ * the attitude gain with u_b*u_b^T, where u_b=R(q_nb)^T*[0,0,1]^T. The same constrained
+ * gain enters the error and Joseph updates before right-multiplicative Exp
+ * injection and covariance reset. Only the attitude update is restricted; this
+ * is not a scalar heading observation. The prior quaternion must be unit (not
+ * revalidated or repaired here); P must be symmetric PSD and V symmetric SPD.
+ * Tilt preservation is exact geometry under these premises, not a certified
+ * floating-point residual bound. The policy is compile-time only; no mode
+ * argument or runtime selection branch is present.
  * Non-finite fields return non_finite_input, zero field vectors domain_error,
  * and non-finite prediction/residual arithmetic non_finite_result. Other checks
  * and failure statuses follow try_correct. Outputs commit together only on
  * success and may alias their respective inputs. No disturbance/innovation
- * gating, magnetic-bias state, heading-only policy or allocation is introduced.
+ * gating, magnetic-bias state, source lifecycle or allocation is introduced.
  *
  * @see https://doi.org/10.1109/TIM.2010.2047157
  */
@@ -148,8 +210,11 @@ try_correct_magnetometer(configuration::Ahrs::NominalState<Linalg> const & state
  * INS overload of full magnetic-field correction. Although H directly observes
  * attitude only, all state components may be corrected through prior cross-
  * covariances. Optional bias permissions follow try_correct and default to all
- * enabled; they do not provide heading-only or tilt protection. Preconditions,
- * units and failure atomicity follow the AHRS overload.
+ * enabled, independently of ESKF_MAG_TILT. Tilt protection preserves all
+ * non-attitude gain rows except those disabled by bias permissions: position,
+ * velocity and enabled biases can still change. This does not guarantee tilt
+ * protection on later predictions. Preconditions, units and failure atomicity
+ * follow the AHRS overload.
  */
 template <typename Linalg>
 [[nodiscard]] Status try_correct_magnetometer(

@@ -51,11 +51,13 @@ target_link_libraries(formal_eskf_core INTERFACE formal_eskf::so3)
 
 option(ESKF_QUAT_APPROX "Use normalized Euler and first-order attitude error prediction" OFF)
 option(ESKF_RESET_APPROX "Use first-order attitude-error covariance reset instead of the SO(3) right Jacobian" OFF)
+option(ESKF_MAG_TILT "Restrict magnetic attitude correction to rotation about navigation Down" ON)
 target_compile_definitions(
     formal_eskf_core
     INTERFACE
         ESKF_QUAT_APPROX=$<BOOL:${ESKF_QUAT_APPROX}>
         ESKF_RESET_APPROX=$<BOOL:${ESKF_RESET_APPROX}>
+        ESKF_MAG_TILT=$<BOOL:${ESKF_MAG_TILT}>
 )
 
 add_library(formal_eskf_runtime INTERFACE)

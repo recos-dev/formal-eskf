@@ -14,6 +14,8 @@
 #include <formal_eskf/eskf/magnetometer.hpp>
 #include <formal_eskf/eskf/accelerometer.hpp>
 
+static_assert(ESKF_MAG_TILT == 0, "E-OBS covers unrestricted magnetic correction; E-MAG-TILT remains pending");
+
 #ifndef FORMAL_ESKF_PROOF_OBSERVATION
 #define FORMAL_ESKF_PROOF_OBSERVATION 0
 #endif

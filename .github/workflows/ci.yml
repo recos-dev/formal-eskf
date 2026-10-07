@@ -68,7 +68,7 @@ jobs:
         run: ./scripts/verify_cppcheck.sh
 
   build_and_test:
-    name: Build and test (${{ matrix.cxx }}, ${{ matrix.build_type }}, quat=${{ matrix.quat_approx }}, reset=${{ matrix.reset_approx }})
+    name: Build and test (${{ matrix.cxx }}, ${{ matrix.build_type }}, quat=${{ matrix.quat_approx }}, reset=${{ matrix.reset_approx }}, mag_tilt=${{ matrix.mag_tilt }})
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -78,16 +78,19 @@ jobs:
         build_type: [Debug]
         quat_approx: ['OFF', 'ON']
         reset_approx: ['OFF', 'ON']
+        mag_tilt: ['ON']
         include:
           - cxx: clang++-14
             build_type: Release
             quat_approx: 'OFF'
             reset_approx: 'OFF'
+            mag_tilt: 'OFF'
     env:
       CXX: ${{ matrix.cxx }}
       BUILD_TYPE: ${{ matrix.build_type }}
       QUAT_APPROX: ${{ matrix.quat_approx }}
       RESET_APPROX: ${{ matrix.reset_approx }}
+      MAG_TILT: ${{ matrix.mag_tilt }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -103,7 +106,8 @@ jobs:
               -DFORMAL_ESKF_BUILD_EIGEN_BACKEND=ON \
               -DFORMAL_ESKF_BUILD_EXAMPLES=ON \
               -DESKF_QUAT_APPROX="${QUAT_APPROX}" \
-              -DESKF_RESET_APPROX="${RESET_APPROX}"
+              -DESKF_RESET_APPROX="${RESET_APPROX}" \
+              -DESKF_MAG_TILT="${MAG_TILT}"
           cmake --build build/ci --parallel "$(nproc)"
       - name: Test
         run: ctest --test-dir build/ci --output-on-failure --no-tests=error

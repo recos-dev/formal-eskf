@@ -3003,6 +3003,42 @@
       }
     },
     {
+      "id": "R-GNSS-FUSION",
+      "title": "Independent GNSS group lifecycle, progress deadlines and explicit recovery; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-GNSS-FUSION: GNSS fusion lifecycle"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "symbol": "class GnssFusion"
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "symbol": "void GnssFusion::update_group("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "symbol": "Status GnssFusion::update("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "symbol": "Status GnssFusion::record_fusion("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "symbol": "Status GnssFusion::restart("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "R-GNSS-QUALITY",
       "title": "GNSS quality checks and health qualification; Lean and ESBMC evidence pending",
       "references": {

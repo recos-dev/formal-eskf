@@ -2903,6 +2903,34 @@
       }
     },
     {
+      "id": "R-IMU-DYNAMICS",
+      "title": "Bias-corrected instantaneous IMU magnitude checks; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-IMU-DYNAMICS: instantaneous IMU magnitude check"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/imu_dynamics.hpp",
+            "symbol": "struct ImuDynamicsParameters"
+          },
+          {
+            "file": "include/formal_eskf/runtime/imu_dynamics.hpp",
+            "symbol": "struct ImuDynamicsResult"
+          },
+          {
+            "file": "include/formal_eskf/runtime/imu_dynamics.hpp",
+            "symbol": "check_imu_dynamics("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "R-IMU-BIAS-LEARNING",
       "title": "Per-axis IMU bias-learning inhibition and recovery; Lean and ESBMC evidence pending",
       "references": {

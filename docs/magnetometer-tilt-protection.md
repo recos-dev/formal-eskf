@@ -159,6 +159,50 @@ still uses magnetic-vector observations. It does not mean that only one scalar
 yaw observation is fused, or that every non-heading state is frozen. The gain
 restriction described here applies to `fuseMag`, not every PX4 update/reset path.
 
+## Runtime field checks and gated fusion
+
+The optional [`runtime::fuse_magnetometer`](../include/formal_eskf/runtime/magnetometer.hpp)
+now applies this sequence to one AHRS/INS observation:
+
+```text
+field plausibility -> innovation gate -> existing magnetic correction
+         |                   |                     |
+     reject/error        reject/error         publish only on success
+```
+
+[`check_magnetic_field`](../include/formal_eskf/runtime/magnetic_field.hpp)
+checks field strength and inclination against the supplied NED reference.
+It rejects insufficient horizontal field in either vector. An additional wrapped
+heading-direction check runs only with explicit caller-established independent
+heading observability. It uses NED vector geometry, not Euler-angle extraction,
+and does not initialize yaw or infer observability from the magnetometer itself.
+The existing componentwise innovation gate always follows field acceptance,
+even when the extra heading check is skipped.
+
+Both stages expose their own diagnostics. Inspect `result.fusion.decision`
+for the overall outcome and each stage's validity flag before reading metrics.
+Only `fused` changes state/P. A numerical failure is distinct from measurement
+rejection. Correction retains `ESKF_MAG_TILT`, full correlated V and INS bias
+permissions; no core equations or defaults changed.
+
+The behavior review used PX4 v1.16.2's
+[`checkMagField` and `checkMagHeadingConsistency`](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/magnetometer/mag_control.cpp#L455)
+and [`fuseMag`](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/magnetometer/mag_fusion.cpp#L51).
+
+| Concern | PX4 reference | This runtime boundary |
+|---|---|---|
+| Strength/inclination | Configurable checks; WMM or limited fallback; sustained-health timing | Explicit reference and thresholds, no fallback or timer; per-sample checks |
+| Heading consistency | Filtered yaw discrepancy, alignment and horizontal-aiding/motion conditions | Instantaneous wrapped horizontal-direction discrepancy; caller explicitly supplies independent heading observability |
+| Innovation | Any-axis outlier rejects the magnetic group before sequential fusion | Reuse the existing any-axis gate before our batch magnetic correction |
+
+This is not a reproduction of PX4's controller or persistent health flags.
+Thresholds use microtesla and radians (PX4 field units are Gauss); no values are
+silently copied. A wrong attitude/reference can fail these checks, and some
+disturbances can pass them. Passing does not establish physical sensor health.
+Startup alignment, health persistence, recovery, source changes, WMM lookup and
+adapter wiring remain separate work. Requirements `R-MAGNETIC-FIELD` and
+`R-MAGNETOMETER-FUSION` record the behavior; new Lean/ESBMC evidence is pending.
+
 ## Integration requirements and limits
 
 - `ESKF_MAG_TILT=1` projects the attitude gain after the checked solve and bias
@@ -185,8 +229,9 @@ restriction described here applies to `fuseMag`, not every PX4 update/reset path
 - Projection does not constrain other INS gain rows. Position, velocity and
   permitted biases can update; disabled bias rows remain zero. Bias changes can
   influence future tilt. Any further restriction is a separate policy decision.
-- Magnetic-field health, heading observability, innovation gating and recovery
-  remain necessary. Tilt protection neither removes heading errors caused by
+- The runtime wrapper supplies instantaneous field checks and innovation gating;
+  physical health, independent heading observability and recovery remain caller
+  responsibilities. Tilt protection neither removes heading errors caused by
   interference nor guarantees useful heading information when the horizontal
   magnetic field is too small.
 - A genuine scalar heading-observation model is a separate design involving
@@ -195,7 +240,7 @@ restriction described here applies to `fuseMag`, not every PX4 update/reset path
 
 ## Verification status
 
-Validation on 2026-10-07:
+Projection implementation validation on 2026-10-07 (before the runtime wrapper):
 
 | Check | Result and scope |
 |---|---|
@@ -226,3 +271,14 @@ unrestricted path only (`ESKF_MAG_TILT=0`); their results must not be extended t
 the default protected build. The ESBMC runner explicitly selects `0` for E-OBS,
 and the harness rejects a mismatched configuration instead of claiming projection
 coverage.
+
+Runtime-wrapper validation additionally covers field geometry and threshold
+boundaries, angle wrapping, weak horizontal fields, tilted/90-degree-pitch
+attitudes, invalid inputs/arithmetic, same-prior gate diagnostics, all INS bias
+permissions, whole-object aliases and correction failure after a passed gate.
+The tests are in [`test_magnetometer_fusion.cpp`](../tests/test_magnetometer_fusion.cpp).
+GCC Debug/Eigen and ASan/UBSan each pass 21/21 tests (leak detection disabled);
+targeted Clang/full-field, PX4 matrix and first-order-reset tests also pass.
+Cppcheck unix32/unix64, read-only formatting and the 100 offline agent-review
+regression tests pass. These are native/tooling checks, not a new Lean/ESBMC
+proof or an AI semantic audit. The runtime's two new proof entries remain gaps.

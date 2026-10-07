@@ -2867,6 +2867,74 @@
       }
     },
     {
+      "id": "R-MAGNETIC-FIELD",
+      "title": "Instantaneous magnetic field geometry and conditional heading checks; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-MAGNETIC-FIELD: instantaneous magnetic-field plausibility"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/magnetic_field.hpp",
+            "symbol": "struct MagneticFieldParameters"
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetic_field.hpp",
+            "symbol": "struct MagneticFieldCheck"
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetic_field.hpp",
+            "symbol": "magnetic_field_geometry("
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetic_field.hpp",
+            "symbol": "check_magnetic_field("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
+      "id": "R-MAGNETOMETER-FUSION",
+      "title": "Field acceptance and same-prior innovation gate before magnetic correction; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-MAGNETOMETER-FUSION: field checks and gated magnetic correction"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/magnetometer.hpp",
+            "symbol": "struct MagnetometerFusionResult"
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetometer.hpp",
+            "symbol": "fuse_magnetometer_state("
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetometer.hpp",
+            "symbol": "fuse_magnetometer("
+          },
+          {
+            "file": "include/formal_eskf/runtime/measurement_fusion.hpp",
+            "symbol": "check_fusion_gate("
+          },
+          {
+            "file": "include/formal_eskf/eskf/magnetometer.hpp",
+            "symbol": "try_correct_magnetometer("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "E-INNOV",
       "title": "Componentwise innovation gate and atomic diagnostics; Lean and ESBMC evidence pending",
       "references": {

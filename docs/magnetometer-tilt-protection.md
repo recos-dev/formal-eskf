@@ -199,9 +199,76 @@ This is not a reproduction of PX4's controller or persistent health flags.
 Thresholds use microtesla and radians (PX4 field units are Gauss); no values are
 silently copied. A wrong attitude/reference can fail these checks, and some
 disturbances can pass them. Passing does not establish physical sensor health.
-Startup alignment, health persistence, recovery, source changes, WMM lookup and
-adapter wiring remain separate work. Requirements `R-MAGNETIC-FIELD` and
+Health persistence, fusion deadlines and source changes are now handled by the
+optional lifecycle below. Startup alignment, actual estimator recovery, WMM
+lookup and adapter wiring remain separate work. Requirements `R-MAGNETIC-FIELD` and
 `R-MAGNETOMETER-FUSION` record the behavior; new Lean/ESBMC evidence is pending.
+
+## Magnetic fusion lifecycle
+
+[`runtime::MagnetometerFusion`](../include/formal_eskf/runtime/magnetometer_fusion.hpp)
+owns only the temporal admission policy. The single-writer call order is:
+
+```text
+check_magnetic_field -> lifecycle.update (every tick, also without data)
+                              |
+                         fusion_allowed
+                              |
+                      fuse_magnetometer
+                              |
+                lifecycle.record_fusion(actual decision)
+```
+
+Feed the field check's successful, valid acceptance into `Sample::field_accepted`;
+do not substitute innovation acceptance. The existing gated transaction rechecks
+the same observation/prior before publication. Do not change the prior, reference,
+calibration or check policy between qualification and that transaction. No-data
+ticks use `Sample{}` and never call correction. This keeps the numerical APIs
+independently callable, without adding a callback framework or scheduler.
+
+| Event | Lifecycle action |
+|---|---|
+| Startup / short disturbance recovery | Require fresh, consecutive good samples spanning `health_time_us` before granting one sample's fusion permission |
+| Bad field, stale data, disable or unready | Stop and clear health qualification; a short interruption may requalify without resetting the estimator |
+| Innovation rejection | Consume the sample permission, retaining the last successful fusion time |
+| Fusion deadline exceeded | Latch recovery; a good sample or enable toggle cannot bypass it |
+| Numerical correction failure | Require recovery immediately; do not retry/reset the estimator internally |
+| Device ID or calibration count changes | Clear old-source history, bind the new source and require explicit re-entry authorization |
+| `restart()` | Caller has established safe re-entry; retain time/source records and wait for a new full good interval |
+
+Configure three positive durations explicitly: `health_time_us`,
+`maximum_sample_age_us` (also the maximum qualifying sample gap), and
+`fusion_timeout_us`. There are no selected deployment defaults. Health uses
+sample-time span with `>=`; freshness/progress expire at `>`. Restart clears
+session progress but does not rewind timestamps or fabricate a successful fuse.
+Reference/frame/check-policy changes and external yaw resets also require
+caller-coordinated restart; full `reset()` is for an explicitly reinitialized
+timeline/configuration. Neither changes state/P or emits platform reset notices.
+
+### Lifecycle comparison with PX4
+
+The pinned [magnetometer controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/magnetometer/mag_control.cpp#L46)
+and [sensor/calibration change handling](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF2.cpp#L2481)
+were reviewed at PX4 v1.16.2, `54f0455ffcd755534539a7cf33a09a20bf71d29d`:
+
+- PX4 waits after field-check failures before starting and requires fresh samples
+  and alignment conditions. Its filter warm-up, strict elapsed boundary and
+  mode-specific continuation policy are not copied: this controller requires a
+  complete new sampled-good interval after every health interruption.
+- PX4 stops on missing data and handles fusion timeout by resetting magnetic
+  states/possibly heading, or stopping, depending on aiding/motion. We retain
+  deadline monitoring but require caller-directed recovery: our fixed-field
+  INS/AHRS has no `mag_I`/`mag_B` states and cannot silently reuse those resets.
+- PX4 detects device/calibration changes in the adapter and resets associated
+  state/filter history. We detect the supplied identity/version changes and
+  revoke permission; actual alignment/state/P repair remains outside this class.
+
+This is a portable lifecycle with explicit recovery authority, not an EKF2
+controller clone. `active` indicates sampled health qualification and eligibility,
+not physical health or flight validity.
+Tests in [`test_magnetometer_lifecycle.cpp`](../tests/test_magnetometer_lifecycle.cpp)
+exercise transitions and actual AHRS/INS field-check/gate/correction sequences.
+`R-MAGNETOMETER-LIFECYCLE` records the contract; Lean/ESBMC evidence is pending.
 
 ## Integration requirements and limits
 
@@ -282,3 +349,14 @@ targeted Clang/full-field, PX4 matrix and first-order-reset tests also pass.
 Cppcheck unix32/unix64, read-only formatting and the 100 offline agent-review
 regression tests pass. These are native/tooling checks, not a new Lean/ESBMC
 proof or an AI semantic audit. The runtime's two new proof entries remain gaps.
+
+Lifecycle validation adds timestamp/health boundaries, no-data ticks, pauses,
+rejection deadlines, source/calibration changes and explicit re-entry. Tests also
+drive the real field-check/gate/correction path for AHRS/INS and float/double.
+GCC Debug/Eigen and ASan/UBSan each pass 22/22 tests (leak detection disabled);
+the lifecycle target passes Clang Release with projection OFF and PX4 matrix
+with projection ON. Cppcheck unix32/unix64, read-only formatting and the 100
+offline agent-review regression tests pass. One invalid-enum regression assertion
+has a local, explained Cppcheck `knownConditionTrueFalse` suppression; production
+checks and analysis configuration are unchanged. No new Lean/ESBMC proof or
+end-to-end PX4 adapter/flight validation is claimed.

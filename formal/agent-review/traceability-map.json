@@ -2935,6 +2935,38 @@
       }
     },
     {
+      "id": "R-MAGNETOMETER-LIFECYCLE",
+      "title": "Magnetic health qualification, fusion deadlines and explicit source/recovery handling; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-MAGNETOMETER-LIFECYCLE: magnetic health and fusion lifecycle"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "symbol": "class MagnetometerFusion"
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "symbol": "MagnetometerFusion::update("
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "symbol": "MagnetometerFusion::record_fusion("
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "symbol": "void restart()"
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "E-INNOV",
       "title": "Componentwise innovation gate and atomic diagnostics; Lean and ESBMC evidence pending",
       "references": {

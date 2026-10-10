@@ -153,43 +153,25 @@ theorem ahrsAccelerometerModel_hasDerivAt (q : Quaternion ℝ) (g_n d : Vector3 
     fin_cases i <;> fin_cases j <;> simp [hat]
   simpa [ahrsAccelerometerModel, magnetometerModel, hn, Matrix.neg_mulVec] using! h
 
-def insAccelerometerModel (s : InsState) (angular_rate_b gravity_n : Vector3 ℝ) : Vector3 ℝ :=
-  cross (angular_rate_b - s.b_g) (inverseRotate s.q_nb s.v_n) -
-    inverseRotate s.q_nb gravity_n + s.b_a
+/-- Gravity prediction with bias preprocessing held fixed outside this model. -/
+def insAccelerometerModel (s : InsState) (g_n : Vector3 ℝ) : Vector3 ℝ :=
+  ahrsAccelerometerModel s.q_nb g_n
 
-def accelerometerJacobianBlocks (Rt : Matrix3 ℝ) (v_b omega_b g_b : Vector3 ℝ) : Fin 5 → Matrix3 ℝ :=
-  ![0, hat omega_b * Rt, hat omega_b * hat v_b - hat g_b, 1, hat v_b]
+def insAccelerometerJacobian (s : InsState) (g_n : Vector3 ℝ) : Matrix (Fin 3) (Fin 15) ℝ :=
+  insObservationJacobian ![0, 0, hat (insAccelerometerModel s g_n), 0, 0]
 
-def insAccelerometerJacobian (s : InsState) (w g : Vector3 ℝ) : Matrix (Fin 3) (Fin 15) ℝ :=
-  insObservationJacobian (accelerometerJacobianBlocks (rotationMatrix s.q_nb)ᵀ
-    (inverseRotate s.q_nb s.v_n) (w - s.b_g) (inverseRotate s.q_nb g))
+theorem insAccelerometerJacobian_mulVec (s : InsState) (g_n : Vector3 ℝ) (e : InsError) :
+    insAccelerometerJacobian s g_n *ᵥ packInsError e =
+      hat (insAccelerometerModel s g_n) *ᵥ e.delta_theta_b := by
+  simp [insAccelerometerJacobian, insObservationJacobian_mulVec]
 
-theorem accelerometerJacobian_mulVec (Rt : Matrix3 ℝ) (v_b omega_b g_b : Vector3 ℝ) (e : InsError) :
-    insObservationJacobian (accelerometerJacobianBlocks Rt v_b omega_b g_b) *ᵥ packInsError e =
-      cross (-e.delta_b_g) v_b +
-        cross omega_b (hat v_b *ᵥ e.delta_theta_b + Rt *ᵥ e.delta_v_n) -
-        hat g_b *ᵥ e.delta_theta_b + e.delta_b_a := by
-  rw [insObservationJacobian_mulVec]
-  simp [accelerometerJacobianBlocks, Matrix.sub_mulVec, ← Matrix.mulVec_mulVec, hat_mulVec]
-  funext i
-  fin_cases i <;> simp [cross, vecHead, vecTail] <;> ring
-
-/-- INS uses dot(v_b)=0, not a_n=0. The gyro-bias block is +hat(v_b). -/
-theorem insAccelerometerJacobian_hasDerivAt (s : InsState) (w g : Vector3 ℝ) (e : InsError) :
-    HasVectorDerivAt (fun t => insAccelerometerModel (injectIns s (insErrorScale t e)) w g)
-      (insAccelerometerJacobian s w g *ᵥ packInsError e) 0 := by
-  have hv := inverseRotate_local_hasDerivAt (vectorLine_hasDerivAt s.v_n e.delta_v_n 0)
-    s.q_nb e.delta_theta_b
-  have hg := inverseRotate_local_hasDerivAt
-    (v := fun _ => g) (dv := 0) (fun i => hasDerivAt_const 0 (g i)) s.q_nb e.delta_theta_b
-  have hw : HasVectorDerivAt (fun t => w - (s.b_g + vectorScale t e.delta_b_g)) (-e.delta_b_g) 0 :=
-    fun i => ((hasDerivAt_const 0 (w i)).sub (vectorLine_hasDerivAt s.b_g e.delta_b_g 0 i)).congr_deriv
-      (by simp)
-  have hb := vectorLine_hasDerivAt s.b_a e.delta_b_a 0
-  have h := ((hw.cross hv).sub hg).add hb
-  have hz : ∀ v : Vector3 ℝ, vectorScale 0 v = 0 := by intro v; ext i; simp [vectorScale]
-  simpa [insAccelerometerModel, injectIns, insErrorScale, insAccelerometerJacobian,
-    accelerometerJacobian_mulVec, hz, localAttitude_zero, inverseRotate] using! h
+/-- INS assumes negligible navigation acceleration, just like AHRS. The bias
+estimate used to preprocess a sample is fixed during this linearization. -/
+theorem insAccelerometerJacobian_hasDerivAt (s : InsState) (g_n : Vector3 ℝ) (e : InsError) :
+    HasVectorDerivAt (fun t => insAccelerometerModel (injectIns s (insErrorScale t e)) g_n)
+      (insAccelerometerJacobian s g_n *ᵥ packInsError e) 0 := by
+  simpa [insAccelerometerModel, insAccelerometerJacobian_mulVec, injectIns, insErrorScale] using
+    ahrsAccelerometerModel_hasDerivAt s.q_nb g_n e.delta_theta_b
 
 /-- Matrix action in the finite-dimensional local error chart. -/
 def observationLinearMap {n m : ℕ} (H : Matrix (Fin m) (Fin n) ℝ) :
@@ -263,49 +245,28 @@ theorem insMagnetometerJacobian_hasFDerivAt (s : InsState) (m_n : Vector3 ℝ) :
     simpa [unpackInsError_scale, pack_unpack_insError] using!
       insMagnetometerJacobian_hasDerivAt s m_n (unpackInsError v) i
 
-theorem insAccelerometerJacobian_hasFDerivAt (s : InsState) (w g : Vector3 ℝ) :
-    HasFDerivAt (fun e => insAccelerometerModel (injectIns s (unpackInsError e)) w g)
-      (observationLinearMap (insAccelerometerJacobian s w g)) 0 := by
+theorem insAccelerometerJacobian_hasFDerivAt (s : InsState) (g_n : Vector3 ℝ) :
+    HasFDerivAt (fun e => insAccelerometerModel (injectIns s (unpackInsError e)) g_n)
+      (observationLinearMap (insAccelerometerJacobian s g_n)) 0 := by
   apply observation_hasFDerivAt
-  · have hd : DifferentiableAt ℝ (fun e => (unpackInsError e).delta_theta_b) 0 := by
-      apply differentiableAt_pi.mpr
-      intro i
-      fin_cases i <;> simp [unpackInsError] <;> fun_prop
-    have hv : DifferentiableAt ℝ (fun e => (injectIns s (unpackInsError e)).v_n) 0 := by
-      apply differentiableAt_pi.mpr
-      intro i
-      fin_cases i <;> simp [injectIns, unpackInsError] <;> fun_prop
-    have hbody := inverseRotate_local_differentiableAt s.q_nb hd hv
-    have hgravity := inverseRotate_local_differentiableAt s.q_nb hd
-      (differentiableAt_const (c := g))
-    have hw : DifferentiableAt ℝ (fun e => w - (injectIns s (unpackInsError e)).b_g) 0 := by
-      apply differentiableAt_pi.mpr
-      intro i
-      fin_cases i <;> simp [injectIns, unpackInsError] <;> fun_prop
-    have hb : DifferentiableAt ℝ (fun e => (injectIns s (unpackInsError e)).b_a) 0 := by
-      apply differentiableAt_pi.mpr
-      intro i
-      fin_cases i <;> simp [injectIns, unpackInsError] <;> fun_prop
-    have hc : DifferentiableAt ℝ (fun e =>
-        cross (w - (injectIns s (unpackInsError e)).b_g)
-          (inverseRotate (localAttitude s.q_nb (unpackInsError e).delta_theta_b)
-            (injectIns s (unpackInsError e)).v_n)) 0 := by
-      have hv0 := differentiableAt_pi.mp hbody 0
-      have hv1 := differentiableAt_pi.mp hbody 1
-      have hv2 := differentiableAt_pi.mp hbody 2
-      have hw0 := differentiableAt_pi.mp hw 0
-      have hw1 := differentiableAt_pi.mp hw 1
-      have hw2 := differentiableAt_pi.mp hw 2
-      apply differentiableAt_pi.mpr
-      intro i
-      fin_cases i
-      · exact (hw1.mul hv2).sub (hw2.mul hv1)
-      · exact (hw2.mul hv0).sub (hw0.mul hv2)
-      · exact (hw0.mul hv1).sub (hw1.mul hv0)
-    exact (hc.sub hgravity).add hb
+  · apply DifferentiableAt.neg
+    apply inverseRotate_local_differentiableAt s.q_nb _ (differentiableAt_const g_n)
+    apply differentiableAt_pi.mpr
+    intro i
+    fin_cases i <;> simp [unpackInsError] <;> fun_prop
   · intro v i
     simpa [unpackInsError_scale, pack_unpack_insError] using!
-      insAccelerometerJacobian_hasDerivAt s w g (unpackInsError v) i
+      insAccelerometerJacobian_hasDerivAt s g_n (unpackInsError v) i
+
+/-- Subtract the prior bias once, not the bias of the perturbed state. -/
+def insAccelerometerResidual (s : InsState) (f_m g_n : Vector3 ℝ) (e : Fin 15 → ℝ) : Vector3 ℝ :=
+  residual (f_m - s.b_a) (insAccelerometerModel (injectIns s (unpackInsError e)) g_n)
+
+theorem insAccelerometerResidual_hasFDerivAt (s : InsState) (f_m g_n : Vector3 ℝ) :
+    HasFDerivAt (insAccelerometerResidual s f_m g_n)
+      (-observationLinearMap (insAccelerometerJacobian s g_n)) 0 := by
+  simpa [insAccelerometerResidual, residual] using
+    (insAccelerometerJacobian_hasFDerivAt s g_n).const_sub (f_m - s.b_a)
 
 end
 

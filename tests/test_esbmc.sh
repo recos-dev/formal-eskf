@@ -18,9 +18,8 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1540 '^PLAN'
+    check_count 1538 '^PLAN'
     check_count 2 'observations-.*-rotation-producer'
-    check_count 2 'observations-.*-terms-producer'
     check_count 16 'observations-.*-jacobian'
     check_count 64 'observations-.*-caller-alias'
     check_count 11 'scalar-binary32-'
@@ -207,8 +206,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 128 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1540 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 127 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1538 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -229,7 +228,7 @@ check_plan()
     [[ "$("${RUNNER}" correction --list | wc -l)" == 212 ]] || fail 'correction caller/producer coverage changed'
     [[ "$("${RUNNER}" linalg --list | wc -l)" == 348 ]] || fail 'linalg operation/backend/shape coverage changed'
     [[ "$("${RUNNER}" scalar --list | wc -l)" == 32 ]] || fail 'scalar format/alias/dependency coverage changed'
-    [[ "$("${RUNNER}" observations --list | wc -l)" == 84 ]] || fail 'observation model/format/alias coverage changed'
+    [[ "$("${RUNNER}" observations --list | wc -l)" == 82 ]] || fail 'observation model/format/alias coverage changed'
     # The standalone scalar selection reuses, rather than duplicates, old proofs.
     [[ -z "$(comm -23 <("${RUNNER}" scalar --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] ||
         fail 'scalar dependency profile is not in the full inventory'
@@ -242,19 +241,11 @@ check_observations_arguments()
         local FUNCTION_NAME="$1" BINARY64 MODEL KIND SIZE MEASUREMENT SOURCE
         local -a EXPECTED
         shift
-        if [[ "${PROFILE}" =~ ^observations-binary(32|64)-(rotation|terms)-producer$ ]]; then
+        if [[ "${PROFILE}" =~ ^observations-binary(32|64)-rotation-producer$ ]]; then
             BINARY64=$(( (BASH_REMATCH[1] - 32) / 32 ))
-            KIND="${BASH_REMATCH[2]}"
-            EXPECTED=(--proof-unwind 226)
-            if [[ "${KIND}" == terms ]]; then EXPECTED+=(--z3); fi
-            EXPECTED+=(-D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}")
-            if [[ "${KIND}" == rotation ]]; then
-                EXPECTED+=(-D FORMAL_ESKF_PROOF_OBSERVATION=4)
-            else
-                EXPECTED+=(-D FORMAL_ESKF_PROOF_OBSERVATION=7 -D FORMAL_ESKF_PROOF_STATE_SIZE=15)
-            fi
-            EXPECTED+=(-D ESKF_MAG_TILT=0)
-            [[ "${SOURCE_FILE}" == "${PROOF_DIR}/observation_models.cpp" && "${FUNCTION_NAME}" == "verify_observation_${KIND}" &&
+            EXPECTED=(--proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+                -D FORMAL_ESKF_PROOF_OBSERVATION=4 -D ESKF_MAG_TILT=0)
+            [[ "${SOURCE_FILE}" == "${PROOF_DIR}/observation_models.cpp" && "${FUNCTION_NAME}" == verify_observation_rotation &&
                 "$*" == "${EXPECTED[*]}" ]] || fail 'wrong observation actual producer'
             return
         fi
@@ -273,7 +264,6 @@ check_observations_arguments()
             -D "FORMAL_ESKF_PROOF_SIZE=${MEASUREMENT}" -D "FORMAL_ESKF_PROOF_OBSERVATION=${MODEL}"
             -D ESKF_MAG_TILT=0)
         if ((MODEL >= 4)); then EXPECTED+=(-D FORMAL_ESKF_PROOF_OBSERVATION_ROTATION=1); fi
-        if ((MODEL == 7)); then EXPECTED+=(-D FORMAL_ESKF_PROOF_OBSERVATION_TERMS=1); fi
         SOURCE=observation_models.cpp
         if [[ "${KIND}" == jacobian ]]; then
             [[ "${FUNCTION_NAME}" == verify_observation_jacobian ]] || fail 'wrong Jacobian entry point'
@@ -1320,7 +1310,6 @@ check_observation_regressions()
         ARGUMENTS=("$@")
         case "${FUNCTION_NAME}" in
             verify_observation_rotation) ARGUMENTS+=(-D FORMAL_ESKF_TEST_PRODUCER=1) ;;
-            verify_observation_terms) ARGUMENTS+=(-D FORMAL_ESKF_TEST_PRODUCER=2) ;;
         esac
         "${CXX:-g++}" -std=c++20 -O0 -Wall -Wextra -Werror -I "${REPO_DIR}/include" -I "${PROOF_DIR}/include" \
             "${ARGUMENTS[@]}" "${TEST_DIR}/esbmc/observation_checks.cpp" -o "${TEST_WORK_DIR}/witness"
@@ -1331,8 +1320,8 @@ check_observation_regressions()
         COUNT=$((COUNT + 1))
     }
     run_observations_suite
-    [[ "${COUNT}" == 84 ]] || fail 'incomplete observation native inventory'
-    printf 'ESBMC observation native regressions: pass (84 profiles; eight data cases; all nine caller statuses)\n'
+    [[ "${COUNT}" == 82 ]] || fail 'incomplete observation native inventory'
+    printf 'ESBMC observation native regressions: pass (82 profiles; nine data cases; all nine caller statuses)\n'
 )
 
 check_observation_contract_guards()
@@ -1359,11 +1348,10 @@ check_observation_contract_guards()
 observations|verify_observation|-D FORMAL_ESKF_PROOF_OBSERVATION=4 -D FORMAL_ESKF_PROOF_OBSERVATION_ROTATION=1
 observations|verify_observation|-D FORMAL_ESKF_PROOF_OBSERVATION=4 -D FORMAL_ESKF_PROOF_OBSERVATION_ROTATION=1 -D FORMAL_ESKF_PROOF_OBSERVATION_CONTRACT=1 -D FORMAL_ESKF_PROOF_ALIAS=4
 observations|verify_observation|-D FORMAL_ESKF_PROOF_OBSERVATION=4 -D FORMAL_ESKF_PROOF_OBSERVATION_CONTRACT=1
-observations|verify_observation|-D FORMAL_ESKF_PROOF_OBSERVATION=7 -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D FORMAL_ESKF_PROOF_OBSERVATION_ROTATION=1 -D FORMAL_ESKF_PROOF_OBSERVATION_CONTRACT=1
+observations|verify_observation|-D FORMAL_ESKF_PROOF_OBSERVATION=7 -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D FORMAL_ESKF_PROOF_OBSERVATION_CONTRACT=1
 observation_models|verify_observation_jacobian|-D FORMAL_ESKF_PROOF_OBSERVATION=4 -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D FORMAL_ESKF_PROOF_OBSERVATION_ROTATION=1
 observation_models|verify_observation_jacobian|-D FORMAL_ESKF_PROOF_OBSERVATION=4 -D FORMAL_ESKF_PROOF_OBSERVATION_ROTATION=1 -D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1
 observation_models|verify_observation_rotation|-D FORMAL_ESKF_PROOF_OBSERVATION=4 -D FORMAL_ESKF_PROOF_OBSERVATION_ROTATION=1
-observation_models|verify_observation_terms|-D FORMAL_ESKF_PROOF_OBSERVATION=7 -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D FORMAL_ESKF_PROOF_OBSERVATION_TERMS=1
 CASES
     printf 'ESBMC observation guards: pass (%d incompatible configurations rejected)\n' "${COUNT}"
 )
@@ -1424,7 +1412,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1540 profiles; 128 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1538 profiles; 127 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

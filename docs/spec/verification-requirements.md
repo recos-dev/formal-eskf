@@ -151,6 +151,26 @@ These clauses refine `E-STEP`; they are not additional requirement families. The
 
 Compositional caller proofs may abstract a callee's result and status, but must check its arguments and call order, use separate scratch outputs, and identify matching input-purity evidence. A summary may even overwrite its scratch output on failure: transaction rollback must not depend on successful or unchanged scratch data. A callee declaration or a proof using an incompatible backend instantiation is not sufficient evidence. INS/AHRS, binary32/binary64 and each applicable prediction/reset mode must be accounted for.
 
+### E-OBS-ACCEL: gravity observation with fixed bias preprocessing
+
+INS and AHRS use the gravity observation only; there is no model-selection macro. INS uses a 3×15 local-error Jacobian and subtracts its prior accelerometer bias from raw input. AHRS uses a 3×3 Jacobian with externally bias-calibrated input.
+
+For INS, use raw body-frame specific force, fixed navigation-frame gravity and the prior bias estimate:
+
+\[
+z=f_m-\hat b_a,\qquad h=-R(q_{nb})^Tg_n,\qquad r=z-h,
+\]
+\[
+H=\begin{bmatrix}0_{3\times3}&0_{3\times3}&[h]_\times&0_{3\times3}&0_{3\times3}\end{bmatrix}.
+\]
+
+The columns are `[delta_p_n, delta_v_n, delta_theta_b, delta_b_a, delta_b_g]`, using the existing right-multiplicative attitude error. Construct this 3×15 Jacobian directly; the nominal 3×16 Jacobian is for manual derivation review only.
+
+- Assume negligible navigation-frame acceleration `dot(v_n)`, not necessarily zero velocity. Keep gravity magnitude and measurement units; do not normalize either vector.
+- Subtract the prior accelerometer bias exactly once. Hold this preprocessing fixed in the linearization: both bias Jacobian blocks are zero. This is an explicit approximation, not the joint derivative of `-R^T*g_n+b_a`. Zero bias columns do not freeze learning through cross-covariance; forward the existing optional bias-update permissions unchanged.
+- Neither accelerometer API takes angular rate. The complete INS state must still be finite for correction/injection. Reject non-finite bias subtraction, prediction or residual arithmetic as `non_finite_result`; retain existing checked-correction statuses, alias support and atomic output publication.
+- Use caller-supplied effective measurement covariance in raw specific-force units. Motion gating, model error and prior/measurement correlation remain caller responsibilities; no gating, differencing or correlated-noise update is introduced here.
+
 ### E-BIAS-UPDATE: INS bias-update control
 
 INS `try_correct` accepts an optional trailing `Ins::BiasUpdate` with three body-axis permissions each for accelerometer and gyroscope biases. Every permission defaults to `true`; omitting the argument retains unrestricted correction. AHRS has no bias states and does not accept this control.

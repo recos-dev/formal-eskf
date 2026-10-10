@@ -33,18 +33,15 @@ float nondet_float() { return 0.0F; }
 int main()
 {
     using namespace observation_proof;
-    for (unsigned test_case = 0U; test_case < 8U; ++test_case)
+    for (unsigned test_case = 0U; test_case < 9U; ++test_case)
     {
         state_type state;
-        vector_type reference, angular_rate;
+        vector_type reference;
         rotation_type R;
-        ins_jacobian_type terms;
-        terms.set(2U, 14U, value_type{-7});
         residual_type measurement;
         for (std::size_t i = 0U; i < 3U; ++i)
         {
             reference.set(i, static_cast<value_type>(i + 1U));
-            angular_rate.set(i, static_cast<value_type>(i + 2U));
             for (std::size_t j = 0U; j < 3U; ++j)
             {
                 R.set(i, j, static_cast<value_type>(i * 3U + j + 1U) / value_type{8});
@@ -85,6 +82,12 @@ int main()
             R.set(2U, 1U, -value_type{0});
             measurement.set(0U, -value_type{0});
             break;
+        case 8U:
+#if FORMAL_ESKF_PROOF_OBSERVATION == 7 && FORMAL_ESKF_PROOF_STATE_SIZE == 15
+            state.b_a.set(0U, -std::numeric_limits<value_type>::max());
+            measurement.set(0U, std::numeric_limits<value_type>::max());
+#endif
+            break;
         default:
             break;
         }
@@ -115,16 +118,14 @@ int main()
         for (unsigned status = 0U; status < 9U; ++status)
         {
             result.status = static_cast<Status>(status);
-            verify_observation(state, covariance, measurement, V, reference, angular_rate, value_type{0.125},
-                               state_output, covariance_output, result, R, terms);
+            verify_observation(state, covariance, measurement, V, reference, value_type{0.125}, state_output,
+                               covariance_output, result, R);
         }
 #else
 #if FORMAL_ESKF_TEST_PRODUCER == 1
         verify_observation_rotation(state.q_nb);
-#elif FORMAL_ESKF_TEST_PRODUCER == 2
-        verify_observation_terms(R, reference, angular_rate, reference);
 #else
-        verify_observation_jacobian(state, reference, angular_rate, R, terms);
+        verify_observation_jacobian(state, reference, R);
 #endif
 #endif
     }

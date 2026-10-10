@@ -73,8 +73,9 @@ inline Status try_correct<observation_proof::backend_type, observation_proof::me
                    "E-OBS: no caller output is published before correction");
     for (std::size_t row = 0U; row < measurement_size; ++row)
     {
-        __ESBMC_assert(same(r(row), (*Call::measurement)(row)-Call::model->prediction[row]),
-                       "E-OBS: residual is measurement minus the specified prediction, in every coordinate");
+        __ESBMC_assert(
+            same(r(row), corrected_measurement(*Call::state, *Call::measurement, row) - Call::model->prediction[row]),
+            "E-OBS: residual subtracts the fixed prior bias when required, then the specified prediction");
         for (std::size_t column = 0U; column < state_size; ++column)
         {
             __ESBMC_assert(same(H(row, column), Call::model->H[row][column]),
@@ -99,10 +100,9 @@ using observation_proof::value_type;
 using observation_proof::vector_type;
 
 void verify_observation(state_type state, covariance_type covariance, residual_type measurement, noise_type V,
-                        vector_type reference, vector_type angular_rate, value_type minimum, state_type state_output,
+                        vector_type reference, value_type minimum, state_type state_output,
                         covariance_type covariance_output, observation_proof::Result result,
-                        observation_proof::rotation_type rotation_result,
-                        observation_proof::ins_jacobian_type terms_result)
+                        observation_proof::rotation_type rotation_result)
 {
     using namespace observation_proof;
     constexpr bool valid = configured && model_boundaries && FORMAL_ESKF_PROOF_OBSERVATION_CONTRACT == 1 &&
@@ -119,7 +119,6 @@ void verify_observation(state_type state, covariance_type covariance, residual_t
     auto const old_measurement = measurement;
     auto const old_V = V;
     auto const old_reference = reference;
-    auto const old_angular_rate = angular_rate;
     auto const old_state_output = state_output;
     auto const old_covariance_output = covariance_output;
     state_type * state_pointer = &state_output;
@@ -137,20 +136,18 @@ void verify_observation(state_type state, covariance_type covariance, residual_t
     RotationCall::result = rotation_result;
     RotationCall::argument = state.q_nb;
     RotationCall::count = 0U;
-    TermsCall::result = terms_result;
-    TermsCall::count = 0U;
     Model expected;
-    expected_model(old_state, reference, angular_rate, expected);
-    TermsCall::expected = &expected;
-    Status prefix = input_status(old_state, measurement, V, reference, angular_rate);
+    expected_model(old_state, reference, expected);
+    Status prefix = input_status(old_state, measurement, V, reference);
     bool const model_eligible = prefix == Status::success;
     if (prefix == Status::success)
     {
-        bool finite = expected.intermediate_finite;
+        bool finite = true;
         for (std::size_t row = 0U; row < measurement_size; ++row)
         {
-            finite = std::isfinite(expected.prediction[row]) &&
-                     std::isfinite(measurement(row) - expected.prediction[row]) && finite;
+            value_type const z = corrected_measurement(old_state, measurement, row);
+            finite = std::isfinite(z) && std::isfinite(expected.prediction[row]) &&
+                     std::isfinite(z - expected.prediction[row]) && finite;
             for (std::size_t column = 0U; column < state_size; ++column)
             {
                 finite = std::isfinite(expected.H[row][column]) && finite;
@@ -189,12 +186,9 @@ void verify_observation(state_type state, covariance_type covariance, residual_t
 #elif FORMAL_ESKF_PROOF_OBSERVATION == 4 || FORMAL_ESKF_PROOF_OBSERVATION == 5
     Status const status = formal_eskf::try_correct_magnetometer(state, covariance, measurement, reference, V, minimum,
                                                                 *state_pointer, *covariance_pointer);
-#elif FORMAL_ESKF_PROOF_OBSERVATION == 6
+#else
     Status const status = formal_eskf::try_correct_accelerometer(state, covariance, measurement, reference, V, minimum,
                                                                  *state_pointer, *covariance_pointer);
-#else
-    Status const status = formal_eskf::try_correct_accelerometer(
-        state, covariance, measurement, angular_rate, reference, V, minimum, *state_pointer, *covariance_pointer);
 #endif
     __ESBMC_assert(status == (prefix == Status::success ? result.status : prefix),
                    "E-OBS: exact validation failure or unchanged correction status");
@@ -202,8 +196,6 @@ void verify_observation(state_type state, covariance_type covariance, residual_t
                    "E-OBS: correction is neither skipped on eligible inputs nor called after model failure");
     __ESBMC_assert(RotationCall::count == (model >= 4U && model_eligible ? 1U : 0U),
                    "E-OBS: rotation executes only after model inputs are validated");
-    __ESBMC_assert(TermsCall::count == (model == 7U && model_eligible && expected.intermediate_finite ? 1U : 0U),
-                   "E-OBS: INS Jacobian assembly executes only after body-frame terms are finite");
     __ESBMC_assert(status == Status::success
                        ? same_state(*state_pointer, result.state) && same_matrix(*covariance_pointer, result.covariance)
                        : same_state(*state_pointer, state_before) &&
@@ -215,7 +207,7 @@ void verify_observation(state_type state, covariance_type covariance, residual_t
                                     : same_matrix(covariance, old_covariance),
                    "E-OBS: distinct prior covariance or unused output stays unchanged");
     __ESBMC_assert(same_matrix(measurement, old_measurement) && same_matrix(V, old_V) &&
-                       same_matrix(reference, old_reference) && same_matrix(angular_rate, old_angular_rate),
+                       same_matrix(reference, old_reference),
                    "E-OBS: all sensor/reference inputs remain unchanged");
 }
 

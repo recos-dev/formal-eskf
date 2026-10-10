@@ -50,7 +50,7 @@ parse_arguments()
                 printf 'step-correction selects full correction transactions and same-type injection/reset input frames. Mode-independent callers reuse both reset-mode producers; all also runs E-CORRECT/F-SOLVE dependencies.\n'
                 printf 'linalg selects actual storage/access, block/segment, arithmetic and reduction producers for the enumerated shapes. all also runs the reused normalization, product and covariance dependencies.\n'
                 printf 'scalar selects IEEE primitives, observed StandardMath dispatch and checked wrappers/aliases, plus reused wrapper/root dependencies. Pure libm summaries do not prove target library accuracy.\n'
-                printf 'observations selects eight sensor models/Jacobians and checked wrappers with ESKF_MAG_TILT=0 and all state/covariance aliases. all also runs the matching E-STEP-CORRECT/E-CORRECT/F-SOLVE dependencies; physical model validity and ESKF_MAG_TILT=1 are not claimed.\n'
+                printf 'observations selects eight sensor models/Jacobians and checked wrappers with ESKF_MAG_TILT=0 and all state/covariance aliases. all also runs the matching E-STEP-CORRECT/E-CORRECT/F-SOLVE dependencies; physical model validity and magnetic tilt protection are not claimed.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -828,8 +828,8 @@ run_linalg_suite()
 
 run_observations_suite()
 {
-    # Existing E-OBS evidence covers unrestricted magnetic correction only.
-    # The default protected build has a separate, pending E-MAG-TILT obligation.
+    # E-OBS covers unrestricted magnetic correction; default magnetic tilt
+    # protection has a separate, pending obligation.
     local BINARY64 MODEL SIZE MEASUREMENT ALIAS BASE_PROFILE
     local -a ARGUMENTS
     for BINARY64 in 0 1; do
@@ -837,11 +837,6 @@ run_observations_suite()
         PROFILE="observations-binary$((32 + 32 * BINARY64))-rotation-producer"
         verify verify_observation_rotation --proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
             -D FORMAL_ESKF_PROOF_OBSERVATION=4 -D ESKF_MAG_TILT=0
-        PROFILE="observations-binary$((32 + 32 * BINARY64))-terms-producer"
-        # Z3 avoids Bitwuzla's memory blow-up on these IEEE sign/product
-        # identities. Other observation profiles retain the default solver.
-        verify verify_observation_terms --proof-unwind 226 --z3 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
-            -D FORMAL_ESKF_PROOF_OBSERVATION=7 -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D ESKF_MAG_TILT=0
         for MODEL in 0 1 2 3 4 5 6 7; do
             SIZE=15
             MEASUREMENT=3
@@ -854,7 +849,6 @@ run_observations_suite()
                 -D "FORMAL_ESKF_PROOF_SIZE=${MEASUREMENT}" -D "FORMAL_ESKF_PROOF_OBSERVATION=${MODEL}"
                 -D ESKF_MAG_TILT=0)
             if ((MODEL >= 4)); then ARGUMENTS+=(-D FORMAL_ESKF_PROOF_OBSERVATION_ROTATION=1); fi
-            if ((MODEL == 7)); then ARGUMENTS+=(-D FORMAL_ESKF_PROOF_OBSERVATION_TERMS=1); fi
             SOURCE_FILE="${PROOF_DIR}/observation_models.cpp"
             PROFILE="${BASE_PROFILE}-jacobian"
             verify verify_observation_jacobian "${ARGUMENTS[@]}"

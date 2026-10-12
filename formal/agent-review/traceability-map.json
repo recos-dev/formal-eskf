@@ -3087,6 +3087,30 @@
       }
     },
     {
+      "id": "R-ACCELEROMETER-MAGNITUDE",
+      "title": "Fixed-coefficient accelerometer LPF and gravity-band diagnostic; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-ACCELEROMETER-MAGNITUDE: filtered gravity-band diagnostic"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/accelerometer_magnitude.hpp",
+            "symbol": "class AccelerometerMagnitude"
+          },
+          {
+            "file": "include/formal_eskf/runtime/accelerometer_magnitude.hpp",
+            "symbol": "AccelerometerMagnitude<Linalg>::update("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "R-IMU-DYNAMICS",
       "title": "Bias-corrected instantaneous IMU magnitude checks; Lean and ESBMC evidence pending",
       "references": {

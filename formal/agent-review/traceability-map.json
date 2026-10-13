@@ -2933,6 +2933,14 @@
           {
             "file": "include/formal_eskf/eskf/magnetometer.hpp",
             "symbol": "try_correct_magnetometer("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "MagneticReference read_magnetic_reference("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "void replay("
           }
         ],
         "esbmc": []

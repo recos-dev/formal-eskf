@@ -4,8 +4,8 @@
 Sensor inputs are sensor_combined, vehicle_gps_position and vehicle_magnetometer;
 vehicle_land_detected supplies optional at_rest metadata.
 PX4 estimator outputs are not inputs. Magnetic measurements initialize attitude
-only. Gravity correction requires complete clipping metadata and valid fusion
-conditions; legacy logs without clipping remain prediction/navigation-only.
+and provide gated corrections against a fixed, initialization-derived field.
+Gravity correction requires complete clipping metadata and valid fusion conditions.
 """
 
 import argparse
@@ -66,6 +66,53 @@ def initial_quaternion(ACCEL, MAG, DECLINATION):
     CY, SY = math.cos(YAW / 2), math.sin(YAW / 2)
     return [CR * CP * CY + SR * SP * SY, SR * CP * CY - CR * SP * SY,
             CR * SP * CY + SR * CP * SY, CR * CP * SY - SR * SP * CY]
+
+
+def magnetic_reference(Q, FIELD, ULOG):
+    """Freeze the causal seed field in NED; this is not an independent WMM reference."""
+    Q0, Q1, Q2, Q3 = Q
+    ROTATION = [[1 - 2 * (Q2 * Q2 + Q3 * Q3), 2 * (Q1 * Q2 - Q0 * Q3), 2 * (Q1 * Q3 + Q0 * Q2)],
+                [2 * (Q1 * Q2 + Q0 * Q3), 1 - 2 * (Q1 * Q1 + Q3 * Q3), 2 * (Q2 * Q3 - Q0 * Q1)],
+                [2 * (Q1 * Q3 - Q0 * Q2), 2 * (Q2 * Q3 + Q0 * Q1), 1 - 2 * (Q1 * Q1 + Q2 * Q2)]]
+    # The published topic is already calibrated and body-aligned. Do not apply
+    # CAL_MAG offsets again or import EKF2's learned magnetic bias estimates.
+    REFERENCE = [100.0 * dot(ROW, FIELD) for ROW in ROTATION]  # Gauss -> microtesla.
+    NOISE_STD = 100.0 * float(ULOG.initial_parameters["EKF2_MAG_NOISE"])
+    GATE_SIGMA = float(ULOG.initial_parameters["EKF2_MAG_GATE"])
+    if not finite([*REFERENCE, NOISE_STD, GATE_SIGMA]) or NOISE_STD <= 0 or GATE_SIGMA <= 0:
+        raise ValueError("invalid magnetic reference/noise/gate parameters")
+    return [*REFERENCE, NOISE_STD, GATE_SIGMA]
+
+
+def magnetic_rows(ULOG, MAG, TIMES, START, END):
+    """One calibrated measurement per message; reject known frame/source changes."""
+    for NAME in ("device_id", "calibration_count"):
+        if NAME in MAG:
+            VALUES = {int(VALUE) for TIME, VALUE in zip(TIMES, MAG[NAME]) if TIME <= END}
+            if len(VALUES) != 1:
+                raise ValueError(f"magnetometer {NAME} changes require a new replay/reference")
+    SELECTION = [DATA.data for DATA in ULOG.data_list
+                 if DATA.name == "sensor_selection" and DATA.multi_id == 0]
+    for DATA in SELECTION:
+        if "mag_device_id" in DATA:
+            IDS = {int(VALUE) for TIME, VALUE in zip(DATA["timestamp"], DATA["mag_device_id"])
+                   if int(TIME) <= END}
+            if len(IDS) > 1:
+                raise ValueError("selected magnetometer changes require a new replay/reference")
+    for TIME, NAME, _ in ULOG.changed_parameters:
+        if TIME <= END and NAME.startswith(("CAL_MAG", "SENS_BOARD", "EKF2_MAG_NOISE", "EKF2_MAG_GATE",
+                                           "EKF2_MAG_DECL")):
+            raise ValueError(f"changed {NAME} requires a new replay/reference")
+    ROWS = []
+    for INDEX, TIME in enumerate(TIMES):
+        if START < TIME <= END:
+            VALUES = [100.0 * VALUE for VALUE in xyz(MAG, "magnetometer_ga", INDEX)]
+            if not finite(VALUES):
+                raise ValueError("non-finite magnetometer reading")
+            ROWS.append([TIME, *VALUES])
+    if not ROWS:
+        raise ValueError("no magnetometer samples after initialization")
+    return ROWS
 
 
 def gps_reading(GPS, INDEX):
@@ -134,6 +181,8 @@ def prepare(ULOG, OUTPUT):
     # measurement. Biases remain unknown and are initialized to zero in C++.
     DECLINATION = float(ULOG.initial_parameters["EKF2_MAG_DECL"])
     Q = initial_quaternion(ACCEL, FIELD, math.radians(DECLINATION))
+    MAG_REFERENCE = magnetic_reference(Q, FIELD, ULOG)
+    MAG_ROWS = magnetic_rows(ULOG, MAG, MAG_TIMES, START, IMU_TIMES[-1])
     VALID = [(INDEX, gps_reading(GPS, INDEX)) for INDEX in range(len(GPS_TIMES))]
     VALID = [(INDEX, READING) for INDEX, READING in VALID if READING is not None]
     GPS_SEED = [(INDEX, READING) for INDEX, READING in VALID if GPS_TIMES[INDEX] <= START]
@@ -170,14 +219,24 @@ def prepare(ULOG, OUTPUT):
     FLAGS = imu_flags(ULOG, IMU, SEED[-1])
     write_csv(OUTPUT / "imu_flags.csv", "timestamp_us,at_rest,accelerometer_clipping", FLAGS)
     write_csv(OUTPUT / "navigation.csv", NAVIGATION_HEADER, GPS_ROWS)
+    write_csv(OUTPUT / "magnetic_reference.csv", "mn,me,md,noise_std,gate_sigma", [MAG_REFERENCE])
+    write_csv(OUTPUT / "magnetometer.csv", "timestamp_us,mx,my,mz", MAG_ROWS)
     return {"start_timestamp_us": START, "end_timestamp_us": IMU_TIMES[-1],
             "imu_rows": len(IMU_ROWS), "gnss_rows": len(GPS_ROWS),
+            "magnetometer_rows": len(MAG_ROWS),
             "gnss_invalid_rows": len(GPS_TIMES) - len(VALID),
             "gnss_seed_timestamp_us": GPS_TIMES[ORIGIN_INDEX],
             "gnss_valid_rows_outside_replay": len(VALID) - len(GPS_ROWS),
             "origin_lat_deg": math.degrees(LAT0), "origin_lon_deg": math.degrees(LON0),
             "origin_alt_ellipsoid_m": ALT0, "initialization": "first 0.2 s accel/mag; latest valid GNSS",
             "magnetic_declination_deg": DECLINATION, "gnss_delay_compensation_ms": 0,
+            "magnetic_reference_n_ut": MAG_REFERENCE[:3],
+            "magnetic_noise_std_ut": MAG_REFERENCE[3], "magnetic_gate_sigma": MAG_REFERENCE[4],
+            "magnetic_reference_source": "R(q_seed) times first 0.2 s mean field; not independent WMM/truth",
+            "magnetic_measurement": "vehicle_magnetometer instance 0, calibrated body FRD, Gauss times 100 -> microtesla",
+            "magnetic_timing": "topic timestamp on following IMU tick; no sensor-delay compensation",
+            "magnetic_calibration": "use published calibration; no additional CAL_MAG or EKF2_MAGBIAS subtraction",
+            "magnetic_source_limits": "reject recorded source/calibration changes; missing metadata cannot establish absence of changes",
             "at_rest_unavailable_rows": sum(ROW[1] == -1 for ROW in FLAGS),
             "clipping_unavailable_rows": sum(ROW[2] == -1 for ROW in FLAGS),
             "timing": "GNSS message timestamp, fused on following IMU tick; no physical latency compensation",
@@ -186,7 +245,7 @@ def prepare(ULOG, OUTPUT):
             "claim": "wiring/numerical smoke test, not accuracy or statistical consistency validation"}
 
 
-def run_replay(LOG_FILE, BINARY):
+def run_replay(LOG_FILE, BINARY, COMPARE_MAG=False):
     BINARY = BINARY.resolve()
     if not BINARY.is_file() or not os.access(BINARY, os.X_OK):
         raise ValueError(f"replay executable not found or not executable: {BINARY}; build it with CMake first")
@@ -202,9 +261,9 @@ def run_replay(LOG_FILE, BINARY):
         raise ValueError("ULog and replay executable must be outside the replay output directory")
     from pyulog import ULog
     from tqdm import tqdm as TQDM
-    with TQDM(total=3, desc="Read ULog", dynamic_ncols=True, bar_format=PROGRESS_FORMAT) as PROGRESS:
+    with TQDM(total=3 + int(COMPARE_MAG), desc="Read ULog", dynamic_ncols=True, bar_format=PROGRESS_FORMAT) as PROGRESS:
         ULOG = ULog(str(LOG_FILE), message_name_filter_list=[
-            "sensor_combined", "vehicle_gps_position", "vehicle_magnetometer", "vehicle_land_detected"])
+            "sensor_combined", "vehicle_gps_position", "vehicle_magnetometer", "vehicle_land_detected", "sensor_selection"])
         PROGRESS.update(1)
         PROGRESS.set_description_str("Prepare CSV / metadata")
         if OUTPUT.exists():
@@ -222,14 +281,23 @@ def run_replay(LOG_FILE, BINARY):
         with (OUTPUT / "input/source.json").open("x") as STREAM:
             json.dump(META, STREAM, indent=2, allow_nan=False)
             STREAM.write("\n")
-        PROGRESS.write(f"Prepared {META['imu_rows']} IMU rows, {META['gnss_rows']} GNSS events")
+        PROGRESS.write(f"Prepared {META['imu_rows']} IMU rows, {META['gnss_rows']} GNSS events, "
+                       f"{META['magnetometer_rows']} magnetometer events")
         PROGRESS.update(1)
         PROGRESS.set_description_str("Run C++ replay")
         RESULT = subprocess.run([str(BINARY), str(OUTPUT / "input"), str(OUTPUT / "result")],
                                 check=True, stdout=subprocess.PIPE, text=True)
         PROGRESS.update(1)
+        if COMPARE_MAG:
+            PROGRESS.set_description_str("Run without mag correction")
+            BASELINE = subprocess.run([str(BINARY), str(OUTPUT / "input"), str(OUTPUT / "result_no_mag"), "--no-mag"],
+                                      check=True, stdout=subprocess.PIPE, text=True)
+            PROGRESS.update(1)
         PROGRESS.set_description_str("Replay complete")
     print(RESULT.stdout, end="", flush=True)
+    if COMPARE_MAG:
+        print("Without mag correction (same inputs and initialization):", flush=True)
+        print(BASELINE.stdout, end="", flush=True)
     print(f"Output: {OUTPUT}", flush=True)
     return OUTPUT
 
@@ -241,12 +309,14 @@ def main():
     PARSER.add_argument("--binary", type=Path, default=Path("build/demo/replay_ins"),
                         help="prebuilt C++ executable (default: build/demo/replay_ins)")
     PARSER.add_argument("--plot", action="store_true", help="save PNG plots and display them with matplotlib")
+    PARSER.add_argument("--compare-mag", action="store_true",
+                        help="also replay identical inputs without mag correction; --plot adds the comparison")
     ARGS = PARSER.parse_args()
     try:
         if ARGS.plot:
             # Check the optional dependency before creating the output directory.
             import matplotlib.pyplot
-        OUTPUT = run_replay(ARGS.ulog, ARGS.binary)
+        OUTPUT = run_replay(ARGS.ulog, ARGS.binary, ARGS.compare_mag)
         if ARGS.plot:
             plot_replay(OUTPUT)
     except subprocess.CalledProcessError as ERROR:

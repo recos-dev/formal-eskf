@@ -37,13 +37,50 @@ def write_csv(PATH, HEADER, ROWS):
         WRITER.writerows(ROWS)
 
 
+def plot_magnetic_comparison(OUTPUT, STATE):
+    """Same-input A/B differences, not accuracy against an independent truth."""
+    import matplotlib.pyplot as PLOT
+    import numpy as NP
+
+    BASELINE = NP.genfromtxt(OUTPUT / "result_no_mag/state.csv", delimiter=",", names=True, ndmin=1)
+    if not NP.array_equal(STATE["timestamp_us"], BASELINE["timestamp_us"]):
+        raise ValueError("magnetometer comparison requires identical state timestamps")
+    TIME = (STATE["timestamp_us"] - STATE["timestamp_us"][0]) * 1e-6
+    FIGURE, AXES = PLOT.subplots(2, 2, figsize=(12, 8), constrained_layout=True)
+    FIGURE.suptitle("Mag correction on / off — same initialization and inputs; not ground truth")
+    YAWS = []
+    for DATA, LABEL, STYLE in ((BASELINE, "No mag correction", "--"), (STATE, "Mag correction", "-")):
+        Q0, Q1, Q2, Q3 = (DATA[KEY] for KEY in ("q0", "q1", "q2", "q3"))
+        YAW = NP.unwrap(NP.arctan2(2 * (Q0 * Q3 + Q1 * Q2), 1 - 2 * (Q2 * Q2 + Q3 * Q3)))
+        YAWS.append(YAW)
+        AXES[0, 0].plot(TIME, NP.degrees(YAW), STYLE, label=LABEL, linewidth=1)
+        AXES[0, 1].plot(DATA["pe"], DATA["pn"], STYLE, label=LABEL, linewidth=1)
+    # Wrap the difference rather than subtracting separately unwrapped branches.
+    DELTA = YAWS[1] - YAWS[0]
+    AXES[1, 0].plot(TIME, NP.degrees(NP.arctan2(NP.sin(DELTA), NP.cos(DELTA))))
+    DISTANCE = NP.sqrt(sum((STATE[KEY] - BASELINE[KEY])**2 for KEY in ("pn", "pe", "pd")))
+    AXES[1, 1].plot(TIME, DISTANCE)
+    AXES[0, 0].set(title="Yaw", xlabel="Elapsed time [s]", ylabel="Unwrapped yaw [deg]")
+    AXES[0, 1].set(title="Horizontal trajectory", xlabel="East [m]", ylabel="North [m]")
+    AXES[0, 1].set_aspect("equal", adjustable="datalim")
+    AXES[1, 0].set(title="Yaw difference (on minus off)", xlabel="Elapsed time [s]", ylabel="Wrapped difference [deg]")
+    AXES[1, 1].set(title="3D position separation", xlabel="Elapsed time [s]", ylabel="Distance [m]")
+    for AX in AXES.flat:
+        AX.grid(True, alpha=0.3)
+    AXES[0, 0].legend()
+    AXES[0, 1].legend()
+    return FIGURE
+
+
 def plot_replay(OUTPUT, SOURCE_LABEL="GNSS"):
     """Adapt the original plot.py views to this demo's NED/quaternion CSVs."""
     import matplotlib.pyplot as PLOT
     import numpy as NP
     from tqdm import tqdm as TQDM
 
-    with TQDM(total=9, desc="Read plot CSV", dynamic_ncols=True, bar_format=PROGRESS_FORMAT) as PROGRESS:
+    COMPARE_MAG = (OUTPUT / "result_no_mag/state.csv").is_file()
+    with TQDM(total=9 + 2 * int(COMPARE_MAG), desc="Read plot CSV", dynamic_ncols=True,
+              bar_format=PROGRESS_FORMAT) as PROGRESS:
         STATE = NP.genfromtxt(OUTPUT / "result/state.csv", delimiter=",", names=True, ndmin=1)
         NAVIGATION = NP.genfromtxt(OUTPUT / "input/navigation.csv", delimiter=",", names=True, ndmin=1)
         START = STATE["timestamp_us"][0]
@@ -117,6 +154,11 @@ def plot_replay(OUTPUT, SOURCE_LABEL="GNSS"):
                xlabel="East [m]", ylabel="North [m]", zlabel="Up (-Down) [m]")
         AX.legend()
         FIGURES.append(("trajectory_3d", FIGURE))
+
+        if COMPARE_MAG:
+            PROGRESS.update(1)
+            PROGRESS.set_description_str("Build mag correction comparison")
+            FIGURES.append(("magnetometer_comparison", plot_magnetic_comparison(OUTPUT, STATE)))
 
         PROGRESS.update(1)
         PLOT_DIR = OUTPUT / "plots"

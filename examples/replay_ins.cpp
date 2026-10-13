@@ -17,6 +17,8 @@
 #include <iomanip>
 #include <initializer_list>
 #include <iostream>
+#include <limits>
+#include <numbers>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -25,6 +27,7 @@
 
 #include <formal_eskf/eskf/eskf.hpp>
 #include <formal_eskf/runtime/accelerometer.hpp>
+#include <formal_eskf/runtime/magnetometer.hpp>
 #include "replay_accelerometer.hpp"
 #include "replay_conditions.hpp"
 #if defined(FORMAL_ESKF_REPLAY_PX4_MATRIX)
@@ -50,6 +53,11 @@
 // Gravity observation settings; independent of prediction's ACCEL_VAR.
 #define ACCEL_OBS_STD GRAVITY      // m/s^2; effective pseudo-observation weight.
 #define ACCEL_OBS_PERIOD_US 10000U // Nominal; accumulate whole IMU samples.
+
+// Replay field checks; not calibrated disturbance-detection guarantees.
+#define MAG_STRENGTH_TOL 20.0    // microtesla.
+#define MAG_INCLINATION_TOL 20.0 // degrees.
+#define MAG_MIN_HORIZONTAL 5.0   // microtesla; weak-heading guard, not an observability proof.
 
 // Navigation standard-deviation floors, shared by initialization and correction.
 #define POS_XY_STD_MIN 1.0 // m.
@@ -185,6 +193,45 @@ double variance(double accuracy, double floor)
     return sigma * sigma;
 }
 
+struct MagneticReference
+{
+    Vector3 m_n{};
+    Linalg::matrix_type<3U, 3U> V{};
+    double gate_sigma{};
+};
+
+MagneticReference read_magnetic_reference(std::filesystem::path const & input)
+{
+    auto stream = open_csv(input / "magnetic_reference.csv", "mn,me,md,noise_std,gate_sigma");
+    std::array<double, 5U> row{};
+    std::array<double, 5U> extra{};
+    if (!read_row(stream, row) || read_row(stream, extra))
+    {
+        throw std::runtime_error("expected exactly one magnetic reference");
+    }
+    auto const & [mn, me, md, noise_std, gate_sigma] = row;
+    double const noise_variance = noise_std * noise_std;
+    if (!(noise_std > 0.0) || !(gate_sigma > 0.0) || !std::isfinite(noise_variance) ||
+        noise_variance < std::numeric_limits<double>::min() || std::hypot(mn, me) < MAG_MIN_HORIZONTAL)
+    {
+        throw std::runtime_error("invalid magnetic reference/noise/gate or insufficient horizontal field");
+    }
+    return {vector3(mn, me, md), Linalg::matrix_type<3U, 3U>::identity() * noise_variance, gate_sigma};
+}
+
+std::string_view fusion_outcome(formal_eskf::runtime::FusionDecision decision)
+{
+    switch (decision)
+    {
+    case formal_eskf::runtime::FusionDecision::fused:
+        return "fused";
+    case formal_eskf::runtime::FusionDecision::rejected:
+        return "rejected";
+    default:
+        return "failed";
+    }
+}
+
 Types::parameter_type parameters()
 {
     Types::parameter_type result;
@@ -296,11 +343,23 @@ void write_state(std::ostream & stream, std::uint64_t time, State const & state,
     stream << '\n';
 }
 
-void replay(std::filesystem::path const & input, std::filesystem::path const & output)
+void replay(std::filesystem::path const & input, std::filesystem::path const & output, bool mag_enabled)
 {
     auto initial = open_csv(input / "initial.csv", "timestamp_us,q0,q1,q2,q3,vn,ve,vd,eph,epv,speed_accuracy");
     auto imu = open_csv(input / "imu.csv", "timestamp_us,integral_dt_us,fx,fy,fz,wx,wy,wz");
     auto navigation = open_csv(input / "navigation.csv", "timestamp_us,pn,pe,pd,vn,ve,vd,eph,epv,speed_accuracy");
+    std::ifstream magnetometer;
+    MagneticReference magnetic;
+    bool const has_magnetic_input = std::filesystem::exists(input / "magnetometer.csv");
+    if (has_magnetic_input != std::filesystem::exists(input / "magnetic_reference.csv"))
+    {
+        throw std::runtime_error("magnetometer.csv and magnetic_reference.csv must be supplied together");
+    }
+    if (has_magnetic_input)
+    {
+        magnetic = read_magnetic_reference(input);
+        magnetometer = open_csv(input / "magnetometer.csv", "timestamp_us,mx,my,mz");
+    }
     std::ifstream flags;
     if (std::filesystem::exists(input / "imu_flags.csv"))
     {
@@ -309,6 +368,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::array<double, 11U> seed{};
     std::array<double, 8U> imu_row{};
     std::array<double, 10U> navigation_row{};
+    std::array<double, 4U> magnetic_row{};
     if (!read_row(initial, seed) || !read_row(imu, imu_row))
     {
         throw std::runtime_error("empty initial state or IMU input");
@@ -339,6 +399,14 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     auto previous_imu = imu_sample(imu_row);
     std::uint64_t last_navigation_time = time;
     bool has_navigation = read_row(navigation, navigation_row);
+    std::uint64_t last_magnetic_time = time;
+    bool has_magnetometer = has_magnetic_input && read_row(magnetometer, magnetic_row);
+    if (has_magnetic_input && !has_magnetometer)
+    {
+        throw std::runtime_error("empty magnetometer input");
+    }
+    auto const field_parameters = formal_eskf::runtime::MagneticFieldParameters<double>{
+        MAG_STRENGTH_TOL, MAG_INCLINATION_TOL * std::numbers::pi / 180.0, 0.0, MAG_MIN_HORIZONTAL};
     if (!std::filesystem::create_directory(output))
     {
         throw std::runtime_error("output directory already exists: " + output.string());
@@ -347,10 +415,15 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::ofstream updates(output / "navigation_updates.csv");
     std::ofstream condition_log(output / "fusion_conditions.csv");
     std::ofstream accel_updates(output / "accelerometer_updates.csv");
+    std::ofstream mag_updates(output / "magnetometer_updates.csv");
     states.exceptions(std::ios::failbit | std::ios::badbit);
     updates.exceptions(std::ios::failbit | std::ios::badbit);
     condition_log.exceptions(std::ios::failbit | std::ios::badbit);
     accel_updates.exceptions(std::ios::failbit | std::ios::badbit);
+    mag_updates.exceptions(std::ios::failbit | std::ios::badbit);
+    mag_updates << std::setprecision(17);
+    mag_updates << "source_timestamp_us,fusion_timestamp_us,outcome,status,field_valid,strength_rejected,"
+                   "inclination_rejected,horizontal_rejected,innovation_valid,ratio_x,ratio_y,ratio_z\n";
     accel_updates << std::setprecision(17);
     accel_updates << "timestamp_us,interval_us,fx,fy,fz,clipping_mask,lpf_squared_norm,within_gravity_band,"
                      "tilt_aligned,horizontal_aiding,at_rest,outcome\n";
@@ -372,6 +445,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::size_t unknown_clipping_samples = 0U, available_condition_samples = 0U;
     std::size_t accel_observations = 0U, accel_corrections = 0U, accel_rejected = 0U, accel_unavailable = 0U;
     std::uint64_t accel_interval_min_us = 0U, accel_interval_max_us = 0U, accel_interval_total_us = 0U;
+    std::size_t mag_events = 0U, mag_corrections = 0U, mag_rejected = 0U;
+    std::uint64_t mag_max_alignment_us = 0U;
     while (read_row(imu, imu_row))
     {
         auto const next_time = timestamp(imu_row[0U]);
@@ -466,11 +541,49 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                           << fusion_conditions.horizontal_aiding(time) << ',' << sample_flags[0U] << ',' << outcome
                           << '\n';
         }
+        // Consume each magnetic event once, after this tick's navigation/gravity
+        // updates. Message-time alignment only; no delay compensation or yaw reset.
+        while (has_magnetometer && timestamp(magnetic_row[0U]) <= time)
+        {
+            auto const source_time = timestamp(magnetic_row[0U]);
+            if (source_time <= last_magnetic_time)
+            {
+                throw std::runtime_error("Magnetometer timestamps must increase after initialization");
+            }
+            ++mag_events;
+            mag_max_alignment_us = std::max(mag_max_alignment_us, time - source_time);
+            if (mag_enabled)
+            {
+                // GNSS availability alone does not establish independent heading
+                // observability. Skip only that optional check, never the innovation gate.
+                auto const result = formal_eskf::runtime::fuse_magnetometer(
+                    state, covariance, vector3(magnetic_row[1U], magnetic_row[2U], magnetic_row[3U]), magnetic.m_n,
+                    magnetic.V, field_parameters, false, QUAT_MIN_NORM, magnetic.gate_sigma, state, covariance);
+                auto const & fusion = result.fusion;
+                auto const & field = result.field;
+                mag_updates << source_time << ',' << time << ',' << fusion_outcome(fusion.decision) << ','
+                            << static_cast<int>(fusion.status) << ',' << field.diagnostics_valid << ','
+                            << field.failures.strength << ',' << field.failures.inclination << ','
+                            << field.failures.horizontal_field << ',' << fusion.diagnostics_valid << ','
+                            << fusion.test_ratio(0U) << ',' << fusion.test_ratio(1U) << ',' << fusion.test_ratio(2U)
+                            << '\n';
+                check_status(fusion.status, "magnetometer correction", time);
+                mag_corrections += fusion.decision == formal_eskf::runtime::FusionDecision::fused ? 1U : 0U;
+                mag_rejected += fusion.decision == formal_eskf::runtime::FusionDecision::rejected ? 1U : 0U;
+                check_state(state, covariance);
+            }
+            else
+            {
+                mag_updates << source_time << ',' << time << ",disabled,0,0,0,0,0,0,0,0,0\n";
+            }
+            last_magnetic_time = source_time;
+            has_magnetometer = read_row(magnetometer, magnetic_row);
+        }
         write_state(states, time, state, covariance);
     }
-    if (has_navigation || predictions == 0U || corrections == 0U)
+    if (has_navigation || has_magnetometer || predictions == 0U || corrections == 0U)
     {
-        throw std::runtime_error("replay incomplete: unconsumed navigation or no prediction/correction steps");
+        throw std::runtime_error("replay incomplete: unconsumed sensor data or no prediction/navigation corrections");
     }
     std::array<double, 3U> extra_flags{};
     if (flags.is_open() && read_row(flags, extra_flags))
@@ -481,6 +594,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     updates.close();
     condition_log.close();
     accel_updates.close();
+    mag_updates.close();
     std::ofstream summary(output / "summary.json");
     summary.exceptions(std::ios::failbit | std::ios::badbit);
     summary << std::setprecision(17) << "{\n  \"result\": \"smoke_pass\",\n  \"accuracy_validated\": false,"
@@ -506,7 +620,17 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << (accel_observations == 0U
                     ? 0.0
                     : static_cast<double>(accel_interval_total_us) / static_cast<double>(accel_observations))
-            << "\n}\n";
+            << ",\n  \"magnetometer_enabled\": " << (mag_enabled && has_magnetic_input ? "true" : "false")
+            << ",\n  \"magnetometer_events\": " << mag_events
+            << ",\n  \"magnetometer_corrections\": " << mag_corrections
+            << ",\n  \"magnetometer_rejected\": " << mag_rejected
+            << ",\n  \"magnetometer_max_alignment_us\": " << mag_max_alignment_us
+            << ",\n  \"magnetometer_observation_variance\": " << magnetic.V(0U, 0U)
+            << ",\n  \"magnetometer_gate_sigma\": " << magnetic.gate_sigma
+            << ",\n  \"magnetometer_tilt_protection\": " << (ESKF_MAG_TILT ? "true" : "false")
+            << ",\n  \"magnetometer_strength_tolerance_ut\": " << MAG_STRENGTH_TOL
+            << ",\n  \"magnetometer_inclination_tolerance_deg\": " << MAG_INCLINATION_TOL
+            << ",\n  \"magnetometer_minimum_horizontal_ut\": " << MAG_MIN_HORIZONTAL << "\n}\n";
     summary.close();
     std::cout << "IMU predictions: " << predictions << "\nNavigation events: " << corrections
               << " (horizontal position + vertical position + 3D velocity)\nCSV interval gap holds: " << gaps << " ("
@@ -515,21 +639,23 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
               << "Accelerometer observations: " << accel_observations << " (" << accel_corrections << " fused, "
               << accel_rejected << " rejected, " << accel_unavailable << " metadata unavailable)\n"
               << "Accelerometer interval: target " << ACCEL_OBS_PERIOD_US << " us, actual " << accel_interval_min_us
-              << ".." << accel_interval_max_us << " us\n";
+              << ".." << accel_interval_max_us << " us\n"
+              << "Magnetometer events: " << mag_events << " (" << mag_corrections << " fused, " << mag_rejected
+              << " rejected, " << (mag_enabled ? 0U : mag_events) << " disabled)\n";
 }
 
 } /* namespace */
 
 int main(int argc, char ** argv)
 {
-    if (argc != 3)
+    if (argc != 3 && !(argc == 4 && std::string_view(argv[3]) == "--no-mag"))
     {
-        std::cerr << "Usage: replay_ins INPUT_DIR NEW_OUTPUT_DIR\n";
+        std::cerr << "Usage: replay_ins INPUT_DIR NEW_OUTPUT_DIR [--no-mag]\n";
         return 2;
     }
     try
     {
-        replay(argv[1], argv[2]);
+        replay(argv[1], argv[2], argc == 3);
     }
     catch (std::exception const & error)
     {

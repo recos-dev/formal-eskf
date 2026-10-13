@@ -221,6 +221,44 @@ Physical disturbance detection, attitude/reference correctness and threshold tun
 
 This is one stateless observation transaction, not full sensor health qualification, fusion lifecycle, persistent-rejection recovery, yaw initialization or adapter wiring. Native tests cover both configurations and scalar formats, full correlated covariance, all 64 INS bias masks, legal aliases and stage failures. Lean/ESBMC evidence remains pending; existing ungated observation/correction proofs do not discharge these two runtime requirements.
 
+#### Replay magnetic observations
+
+The PX4 replay supplies calibrated body-FRD `vehicle_magnetometer` instance 0
+observations in microtesla (Gauss multiplied by 100). Do not repeat sensor
+calibration or import the external estimator's learned magnetic bias. Freeze
+`m_n = R(q_seed) * mean(m_b_seed)` from the same causal 0.2 s alignment window
+already used for initialization. This assumes that initial field is suitable;
+it is not an independent WMM reference or evidence of magnetic health.
+
+- Optional `magnetometer.csv` and `magnetic_reference.csv` must occur together;
+  without both, existing navigation/accelerometer replay remains unchanged.
+  The reference row supplies NED field, per-axis noise standard deviation and
+  gate sigma. PX4 preparation converts logged `EKF2_MAG_NOISE` to microtesla
+  before squaring for `V = sigma^2 I`, and uses logged `EKF2_MAG_GATE`.
+  The existing log gives approximately `sigma=5 microtesla`, `V=25 I`, gate 3.
+- Replay field guards are explicitly 20 microtesla strength tolerance,
+  20 degrees inclination tolerance and 5 microtesla minimum horizontal field.
+  The first two use the [PX4 v1.16.2 parameter defaults](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/params_magnetometer.yaml).
+  The horizontal guard is a replay choice (one nominal noise sigma for this
+  log), not a PX4 rule or validated heading-accuracy bound. No independent
+  heading-observability detector is supplied: pass `heading_observable=false`,
+  retaining field checks and the innovation gate. Do not retune to match output.
+- Consume each new topic-timestamped magnetic sample once at the following IMU
+  tick, after navigation and any gravity correction, using the current prior.
+  Record the alignment offset; no physical sensor-delay compensation is claimed.
+  Call `runtime::fuse_magnetometer`, preserving `ESKF_MAG_TILT` and default bias
+  permissions. Record outcome/status, field failures and valid innovation ratios
+  in `magnetometer_updates.csv`. Rejection continues; numerical failure is logged
+  and terminates replay. No lifecycle, automatic yaw/state reset or restart.
+- Reject recorded sensor/calibration/frame or magnetic parameter changes that
+  invalidate the frozen reference/settings. Missing change metadata remains a
+  limitation, not evidence that the source never changed.
+- `--compare-mag` runs the same prepared inputs and initialization twice; the
+  C++ `--no-mag` path disables only magnetic correction. Plots report yaw/path
+  differences, not accuracy. Existing initialization still uses magnetometer
+  data in both runs. Missing-input and disabled paths must preserve the prior
+  replay's state/navigation results. KITTI supplies no magnetic input.
+
 ### R-MAGNETOMETER-LIFECYCLE: magnetic health and fusion lifecycle
 
 `runtime::MagnetometerFusion` is a single-writer metadata controller for one selected magnetic source and one three-axis rejection group. It composes the actual `R-MAGNETIC-FIELD` result with `R-MAGNETOMETER-FUSION`, without owning their numerical inputs or changing ESKF state/P. `ready` is an explicit caller premise covering alignment, reference validity, estimator validity and aiding policy; `enabled` is separate configuration permission.

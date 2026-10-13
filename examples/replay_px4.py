@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Replay a legacy PX4 ULog through the prebuilt C++ INS example.
 
-Only sensor_combined, vehicle_gps_position and vehicle_magnetometer are consumed.
+Sensor inputs are sensor_combined, vehicle_gps_position and vehicle_magnetometer;
+vehicle_land_detected supplies optional at_rest metadata.
 PX4 estimator outputs are not inputs. Magnetic measurements initialize attitude
 only; this first replay does not fuse magnetometer or accelerometer corrections.
 """
@@ -79,6 +80,37 @@ def gps_reading(GPS, INDEX):
     return LAT, LON, ALT, VELOCITY, ACCURACY
 
 
+def imu_flags(ULOG, IMU, START_INDEX):
+    """Causal sensor flags; missing data is -1, never inferred from landed/EKF outputs."""
+    LAND = [DATA.data for DATA in ULOG.data_list
+            if DATA.name == "vehicle_land_detected" and DATA.multi_id == 0]
+    if len(LAND) > 1:
+        raise ValueError("multiple vehicle_land_detected instance 0 topics")
+    LAND = LAND[0] if LAND else None
+    LAND_TIMES = timestamps(LAND) if LAND is not None and "at_rest" in LAND else []
+    CLIPPING = IMU.get("accelerometer_clipping")
+    LAND_INDEX = -1
+    ROWS = []
+    for INDEX in range(START_INDEX, len(IMU["timestamp"])):
+        TIME = int(IMU["timestamp"][INDEX])
+        while LAND_INDEX + 1 < len(LAND_TIMES) and LAND_TIMES[LAND_INDEX + 1] <= TIME:
+            LAND_INDEX += 1
+        AT_REST = -1
+        if LAND_INDEX >= 0 and TIME - LAND_TIMES[LAND_INDEX] < 3000000:
+            VALUE = LAND["at_rest"][LAND_INDEX]
+            if VALUE not in (0, 1):
+                raise ValueError("invalid at_rest flag")
+            AT_REST = int(VALUE)
+        MASK = -1
+        if CLIPPING is not None:
+            VALUE = float(CLIPPING[INDEX])
+            if not math.isfinite(VALUE) or not VALUE.is_integer() or not 0 <= VALUE <= 7:
+                raise ValueError("invalid accelerometer clipping mask")
+            MASK = int(VALUE)
+        ROWS.append([TIME, AT_REST, MASK])
+    return ROWS
+
+
 def prepare(ULOG, OUTPUT):
     IMU = topic(ULOG, "sensor_combined")
     GPS = topic(ULOG, "vehicle_gps_position")
@@ -134,6 +166,8 @@ def prepare(ULOG, OUTPUT):
     OUTPUT.mkdir(parents=True, exist_ok=False)
     write_csv(OUTPUT / "initial.csv", INITIAL_HEADER, [[START, *Q, *V0, *ACCURACY0]])
     write_csv(OUTPUT / "imu.csv", IMU_HEADER, IMU_ROWS)
+    FLAGS = imu_flags(ULOG, IMU, SEED[-1])
+    write_csv(OUTPUT / "imu_flags.csv", "timestamp_us,at_rest,accelerometer_clipping", FLAGS)
     write_csv(OUTPUT / "navigation.csv", NAVIGATION_HEADER, GPS_ROWS)
     return {"start_timestamp_us": START, "end_timestamp_us": IMU_TIMES[-1],
             "imu_rows": len(IMU_ROWS), "gnss_rows": len(GPS_ROWS),
@@ -143,6 +177,8 @@ def prepare(ULOG, OUTPUT):
             "origin_lat_deg": math.degrees(LAT0), "origin_lon_deg": math.degrees(LON0),
             "origin_alt_ellipsoid_m": ALT0, "initialization": "first 0.2 s accel/mag; latest valid GNSS",
             "magnetic_declination_deg": DECLINATION, "gnss_delay_compensation_ms": 0,
+            "at_rest_unavailable_rows": sum(ROW[1] == -1 for ROW in FLAGS),
+            "clipping_unavailable_rows": sum(ROW[2] == -1 for ROW in FLAGS),
             "timing": "GNSS message timestamp, fused on following IMU tick; no physical latency compensation",
             "height": "ellipsoidal GNSS altitude projected to fixed local NED; no barometer/rangefinder",
             "imu_gap_policy": "hold previous IMU rate over missing interval; report every gap",
@@ -167,7 +203,7 @@ def run_replay(LOG_FILE, BINARY):
     from tqdm import tqdm as TQDM
     with TQDM(total=3, desc="Read ULog", dynamic_ncols=True, bar_format=PROGRESS_FORMAT) as PROGRESS:
         ULOG = ULog(str(LOG_FILE), message_name_filter_list=[
-            "sensor_combined", "vehicle_gps_position", "vehicle_magnetometer"])
+            "sensor_combined", "vehicle_gps_position", "vehicle_magnetometer", "vehicle_land_detected"])
         PROGRESS.update(1)
         PROGRESS.set_description_str("Prepare CSV / metadata")
         if OUTPUT.exists():

@@ -3129,6 +3129,14 @@
           {
             "file": "include/formal_eskf/runtime/accelerometer_conditions.hpp",
             "symbol": "check_accelerometer_fusion_conditions("
+          },
+          {
+            "file": "examples/replay_conditions.hpp",
+            "symbol": "class ReplayFusionConditions"
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "std::array<int, 2U> read_imu_flags("
           }
         ],
         "esbmc": []

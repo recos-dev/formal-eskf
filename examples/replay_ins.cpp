@@ -24,6 +24,7 @@
 #include <system_error>
 
 #include <formal_eskf/eskf/eskf.hpp>
+#include "replay_conditions.hpp"
 #if defined(FORMAL_ESKF_REPLAY_PX4_MATRIX)
 #include <formal_eskf/linalg/backend/px4_matrix.hpp>
 #else
@@ -71,6 +72,7 @@ using Covariance = Types::error_covariance_type;
 using Vector3 = Linalg::vector_type<3U>;
 using Imu = Types::imu_sample_type;
 using formal_eskf::Status;
+using FusionConditions = formal_eskf::example::ReplayFusionConditions<Linalg>;
 
 std::ifstream open_csv(std::filesystem::path const & path, std::string_view expected_header)
 {
@@ -149,6 +151,21 @@ Vector3 vector3(double x, double y, double z) { return Vector3::from_row_major({
 Imu imu_sample(std::array<double, 8U> const & row)
 {
     return {vector3(row[2U], row[3U], row[4U]), vector3(row[5U], row[6U], row[7U])};
+}
+
+std::array<int, 2U> read_imu_flags(std::ifstream & stream, std::uint64_t time)
+{
+    if (!stream.is_open())
+    {
+        return {-1, -1};
+    }
+    std::array<double, 3U> row{};
+    if (!read_row(stream, row) || timestamp(row[0U]) != time || row[1U] < -1.0 || row[1U] > 1.0 ||
+        std::trunc(row[1U]) != row[1U] || row[2U] < -1.0 || row[2U] > 7.0 || std::trunc(row[2U]) != row[2U])
+    {
+        throw std::runtime_error("IMU flags must match the sample timestamp and flag domains");
+    }
+    return {static_cast<int>(row[1U]), static_cast<int>(row[2U])};
 }
 
 double variance(double accuracy, double floor)
@@ -277,6 +294,11 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     auto initial = open_csv(input / "initial.csv", "timestamp_us,q0,q1,q2,q3,vn,ve,vd,eph,epv,speed_accuracy");
     auto imu = open_csv(input / "imu.csv", "timestamp_us,integral_dt_us,fx,fy,fz,wx,wy,wz");
     auto navigation = open_csv(input / "navigation.csv", "timestamp_us,pn,pe,pd,vn,ve,vd,eph,epv,speed_accuracy");
+    std::ifstream flags;
+    if (std::filesystem::exists(input / "imu_flags.csv"))
+    {
+        flags = open_csv(input / "imu_flags.csv", "timestamp_us,at_rest,accelerometer_clipping");
+    }
     std::array<double, 11U> seed{};
     std::array<double, 8U> imu_row{};
     std::array<double, 10U> navigation_row{};
@@ -302,6 +324,9 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                  "initial attitude", time);
     auto covariance = initial_covariance(horizontal_accuracy, vertical_accuracy, speed_accuracy);
     auto const settings = parameters();
+    FusionConditions fusion_conditions;
+    // Consume seed metadata, but initialization is not a successful aiding event.
+    (void)read_imu_flags(flags, time);
     auto previous_imu = imu_sample(imu_row);
     std::uint64_t last_navigation_time = time;
     bool has_navigation = read_row(navigation, navigation_row);
@@ -311,8 +336,13 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     }
     std::ofstream states(output / "state.csv");
     std::ofstream updates(output / "navigation_updates.csv");
+    std::ofstream condition_log(output / "fusion_conditions.csv");
     states.exceptions(std::ios::failbit | std::ios::badbit);
     updates.exceptions(std::ios::failbit | std::ios::badbit);
+    condition_log.exceptions(std::ios::failbit | std::ios::badbit);
+    condition_log << std::setprecision(17);
+    condition_log << "timestamp_us,tilt_variance,tilt_aligned,horizontal_aiding,at_rest,accelerometer_clipping,"
+                     "conditions_available\n";
     states << std::setprecision(17);
     states << "timestamp_us,pn,pe,pd,vn,ve,vd,q0,q1,q2,q3,bax,bay,baz,bgx,bgy,bgz";
     for (std::size_t index = 0U; index < 15U; ++index)
@@ -325,6 +355,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     write_state(states, time, state, covariance);
     std::size_t predictions = 0U, corrections = 0U, gaps = 0U;
     std::uint64_t gap_us = 0U, max_alignment_us = 0U;
+    std::size_t unknown_clipping_samples = 0U, available_condition_samples = 0U;
     while (read_row(imu, imu_row))
     {
         auto const next_time = timestamp(imu_row[0U]);
@@ -352,6 +383,9 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         previous_imu = sample;
         ++predictions;
         check_state(state, covariance);
+        auto const sample_flags = read_imu_flags(flags, time);
+        check_status(fusion_conditions.update_tilt(state.q_nb, covariance.block<6U, 6U, 3U, 3U>()),
+                     "tilt alignment conditions", time);
         // First-version timing approximation: each NEW navigation event is fused
         // at the following IMU tick. Do not split sampled-noise IMU steps or
         // pretend this compensates receiver latency. Report alignment error.
@@ -363,6 +397,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 throw std::runtime_error("Navigation timestamps must increase after initialization");
             }
             correct_navigation(state, covariance, navigation_row, time);
+            fusion_conditions.record_horizontal_fusion(time);
             check_state(state, covariance);
             updates << source_time << ',' << time << '\n';
             max_alignment_us = std::max(max_alignment_us, time - source_time);
@@ -370,14 +405,27 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             ++corrections;
             has_navigation = read_row(navigation, navigation_row);
         }
+        // Prepare conditions only. No gravity correction, V selection or innovation gate.
+        auto const conditions = fusion_conditions.conditions(time, false, sample_flags[0U], sample_flags[1U]);
+        unknown_clipping_samples += sample_flags[1U] == -1 ? 1U : 0U;
+        available_condition_samples += conditions.has_value() ? 1U : 0U;
+        condition_log << time << ',' << fusion_conditions.tilt_variance() << ',' << fusion_conditions.tilt_aligned()
+                      << ',' << fusion_conditions.horizontal_aiding(time) << ',' << sample_flags[0U] << ','
+                      << sample_flags[1U] << ',' << conditions.has_value() << '\n';
         write_state(states, time, state, covariance);
     }
     if (has_navigation || predictions == 0U || corrections == 0U)
     {
         throw std::runtime_error("replay incomplete: unconsumed navigation or no prediction/correction steps");
     }
+    std::array<double, 3U> extra_flags{};
+    if (flags.is_open() && read_row(flags, extra_flags))
+    {
+        throw std::runtime_error("unconsumed IMU flags");
+    }
     states.close();
     updates.close();
+    condition_log.close();
     std::ofstream summary(output / "summary.json");
     summary.exceptions(std::ios::failbit | std::ios::badbit);
     summary << std::setprecision(17) << "{\n  \"result\": \"smoke_pass\",\n  \"accuracy_validated\": false,"
@@ -388,7 +436,10 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"vertical_position_corrections\": " << corrections
             << ",\n  \"velocity_corrections\": " << corrections << ",\n  \"imu_gap_holds\": " << gaps
             << ",\n  \"imu_gap_us\": " << gap_us << ",\n  \"navigation_max_alignment_us\": " << max_alignment_us
-            << ",\n  \"navigation_delay_compensation_ms\": 0\n}\n";
+            << ",\n  \"navigation_delay_compensation_ms\": 0"
+            << ",\n  \"available_gravity_condition_samples\": " << available_condition_samples
+            << ",\n  \"unknown_accelerometer_clipping_samples\": " << unknown_clipping_samples
+            << ",\n  \"accelerometer_corrections\": 0\n}\n";
     summary.close();
     std::cout << "IMU predictions: " << predictions << "\nNavigation events: " << corrections
               << " (horizontal position + vertical position + 3D velocity)\nCSV interval gap holds: " << gaps << " ("

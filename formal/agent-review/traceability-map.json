@@ -3111,6 +3111,30 @@
       }
     },
     {
+      "id": "R-ACCELEROMETER-CONDITIONS",
+      "title": "Gravity-fusion activation and pre-innovation sample conditions; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-ACCELEROMETER-CONDITIONS: gravity-fusion prerequisites"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/accelerometer_conditions.hpp",
+            "symbol": "struct AccelerometerFusionConditions"
+          },
+          {
+            "file": "include/formal_eskf/runtime/accelerometer_conditions.hpp",
+            "symbol": "check_accelerometer_fusion_conditions("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "R-IMU-DYNAMICS",
       "title": "Bias-corrected instantaneous IMU magnitude checks; Lean and ESBMC evidence pending",
       "references": {

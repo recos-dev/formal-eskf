@@ -363,6 +363,38 @@ aiding supplies false for that flag. Native tests enumerate all 256 boolean
 combinations with all declared statuses, and exercise real magnitude-result
 consumption in both scalar formats. Lean and ESBMC evidence is pending.
 
+### R-ACCELEROMETER-FUSION: conditional gravity correction
+
+`runtime::fuse_accelerometer` composes `R-ACCELEROMETER-CONDITIONS` with the
+unchanged `E-OBS-ACCEL` correction for AHRS and INS. No innovation gate is used.
+
+- Supply the current body-frame specific force in m/s^2, not the LPF vector or
+  delta-velocity. INS subtracts its prior bias exactly once inside the core;
+  AHRS consumes externally bias-calibrated input. Preserve gravity magnitude,
+  the existing Jacobian and caller-supplied effective V in m^2/s^4. Forward
+  INS per-axis bias-update permissions unchanged; omission retains all enabled.
+- The caller updates its magnitude filter once for each sample, independently
+  of fusion enablement, and passes the actual result for that sample with
+  conditions and prior state at the same fusion horizon. The caller owns
+  timestamps, cadence and filter reset on source/calibration/frame changes.
+  This stateless composition neither updates nor rolls back filter history.
+- Evaluate conditions first. A failed magnitude result returns `failed` with
+  its status. Unmet conditions return `rejected` with `Status::success` without
+  calling correction or certifying its unused inputs. Otherwise call the
+  checked correction: propagate failure status, and report `fused` only on
+  success. Return the condition check separately; eligibility can remain true
+  even if correction fails. No innovation diagnostics or test ratio is implied.
+- Publish both state and covariance only on `fused`. Rejection or failure
+  preserves both outputs. Each output may independently alias its respective
+  complete prior; all other storage is disjoint. Separate inputs are unchanged.
+  There is no retry, persistent mode, timer, source selection or reset policy.
+
+Native tests cover real magnitude results, current-versus-filtered measurement
+use, INS bias permissions, both configurations/scalar formats, all four alias
+arrangements, rejection and numerical failures. Lean and ESBMC evidence is
+pending. The composition does not establish a valid physical gravity observation,
+noise independence, tuned V, full external-estimator equivalence or flight safety.
+
 ### R-IMU-DYNAMICS: instantaneous IMU magnitude check
 
 `runtime::check_imu_dynamics` consumes an `ImuSample`, accelerometer/gyroscope bias vectors and two explicit magnitude thresholds. All vectors are in the same body frame; specific force is in m/s^2 and angular rate in rad/s, not integrated increments. Compute `f = specific_force_b - b_a` and `omega = angular_rate_b - b_g`, then `high_dynamics = squared_norm(f) > maximum_specific_force^2 OR squared_norm(omega) > maximum_angular_rate^2`.

@@ -3135,6 +3135,34 @@
       }
     },
     {
+      "id": "R-ACCELEROMETER-FUSION",
+      "title": "Conditional AHRS/INS gravity correction without innovation gating; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-ACCELEROMETER-FUSION: conditional gravity correction"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/accelerometer.hpp",
+            "symbol": "struct AccelerometerFusionResult"
+          },
+          {
+            "file": "include/formal_eskf/runtime/accelerometer.hpp",
+            "symbol": "fuse_accelerometer_state("
+          },
+          {
+            "file": "include/formal_eskf/runtime/accelerometer.hpp",
+            "symbol": "[[nodiscard]] AccelerometerFusionResult fuse_accelerometer("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "R-IMU-DYNAMICS",
       "title": "Bias-corrected instantaneous IMU magnitude checks; Lean and ESBMC evidence pending",
       "references": {

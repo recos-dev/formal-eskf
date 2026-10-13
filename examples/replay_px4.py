@@ -4,7 +4,8 @@
 Sensor inputs are sensor_combined, vehicle_gps_position and vehicle_magnetometer;
 vehicle_land_detected supplies optional at_rest metadata.
 PX4 estimator outputs are not inputs. Magnetic measurements initialize attitude
-only; this first replay does not fuse magnetometer or accelerometer corrections.
+only. Gravity correction requires complete clipping metadata and valid fusion
+conditions; legacy logs without clipping remain prediction/navigation-only.
 """
 
 import argparse

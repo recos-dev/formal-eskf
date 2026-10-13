@@ -24,6 +24,8 @@
 #include <system_error>
 
 #include <formal_eskf/eskf/eskf.hpp>
+#include <formal_eskf/runtime/accelerometer.hpp>
+#include "replay_accelerometer.hpp"
 #include "replay_conditions.hpp"
 #if defined(FORMAL_ESKF_REPLAY_PX4_MATRIX)
 #include <formal_eskf/linalg/backend/px4_matrix.hpp>
@@ -44,6 +46,10 @@
 // Bias random-walk variance densities; the core scales these by dt.
 #define ACCEL_BIAS_RW_VAR_DENSITY 1e-6 // m^2/s^5.
 #define GYRO_BIAS_RW_VAR_DENSITY 1e-8  // rad^2/s^3.
+
+// Gravity observation settings; independent of prediction's ACCEL_VAR.
+#define ACCEL_OBS_STD GRAVITY      // m/s^2; effective pseudo-observation weight.
+#define ACCEL_OBS_PERIOD_US 10000U // Nominal; accumulate whole IMU samples.
 
 // Navigation standard-deviation floors, shared by initialization and correction.
 #define POS_XY_STD_MIN 1.0 // m.
@@ -73,6 +79,7 @@ using Vector3 = Linalg::vector_type<3U>;
 using Imu = Types::imu_sample_type;
 using formal_eskf::Status;
 using FusionConditions = formal_eskf::example::ReplayFusionConditions<Linalg>;
+using Accelerometer = formal_eskf::example::ReplayAccelerometer<Linalg, ACCEL_OBS_PERIOD_US>;
 
 std::ifstream open_csv(std::filesystem::path const & path, std::string_view expected_header)
 {
@@ -325,6 +332,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     auto covariance = initial_covariance(horizontal_accuracy, vertical_accuracy, speed_accuracy);
     auto const settings = parameters();
     FusionConditions fusion_conditions;
+    Accelerometer accelerometer;
+    auto const accel_V = Linalg::matrix_type<3U, 3U>::identity() * (ACCEL_OBS_STD * ACCEL_OBS_STD);
     // Consume seed metadata, but initialization is not a successful aiding event.
     (void)read_imu_flags(flags, time);
     auto previous_imu = imu_sample(imu_row);
@@ -337,9 +346,14 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::ofstream states(output / "state.csv");
     std::ofstream updates(output / "navigation_updates.csv");
     std::ofstream condition_log(output / "fusion_conditions.csv");
+    std::ofstream accel_updates(output / "accelerometer_updates.csv");
     states.exceptions(std::ios::failbit | std::ios::badbit);
     updates.exceptions(std::ios::failbit | std::ios::badbit);
     condition_log.exceptions(std::ios::failbit | std::ios::badbit);
+    accel_updates.exceptions(std::ios::failbit | std::ios::badbit);
+    accel_updates << std::setprecision(17);
+    accel_updates << "timestamp_us,interval_us,fx,fy,fz,clipping_mask,lpf_squared_norm,within_gravity_band,"
+                     "tilt_aligned,horizontal_aiding,at_rest,outcome\n";
     condition_log << std::setprecision(17);
     condition_log << "timestamp_us,tilt_variance,tilt_aligned,horizontal_aiding,at_rest,accelerometer_clipping,"
                      "conditions_available\n";
@@ -356,6 +370,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::size_t predictions = 0U, corrections = 0U, gaps = 0U;
     std::uint64_t gap_us = 0U, max_alignment_us = 0U;
     std::size_t unknown_clipping_samples = 0U, available_condition_samples = 0U;
+    std::size_t accel_observations = 0U, accel_corrections = 0U, accel_rejected = 0U, accel_unavailable = 0U;
+    std::uint64_t accel_interval_min_us = 0U, accel_interval_max_us = 0U, accel_interval_total_us = 0U;
     while (read_row(imu, imu_row))
     {
         auto const next_time = timestamp(imu_row[0U]);
@@ -374,6 +390,9 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                          "gap hold prediction", time + missing);
             ++gaps;
             gap_us += missing;
+            // Held prediction rates are not new measurements. Discard the
+            // incomplete observation and LPF history across a missing interval.
+            accelerometer.reset();
         }
         auto const sample = imu_sample(imu_row);
         check_status(formal_eskf::try_predict(state, covariance, sample, static_cast<double>(period) * 1e-6, settings,
@@ -386,6 +405,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         auto const sample_flags = read_imu_flags(flags, time);
         check_status(fusion_conditions.update_tilt(state.q_nb, covariance.block<6U, 6U, 3U, 3U>()),
                      "tilt alignment conditions", time);
+        auto const observation = accelerometer.update(sample, period, sample_flags[1U], QUAT_MIN_NORM);
+        check_status(observation.status, "accelerometer observation", time);
         // First-version timing approximation: each NEW navigation event is fused
         // at the following IMU tick. Do not split sampled-noise IMU steps or
         // pretend this compensates receiver latency. Report alignment error.
@@ -405,13 +426,46 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             ++corrections;
             has_navigation = read_row(navigation, navigation_row);
         }
-        // Prepare conditions only. No gravity correction, V selection or innovation gate.
-        auto const conditions = fusion_conditions.conditions(time, false, sample_flags[0U], sample_flags[1U]);
+        // Retain raw-tick diagnostics; fusion uses the whole observation's clipping below.
+        auto const conditions = fusion_conditions.conditions(time, true, sample_flags[0U], sample_flags[1U]);
         unknown_clipping_samples += sample_flags[1U] == -1 ? 1U : 0U;
         available_condition_samples += conditions.has_value() ? 1U : 0U;
         condition_log << time << ',' << fusion_conditions.tilt_variance() << ',' << fusion_conditions.tilt_aligned()
                       << ',' << fusion_conditions.horizontal_aiding(time) << ',' << sample_flags[0U] << ','
                       << sample_flags[1U] << ',' << conditions.has_value() << '\n';
+        if (observation.ready)
+        {
+            ++accel_observations;
+            accel_interval_total_us += observation.interval_us;
+            accel_interval_min_us = accel_observations == 1U ? observation.interval_us
+                                                             : std::min(accel_interval_min_us, observation.interval_us);
+            accel_interval_max_us = std::max(accel_interval_max_us, observation.interval_us);
+            auto const observation_conditions =
+                fusion_conditions.conditions(time, true, sample_flags[0U], observation.clipping_mask);
+            std::string_view outcome = "metadata_unavailable";
+            if (observation_conditions)
+            {
+                auto const result = formal_eskf::runtime::fuse_accelerometer(
+                    state, covariance, observation.specific_force_b, settings.gravity_n, accel_V,
+                    *observation_conditions, observation.magnitude, QUAT_MIN_NORM, state, covariance);
+                check_status(result.status, "accelerometer correction", time);
+                bool const fused = result.decision == formal_eskf::runtime::FusionDecision::fused;
+                accel_corrections += fused ? 1U : 0U;
+                accel_rejected += fused ? 0U : 1U;
+                outcome = fused ? "fused" : "rejected";
+                check_state(state, covariance);
+            }
+            else
+            {
+                ++accel_unavailable;
+            }
+            accel_updates << time << ',' << observation.interval_us << ',' << observation.specific_force_b(0U) << ','
+                          << observation.specific_force_b(1U) << ',' << observation.specific_force_b(2U) << ','
+                          << observation.clipping_mask << ',' << observation.magnitude.squared_norm << ','
+                          << observation.magnitude.within_gravity_band << ',' << fusion_conditions.tilt_aligned() << ','
+                          << fusion_conditions.horizontal_aiding(time) << ',' << sample_flags[0U] << ',' << outcome
+                          << '\n';
+        }
         write_state(states, time, state, covariance);
     }
     if (has_navigation || predictions == 0U || corrections == 0U)
@@ -426,6 +480,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     states.close();
     updates.close();
     condition_log.close();
+    accel_updates.close();
     std::ofstream summary(output / "summary.json");
     summary.exceptions(std::ios::failbit | std::ios::badbit);
     summary << std::setprecision(17) << "{\n  \"result\": \"smoke_pass\",\n  \"accuracy_validated\": false,"
@@ -439,12 +494,28 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"navigation_delay_compensation_ms\": 0"
             << ",\n  \"available_gravity_condition_samples\": " << available_condition_samples
             << ",\n  \"unknown_accelerometer_clipping_samples\": " << unknown_clipping_samples
-            << ",\n  \"accelerometer_corrections\": 0\n}\n";
+            << ",\n  \"accelerometer_observations\": " << accel_observations
+            << ",\n  \"accelerometer_corrections\": " << accel_corrections
+            << ",\n  \"accelerometer_rejected\": " << accel_rejected
+            << ",\n  \"accelerometer_metadata_unavailable\": " << accel_unavailable
+            << ",\n  \"accelerometer_observation_variance\": " << ACCEL_OBS_STD * ACCEL_OBS_STD
+            << ",\n  \"accelerometer_target_interval_us\": " << ACCEL_OBS_PERIOD_US
+            << ",\n  \"accelerometer_interval_min_us\": " << accel_interval_min_us
+            << ",\n  \"accelerometer_interval_max_us\": " << accel_interval_max_us
+            << ",\n  \"accelerometer_interval_mean_us\": "
+            << (accel_observations == 0U
+                    ? 0.0
+                    : static_cast<double>(accel_interval_total_us) / static_cast<double>(accel_observations))
+            << "\n}\n";
     summary.close();
     std::cout << "IMU predictions: " << predictions << "\nNavigation events: " << corrections
               << " (horizontal position + vertical position + 3D velocity)\nCSV interval gap holds: " << gaps << " ("
               << gap_us << " us)\nNavigation maximum tick alignment: " << max_alignment_us
-              << " us; receiver latency compensation OFF\n";
+              << " us; receiver latency compensation OFF\n"
+              << "Accelerometer observations: " << accel_observations << " (" << accel_corrections << " fused, "
+              << accel_rejected << " rejected, " << accel_unavailable << " metadata unavailable)\n"
+              << "Accelerometer interval: target " << ACCEL_OBS_PERIOD_US << " us, actual " << accel_interval_min_us
+              << ".." << accel_interval_max_us << " us\n";
 }
 
 } /* namespace */

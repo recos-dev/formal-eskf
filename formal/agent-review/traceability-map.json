@@ -3165,6 +3165,14 @@
           {
             "file": "include/formal_eskf/runtime/accelerometer.hpp",
             "symbol": "[[nodiscard]] AccelerometerFusionResult fuse_accelerometer("
+          },
+          {
+            "file": "examples/replay_accelerometer.hpp",
+            "symbol": "class ReplayAccelerometer"
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "void replay("
           }
         ],
         "esbmc": []

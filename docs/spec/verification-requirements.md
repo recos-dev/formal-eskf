@@ -368,7 +368,8 @@ consumption in both scalar formats. Lean and ESBMC evidence is pending.
 `examples/replay_conditions.hpp` supplies conditions for the replay's existing
 single navigation source. It does not change correction equations or implement
 the full GNSS qualification/reset controller. `fusion_conditions.csv` records
-the decisions; no accelerometer correction is executed by this integration yet.
+raw-tick conditions; interval observations and correction outcomes are recorded
+separately as specified under `R-ACCELEROMETER-FUSION` below.
 
 - Derive tilt uncertainty from this estimator, never a logged EKF status:
   `P_theta_n = R_nb * P_theta_b * R_nb^T`, using INS covariance rows/columns 6..8.
@@ -441,6 +442,71 @@ use, INS bias permissions, both configurations/scalar formats, all four alias
 arrangements, rejection and numerical failures. Lean and ESBMC evidence is
 pending. The composition does not establish a valid physical gravity observation,
 noise independence, tuned V, full external-estimator equivalence or flight safety.
+
+#### Replay sampling and tuning
+
+| Setting | Selected replay baseline |
+|---|---|
+| Gravity magnitude | `g = 9.80665 m/s^2` |
+| Effective per-axis observation standard deviation | `sigma = g` |
+| Observation covariance | `V = g^2 * I_3 = 96.1703842225 * I_3 m^2/s^4` |
+| Nominal observation/LPF interval | `10,000 us`; actual intervals must be reported |
+
+PX4 `e1c28e2` uses normalized observations, defaults
+[`EKF2_GRAV_NOISE`](https://github.com/PX4/PX4-Autopilot/blob/e1c28e27550114e85ddb8760ab3355eaa7a89d8a/src/modules/ekf2/params_gravity.yaml)
+to `1.0`, and squares it for observation variance. Multiplying that variance by
+`g^2` matches the local tangential information scale near gravity-sized specific
+force, not the complete normalized nonlinear update. This is an effective
+pseudo-observation weight, not measured hardware noise or validated flight tuning.
+It is separate from prediction's `ACCEL_VAR`; do not multiply V by `dt` or `dt^2`.
+The MATLAB reference's enabled `accel_correct1` uses normalized observations and
+`V_accel = 0.7 * I_3`, corresponding to `67.31926895575 * I_3` on this same scale;
+its cross-product preprocessing is not part of the current model.
+
+The PX4 [nominal EKF period](https://github.com/PX4/PX4-Autopilot/blob/e1c28e27550114e85ddb8760ab3355eaa7a89d8a/src/modules/ekf2/module.yaml#L15)
+is 10 ms. Its [IMU downsampler](https://github.com/PX4/PX4-Autopilot/blob/e1c28e27550114e85ddb8760ab3355eaa7a89d8a/src/modules/ekf2/EKF/imu_down_sampler/imu_down_sampler.cpp)
+accumulates rotation-aware increments over whole input samples; it does not just
+select the latest raw sample every 10 ms. The selected target is not a promise of
+exactly 100 Hz or an instruction to fuse each roughly 250 Hz raw input. Fixed LPF
+alpha remains `0.1`; its effective time constant depends on actual update intervals.
+
+`examples/replay_accelerometer.hpp` prepares non-overlapping observations without
+changing prediction/navigation timing or adding a delayed fusion buffer:
+
+- For each real sample, form `dtheta = omega_m * dt`, `dv = f_m * dt` and
+  `D = R(Exp(dtheta))^T`. Accumulate in the latest body frame as
+  `dv_sum_new = D * dv_sum_old + (dv + D * dv)/2`. This is an endpoint rotation
+  approximation, not an exact continuous-time/sculling integral. No estimator
+  bias is subtracted here; INS correction subtracts its prior bias once.
+- Track mean input period `T` starting at 5 ms, using `T += 0.1*(dt-T)`.
+  At each interval start set `N = max(1, round(10 ms/T))`, target `N*T` and
+  minimum `max((N-1)*T, T/2)`. Emit once the sample count reaches N and duration
+  exceeds the minimum, or duration exceeds the target. All decisions use the
+  actual integration periods; no interpolated, repeated or overlapping samples.
+  Timing rules follow the referenced downsampler, not bitwise PX4 equivalence.
+- On emission, divide accumulated dv by the actual interval duration and update
+  `AccelerometerMagnitude` exactly once, even when fusion is unavailable/rejected.
+  Correction consumes that current interval average, not the LPF vector. Partial
+  final intervals are not flushed as shorter observations. Non-finite input,
+  invalid periods/masks or arithmetic failure preserves sampler/LPF history and
+  ends this fail-fast replay, without publishing an observation.
+- OR all constituent clipping masks; any unknown makes interval clipping unknown.
+  Rest and alignment/aiding conditions use the emission tick. Gaps discard partial
+  increments and LPF history; resume with real samples after the gap. Prediction
+  holds are never accumulated as measurements. A new replay also resets history.
+- After that tick's navigation corrections, call `runtime::fuse_accelerometer`
+  only when interval clipping is known; its conditions decide whether to correct.
+  This uses the agreed V and unchanged default bias permissions. A failed
+  correction ends replay. Record each observation, actual duration, aggregated
+  clipping, LPF diagnostic and outcome (`fused`, `rejected`, `metadata_unavailable`)
+  in `accelerometer_updates.csv`; report counts and actual interval statistics.
+
+Missing clipping still blocks correction, unknown rest disables only its override,
+and innovation gating remains deferred. The existing legacy ULog and KITTI inputs
+lack clipping and therefore do not exercise successful accel correction. These
+starting settings and native tests are not calibrated flight parameters or new
+Lean/ESBMC evidence. Prediction/measurement reuse correlation, interval-averaging
+model error and full PX4 estimator equivalence remain outside the claim.
 
 ### R-IMU-DYNAMICS: instantaneous IMU magnitude check
 

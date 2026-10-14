@@ -34,6 +34,7 @@
 #include <formal_eskf/runtime/velocity.hpp>
 #include "replay_accelerometer.hpp"
 #include "replay_conditions.hpp"
+#include "replay_gnss.hpp"
 #if defined(FORMAL_ESKF_REPLAY_PX4_MATRIX)
 #include <formal_eskf/linalg/backend/px4_matrix.hpp>
 #else
@@ -96,6 +97,7 @@ using formal_eskf::Status;
 using FusionConditions = formal_eskf::example::ReplayFusionConditions<Linalg>;
 using Accelerometer = formal_eskf::example::ReplayAccelerometer<Linalg, ACCEL_OBS_PERIOD_US>;
 using MagneticLifecycle = formal_eskf::runtime::MagnetometerFusion;
+using GnssQuality = formal_eskf::example::ReplayGnssQuality<Linalg>;
 
 std::ifstream open_csv(std::filesystem::path const & path, std::string_view expected_header)
 {
@@ -113,7 +115,7 @@ std::ifstream open_csv(std::filesystem::path const & path, std::string_view expe
     return stream;
 }
 
-bool read_row(std::istream & stream, std::span<double> output)
+bool read_row(std::istream & stream, std::span<double> output, bool allow_non_finite = false)
 {
     std::string line;
     if (!std::getline(stream, line))
@@ -138,9 +140,10 @@ bool read_row(std::istream & stream, std::span<double> output)
         }
         auto const field = remaining.substr(0U, comma);
         auto const result = std::from_chars(field.data(), field.data() + field.size(), output[index]);
-        if (result.ec != std::errc{} || result.ptr != field.data() + field.size() || !std::isfinite(output[index]))
+        if (result.ec != std::errc{} || result.ptr != field.data() + field.size() ||
+            (!allow_non_finite && !std::isfinite(output[index])))
         {
-            throw std::runtime_error("CSV field must be a finite number");
+            throw std::runtime_error("invalid CSV number");
         }
         if (comma != std::string_view::npos)
         {
@@ -170,6 +173,15 @@ void check_status(Status status, std::string_view operation, std::uint64_t time)
 }
 
 Vector3 vector3(double x, double y, double z) { return Vector3::from_row_major({x, y, z}); }
+
+int metadata_integer(double value, int minimum, int maximum)
+{
+    if (!std::isfinite(value) || std::trunc(value) != value || value < minimum || value > maximum)
+    {
+        throw std::runtime_error("invalid integer metadata");
+    }
+    return static_cast<int>(value);
+}
 
 Imu imu_sample(std::array<double, 8U> const & row)
 {
@@ -238,6 +250,93 @@ std::optional<GnssParameters> read_gnss_parameters(std::filesystem::path const &
         (void)variance(value, 0.0);
     }
     return result;
+}
+
+std::optional<GnssQuality::monitor_type::parameters_type>
+read_gnss_quality_parameters(std::filesystem::path const & input)
+{
+    bool const supplied = std::filesystem::exists(input / "gnss_quality_parameters.csv");
+    if (supplied != std::filesystem::exists(input / "gnss_quality.csv") ||
+        (supplied && !std::filesystem::exists(input / "gnss_parameters.csv")))
+    {
+        throw std::runtime_error("GNSS quality data/parameters must be paired with GNSS fusion parameters");
+    }
+    if (!supplied)
+    {
+        return std::nullopt;
+    }
+    auto stream =
+        open_csv(input / "gnss_quality_parameters.csv",
+                 "check_mask,minimum_satellites,maximum_pdop,maximum_horizontal_accuracy,maximum_vertical_accuracy,"
+                 "maximum_speed_accuracy,maximum_horizontal_drift,maximum_vertical_drift,minimum_health_time_us");
+    std::array<double, 9U> row{}, extra{};
+    if (!read_row(stream, row) || read_row(stream, extra))
+    {
+        throw std::runtime_error("expected exactly one GNSS quality parameter row");
+    }
+    GnssQuality::monitor_type::parameters_type result;
+    result.enabled_checks =
+        formal_eskf::example::gnss_quality_checks(static_cast<unsigned>(metadata_integer(row[0U], 0, 1023)));
+    result.minimum_satellites = static_cast<std::uint8_t>(metadata_integer(row[1U], 1, 255));
+    result.maximum_pdop = row[2U];
+    result.maximum_horizontal_accuracy = row[3U];
+    result.maximum_vertical_accuracy = row[4U];
+    result.maximum_speed_accuracy = row[5U];
+    result.maximum_horizontal_drift = row[6U];
+    result.maximum_vertical_drift = row[7U];
+    result.minimum_health_time_us = timestamp(row[8U]);
+    // Validate through the production monitor even if every replay row later has
+    // unavailable metadata. This temporary monitor is not replay health history.
+    GnssQuality::monitor_type validator;
+    GnssQuality::monitor_type::sample_type sample;
+    sample.time_us = 1U;
+    check_status(validator.update(sample, {true, false}, 1U, result).status, "GNSS quality parameters", 1U);
+    return result;
+}
+
+GnssQuality::Result check_gnss_quality(std::ifstream & stream, GnssQuality & monitor,
+                                       GnssQuality::monitor_type::parameters_type const & parameters,
+                                       std::array<double, 10U> const & navigation, std::uint64_t time)
+{
+    std::array<double, 15U> row{};
+    // Numerical sensor errors reach the monitor; structural metadata remains strict.
+    if (!read_row(stream, row, true) || timestamp(row[0U]) != timestamp(navigation[0U]))
+    {
+        throw std::runtime_error("GNSS quality rows must match navigation timestamps");
+    }
+    GnssQuality::monitor_type::sample_type sample;
+    sample.time_us = timestamp(row[0U]);
+    sample.fix_type = static_cast<std::uint8_t>(metadata_integer(row[1U], 0, 255));
+    sample.satellites = static_cast<std::uint8_t>(metadata_integer(row[2U], 0, 255));
+    sample.pdop = row[3U];
+    sample.horizontal_accuracy = navigation[7U];
+    sample.vertical_accuracy = navigation[8U];
+    sample.speed_accuracy = navigation[9U];
+    sample.velocity_n = vector3(row[8U], row[9U], row[10U]);
+    sample.position_delta_n = vector3(row[11U], row[12U], row[13U]);
+    sample.position_reference_time_us = row[14U] == 0.0 ? 0U : timestamp(row[14U]);
+    GnssQuality::Metadata const metadata{metadata_integer(row[5U], 0, 1) == 1, metadata_integer(row[6U], -1, 1),
+                                         metadata_integer(row[7U], -1, 1), metadata_integer(row[4U], -1, 1)};
+    return monitor.update(sample, metadata, time, parameters);
+}
+
+void write_gnss_quality(std::ostream & stream, GnssQuality::Result const & result, std::uint64_t source_time,
+                        std::uint64_t time)
+{
+    auto const & quality = result.quality;
+    auto const & failures = quality.failures;
+    stream << source_time << ',' << time << ',' << result.outcome << ',' << static_cast<int>(quality.status) << ','
+           << result.evaluated << ',' << result.motion_available << ',' << result.spoofing_available << ','
+           << quality.qualified << ',' << quality.invalid_fix;
+    for (bool failed : {failures.satellites, failures.pdop, failures.horizontal_accuracy, failures.vertical_accuracy,
+                        failures.speed_accuracy, failures.horizontal_drift, failures.vertical_drift,
+                        failures.horizontal_speed, failures.vertical_speed, failures.spoofed})
+    {
+        stream << ',' << failed;
+    }
+    stream << ',' << quality.drift_valid << ',' << quality.horizontal_drift << ',' << quality.vertical_drift << ','
+           << quality.horizontal_speed << ',' << quality.vertical_speed << ',' << quality.last_fail_us << ','
+           << quality.last_pass_us << '\n';
 }
 
 struct NavigationVariances
@@ -488,6 +587,15 @@ void write_state(std::ostream & stream, std::uint64_t time, State const & state,
 void replay(std::filesystem::path const & input, std::filesystem::path const & output, bool mag_enabled)
 {
     auto const gnss = read_gnss_parameters(input);
+    auto const quality_parameters = read_gnss_quality_parameters(input);
+    GnssQuality quality_monitor;
+    std::ifstream quality_samples;
+    if (quality_parameters)
+    {
+        quality_samples =
+            open_csv(input / "gnss_quality.csv", "timestamp_us,fix_type,satellites,pdop,spoofed,vel_ned_valid,in_air,"
+                                                 "at_rest,vn,ve,vd,dn,de,dd,reference_timestamp_us");
+    }
     auto initial = open_csv(input / "initial.csv", "timestamp_us,q0,q1,q2,q3,vn,ve,vd,eph,epv,speed_accuracy");
     auto imu = open_csv(input / "imu.csv", "timestamp_us,integral_dt_us,fx,fy,fz,wx,wy,wz");
     auto navigation = open_csv(input / "navigation.csv", "timestamp_us,pn,pe,pd,vn,ve,vd,eph,epv,speed_accuracy");
@@ -544,7 +652,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     (void)read_imu_flags(flags, time);
     auto previous_imu = imu_sample(imu_row);
     std::uint64_t last_navigation_time = time;
-    bool has_navigation = read_row(navigation, navigation_row);
+    bool has_navigation = read_row(navigation, navigation_row, quality_parameters.has_value());
     std::uint64_t last_magnetic_time = time;
     bool has_magnetometer = has_magnetic_input && read_row(magnetometer, magnetic_row);
     if (has_magnetic_input && !has_magnetometer)
@@ -560,6 +668,19 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::ofstream states(output / "state.csv");
     std::ofstream updates(output / "navigation_updates.csv");
     std::ofstream gnss_updates;
+    std::ofstream quality_updates;
+    if (quality_parameters)
+    {
+        quality_updates.open(output / "gnss_quality.csv");
+        quality_updates.exceptions(std::ios::failbit | std::ios::badbit);
+        quality_updates << std::setprecision(17);
+        quality_updates
+            << "source_timestamp_us,fusion_timestamp_us,outcome,status,evaluated,motion_available,spoofing_available,"
+               "qualified,invalid_fix,satellites,pdop,horizontal_accuracy,vertical_accuracy,speed_accuracy,"
+               "horizontal_drift,vertical_drift,horizontal_speed,vertical_speed,spoofed,drift_valid,"
+               "horizontal_drift_mps,vertical_drift_mps,horizontal_speed_mps,vertical_speed_mps,last_fail_us,last_pass_"
+               "us\n";
+    }
     if (gnss)
     {
         gnss_updates.open(output / "gnss_updates.csv");
@@ -599,6 +720,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     write_state(states, time, state, covariance);
     std::size_t predictions = 0U, navigation_events = 0U, gaps = 0U;
     std::size_t position_xy_fused = 0U, position_z_fused = 0U, velocity_fused = 0U;
+    std::size_t quality_accepted = 0U, quality_rejected = 0U, quality_waiting = 0U, quality_unavailable = 0U;
+    std::size_t invalid_velocity = 0U, navigation_attempts = 0U;
     std::uint64_t gap_us = 0U, max_alignment_us = 0U;
     std::size_t unknown_clipping_samples = 0U, available_condition_samples = 0U;
     std::size_t accel_observations = 0U, accel_corrections = 0U, accel_rejected = 0U, accel_unavailable = 0U;
@@ -651,6 +774,35 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             {
                 throw std::runtime_error("Navigation timestamps must increase after initialization");
             }
+            bool quality_allows_fusion = true;
+            if (quality_parameters)
+            {
+                auto const result =
+                    check_gnss_quality(quality_samples, quality_monitor, *quality_parameters, navigation_row, time);
+                write_gnss_quality(quality_updates, result, source_time, time);
+                if (result.outcome == "invalid_call")
+                {
+                    check_status(result.quality.status, "GNSS quality input", time);
+                }
+                quality_allows_fusion = result.accepted();
+                quality_accepted += result.accepted() ? 1U : 0U;
+                quality_rejected += result.outcome == "rejected" ? 1U : 0U;
+                quality_waiting += result.outcome == "waiting" ? 1U : 0U;
+                quality_unavailable += result.outcome == "unavailable" ? 1U : 0U;
+                invalid_velocity += result.outcome == "invalid_velocity" ? 1U : 0U;
+            }
+            // Every message advances the input cursor, including quality failures.
+            // Skips do not invoke a correction or refresh horizontal-aiding time.
+            updates << source_time << ',' << time << '\n';
+            max_alignment_us = std::max(max_alignment_us, time - source_time);
+            last_navigation_time = source_time;
+            ++navigation_events;
+            if (!quality_allows_fusion)
+            {
+                has_navigation = read_row(navigation, navigation_row, true);
+                continue;
+            }
+            ++navigation_attempts;
             if (gnss)
             {
                 auto const noise =
@@ -698,11 +850,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 fusion_conditions.record_horizontal_fusion(time);
             }
             check_state(state, covariance);
-            updates << source_time << ',' << time << '\n';
-            max_alignment_us = std::max(max_alignment_us, time - source_time);
-            last_navigation_time = source_time;
-            ++navigation_events;
-            has_navigation = read_row(navigation, navigation_row);
+            has_navigation = read_row(navigation, navigation_row, quality_parameters.has_value());
         }
         // Retain raw-tick diagnostics; fusion uses the whole observation's clipping below.
         auto const conditions = fusion_conditions.conditions(time, true, sample_flags[0U], sample_flags[1U]);
@@ -840,6 +988,15 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     {
         throw std::runtime_error("unconsumed IMU flags");
     }
+    std::array<double, 15U> extra_quality{};
+    if (quality_samples.is_open() && read_row(quality_samples, extra_quality, true))
+    {
+        throw std::runtime_error("unconsumed GNSS quality data");
+    }
+    if (quality_updates.is_open())
+    {
+        quality_updates.close();
+    }
     states.close();
     updates.close();
     if (gnss_updates.is_open())
@@ -858,9 +1015,16 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"horizontal_position_corrections\": " << position_xy_fused
             << ",\n  \"vertical_position_corrections\": " << position_z_fused
             << ",\n  \"velocity_corrections\": " << velocity_fused
-            << ",\n  \"horizontal_position_rejected\": " << navigation_events - position_xy_fused
-            << ",\n  \"vertical_position_rejected\": " << navigation_events - position_z_fused
-            << ",\n  \"velocity_rejected\": " << navigation_events - velocity_fused
+            << ",\n  \"horizontal_position_rejected\": " << navigation_attempts - position_xy_fused
+            << ",\n  \"vertical_position_rejected\": " << navigation_attempts - position_z_fused
+            << ",\n  \"velocity_rejected\": " << navigation_attempts - velocity_fused
+            << ",\n  \"gnss_quality_enabled\": " << (quality_parameters ? "true" : "false")
+            << ",\n  \"gnss_quality_accepted\": " << quality_accepted
+            << ",\n  \"gnss_quality_rejected\": " << quality_rejected
+            << ",\n  \"gnss_quality_waiting\": " << quality_waiting
+            << ",\n  \"gnss_quality_unavailable\": " << quality_unavailable
+            << ",\n  \"gnss_invalid_velocity\": " << invalid_velocity
+            << ",\n  \"navigation_fusion_attempts\": " << navigation_attempts
             << ",\n  \"gnss_gating_enabled\": " << (gnss ? "true" : "false")
             << ",\n  \"gnss_position_gate\": " << (gnss ? gnss->position_gate : 0.0)
             << ",\n  \"gnss_velocity_gate\": " << (gnss ? gnss->velocity_gate : 0.0)
@@ -903,11 +1067,15 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"magnetometer_minimum_horizontal_ut\": " << MAG_MIN_HORIZONTAL << "\n}\n";
     summary.close();
     std::cout << "IMU predictions: " << predictions << "\nNavigation events: " << navigation_events
-              << "\nHorizontal position: " << position_xy_fused << " fused, " << navigation_events - position_xy_fused
-              << " rejected"
-              << "\nVertical position: " << position_z_fused << " fused, " << navigation_events - position_z_fused
-              << " rejected"
-              << "\n3D velocity: " << velocity_fused << " fused, " << navigation_events - velocity_fused << " rejected"
+              << "\nGNSS quality: " << (quality_parameters ? "ON" : "OFF (legacy input)") << " (" << quality_accepted
+              << " accepted, " << quality_rejected << " rejected, " << quality_waiting << " waiting, "
+              << quality_unavailable << " unavailable, " << invalid_velocity << " invalid velocity)"
+              << "\nHorizontal position: " << position_xy_fused << " fused, " << navigation_attempts - position_xy_fused
+              << " gate rejected"
+              << "\nVertical position: " << position_z_fused << " fused, " << navigation_attempts - position_z_fused
+              << " gate rejected"
+              << "\n3D velocity: " << velocity_fused << " fused, " << navigation_attempts - velocity_fused
+              << " gate rejected"
               << "\nGNSS innovation gate: " << (gnss ? "ON" : "OFF (legacy input)")
               << "\nCSV interval gap holds: " << gaps << " (" << gap_us
               << " us)\nNavigation maximum tick alignment: " << max_alignment_us

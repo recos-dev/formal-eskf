@@ -6,7 +6,7 @@ vehicle_land_detected supplies optional at_rest metadata.
 PX4 estimator outputs are not inputs. Magnetic measurements initialize attitude
 and provide lifecycle-controlled, gated corrections against a fixed seed field.
 Gravity correction requires complete clipping metadata and valid fusion conditions.
-GNSS uses independent velocity/position/height gates, without source lifecycle or resets.
+GNSS quality qualifies independent velocity/position/height gates; no source lifecycle or resets.
 """
 
 import argparse
@@ -133,47 +133,137 @@ def gnss_parameters(ULOG, END):
     return VALUES
 
 
-def gps_reading(GPS, INDEX):
+def gnss_quality_parameters(ULOG, END):
+    """Use recorded checks/limits, with the legacy name and fixed health-time default explicit."""
+    PDOP_NAME = "EKF2_REQ_PDOP" if "EKF2_REQ_PDOP" in ULOG.initial_parameters else "EKF2_REQ_GDOP"
+    NAMES = ("EKF2_GPS_CHECK", "EKF2_REQ_NSATS", PDOP_NAME, "EKF2_REQ_EPH", "EKF2_REQ_EPV",
+             "EKF2_REQ_SACC", "EKF2_REQ_HDRIFT", "EKF2_REQ_VDRIFT")
+    VALUES = [float(ULOG.initial_parameters[NAME]) for NAME in NAMES]
+    HEALTH_SECONDS = float(ULOG.initial_parameters.get("EKF2_REQ_GPS_H", 10.0))
+    HEALTH_US = round(HEALTH_SECONDS * 1e6) if math.isfinite(HEALTH_SECONDS) else 0
+    if (not finite(VALUES) or not VALUES[0].is_integer() or not 0 <= VALUES[0] <= 1023
+            or not VALUES[1].is_integer() or not 1 <= VALUES[1] <= 255
+            or min(VALUES[2:]) <= 0 or not 1 <= HEALTH_US <= 4294967295):
+        raise ValueError("invalid GNSS quality parameters")
+    if ("EKF2_REQ_PDOP" in ULOG.initial_parameters and "EKF2_REQ_GDOP" in ULOG.initial_parameters
+            and ULOG.initial_parameters["EKF2_REQ_PDOP"] != ULOG.initial_parameters["EKF2_REQ_GDOP"]):
+        raise ValueError("conflicting GNSS PDOP parameter names")
+    for TIME, NAME, _ in ULOG.changed_parameters:
+        if TIME <= END and NAME in (*NAMES, "EKF2_REQ_PDOP", "EKF2_REQ_GDOP", "EKF2_REQ_GPS_H"):
+            raise ValueError(f"changed {NAME} requires a new GNSS quality session")
+    return [*VALUES, HEALTH_US]
+
+
+def gps_reading(GPS, INDEX, REQUIRE_VALID=True):
     LAT = math.radians(float(GPS["lat"][INDEX]) * 1e-7)
     LON = math.radians(float(GPS["lon"][INDEX]) * 1e-7)
     ALT = float(GPS["alt_ellipsoid"][INDEX]) * 1e-3
     VELOCITY = [float(GPS[FIELD][INDEX]) for FIELD in ("vel_n_m_s", "vel_e_m_s", "vel_d_m_s")]
     ACCURACY = [float(GPS[FIELD][INDEX]) for FIELD in ("eph", "epv", "s_variance_m_s")]
-    if (int(GPS["fix_type"][INDEX]) < 3 or not GPS["vel_ned_valid"][INDEX]
+    if REQUIRE_VALID and (int(GPS["fix_type"][INDEX]) < 3 or not GPS["vel_ned_valid"][INDEX]
             or not finite([LAT, LON, ALT, *VELOCITY, *ACCURACY])
             or abs(LAT) > math.pi / 2 or abs(LON) > math.pi or min(ACCURACY) <= 0):
         return None
+    if not finite([LAT, LON, ALT]) or abs(LAT) > math.pi / 2 or abs(LON) > math.pi:
+        raise ValueError("invalid GNSS coordinates; replay cannot project this input")
     return LAT, LON, ALT, VELOCITY, ACCURACY
 
 
-def imu_flags(ULOG, IMU, START_INDEX):
-    """Causal sensor flags; missing data is -1, never inferred from landed/EKF outputs."""
+def land_flags(ULOG, TIMES):
+    """Causal in-air/rest metadata, unknown after 3 s; landed does not establish rest."""
     LAND = [DATA.data for DATA in ULOG.data_list
             if DATA.name == "vehicle_land_detected" and DATA.multi_id == 0]
     if len(LAND) > 1:
         raise ValueError("multiple vehicle_land_detected instance 0 topics")
     LAND = LAND[0] if LAND else None
-    LAND_TIMES = timestamps(LAND) if LAND is not None and "at_rest" in LAND else []
-    CLIPPING = IMU.get("accelerometer_clipping")
+    LAND_TIMES = timestamps(LAND) if LAND is not None else []
     LAND_INDEX = -1
     ROWS = []
-    for INDEX in range(START_INDEX, len(IMU["timestamp"])):
-        TIME = int(IMU["timestamp"][INDEX])
+    for TIME in TIMES:
         while LAND_INDEX + 1 < len(LAND_TIMES) and LAND_TIMES[LAND_INDEX + 1] <= TIME:
             LAND_INDEX += 1
-        AT_REST = -1
+        VALUES = [-1, -1]
         if LAND_INDEX >= 0 and TIME - LAND_TIMES[LAND_INDEX] < 3000000:
-            VALUE = LAND["at_rest"][LAND_INDEX]
-            if VALUE not in (0, 1):
-                raise ValueError("invalid at_rest flag")
-            AT_REST = int(VALUE)
+            for AXIS, NAME in enumerate(("landed", "at_rest")):
+                if NAME in LAND:
+                    VALUE = LAND[NAME][LAND_INDEX]
+                    if VALUE not in (0, 1):
+                        raise ValueError(f"invalid {NAME} flag")
+                    VALUES[AXIS] = 1 - int(VALUE) if NAME == "landed" else int(VALUE)
+        ROWS.append(VALUES)
+    return ROWS
+
+
+def imu_flags(ULOG, IMU, START_INDEX):
+    """Missing clipping/rest data is -1, never inferred from estimator outputs."""
+    TIMES = [int(TIME) for TIME in IMU["timestamp"][START_INDEX:]]
+    LAND = land_flags(ULOG, TIMES)
+    CLIPPING = IMU.get("accelerometer_clipping")
+    ROWS = []
+    for OFFSET, TIME in enumerate(TIMES):
         MASK = -1
         if CLIPPING is not None:
-            VALUE = float(CLIPPING[INDEX])
+            VALUE = float(CLIPPING[START_INDEX + OFFSET])
             if not math.isfinite(VALUE) or not VALUE.is_integer() or not 0 <= VALUE <= 7:
                 raise ValueError("invalid accelerometer clipping mask")
             MASK = int(VALUE)
-        ROWS.append([TIME, AT_REST, MASK])
+        ROWS.append([TIME, LAND[OFFSET][1], MASK])
+    return ROWS
+
+
+def gnss_displacement(PREVIOUS, CURRENT):
+    """Azimuthal equidistant N/E about the preceding fix; MSL altitude supplies Down.
+
+    Match the reference's spherical projection (radius 6371000 m), independently
+    of the replay trajectory's fixed-origin ECEF projection.
+    """
+    LAT0, LON0, ALT0 = PREVIOUS
+    LAT, LON, ALT = CURRENT
+    NORTH = math.cos(LAT0) * math.sin(LAT) - math.sin(LAT0) * math.cos(LAT) * math.cos(LON - LON0)
+    EAST = math.cos(LAT) * math.sin(LON - LON0)
+    COS_DISTANCE = math.sin(LAT0) * math.sin(LAT) + math.cos(LAT0) * math.cos(LAT) * math.cos(LON - LON0)
+    DISTANCE = math.acos(max(-1.0, min(1.0, COS_DISTANCE)))
+    if DISTANCE > math.pi - 1e-6:
+        raise ValueError("GNSS displacement is outside the supported local projection")
+    SCALE = 6371000.0 * (DISTANCE / math.sin(DISTANCE) if DISTANCE > 0 else 1.0)
+    return [SCALE * NORTH, SCALE * EAST, ALT0 - ALT]
+
+
+def gnss_quality_rows(ULOG, GPS, TIMES, START, END):
+    """Keep bad fixes; they must reach the health monitor instead of disappearing."""
+    if "device_id" in GPS and len({int(V) for T, V in zip(TIMES, GPS["device_id"]) if T <= END}) != 1:
+        raise ValueError("GNSS receiver changes require a new quality/reference session")
+    LAND = land_flags(ULOG, TIMES)
+    PREVIOUS, REFERENCE_TIME = None, 0
+    ROWS = []
+    for INDEX, TIME in enumerate(TIMES):
+        if not START < TIME <= END:
+            continue
+        LAT, LON, _, VELOCITY, _ = gps_reading(GPS, INDEX, REQUIRE_VALID=False)
+        ALT_MSL = float(GPS["alt"][INDEX]) * 1e-3
+        if not math.isfinite(ALT_MSL):
+            raise ValueError("invalid GNSS MSL altitude")
+        FIX, SATELLITES, VELOCITY_VALID = (float(GPS[NAME][INDEX])
+                                          for NAME in ("fix_type", "satellites_used", "vel_ned_valid"))
+        if (not all(V.is_integer() and 0 <= V <= 255 for V in (FIX, SATELLITES))
+                or VELOCITY_VALID not in (0, 1)):
+            raise ValueError("invalid GNSS fix/satellite/velocity-valid metadata")
+        DOPS = [float(GPS[NAME][INDEX]) for NAME in ("hdop", "vdop")]
+        # Preserve malformed DOP as invalid input rather than hiding its sign with hypot.
+        PDOP = math.hypot(*DOPS) if finite(DOPS) and min(DOPS) >= 0 else math.nan
+        SPOOFED = -1
+        if "spoofing_state" in GPS:
+            VALUE = float(GPS["spoofing_state"][INDEX])
+            if VALUE not in (0, 1, 2, 3):
+                raise ValueError("invalid GNSS spoofing state")
+            SPOOFED = int(VALUE == 3)  # MULTIPLE, matching EKF2; unknown(0) is not a spoof flag.
+        CURRENT = (LAT, LON, ALT_MSL)
+        DELTA = gnss_displacement(PREVIOUS, CURRENT) if PREVIOUS is not None else [0.0] * 3
+        ROWS.append([TIME, FIX, SATELLITES, PDOP, SPOOFED, VELOCITY_VALID, *LAND[INDEX],
+                     *VELOCITY, *DELTA, REFERENCE_TIME])
+        # EKF2 does not submit messages with invalid NED velocity to its GNSS checks.
+        if VELOCITY_VALID:
+            PREVIOUS, REFERENCE_TIME = CURRENT, TIME
     return ROWS
 
 
@@ -202,6 +292,8 @@ def prepare(ULOG, OUTPUT):
     MAG_REFERENCE = magnetic_reference(Q, FIELD, ULOG)
     MAG_ROWS = magnetic_rows(ULOG, MAG, MAG_TIMES, START, IMU_TIMES[-1])
     GNSS_PARAMETERS = gnss_parameters(ULOG, IMU_TIMES[-1])
+    QUALITY_PARAMETERS = gnss_quality_parameters(ULOG, IMU_TIMES[-1])
+    QUALITY_ROWS = gnss_quality_rows(ULOG, GPS, GPS_TIMES, START, IMU_TIMES[-1])
     VALID = [(INDEX, gps_reading(GPS, INDEX)) for INDEX in range(len(GPS_TIMES))]
     VALID = [(INDEX, READING) for INDEX, READING in VALID if READING is not None]
     GPS_SEED = [(INDEX, READING) for INDEX, READING in VALID if GPS_TIMES[INDEX] <= START]
@@ -220,9 +312,10 @@ def prepare(ULOG, OUTPUT):
         if not finite(VALUES):
             raise ValueError("non-finite IMU reading")
         IMU_ROWS.append([IMU_TIMES[INDEX], PERIOD, *VALUES])
-    for INDEX, (LAT, LON, ALT, VELOCITY, ACCURACY) in VALID:
+    for INDEX in range(len(GPS_TIMES)):
         if not START < GPS_TIMES[INDEX] <= IMU_TIMES[-1]:
             continue
+        LAT, LON, ALT, VELOCITY, ACCURACY = gps_reading(GPS, INDEX, REQUIRE_VALID=False)
         DELTA = [X - Y for X, Y in zip(ecef(LAT, LON, ALT), ORIGIN_ECEF)]
         POSITION = [dot(ROW, DELTA) for ROW in BASIS]
         # Rotate receiver-local NED velocity into the fixed origin's NED axes.
@@ -240,6 +333,13 @@ def prepare(ULOG, OUTPUT):
     write_csv(OUTPUT / "navigation.csv", NAVIGATION_HEADER, GPS_ROWS)
     write_csv(OUTPUT / "gnss_parameters.csv",
               "position_gate,velocity_gate,position_noise,velocity_noise,position_noise_limit", [GNSS_PARAMETERS])
+    write_csv(OUTPUT / "gnss_quality_parameters.csv",
+              "check_mask,minimum_satellites,maximum_pdop,maximum_horizontal_accuracy,maximum_vertical_accuracy,"
+              "maximum_speed_accuracy,maximum_horizontal_drift,maximum_vertical_drift,minimum_health_time_us",
+              [QUALITY_PARAMETERS])
+    write_csv(OUTPUT / "gnss_quality.csv",
+              "timestamp_us,fix_type,satellites,pdop,spoofed,vel_ned_valid,in_air,at_rest,"
+              "vn,ve,vd,dn,de,dd,reference_timestamp_us", QUALITY_ROWS)
     write_csv(OUTPUT / "magnetic_reference.csv", "mn,me,md,noise_std,gate_sigma", [MAG_REFERENCE])
     write_csv(OUTPUT / "magnetometer.csv", "timestamp_us,mx,my,mz", MAG_ROWS)
     return {"start_timestamp_us": START, "end_timestamp_us": IMU_TIMES[-1],
@@ -247,17 +347,25 @@ def prepare(ULOG, OUTPUT):
             "magnetometer_rows": len(MAG_ROWS),
             "gnss_invalid_rows": len(GPS_TIMES) - len(VALID),
             "gnss_seed_timestamp_us": GPS_TIMES[ORIGIN_INDEX],
-            "gnss_valid_rows_outside_replay": len(VALID) - len(GPS_ROWS),
+            "gnss_valid_rows_outside_replay": sum(not START < GPS_TIMES[I] <= IMU_TIMES[-1] for I, _ in VALID),
             "origin_lat_deg": math.degrees(LAT0), "origin_lon_deg": math.degrees(LON0),
             "origin_alt_ellipsoid_m": ALT0, "initialization": "first 0.2 s accel/mag; latest valid GNSS",
             "magnetic_declination_deg": DECLINATION, "gnss_delay_compensation_ms": 0,
             "gnss_parameters": dict(zip(("position_gate", "velocity_gate", "position_noise_std_m",
                                           "velocity_noise_std_mps", "position_noise_limit_m"), GNSS_PARAMETERS)),
+            "gnss_quality_parameters": dict(zip(("check_mask", "minimum_satellites", "maximum_pdop",
+                "maximum_horizontal_accuracy", "maximum_vertical_accuracy", "maximum_speed_accuracy",
+                "maximum_horizontal_drift", "maximum_vertical_drift", "minimum_health_time_us"), QUALITY_PARAMETERS)),
+            "gnss_health_time_source": "EKF2_REQ_GPS_H" if "EKF2_REQ_GPS_H" in ULOG.initial_parameters
+                else "explicit 10 s reference default; legacy log has no EKF2_REQ_GPS_H",
+            "gnss_quality_motion": "causal landed/at_rest; unknown required flags block quality and reset qualification",
+            "gnss_quality_spoofing": "missing field is unavailable; MULTIPLE(3) sets spoofed as in EKF2",
+            "gnss_quality_projection": "adjacent-fix spherical N/E, radius 6371000 m; MSL Down; receiver-local velocity",
             "gnss_fusion": "3D velocity, horizontal position, height; each gates/corrects its latest prior",
             "gnss_noise": "logged floors; horizontal std capped by NOAID_NOISE; vertical velocity std scaled by 1.5",
             "gnss_height_reference": "sole GNSS height reference; no height bias or additional bias variance",
             "gnss_accuracy_frame": "reported accuracy axes treated as fixed local NED; local-flight approximation",
-            "gnss_limits": "co-located IMU/GNSS; no quality lifecycle, bad-vertical-acceleration gate override or resets",
+            "gnss_limits": "quality precedes gates; co-located IMU/GNSS; no fusion lifecycle, bad-vertical-acceleration override or resets",
             "magnetic_reference_n_ut": MAG_REFERENCE[:3],
             "magnetic_noise_std_ut": MAG_REFERENCE[3], "magnetic_gate_sigma": MAG_REFERENCE[4],
             "magnetic_reference_source": "R(q_seed) times first 0.2 s mean field; not independent WMM/truth",

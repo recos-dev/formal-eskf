@@ -3314,6 +3314,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "### R-GNSS-QUALITY: GNSS quality checks and health qualification"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### Replay GNSS quality"
           }
         ],
         "lean": [],
@@ -3333,6 +3337,14 @@
           {
             "file": "include/formal_eskf/runtime/gnss_quality.hpp",
             "symbol": "void GnssQuality<Linalg>::update_health("
+          },
+          {
+            "file": "examples/replay_gnss.hpp",
+            "symbol": "class ReplayGnssQuality"
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "GnssQuality::Result check_gnss_quality("
           }
         ],
         "esbmc": []

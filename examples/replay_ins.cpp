@@ -29,6 +29,7 @@
 #include <formal_eskf/eskf/eskf.hpp>
 #include <formal_eskf/runtime/accelerometer.hpp>
 #include <formal_eskf/runtime/magnetometer.hpp>
+#include <formal_eskf/runtime/magnetometer_fusion.hpp>
 #include <formal_eskf/runtime/position.hpp>
 #include <formal_eskf/runtime/velocity.hpp>
 #include "replay_accelerometer.hpp"
@@ -61,6 +62,9 @@
 #define MAG_STRENGTH_TOL 20.0    // microtesla.
 #define MAG_INCLINATION_TOL 20.0 // degrees.
 #define MAG_MIN_HORIZONTAL 5.0   // microtesla; weak-heading guard, not an observability proof.
+#define MAG_HEALTH_TIME_US 1000000U
+#define MAG_MAX_INTERVAL_US 500000U // Startup freshness; no-data stop uses twice this.
+#define MAG_FUSION_TIMEOUT_US 7000000U
 
 // Legacy/KITTI floors; PX4 replay supplies gnss_parameters.csv instead.
 #define POS_XY_STD_MIN 1.0 // m.
@@ -91,6 +95,7 @@ using Imu = Types::imu_sample_type;
 using formal_eskf::Status;
 using FusionConditions = formal_eskf::example::ReplayFusionConditions<Linalg>;
 using Accelerometer = formal_eskf::example::ReplayAccelerometer<Linalg, ACCEL_OBS_PERIOD_US>;
+using MagneticLifecycle = formal_eskf::runtime::MagnetometerFusion;
 
 std::ifstream open_csv(std::filesystem::path const & path, std::string_view expected_header)
 {
@@ -305,6 +310,65 @@ std::string_view fusion_outcome(formal_eskf::runtime::FusionDecision decision)
     }
 }
 
+std::string_view magnetic_stop_reason(MagneticLifecycle::StopReason reason)
+{
+    switch (reason)
+    {
+    case MagneticLifecycle::StopReason::none:
+        return "none";
+    case MagneticLifecycle::StopReason::disabled:
+        return "disabled";
+    case MagneticLifecycle::StopReason::not_ready:
+        return "not_ready";
+    case MagneticLifecycle::StopReason::waiting_for_health:
+        return "waiting_for_health";
+    case MagneticLifecycle::StopReason::field_rejected:
+        return "field_rejected";
+    case MagneticLifecycle::StopReason::innovation_rejected:
+        return "innovation_rejected";
+    case MagneticLifecycle::StopReason::data_timeout:
+        return "data_timeout";
+    case MagneticLifecycle::StopReason::fusion_timeout:
+        return "fusion_timeout";
+    case MagneticLifecycle::StopReason::recovery_required:
+        return "recovery_required";
+    default:
+        return "invalid_call";
+    }
+}
+
+std::string_view magnetic_recovery_reason(MagneticLifecycle::RecoveryReason reason)
+{
+    switch (reason)
+    {
+    case MagneticLifecycle::RecoveryReason::none:
+        return "none";
+    case MagneticLifecycle::RecoveryReason::fusion_timeout:
+        return "fusion_timeout";
+    case MagneticLifecycle::RecoveryReason::fusion_failed:
+        return "fusion_failed";
+    default:
+        return "source_changed";
+    }
+}
+
+void write_magnetic_update(std::ostream & stream, std::uint64_t source_time, std::uint64_t time,
+                           std::string_view outcome,
+                           formal_eskf::runtime::MagnetometerFusionResult<Linalg> const & result,
+                           MagneticLifecycle::State const & lifecycle)
+{
+    auto const & field = result.field;
+    auto const & fusion = result.fusion;
+    auto const status = formal_eskf::succeeded(field.status) ? fusion.status : field.status;
+    stream << source_time << ',' << time << ',' << outcome << ',' << static_cast<int>(status) << ','
+           << field.diagnostics_valid << ',' << field.failures.strength << ',' << field.failures.inclination << ','
+           << field.failures.horizontal_field << ',' << fusion.diagnostics_valid << ',' << fusion.test_ratio(0U) << ','
+           << fusion.test_ratio(1U) << ',' << fusion.test_ratio(2U) << ',' << lifecycle.active << ','
+           << magnetic_stop_reason(lifecycle.stop_reason) << ',' << magnetic_recovery_reason(lifecycle.recovery_reason)
+           << ',' << lifecycle.last_field_failure_time_us << ',' << lifecycle.start_time_us << ','
+           << lifecycle.last_fuse_time_us << '\n';
+}
+
 /** One row per observed axis; the outcome applies to the whole group. */
 template <std::size_t Size>
 bool record_navigation_fusion(std::ostream & stream, formal_eskf::runtime::FusionResult<Linalg, Size> const & result,
@@ -473,6 +537,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     auto const settings = parameters();
     FusionConditions fusion_conditions;
     Accelerometer accelerometer;
+    MagneticLifecycle magnetic_lifecycle;
+    MagneticLifecycle::Parameters const magnetic_timing{MAG_HEALTH_TIME_US, MAG_MAX_INTERVAL_US, MAG_FUSION_TIMEOUT_US};
     auto const accel_V = Linalg::matrix_type<3U, 3U>::identity() * (ACCEL_OBS_STD * ACCEL_OBS_STD);
     // Consume seed metadata, but initialization is not a successful aiding event.
     (void)read_imu_flags(flags, time);
@@ -512,7 +578,9 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     mag_updates.exceptions(std::ios::failbit | std::ios::badbit);
     mag_updates << std::setprecision(17);
     mag_updates << "source_timestamp_us,fusion_timestamp_us,outcome,status,field_valid,strength_rejected,"
-                   "inclination_rejected,horizontal_rejected,innovation_valid,ratio_x,ratio_y,ratio_z\n";
+                   "inclination_rejected,horizontal_rejected,innovation_valid,ratio_x,ratio_y,ratio_z,"
+                   "active,stop_reason,recovery_reason,last_field_failure_timestamp_us,start_timestamp_us,last_fuse_"
+                   "timestamp_us\n";
     accel_updates << std::setprecision(17);
     accel_updates << "timestamp_us,interval_us,fx,fy,fz,clipping_mask,lpf_squared_norm,within_gravity_band,"
                      "tilt_aligned,horizontal_aiding,at_rest,outcome\n";
@@ -536,6 +604,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::size_t accel_observations = 0U, accel_corrections = 0U, accel_rejected = 0U, accel_unavailable = 0U;
     std::uint64_t accel_interval_min_us = 0U, accel_interval_max_us = 0U, accel_interval_total_us = 0U;
     std::size_t mag_events = 0U, mag_corrections = 0U, mag_rejected = 0U;
+    std::size_t mag_skipped = 0U, mag_superseded = 0U;
     std::uint64_t mag_max_alignment_us = 0U;
     while (read_row(imu, imu_row))
     {
@@ -675,8 +744,10 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                           << fusion_conditions.horizontal_aiding(time) << ',' << sample_flags[0U] << ',' << outcome
                           << '\n';
         }
-        // Consume each magnetic event once, after this tick's navigation/gravity
-        // updates. Message-time alignment only; no delay compensation or yaw reset.
+        // Select the newest available sample once per tick. Older samples from
+        // the same tick are superseded, not repeatedly fused at one horizon.
+        std::uint64_t magnetic_time = 0U;
+        Vector3 magnetic_sample;
         while (has_magnetometer && timestamp(magnetic_row[0U]) <= time)
         {
             auto const source_time = timestamp(magnetic_row[0U]);
@@ -685,33 +756,78 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 throw std::runtime_error("Magnetometer timestamps must increase after initialization");
             }
             ++mag_events;
-            mag_max_alignment_us = std::max(mag_max_alignment_us, time - source_time);
-            if (mag_enabled)
-            {
-                // GNSS availability alone does not establish independent heading
-                // observability. Skip only that optional check, never the innovation gate.
-                auto const result = formal_eskf::runtime::fuse_magnetometer(
-                    state, covariance, vector3(magnetic_row[1U], magnetic_row[2U], magnetic_row[3U]), magnetic.m_n,
-                    magnetic.V, field_parameters, false, QUAT_MIN_NORM, magnetic.gate_sigma, state, covariance);
-                auto const & fusion = result.fusion;
-                auto const & field = result.field;
-                mag_updates << source_time << ',' << time << ',' << fusion_outcome(fusion.decision) << ','
-                            << static_cast<int>(fusion.status) << ',' << field.diagnostics_valid << ','
-                            << field.failures.strength << ',' << field.failures.inclination << ','
-                            << field.failures.horizontal_field << ',' << fusion.diagnostics_valid << ','
-                            << fusion.test_ratio(0U) << ',' << fusion.test_ratio(1U) << ',' << fusion.test_ratio(2U)
-                            << '\n';
-                check_status(fusion.status, "magnetometer correction", time);
-                mag_corrections += fusion.decision == formal_eskf::runtime::FusionDecision::fused ? 1U : 0U;
-                mag_rejected += fusion.decision == formal_eskf::runtime::FusionDecision::rejected ? 1U : 0U;
-                check_state(state, covariance);
-            }
-            else
-            {
-                mag_updates << source_time << ',' << time << ",disabled,0,0,0,0,0,0,0,0,0\n";
-            }
+            mag_superseded += magnetic_time != 0U ? 1U : 0U;
+            magnetic_time = source_time;
+            magnetic_sample = vector3(magnetic_row[1U], magnetic_row[2U], magnetic_row[3U]);
             last_magnetic_time = source_time;
             has_magnetometer = read_row(magnetometer, magnetic_row);
+        }
+        if (has_magnetic_input)
+        {
+            auto const previous = magnetic_lifecycle.state();
+            formal_eskf::runtime::MagnetometerFusionResult<Linalg> result;
+            if (mag_enabled && magnetic_time != 0U)
+            {
+                // Same prior for field qualification and, if authorized, fusion.
+                // GNSS availability alone does not prove heading observability.
+                result.field = formal_eskf::runtime::check_magnetic_field(state.q_nb, magnetic_sample, magnetic.m_n,
+                                                                          field_parameters, false);
+            }
+            // This fixed-reference CSV session has one adapter-assigned identity,
+            // not a claimed hardware ID/calibration counter. Preparation rejects
+            // recorded source/calibration changes; unrecorded changes are unknown.
+            MagneticLifecycle::Sample const lifecycle_sample{
+                magnetic_time, {1U, 0U}, formal_eskf::succeeded(result.field.status) && result.field.accepted};
+            // Initial yaw/reference come from the causal seed. Tilt readiness is
+            // the existing covariance-based latch, never imported EKF2 status.
+            MagneticLifecycle::Conditions const magnetic_conditions{mag_enabled, fusion_conditions.tilt_aligned(), true,
+                                                                    fusion_conditions.horizontal_aiding(time),
+                                                                    sample_flags[0U] == 1};
+            check_status(magnetic_lifecycle.update(time, magnetic_conditions, magnetic_timing, lifecycle_sample),
+                         "magnetometer lifecycle", time);
+            std::string_view outcome = magnetic_time == 0U ? "no_sample" : "skipped";
+            if (!formal_eskf::succeeded(result.field.status))
+            {
+                outcome = "failed";
+            }
+            else if (magnetic_lifecycle.state().fusion_allowed)
+            {
+                result = formal_eskf::runtime::fuse_magnetometer(state, covariance, magnetic_sample, magnetic.m_n,
+                                                                 magnetic.V, field_parameters, false, QUAT_MIN_NORM,
+                                                                 magnetic.gate_sigma, state, covariance);
+                check_status(magnetic_lifecycle.record_fusion(magnetic_time, result.fusion.decision),
+                             "magnetometer fusion feedback", time);
+                outcome = fusion_outcome(result.fusion.decision);
+                mag_corrections += result.fusion.decision == formal_eskf::runtime::FusionDecision::fused ? 1U : 0U;
+                mag_rejected += result.fusion.decision == formal_eskf::runtime::FusionDecision::rejected ? 1U : 0U;
+            }
+            else if (magnetic_time != 0U)
+            {
+                ++mag_skipped;
+            }
+            auto const & lifecycle = magnetic_lifecycle.state();
+            if (magnetic_time != 0U || lifecycle.stop_reason != previous.stop_reason ||
+                lifecycle.recovery_reason != previous.recovery_reason)
+            {
+                // Include no-data transitions so dropouts/timeouts remain visible.
+                write_magnetic_update(mag_updates, magnetic_time, time, outcome, result, lifecycle);
+            }
+            if (magnetic_time != 0U)
+            {
+                mag_max_alignment_us = std::max(mag_max_alignment_us, time - magnetic_time);
+            }
+            check_status(result.field.status, "magnetic field check", time);
+            check_status(result.fusion.status, "magnetometer correction", time);
+            if (lifecycle.recovery_reason != MagneticLifecycle::RecoveryReason::none)
+            {
+                throw std::runtime_error("magnetometer requires estimator reset (" +
+                                         std::string(magnetic_recovery_reason(lifecycle.recovery_reason)) +
+                                         "); automatic yaw/magnetic-state reset is not implemented in replay");
+            }
+            if (result.fusion.decision == formal_eskf::runtime::FusionDecision::fused)
+            {
+                check_state(state, covariance);
+            }
         }
         write_state(states, time, state, covariance);
     }
@@ -769,6 +885,15 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"magnetometer_events\": " << mag_events
             << ",\n  \"magnetometer_corrections\": " << mag_corrections
             << ",\n  \"magnetometer_rejected\": " << mag_rejected
+            << ",\n  \"magnetometer_lifecycle_skipped\": " << mag_skipped
+            << ",\n  \"magnetometer_superseded\": " << mag_superseded
+            << ",\n  \"magnetometer_health_time_us\": " << MAG_HEALTH_TIME_US
+            << ",\n  \"magnetometer_maximum_interval_us\": " << MAG_MAX_INTERVAL_US
+            << ",\n  \"magnetometer_data_timeout_us\": " << 2U * MAG_MAX_INTERVAL_US
+            << ",\n  \"magnetometer_fusion_timeout_us\": " << MAG_FUSION_TIMEOUT_US
+            << ",\n  \"magnetometer_stop_reason\": \"" << magnetic_stop_reason(magnetic_lifecycle.state().stop_reason)
+            << '"' << ",\n  \"magnetometer_recovery_reason\": \""
+            << magnetic_recovery_reason(magnetic_lifecycle.state().recovery_reason) << '"'
             << ",\n  \"magnetometer_max_alignment_us\": " << mag_max_alignment_us
             << ",\n  \"magnetometer_observation_variance\": " << magnetic.V(0U, 0U)
             << ",\n  \"magnetometer_gate_sigma\": " << magnetic.gate_sigma
@@ -792,7 +917,9 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
               << "Accelerometer interval: target " << ACCEL_OBS_PERIOD_US << " us, actual " << accel_interval_min_us
               << ".." << accel_interval_max_us << " us\n"
               << "Magnetometer events: " << mag_events << " (" << mag_corrections << " fused, " << mag_rejected
-              << " rejected, " << (mag_enabled ? 0U : mag_events) << " disabled)\n";
+              << " gate rejected, " << mag_skipped << " lifecycle skipped, " << mag_superseded << " superseded)\n"
+              << "Magnetometer lifecycle: " << magnetic_stop_reason(magnetic_lifecycle.state().stop_reason)
+              << "; recovery: " << magnetic_recovery_reason(magnetic_lifecycle.state().recovery_reason) << '\n';
 }
 
 } /* namespace */

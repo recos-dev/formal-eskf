@@ -2948,12 +2948,16 @@
     },
     {
       "id": "R-MAGNETOMETER-LIFECYCLE",
-      "title": "Magnetic health qualification, fusion deadlines and explicit source/recovery handling; Lean and ESBMC evidence pending",
+      "title": "Magnetic startup/continuation policy, retryable stops and explicit reset requests; Lean and ESBMC evidence pending",
       "references": {
         "spec": [
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "### R-MAGNETOMETER-LIFECYCLE: magnetic health and fusion lifecycle"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### Replay magnetic lifecycle"
           }
         ],
         "lean": [],
@@ -2972,7 +2976,15 @@
           },
           {
             "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "symbol": "MagnetometerFusion::check_fusion_timeout()"
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
             "symbol": "void restart()"
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "void replay("
           }
         ],
         "esbmc": []

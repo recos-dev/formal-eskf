@@ -4,7 +4,7 @@
 Sensor inputs are sensor_combined, vehicle_gps_position and vehicle_magnetometer;
 vehicle_land_detected supplies optional at_rest metadata.
 PX4 estimator outputs are not inputs. Magnetic measurements initialize attitude
-and provide gated corrections against a fixed, initialization-derived field.
+and provide lifecycle-controlled, gated corrections against a fixed seed field.
 Gravity correction requires complete clipping metadata and valid fusion conditions.
 GNSS uses independent velocity/position/height gates, without source lifecycle or resets.
 """
@@ -262,7 +262,9 @@ def prepare(ULOG, OUTPUT):
             "magnetic_noise_std_ut": MAG_REFERENCE[3], "magnetic_gate_sigma": MAG_REFERENCE[4],
             "magnetic_reference_source": "R(q_seed) times first 0.2 s mean field; not independent WMM/truth",
             "magnetic_measurement": "vehicle_magnetometer instance 0, calibrated body FRD, Gauss times 100 -> microtesla",
-            "magnetic_timing": "topic timestamp on following IMU tick; no sensor-delay compensation",
+            "magnetic_timing": "newest topic sample at each IMU tick; superseded samples counted; no sensor-delay compensation",
+            "magnetic_lifecycle": "tilt alignment, startup health and sample count; automatic retry after ordinary stops; unsupported reset requests abort",
+            "magnetic_identity": "fixed CSV session identity 1, generation 0; not hardware device_id/calibration_count",
             "magnetic_calibration": "use published calibration; no additional CAL_MAG or EKF2_MAGBIAS subtraction",
             "magnetic_source_limits": "reject recorded source/calibration changes; missing metadata cannot establish absence of changes",
             "at_rest_unavailable_rows": sum(ROW[1] == -1 for ROW in FLAGS),

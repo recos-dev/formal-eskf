@@ -243,13 +243,16 @@ it is not an independent WMM reference or evidence of magnetic health.
   log), not a PX4 rule or validated heading-accuracy bound. No independent
   heading-observability detector is supplied: pass `heading_observable=false`,
   retaining field checks and the innovation gate. Do not retune to match output.
-- Consume each new topic-timestamped magnetic sample once at the following IMU
+- Select the newest available topic-timestamped magnetic sample at each IMU
   tick, after navigation and any gravity correction, using the current prior.
+  Consume older samples from that tick without fusion and count them as superseded.
   Record the alignment offset; no physical sensor-delay compensation is claimed.
-  Call `runtime::fuse_magnetometer`, preserving `ESKF_MAG_TILT` and default bias
-  permissions. Record outcome/status, field failures and valid innovation ratios
-  in `magnetometer_updates.csv`. Rejection continues; numerical failure is logged
-  and terminates replay. No lifecycle, automatic yaw/state reset or restart.
+  Only lifecycle permission authorizes `runtime::fuse_magnetometer`, preserving
+  `ESKF_MAG_TILT` and default bias permissions. Record outcome/status, field
+  failures, valid innovation ratios and lifecycle state/timestamps in
+  `magnetometer_updates.csv`. A skipped sample is not a gate rejection.
+  No-data lifecycle transitions also produce rows (`source_timestamp_us=0`).
+  Rejection continues; numerical failure is logged and terminates replay.
 - Reject recorded sensor/calibration/frame or magnetic parameter changes that
   invalidate the frozen reference/settings. Missing change metadata remains a
   limitation, not evidence that the source never changed.
@@ -259,20 +262,119 @@ it is not an independent WMM reference or evidence of magnetic health.
   data in both runs. Missing-input and disabled paths must preserve the prior
   replay's state/navigation results. KITTI supplies no magnetic input.
 
+#### Replay magnetic lifecycle
+
+Replay uses the lifecycle below with 1 s startup health, a 0.5 s maximum
+interval and a 7 s active-fusion timeout. Own covariance-based tilt alignment
+supplies readiness; yaw and the fixed field reference remain causal seed
+assumptions. No yaw/reset event occurs during replay, so starting is allowed.
+Horizontal aiding means an actual recent horizontal GNSS fusion, not merely a
+received GNSS packet. Only a recorded `at_rest=true` enables the rest override;
+missing rest metadata is not evidence of motion.
+
+The reference is [PX4 v1.16.2 magnetometer control](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/magnetometer/mag_control.cpp),
+with timing from [ekf.h](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/ekf.h)
+and [common.h](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/common.h).
+
+| Decision | Implemented rule |
+|---|---|
+| Start | Continuing conditions pass, stable yaw/reset frame, at least four samples, more than 1 s since the last failed field check, newest sample age strictly below 0.5 s; actual successful fusion activates. |
+| Continue | A current good field may fuse without repeating startup health. Field rejection inhibits navigation correction without ending the active session. |
+| No data | On a no-sample tick, stop at age **>= 1 s**; preserve field history and allow fresh qualified data to restart. |
+| Fusion timeout | Try the current observation first. Only an active session still without success for **> 7 s** takes the timeout branch. |
+| Timeout with horizontal aiding and no rest override | Stop, without a permanent fault latch; later qualified observations may retry automatically. |
+| Timeout without horizontal aiding or with rest override | Request estimator reset; do not manufacture a successful reset/fusion timestamp. |
+
+The metadata controller is not a complete EKF2 replacement. PX4 owns magnetic
+earth/bias states, magnetic LPF, WMM, declination fusion, heading-consistency and
+mode selection, state/covariance resets and separate latest/delayed timelines.
+Our fixed-field core has no magnetic-only update: when the field is rejected,
+navigation correction is inhibited and no fictitious magnetic-state fusion is
+reported. Thus a physical disturbance need not produce the same outcomes or
+progress timestamps as EKF2. Replay's single timestamp timeline does not model
+PX4 buffer-push recency or sensor delay.
+
+Ordinary stops restart automatically; reset-required branches do not. Replay
+logs and **fails explicitly** if a reset is requested, because yaw/magnetic-state
+reset is not implemented. Numerical errors also terminate after logging.
+Known source/calibration changes still require a new replay/reference; one
+fixed CSV session uses adapter identity `Source{1, 0}`, not a hardware ID/count.
+Absent change metadata cannot prove source continuity. Summary counts partition
+events into fused, gate-rejected, lifecycle-skipped and superseded. No-data
+state transitions use source timestamp zero. Native checks are not formal proof.
+
 ### R-MAGNETOMETER-LIFECYCLE: magnetic health and fusion lifecycle
 
-`runtime::MagnetometerFusion` is a single-writer metadata controller for one selected magnetic source and one three-axis rejection group. It composes the actual `R-MAGNETIC-FIELD` result with `R-MAGNETOMETER-FUSION`, without owning their numerical inputs or changing ESKF state/P. `ready` is an explicit caller premise covering alignment, reference validity, estimator validity and aiding policy; `enabled` is separate configuration permission.
+`runtime::MagnetometerFusion` manages one selected magnetic source without owning
+measurements, estimator state/P, clocks or numerical reset operations.
+`Conditions::ready` covers continuing prerequisites: tilt/yaw alignment, valid
+reference/state/P and permitted aiding policy. `starting_allowed` additionally
+excludes a yaw-alignment change or quaternion-reset frame. Horizontal-aiding and
+at-rest flags select the timeout action; they must reflect actual caller state.
 
-- Call `update` every estimator tick, including ticks without data. `now_us` is nonzero and strictly increasing; every new sample time strictly exceeds the preceding consumed sample across source changes and is no later than `now_us`. All timestamps use one caller-supplied fusion timeline, not arrival time. `Sample{}` denotes no sample and ignores its other fields. A consumed new sample has a nonzero adapter-assigned device ID and a calibration count (zero is valid). `field_accepted` means the actual same-sample/same-prior field check succeeded with valid diagnostics and acceptance; it is not an innovation outcome.
-- Configure positive `health_time_us`, `maximum_sample_age_us` and `fusion_timeout_us`, fixed until full reset. Maximum age also bounds the sample gap allowed in a continuous-good interval. Freshness uses sample time; compare ordered unsigned differences, never timestamp plus duration. Age/gap/deadline equality is allowed; expiration requires `>`. Zero defaults are invalid deployment settings.
-- Qualify health only after consecutive accepted, fresh samples while enabled and ready span at least `health_time_us`. Start at the first good **sample**, not the preceding failure or message-arrival time. No-data ticks cannot advance qualification. A bad field, excessive sample gap/age, disable, readiness loss or invalid update clears qualification and immediately revokes fusion. A short interruption can recover after a new complete good interval if the session's fusion deadline has not expired.
-- `active` means an eligible monitoring session, not that fusion succeeded or the estimate is valid. Every update revokes old permission; `fusion_allowed` is true only for one new qualified sample in that tick. Record the actual gated transaction's `FusionDecision` and matching sample timestamp before the next update. Every valid feedback consumes permission. Only `fused` sets `last_fuse_time_us=now_us`; it is the fusion horizon, not the sample or arrival time. Record first authorization in `start_time_us`, without inventing a successful fusion.
-- Gate `rejected` feedback does not clear field qualification or renew progress. Measure unsuccessful-fusion duration from the last actual success, or first authorization if none succeeded. Exceeding `fusion_timeout_us` latches recovery even on no-data, disabled or unready ticks. Brief pauses, fresh good samples and requalification retain that deadline. Numerical `failed` feedback requires recovery immediately. Preserve the first recovery cause until authorized restart, except that a source change starts a new source context and replaces it with `source_changed`.
-- On a consumed device-ID/calibration-count change, clear the old source's health/session history, revoke old feedback permissions, bind the new identity and require explicit recovery. Initial source binding is not a change. Do not normalize/reset yaw, magnetic bias or covariance automatically. The adapter must select one source before calling; this controller is not a multi-sensor selector or queue. Reference/frame/field-policy changes and external yaw resets require the caller to stop/re-establish readiness and call `restart`; they are not detected from device metadata.
-- `restart()` is explicit caller authorization after establishing safe re-entry, including any needed estimator repair. It clears health/session/recovery history but retains time, sample, source and parameter records. It grants no permission and requires new samples and a full good interval. Full `reset()` clears all metadata for an explicitly reinitialized timeline/configuration. Neither operation resets ESKF state/P or publishes reset notifications; repeated restart/reset must not be used merely to bypass rejection deadlines.
-- Invalid/changed durations return `domain_error` before time checks; zero/duplicate/backward current time, duplicate/backward/future sample time return `out_of_range`; a new sample's zero device ID returns `domain_error`. Invalid updates stop health/activity/permission but preserve session progress/recovery and do not consume configuration, time or source. Invalid feedback enum returns `domain_error`; missing permission/wrong sample returns `out_of_range`; invalid feedback preserves all metadata. The current stop-reason precedence on valid updates is disabled, not ready, recovery required, data timeout, current field rejection, waiting for health, then none. The recovery cause remains independently visible while disabled/unready.
+- Call `update` on every estimator tick. Current time is nonzero and strictly
+  increasing. New sample times strictly increase, including across source changes,
+  and cannot be future times. `Sample{}` means no new sample and ignores the other
+  fields. A source has a nonzero adapter-assigned ID and calibration count.
+  `field_accepted` is the actual successful same-sample/same-prior field check,
+  not an innovation outcome. The adapter supplies aligned usable samples and
+  truthful freshness on one timeline; delayed buffering is outside this API.
+- Positive `health_time_us`, `maximum_interval_us` and `fusion_timeout_us`
+  remain fixed until full reset. Require `maximum_interval_us <= UINT64_MAX/2`
+  so the two-interval no-data bound is representable. Compare elapsed unsigned
+  differences after validating order; never add durations to timestamps.
+- Count consumed samples while enabled, saturating at four. Check health on new
+  enabled/ready samples. A rejected field sets `last_field_failure_time_us=now_us`;
+  the first check seeds that timestamp even when good. Startup requires strictly
+  more than the health duration since that timestamp, at least four samples,
+  current field acceptance, stable starting conditions and age strictly less than
+  one maximum interval. Permission is a start attempt, not an active session.
+- Every update revokes old permission. Call the actual gated transaction at most
+  once per permitted sample, then record its matching timestamp and decision.
+  Only `fused` activates a session and updates `last_fuse_time_us=now_us`;
+  an inactive-to-active success also sets `start_time_us`. A rejected startup
+  stays inactive, has no invented successful time and may retry later.
+- An active session does not repeat startup health/sample-count tests. Current
+  field rejection inhibits navigation correction but leaves it active; the next
+  good field may fuse immediately. This controller does not emulate EKF2's
+  magnetic-only state update. `stop_reason` also describes temporary inhibition,
+  so `field_rejected` or `innovation_rejected` can coexist with `active=true`.
+- Disable stops activity. On new data, lost readiness stops it; on no-data ticks,
+  age **>= twice the maximum interval** stops it. Ordinary stops retain field
+  health/count and successful-fusion history; gaps do not fabricate bad field
+  checks. Fresh qualified observations can restart without calling `restart()`.
+- Apply the unsuccessful-fusion timer only to an active session after the current
+  attempt, or when a current field inhibits correction. A success at an overdue
+  horizon refreshes progress before this test. Elapsed equality is allowed;
+  elapsed **> fusion_timeout_us** selects an ordinary `fusion_timeout` stop when
+  horizontal aiding is active and the rest flag is false, otherwise a
+  `recovery_required` reset request. No-data ticks use their recency branch,
+  not a permanent unsuccessful-fusion latch. Inactive startup rejections do not
+  acquire an active-session deadline.
+- `failed` feedback requests numerical repair immediately. Source-ID/calibration
+  changes clear old-source history/count and request reinitialization, invalidating
+  old feedback. These requests persist until explicit caller-established safe
+  re-entry; a source change replaces an earlier cause. No state/P or yaw reset
+  is implied. A known external reference/frame change requires the same caller
+  coordination, not silent continuation.
+- `restart()` acknowledges safe re-entry after any needed estimator repair. It
+  clears session/health/count metadata, retains time/source/configuration
+  watermarks and requires startup qualification again. Never use it to pretend
+  a requested estimator reset ran. `reset()` clears everything for an explicitly
+  reinitialized timeline/configuration.
+- Invalid/changed durations return `domain_error` before time checks; invalid
+  current/sample time returns `out_of_range`; zero new-source ID returns
+  `domain_error`. Invalid updates stop activity/permission but do not consume
+  time/configuration/source or rewrite health/progress history. Invalid feedback
+  enum returns `domain_error`; wrong/missing permission returns `out_of_range`.
+  Invalid feedback preserves all metadata. Pending reset causes remain visible
+  independently of disable/readiness display.
 
-Native tests cover temporal/threshold boundaries, consecutive health, interruptions, persistent rejection with/without prior success, actual field-to-gated-correction integration, source changes, explicit recovery, invalid calls and unsigned-time extremes. This controller deliberately does not implement PX4's magnetic-state/yaw reset policy. Physical health, scheduling truthfulness, flight tuning, deployed resets and notification remain external obligations; Lean/ESBMC evidence is pending.
+Native tests cover strict health/freshness boundaries, sample count, active versus
+startup behavior, data outages, both timeout actions, retry, real AHRS/INS gated
+correction, source changes, failure atomicity and unsigned-time extremes.
+Lean/ESBMC evidence remains pending. Physical health, covariance consistency,
+deployed reset implementation and reset notifications are not proved here.
 
 ### E-INNOV: componentwise innovation gate
 

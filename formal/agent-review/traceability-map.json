@@ -3089,6 +3089,22 @@
           {
             "file": "include/formal_eskf/runtime/velocity.hpp",
             "symbol": "fuse_velocity("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "read_gnss_parameters("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "NavigationVariances navigation_variances("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "bool record_navigation_fusion("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "void replay("
           }
         ],
         "esbmc": []

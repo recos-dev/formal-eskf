@@ -6,6 +6,7 @@ vehicle_land_detected supplies optional at_rest metadata.
 PX4 estimator outputs are not inputs. Magnetic measurements initialize attitude
 and provide gated corrections against a fixed, initialization-derived field.
 Gravity correction requires complete clipping metadata and valid fusion conditions.
+GNSS uses independent velocity/position/height gates, without source lifecycle or resets.
 """
 
 import argparse
@@ -115,6 +116,23 @@ def magnetic_rows(ULOG, MAG, TIMES, START, END):
     return ROWS
 
 
+def gnss_parameters(ULOG, END):
+    """Fixed settings for a sole-GNSS aiding replay; no lever-arm compensation."""
+    NAMES = ("EKF2_GPS_P_GATE", "EKF2_GPS_V_GATE", "EKF2_GPS_P_NOISE", "EKF2_GPS_V_NOISE", "EKF2_NOAID_NOISE")
+    POSITION_NAMES = tuple(f"EKF2_{SENSOR}_POS_{AXIS}" for SENSOR in ("GPS", "IMU") for AXIS in "XYZ")
+    VALUES = [float(ULOG.initial_parameters[NAME]) for NAME in NAMES]
+    OFFSETS = [float(ULOG.initial_parameters[NAME]) for NAME in POSITION_NAMES]
+    if not finite([*VALUES, *OFFSETS]) or min(VALUES[2:]) <= 0:
+        raise ValueError("invalid GNSS noise/gate/offset parameters")
+    if OFFSETS[:3] != OFFSETS[3:]:
+        raise ValueError("GNSS replay requires co-located GNSS/IMU; lever-arm compensation is not implemented")
+    for TIME, NAME, _ in ULOG.changed_parameters:
+        if TIME <= END and NAME in (*NAMES, *POSITION_NAMES):
+            raise ValueError(f"changed {NAME} requires a new GNSS replay configuration")
+    VALUES[:2] = [max(VALUE, 1.0) for VALUE in VALUES[:2]]
+    return VALUES
+
+
 def gps_reading(GPS, INDEX):
     LAT = math.radians(float(GPS["lat"][INDEX]) * 1e-7)
     LON = math.radians(float(GPS["lon"][INDEX]) * 1e-7)
@@ -183,6 +201,7 @@ def prepare(ULOG, OUTPUT):
     Q = initial_quaternion(ACCEL, FIELD, math.radians(DECLINATION))
     MAG_REFERENCE = magnetic_reference(Q, FIELD, ULOG)
     MAG_ROWS = magnetic_rows(ULOG, MAG, MAG_TIMES, START, IMU_TIMES[-1])
+    GNSS_PARAMETERS = gnss_parameters(ULOG, IMU_TIMES[-1])
     VALID = [(INDEX, gps_reading(GPS, INDEX)) for INDEX in range(len(GPS_TIMES))]
     VALID = [(INDEX, READING) for INDEX, READING in VALID if READING is not None]
     GPS_SEED = [(INDEX, READING) for INDEX, READING in VALID if GPS_TIMES[INDEX] <= START]
@@ -219,6 +238,8 @@ def prepare(ULOG, OUTPUT):
     FLAGS = imu_flags(ULOG, IMU, SEED[-1])
     write_csv(OUTPUT / "imu_flags.csv", "timestamp_us,at_rest,accelerometer_clipping", FLAGS)
     write_csv(OUTPUT / "navigation.csv", NAVIGATION_HEADER, GPS_ROWS)
+    write_csv(OUTPUT / "gnss_parameters.csv",
+              "position_gate,velocity_gate,position_noise,velocity_noise,position_noise_limit", [GNSS_PARAMETERS])
     write_csv(OUTPUT / "magnetic_reference.csv", "mn,me,md,noise_std,gate_sigma", [MAG_REFERENCE])
     write_csv(OUTPUT / "magnetometer.csv", "timestamp_us,mx,my,mz", MAG_ROWS)
     return {"start_timestamp_us": START, "end_timestamp_us": IMU_TIMES[-1],
@@ -230,6 +251,13 @@ def prepare(ULOG, OUTPUT):
             "origin_lat_deg": math.degrees(LAT0), "origin_lon_deg": math.degrees(LON0),
             "origin_alt_ellipsoid_m": ALT0, "initialization": "first 0.2 s accel/mag; latest valid GNSS",
             "magnetic_declination_deg": DECLINATION, "gnss_delay_compensation_ms": 0,
+            "gnss_parameters": dict(zip(("position_gate", "velocity_gate", "position_noise_std_m",
+                                          "velocity_noise_std_mps", "position_noise_limit_m"), GNSS_PARAMETERS)),
+            "gnss_fusion": "3D velocity, horizontal position, height; each gates/corrects its latest prior",
+            "gnss_noise": "logged floors; horizontal std capped by NOAID_NOISE; vertical velocity std scaled by 1.5",
+            "gnss_height_reference": "sole GNSS height reference; no height bias or additional bias variance",
+            "gnss_accuracy_frame": "reported accuracy axes treated as fixed local NED; local-flight approximation",
+            "gnss_limits": "co-located IMU/GNSS; no quality lifecycle, bad-vertical-acceleration gate override or resets",
             "magnetic_reference_n_ut": MAG_REFERENCE[:3],
             "magnetic_noise_std_ut": MAG_REFERENCE[3], "magnetic_gate_sigma": MAG_REFERENCE[4],
             "magnetic_reference_source": "R(q_seed) times first 0.2 s mean field; not independent WMM/truth",

@@ -390,6 +390,60 @@ Native tests cover binary32/binary64 and dimensions 1, 2 and 3. Lean and ESBMC e
 
 ## Portable runtime
 
+### R-GNSS-RESET: checked GNSS position and velocity reset
+
+These caller-invoked INS operations replace navigation estimates; they are not
+Kalman corrections or `E-RESET`'s post-injection change of error coordinates.
+The GNSS-specific variance policy belongs to `runtime/gnss_reset.hpp`, not to
+the generic numerical correction. Inputs are already aligned to the prior's
+local NED frame, body/IMU origin and time; quality, alignment and reset authority
+remain caller responsibilities. No clock, lifecycle or automatic retry is owned.
+
+Behavior reference: PX4 v1.16.2, revision
+`54f0455ffcd755534539a7cf33a09a20bf71d29d`:
+[GNSS reset dispatch](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gps_control.cpp),
+[position reset](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/ekf_helper.cpp),
+and [velocity reset](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/velocity_fusion.cpp).
+
+| Operation | Nominal state | Covariance |
+|---|---|---|
+| `try_reset_gnss_horizontal_position` | Set `p_N,p_E` to the supplied 2-vector; leave `p_D` and all other state fields unchanged | Clear rows/columns 0 and 1, then set both diagonals to `max(variance_N + variance_E, 0.01^2)` in m^2 |
+| `try_reset_gnss_velocity` | Set all three components of `v_n`; leave position, attitude and biases unchanged | Clear off-diagonal entries in rows/columns 0..5. Preserve position diagonals 0..2; set velocity diagonals 3..5 to `max(variance_i, 0.01^2)` in m^2/s^2 |
+
+The horizontal variance sum follows `resetHorizontalPositionToGnss` calling
+`resetLatLonTo`; it is not the per-axis policy of PX4's other position-reset
+overload. Velocity reset also decorrelates position, even though position values
+and variances do not change. Untouched covariance entries are copied exactly.
+The input variance vectors describe diagonal observation noise, not standard
+deviations or a full correlated measurement covariance. Noise preprocessing,
+including any vertical-velocity scaling, happens before this call.
+
+- All nominal coefficients, P, observation and variances must be finite; otherwise
+  return `non_finite_input` before arithmetic. P must be exactly symmetric with
+  nonnegative diagonal, and input variances nonnegative; violations return
+  `domain_error`. Zero/tiny nonnegative variances receive the explicit floor.
+  Symmetric PSD P and a unit prior quaternion remain caller premises; the checks
+  are not a PSD test, attitude repair or arbitrary-corruption recovery.
+- Compute reset delta as new minus old, in NED meters or m/s. A non-finite delta
+  or horizontal variance sum from finite inputs returns `non_finite_result`.
+  Check all results before publishing state, covariance or delta.
+- On success publish all three outputs. On failure preserve all three, including
+  distinct sentinel outputs. Complete state and covariance outputs may each
+  independently alias their respective prior. All other input/output storage is
+  disjoint. No quaternion normalization, injection, solve or allocation occurs.
+- Unlike PX4's internal reset helpers, this checked boundary rejects negative
+  or non-finite variances instead of clamping negatives or using NaN to retain
+  covariance. The finite valid-input reset behavior above is the aligned scope.
+- Return a delta per successful call, not a fusion success, clock update or
+  counter increment. The caller must separately acknowledge completed recovery
+  and aggregate/publish reset notifications. There is no reset-on-start, automatic
+  replay recovery, origin change, output-predictor adjustment, height-position
+  reset, height-failure vertical-velocity override or yaw reset in this step.
+
+Native tests cover both scalar formats, per-entry state/P behavior, floors,
+delta sign, valid aliases, invalid inputs and failure atomicity. Lean/ESBMC
+evidence remains pending; existing `E-RESET` proofs do not cover these operations.
+
 ### R-GNSS-FUSION: GNSS fusion lifecycle
 
 `runtime::GnssFusion` owns lifecycle metadata for horizontal position, vertical

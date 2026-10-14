@@ -3271,6 +3271,38 @@
       }
     },
     {
+      "id": "R-GNSS-RESET",
+      "title": "Checked GNSS horizontal-position and 3D-velocity reset, covariance decorrelation and atomic delta publication; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-GNSS-RESET: checked GNSS position and velocity reset"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/gnss_reset.hpp",
+            "symbol": "Status validate_gnss_reset_inputs("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_reset.hpp",
+            "symbol": "void uncorrelate_navigation_axis("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_reset.hpp",
+            "symbol": "Status try_reset_gnss_horizontal_position("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_reset.hpp",
+            "symbol": "Status try_reset_gnss_velocity("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "R-GNSS-FUSION",
       "title": "GNSS-only lifecycle, coupled horizontal progress and independent height deadlines; Lean and ESBMC evidence pending",
       "references": {

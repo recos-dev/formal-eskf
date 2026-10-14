@@ -3336,6 +3336,10 @@
           },
           {
             "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "symbol": "Status GnssFusion::record_reset("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
             "symbol": "Status GnssFusion::restart("
           },
           {
@@ -3349,6 +3353,14 @@
           {
             "file": "examples/replay_ins.cpp",
             "symbol": "void write_gnss_lifecycle("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "void write_gnss_reset("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "auto record_reset ="
           },
           {
             "file": "examples/replay_ins.cpp",

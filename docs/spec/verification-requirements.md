@@ -436,9 +436,10 @@ including any vertical-velocity scaling, happens before this call.
   covariance. The finite valid-input reset behavior above is the aligned scope.
 - Return a delta per successful call, not a fusion success, clock update or
   counter increment. The caller must separately acknowledge completed recovery
-  and aggregate/publish reset notifications. There is no reset-on-start, automatic
-  replay recovery, origin change, output-predictor adjustment, height-position
-  reset, height-failure vertical-velocity override or yaw reset in this step.
+  and aggregate/publish reset notifications. `R-GNSS-FUSION` supplies horizontal
+  reset-on-start/timeout orchestration separately. These operations do not perform
+  origin changes, output-predictor adjustment, height-position reset,
+  height-failure vertical-velocity override or yaw reset.
 
 Native tests cover both scalar formats, per-entry state/P behavior, floors,
 delta sign, valid aliases, invalid inputs and failure atomicity. Lean/ESBMC
@@ -487,8 +488,21 @@ OR 3D velocity per sample. Alternate aiding and reset execution remain separate.
   progress older than twice that timeout. Thus one healthy horizontal group
   can sustain the other temporarily. Request recovery for active, enabled,
   ready horizontal groups, without changing state/P. Progress uses the later
-  of actual last fusion and caller-authorized session start; a never-started
-  group has no progress.
+  of actual last fusion, successful reset and caller-authorized session start;
+  a never-started group has no progress. A horizontal timeout request retains
+  its active session while waiting for reset; it does not restart quality health.
+- Horizontal `initialization_required`/`fusion_timeout` requests may grant
+  `reset_allowed` only on a new, accepted, fresh, enabled and ready sample.
+  Reset and correction permissions are mutually exclusive. Each update, even
+  an invalid one, revokes old reset permission. `record_reset(group, sample, reset_succeeded)`
+  consumes one matching permission after the checked numerical reset returns.
+  Success clears recovery, activates the group and updates `last_reset_time_us`,
+  but not `last_fuse_time_us`. Only inactive-to-active reset changes session start.
+  No ordinary correction is permitted for the same sample after reset.
+  Failure stops the group with persistent `reset_failed`, changes no progress
+  timestamp and cannot auto-retry. `fusion_failed` also never grants automatic
+  reset permission. Height reset feedback is unsupported (`domain_error`);
+  stale/missing/duplicate horizontal feedback returns `out_of_range`.
 - Height uses its own successful-fusion deadline, evaluated **after** its current
   permitted attempt. Success at an overdue tick refreshes it; rejection beyond
   the deadline requests reset because this profile has no alternate height
@@ -499,7 +513,8 @@ OR 3D velocity per sample. Alternate aiding and reset execution remain separate.
   processing the next sample. This clears health timestamps, preserving initial
   qualification, filters and time/reference watermarks. The next check starts
   a new recovery wait; it does not reuse the outage as healthy time.
-- Recovery requests persist across good quality and enable/readiness toggles.
+- Recovery requests persist across good quality and enable/readiness toggles
+  until successful permitted reset feedback or explicit repair acknowledgment.
   `restart(group)` acknowledges actual caller-established repair and clears
   only that group's lifecycle metadata, not state/P, quality or time watermarks.
   A new sample is still required. Full `reset()` clears the controller; source,
@@ -528,22 +543,33 @@ and [height controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755
 | Horizontal unsuccessful fusion | Both groups >7 s, or enabled position >14 s; before correction |
 | Height unsuccessful fusion | >5 s after current height attempt |
 | Horizontal stop | Restart quality health timing, retain initial qualification |
-| Required estimator reset | Log request and terminate; never report successful recovery |
+| Horizontal startup / timeout reset | Execute velocity then horizontal-position reset, instead of same-sample correction |
+| Height reset / numerical failure | Log and terminate; no automatic recovery |
 
 Enable lifecycle with the quality input pair, not for legacy/KITTI inputs.
 Invalid-velocity messages do not refresh receiver receipt; missing required
 quality metadata advances receipt only. Run no-data updates between events.
 Preserve group-independent gate/correction decisions, velocity/position/height
-order, and actual-success-only horizontal-aiding timestamps. Log every received
+order, and actual correction/reset-success-only horizontal-aiding timestamps. Log every received
 lifecycle sample and no-data transitions in `result/gnss_lifecycle.csv`.
-Quality skips, lifecycle skips and innovation rejections are distinct outcomes.
+Quality skips, lifecycle skips, innovation rejections and resets are distinct outcomes.
+Record per-axis reset reason, status and new-minus-old delta in `gnss_resets.csv`;
+failed resets have invalid, empty deltas. Keep successful reset counts separate
+from correction and rejection counts. Reset success refreshes progress without
+claiming an innovation passed or restarting quality qualification.
 
 The replay's existing seed establishes its initial frame and assumed attitude
-alignment; it authorizes **only the first** start without another state reset.
-This is not EKF2's reset-on-start or an alignment detector. After an ordinary
-stop, re-entry requests initialization and terminates until reset support exists.
-The controller supports caller-authorized re-entry, but the replay must not
-invent it. Requests are logged before termination; no reset is executed.
+alignment; it is not an alignment detector. Both horizontal groups require an
+actual reset on their first accepted sample and on re-entry. Height alone uses
+the seed for its first start. Its reset/re-entry remains unsupported; such a
+request stops replay before any group mutates the estimate for that event.
+Thus horizontal timeout recovery works, but a complete GNSS outage that also
+stops height is not yet an automatically recoverable replay scenario.
+
+Velocity and position resets are independent checked transactions, in that order;
+failure in the second does not roll back an already completed first reset. Log
+the completed/failed operations and terminate without a success summary. Numerical
+correction failure is not converted into an automatic reset with the same input.
 
 This is a lifecycle integration, not full EKF2 equivalence: one replay clock
 uses source sample recency instead of separate arrival/delayed horizons; no
@@ -605,7 +631,7 @@ forms its gate and correction from the latest committed prior. This differs
 from PX4's precomputed position/velocity diagnostics and scalar update schedule;
 neither identical decisions nor numerical EKF2 equivalence is claimed.
 Rejection preserves that group's prior and does not block other groups. Only
-actual horizontal-position or velocity fusion refreshes horizontal-aiding time;
+actual horizontal-position or velocity correction/reset refreshes horizontal-aiding time;
 height-only fusion, receipt, rejection and failure never do so.
 
 `gnss_updates.csv` records each group's outcome/status and per-axis innovation,
@@ -614,8 +640,8 @@ failure is logged before stopping. Invalid prepared input stops replay as an
 input error. Event counts are not successful-correction counts; report accepted
 and rejected groups separately. A fully rejected event still counts as consumed.
 Quality qualification is described below; the lifecycle above controls permission
-and reset requests. No bad-vertical-acceleration override, automatic reset,
-delay compensation or change to magnetic/gravity scheduling is included.
+and horizontal reset execution. No bad-vertical-acceleration override, height
+reset, delay compensation or change to magnetic/gravity scheduling is included.
 Without the parameter file, retain legacy/KITTI ungated noise and fusion order.
 Replay checks are integration evidence, not new Lean/ESBMC proofs or accuracy claims.
 

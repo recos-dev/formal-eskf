@@ -53,7 +53,7 @@ if(NOT FAILURE_ROWS)
     message(FATAL_ERROR "Missing numerical failure diagnostics: ${ROOT}\n${STDERR}")
 endif()
 file(STRINGS "${OUTPUT}/gnss_lifecycle.csv" REQUEST_ROWS
-    REGEX "^5000000,5000000,${GROUP},0,fusion_failed,1,[0-9]+,4800000,0$")
+    REGEX "^5000000,5000000,${GROUP},0,fusion_failed,1,[0-9]+,4800000,0,[0-9]+$")
 if(NOT REQUEST_ROWS)
     message(FATAL_ERROR "Missing lifecycle failure; last successful fusion must remain 4800000: ${ROOT}")
 endif()

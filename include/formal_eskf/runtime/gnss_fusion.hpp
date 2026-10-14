@@ -44,6 +44,7 @@ public:
         initialization_required,
         fusion_timeout,
         fusion_failed,
+        reset_failed,
     };
 
     struct Parameters
@@ -81,10 +82,12 @@ public:
     {
         bool active = false; // Monitoring session, not proof of estimate validity.
         bool fusion_allowed = false;
+        bool reset_allowed = false; // Current accepted sample; mutually exclusive with fusion.
         bool recovery_required = false;
         StopReason stop_reason = StopReason::disabled;
         std::uint64_t start_time_us{};
         std::uint64_t last_fuse_time_us{}; // Actual fused feedback only, never startup/reset.
+        std::uint64_t last_reset_time_us{};
     };
 
     struct State
@@ -111,6 +114,9 @@ public:
     /** Consume one permission; only fused refreshes that group's progress. */
     [[nodiscard]] Status record_fusion(Group group, std::uint64_t sample_time_us, FusionDecision decision) noexcept;
 
+    /** Consume a horizontal reset permission after the checked state/P operation. */
+    [[nodiscard]] Status record_reset(Group group, std::uint64_t sample_time_us, bool reset_succeeded) noexcept;
+
     /** Acknowledge caller-established safe re-entry; does not reset estimator or quality. */
     [[nodiscard]] Status restart(Group group) noexcept;
 
@@ -118,9 +124,10 @@ private:
     [[nodiscard]] GroupState * select_group(Group group) noexcept;
     static void stop(GroupState & group, StopReason reason) noexcept;
     static void require_recovery(GroupState & group, StopReason reason) noexcept;
+    static void request_reset(GroupState & group, StopReason reason) noexcept;
     [[nodiscard]] bool expired(GroupState const & group, std::uint64_t duration) const noexcept;
-    void update_group(GroupState & group, GroupConditions conditions, bool new_sample, bool accepted,
-                      bool fresh) noexcept;
+    void update_group(GroupState & group, GroupConditions conditions, bool new_sample, bool accepted, bool fresh,
+                      bool reset_supported) noexcept;
 
     State m_state{};
     Parameters m_parameters{};
@@ -147,6 +154,7 @@ inline void GnssFusion::stop(GroupState & group, StopReason reason) noexcept
 {
     group.active = false;
     group.fusion_allowed = false;
+    group.reset_allowed = false;
     if (!group.recovery_required)
     {
         group.stop_reason = reason;
@@ -159,14 +167,26 @@ inline void GnssFusion::require_recovery(GroupState & group, StopReason reason) 
     group.recovery_required = true;
 }
 
+inline void GnssFusion::request_reset(GroupState & group, StopReason reason) noexcept
+{
+    // A horizontal timeout reset keeps the session alive; it is not a quality stop.
+    if (!group.recovery_required)
+    {
+        group.stop_reason = reason;
+    }
+    group.recovery_required = true;
+    group.fusion_allowed = false;
+}
+
 inline bool GnssFusion::expired(GroupState const & group, std::uint64_t duration) const noexcept
 {
-    auto const progress = group.last_fuse_time_us > group.start_time_us ? group.last_fuse_time_us : group.start_time_us;
+    auto progress = group.last_fuse_time_us > group.start_time_us ? group.last_fuse_time_us : group.start_time_us;
+    progress = group.last_reset_time_us > progress ? group.last_reset_time_us : progress;
     return progress == 0U || m_update_time_us - progress > duration;
 }
 
 inline void GnssFusion::update_group(GroupState & group, GroupConditions conditions, bool new_sample, bool accepted,
-                                     bool fresh) noexcept
+                                     bool fresh, bool reset_supported) noexcept
 {
     if (!conditions.enabled)
     {
@@ -180,16 +200,22 @@ inline void GnssFusion::update_group(GroupState & group, GroupConditions conditi
     {
         stop(group, StopReason::data_timeout);
     }
-    else if (!group.recovery_required && (new_sample || !group.active))
+    else if (new_sample || !group.active)
     {
+        if (!group.recovery_required && accepted && !group.active && !conditions.start_without_reset)
+        {
+            request_reset(group, StopReason::initialization_required);
+        }
+        if (group.recovery_required)
+        {
+            group.reset_allowed = reset_supported && accepted &&
+                                  (group.stop_reason == StopReason::initialization_required ||
+                                   group.stop_reason == StopReason::fusion_timeout);
+            return;
+        }
         group.stop_reason = accepted ? StopReason::none : StopReason::waiting_for_quality;
         if (accepted)
         {
-            if (!group.active && !conditions.start_without_reset)
-            {
-                require_recovery(group, StopReason::initialization_required);
-                return;
-            }
             if (!group.active)
             {
                 // Caller-authorized initialized start; not an invented successful fusion.
@@ -207,6 +233,9 @@ inline Status GnssFusion::update(std::uint64_t now_us, Conditions const & condit
     m_state.horizontal_position.fusion_allowed = false;
     m_state.vertical_position.fusion_allowed = false;
     m_state.velocity.fusion_allowed = false;
+    m_state.horizontal_position.reset_allowed = false;
+    m_state.vertical_position.reset_allowed = false;
+    m_state.velocity.reset_allowed = false;
     if (parameters.horizontal_timeout_us == 0U ||
         parameters.horizontal_timeout_us > std::numeric_limits<std::uint64_t>::max() / 2U ||
         parameters.height_data_timeout_us == 0U || parameters.height_fusion_timeout_us == 0U ||
@@ -268,17 +297,18 @@ inline Status GnssFusion::update(std::uint64_t now_us, Conditions const & condit
             if (m_state.horizontal_position.active && conditions.horizontal_position.enabled &&
                 conditions.horizontal_position.ready)
             {
-                require_recovery(m_state.horizontal_position, StopReason::fusion_timeout);
+                request_reset(m_state.horizontal_position, StopReason::fusion_timeout);
             }
             if (m_state.velocity.active && conditions.velocity.enabled && conditions.velocity.ready)
             {
-                require_recovery(m_state.velocity, StopReason::fusion_timeout);
+                request_reset(m_state.velocity, StopReason::fusion_timeout);
             }
         }
-        update_group(m_state.velocity, conditions.velocity, new_sample, accepted, horizontal_fresh);
+        update_group(m_state.velocity, conditions.velocity, new_sample, accepted, horizontal_fresh, true);
         update_group(m_state.horizontal_position, conditions.horizontal_position, new_sample, accepted,
-                     horizontal_fresh);
-        update_group(m_state.vertical_position, conditions.vertical_position, new_sample, accepted, height_fresh);
+                     horizontal_fresh, true);
+        update_group(m_state.vertical_position, conditions.vertical_position, new_sample, accepted, height_fresh,
+                     false);
     }
     if (horizontal_was_active && !m_state.horizontal_position.active && !m_state.velocity.active)
     {
@@ -327,6 +357,36 @@ inline Status GnssFusion::restart(Group group) noexcept
         return Status::domain_error;
     }
     *group_state = GroupState{};
+    return Status::success;
+}
+
+inline Status GnssFusion::record_reset(Group group, std::uint64_t sample_time_us, bool reset_succeeded) noexcept
+{
+    auto * group_state = select_group(group);
+    if (group_state == nullptr || group == Group::vertical_position)
+    {
+        return Status::domain_error;
+    }
+    if (!group_state->reset_allowed || sample_time_us != m_sample_time_us)
+    {
+        return Status::out_of_range;
+    }
+    group_state->reset_allowed = false;
+    if (!reset_succeeded)
+    {
+        group_state->stop_reason = StopReason::reset_failed;
+        require_recovery(*group_state, StopReason::reset_failed);
+        return Status::success;
+    }
+    if (!group_state->active)
+    {
+        group_state->start_time_us = m_update_time_us;
+    }
+    group_state->active = true;
+    group_state->recovery_required = false;
+    group_state->stop_reason = StopReason::none;
+    group_state->last_reset_time_us = m_update_time_us;
+    // Reset replaces this sample's correction; the next update may permit fusion.
     return Status::success;
 }
 

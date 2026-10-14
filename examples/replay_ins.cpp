@@ -28,6 +28,7 @@
 
 #include <formal_eskf/eskf/eskf.hpp>
 #include <formal_eskf/runtime/accelerometer.hpp>
+#include <formal_eskf/runtime/gnss_reset.hpp>
 #include <formal_eskf/runtime/magnetometer.hpp>
 #include <formal_eskf/runtime/magnetometer_fusion.hpp>
 #include <formal_eskf/runtime/position.hpp>
@@ -367,6 +368,8 @@ std::string_view gnss_stop_reason(GnssLifecycle::StopReason reason)
         return "fusion_timeout";
     case GnssLifecycle::StopReason::fusion_failed:
         return "fusion_failed";
+    case GnssLifecycle::StopReason::reset_failed:
+        return "reset_failed";
     }
     return "invalid_call";
 }
@@ -383,10 +386,10 @@ void update_gnss_lifecycle(GnssLifecycle & lifecycle, GnssQuality & quality, Gns
     auto const & state = lifecycle.state();
     // The demo starts from an already seeded navigation frame and accel/mag
     // attitude. This is an initialization premise, not a detected alignment.
-    // Re-entry after a stop requires an actual reset, not this seed exemption.
-    GnssLifecycle::Conditions const conditions{{true, true, state.horizontal_position.start_time_us == 0U},
-                                               {true, true, state.vertical_position.start_time_us == 0U},
-                                               {true, true, state.velocity.start_time_us == 0U}};
+    // Horizontal startup uses actual GNSS resets. Height still uses the seed
+    // once; height re-entry requires a separate reset implementation.
+    GnssLifecycle::Conditions const conditions{
+        {true, true, false}, {true, true, state.vertical_position.start_time_us == 0U}, {true, true, false}};
     GnssLifecycle::Parameters const timing{GNSS_HORIZONTAL_TIMEOUT_US, GNSS_HEIGHT_DATA_TIMEOUT_US,
                                            GNSS_HEIGHT_FUSION_TIMEOUT_US};
     check_status(lifecycle.update(time, conditions, timing, sample), "GNSS lifecycle", time);
@@ -415,13 +418,32 @@ void write_gnss_lifecycle(std::ostream & stream, GnssLifecycle::State const & pr
         {
             stream << source_time << ',' << time << ',' << entry.name << ',' << current.active << ','
                    << gnss_stop_reason(current.stop_reason) << ',' << current.recovery_required << ','
-                   << current.start_time_us << ',' << current.last_fuse_time_us << ',' << state.restart_quality << '\n';
+                   << current.start_time_us << ',' << current.last_fuse_time_us << ',' << state.restart_quality << ','
+                   << current.last_reset_time_us << '\n';
         }
     }
     if (gnss_recovery_required(state))
     {
-        throw std::runtime_error("GNSS requires estimator reset; see gnss_lifecycle.csv; "
-                                 "automatic state/covariance reset is not implemented in replay");
+        throw std::runtime_error("GNSS recovery is unsupported or failed; see gnss_lifecycle.csv and gnss_resets.csv");
+    }
+}
+
+template <typename Vector>
+void write_gnss_reset(std::ostream & stream, std::string_view group, GnssLifecycle::StopReason reason, Status status,
+                      Vector const & delta, std::uint64_t source_time, std::uint64_t time)
+{
+    for (std::size_t axis = 0U; axis < Vector::row_count; ++axis)
+    {
+        stream << source_time << ',' << time << ',' << group << ',' << axis << ',' << gnss_stop_reason(reason) << ','
+               << (status == Status::success ? "reset" : "failed") << ',' << static_cast<int>(status) << ','
+               << (status == Status::success);
+        // A failed checked reset has no valid delta; do not invent a zero reset.
+        stream << ',';
+        if (status == Status::success)
+        {
+            stream << delta(axis);
+        }
+        stream << '\n';
     }
 }
 
@@ -755,12 +777,17 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::ofstream gnss_updates;
     std::ofstream quality_updates;
     std::ofstream lifecycle_updates;
+    std::ofstream gnss_resets;
     if (quality_parameters)
     {
         lifecycle_updates.open(output / "gnss_lifecycle.csv");
         lifecycle_updates.exceptions(std::ios::failbit | std::ios::badbit);
         lifecycle_updates << "source_timestamp_us,fusion_timestamp_us,group,active,stop_reason,recovery_required,"
-                             "start_timestamp_us,last_fuse_timestamp_us,restart_quality\n";
+                             "start_timestamp_us,last_fuse_timestamp_us,restart_quality,last_reset_timestamp_us\n";
+        gnss_resets.open(output / "gnss_resets.csv");
+        gnss_resets.exceptions(std::ios::failbit | std::ios::badbit);
+        gnss_resets << std::setprecision(17);
+        gnss_resets << "source_timestamp_us,fusion_timestamp_us,group,axis,reason,outcome,status,delta_valid,delta\n";
         quality_updates.open(output / "gnss_quality.csv");
         quality_updates.exceptions(std::ios::failbit | std::ios::badbit);
         quality_updates << std::setprecision(17);
@@ -810,6 +837,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     write_state(states, time, state, covariance);
     std::size_t predictions = 0U, navigation_events = 0U, gaps = 0U;
     std::size_t position_xy_fused = 0U, position_z_fused = 0U, velocity_fused = 0U;
+    std::size_t position_xy_resets = 0U, velocity_resets = 0U;
     std::size_t quality_accepted = 0U, quality_rejected = 0U, quality_waiting = 0U, quality_unavailable = 0U;
     std::size_t invalid_velocity = 0U, navigation_attempts = 0U;
     std::size_t position_xy_attempts = 0U, position_z_attempts = 0U, velocity_attempts = 0U;
@@ -891,7 +919,11 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     update_gnss_lifecycle(gnss_lifecycle, quality_monitor, lifecycle_sample, time);
                     lifecycle_updated = true;
                     lifecycle_sample_consumed = true;
-                    if (gnss_recovery_required(gnss_lifecycle.state()))
+                    auto const & lifecycle = gnss_lifecycle.state();
+                    if (lifecycle.vertical_position.recovery_required ||
+                        (lifecycle.velocity.recovery_required && !lifecycle.velocity.reset_allowed) ||
+                        (lifecycle.horizontal_position.recovery_required &&
+                         !lifecycle.horizontal_position.reset_allowed))
                     {
                         // Record the request before any group mutates the estimate.
                         write_gnss_lifecycle(lifecycle_updates, previous_lifecycle, gnss_lifecycle.state(), source_time,
@@ -930,18 +962,42 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     check_status(result.status, group, time);
                     return fused;
                 };
+                auto record_reset = [&](GnssLifecycle::Group group, std::string_view name,
+                                        GnssLifecycle::StopReason reason, Status status, auto const & delta)
+                {
+                    check_status(gnss_lifecycle.record_reset(group, source_time, status == Status::success),
+                                 "GNSS reset feedback", time);
+                    write_gnss_reset(gnss_resets, name, reason, status, delta, source_time, time);
+                    if (status != Status::success)
+                    {
+                        write_gnss_lifecycle(lifecycle_updates, previous_lifecycle, gnss_lifecycle.state(), source_time,
+                                             time);
+                    }
+                    check_status(status, "GNSS reset", time);
+                    fusion_conditions.record_horizontal_fusion(time);
+                };
                 auto const noise =
                     navigation_variances(navigation_row[7U], navigation_row[8U], navigation_row[9U], gnss);
                 // Each group gates and corrects its own latest prior. A rejected
                 // group does not block the others or refresh horizontal aiding.
                 auto velocity_V = Linalg::matrix_type<3U, 3U>::identity() * noise.velocity_xy;
                 velocity_V.set(2U, 2U, noise.velocity_z);
-                if (!quality_parameters || gnss_lifecycle.state().velocity.fusion_allowed)
+                auto const velocity = vector3(navigation_row[4U], navigation_row[5U], navigation_row[6U]);
+                if (quality_parameters && gnss_lifecycle.state().velocity.reset_allowed)
+                {
+                    Vector3 delta;
+                    auto const reason = gnss_lifecycle.state().velocity.stop_reason;
+                    auto const status = formal_eskf::runtime::try_reset_gnss_velocity(
+                        state, covariance, velocity, vector3(noise.velocity_xy, noise.velocity_xy, noise.velocity_z),
+                        state, covariance, delta);
+                    record_reset(GnssLifecycle::Group::velocity, "velocity", reason, status, delta);
+                    ++velocity_resets;
+                }
+                else if (!quality_parameters || gnss_lifecycle.state().velocity.fusion_allowed)
                 {
                     ++velocity_attempts;
                     auto const result = formal_eskf::runtime::fuse_velocity(
-                        state, covariance, vector3(navigation_row[4U], navigation_row[5U], navigation_row[6U]),
-                        velocity_V, QUAT_MIN_NORM, gnss->velocity_gate, state, covariance);
+                        state, covariance, velocity, velocity_V, QUAT_MIN_NORM, gnss->velocity_gate, state, covariance);
                     if (quality_parameters)
                     {
                         check_status(
@@ -961,7 +1017,19 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
 
                 auto const position_V = Linalg::matrix_type<2U, 2U>::identity() * noise.position_xy;
                 auto const position = Linalg::vector_type<2U>::from_row_major({navigation_row[1U], navigation_row[2U]});
-                if (!quality_parameters || gnss_lifecycle.state().horizontal_position.fusion_allowed)
+                if (quality_parameters && gnss_lifecycle.state().horizontal_position.reset_allowed)
+                {
+                    Linalg::vector_type<2U> delta;
+                    auto const reason = gnss_lifecycle.state().horizontal_position.stop_reason;
+                    auto const variances =
+                        Linalg::vector_type<2U>::from_row_major({noise.position_xy, noise.position_xy});
+                    auto const status = formal_eskf::runtime::try_reset_gnss_horizontal_position(
+                        state, covariance, position, variances, state, covariance, delta);
+                    record_reset(GnssLifecycle::Group::horizontal_position, "horizontal_position", reason, status,
+                                 delta);
+                    ++position_xy_resets;
+                }
+                else if (!quality_parameters || gnss_lifecycle.state().horizontal_position.fusion_allowed)
                 {
                     ++position_xy_attempts;
                     auto const result = formal_eskf::runtime::fuse_horizontal_position(
@@ -1175,6 +1243,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     {
         quality_updates.close();
         lifecycle_updates.close();
+        gnss_resets.close();
     }
     states.close();
     updates.close();
@@ -1194,6 +1263,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"horizontal_position_corrections\": " << position_xy_fused
             << ",\n  \"vertical_position_corrections\": " << position_z_fused
             << ",\n  \"velocity_corrections\": " << velocity_fused
+            << ",\n  \"horizontal_position_resets\": " << position_xy_resets
+            << ",\n  \"velocity_resets\": " << velocity_resets
             << ",\n  \"horizontal_position_rejected\": " << position_xy_attempts - position_xy_fused
             << ",\n  \"vertical_position_rejected\": " << position_z_attempts - position_z_fused
             << ",\n  \"velocity_rejected\": " << velocity_attempts - velocity_fused
@@ -1253,13 +1324,14 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
               << "\nGNSS quality: " << (quality_parameters ? "ON" : "OFF (legacy input)") << " (" << quality_accepted
               << " accepted, " << quality_rejected << " rejected, " << quality_waiting << " waiting, "
               << quality_unavailable << " unavailable, " << invalid_velocity << " invalid velocity)"
-              << "\nGNSS lifecycle: " << (quality_parameters ? "ON (GNSS-only, seeded start)" : "OFF (legacy input)")
+              << "\nGNSS lifecycle: "
+              << (quality_parameters ? "ON (GNSS-only, horizontal resets)" : "OFF (legacy input)")
               << "\nHorizontal position: " << position_xy_fused << " fused, "
-              << position_xy_attempts - position_xy_fused << " gate rejected"
+              << position_xy_attempts - position_xy_fused << " gate rejected, " << position_xy_resets << " reset"
               << "\nVertical position: " << position_z_fused << " fused, " << position_z_attempts - position_z_fused
               << " gate rejected"
               << "\n3D velocity: " << velocity_fused << " fused, " << velocity_attempts - velocity_fused
-              << " gate rejected"
+              << " gate rejected, " << velocity_resets << " reset"
               << "\nGNSS innovation gate: " << (gnss ? "ON" : "OFF (legacy input)")
               << "\nCSV interval gap holds: " << gaps << " (" << gap_us
               << " us)\nNavigation maximum tick alignment: " << max_alignment_us

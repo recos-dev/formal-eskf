@@ -181,6 +181,16 @@ if(PROJECT_IS_TOP_LEVEL)
                         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_replay_gnss_failure.cmake
                 )
             endforeach()
+            foreach(CASE IN ITEMS startup both_timeout position_timeout reset_failure position_reset_failure height_required)
+                add_test(
+                    NAME formal_eskf.replay_gnss.reset.${CASE}
+                    COMMAND ${CMAKE_COMMAND}
+                        -DREPLAY=$<TARGET_FILE:replay_ins>
+                        -DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                        -DCASE=${CASE}
+                        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_replay_gnss_reset.cmake
+                )
+            endforeach()
         endif()
 
         if(FORMAL_ESKF_BUILD_EIGEN_BACKEND OR FORMAL_ESKF_BUILD_PX4_MATRIX_BACKEND OR

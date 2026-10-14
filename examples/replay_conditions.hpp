@@ -20,8 +20,8 @@ namespace formal_eskf::example
 {
 
 /**
- * Conditions for the replay's single, fail-fast navigation source. No sensor
- * quality/lifecycle controller is added: a navigation failure ends the replay.
+ * Attitude and aiding conditions for the replay's single navigation source.
+ * Sensor quality/lifecycle decisions remain in their respective controllers.
  * Times are monotonic replay microseconds; initialization is not a fusion event.
  */
 template <typename Linalg> class ReplayFusionConditions

@@ -392,19 +392,110 @@ Native tests cover binary32/binary64 and dimensions 1, 2 and 3. Lean and ESBMC e
 
 ### R-GNSS-FUSION: GNSS fusion lifecycle
 
-`runtime::GnssFusion` manages horizontal position, vertical position and velocity independently. It owns only lifecycle metadata, not ESKF state/covariance, quality qualification, clocks or queues. Use horizontal OR 3D velocity per sample. `GnssQuality` remains the sole owner of initial quality qualification and health recovery.
+`runtime::GnssFusion` owns lifecycle metadata for horizontal position, vertical
+position and velocity, not estimator state/P, quality qualification or clocks.
+This profile assumes GNSS is the sole horizontal and height source; use horizontal
+OR 3D velocity per sample. Alternate aiding and reset execution remain separate.
 
-- The caller supplies per-group `enabled` and `ready`. Readiness means the group's nominal state and coordinate reference are initialized and required attitude alignment is established; horizontal and velocity models require their navigation-frame alignment, while height also requires its chosen vertical reference. The controller does not infer readiness from quality or a passing gate.
-- Call `update` every estimator tick, including ticks without GNSS. Nonzero `now_us` strictly increases on one fusion timeline. A new sample's nonzero timestamp strictly exceeds the preceding consumed sample and is no later than `now_us`; pass its actual quality decision from the same sample/horizon. `Sample{}` means no new sample, and its quality field is ignored. New samples with `waiting` or `rejected` quality still advance data history but never authorize fusion; `invalid_call` is not a consumed sample.
-- `maximum_sample_age_us` and `fusion_timeout_us` are explicit positive durations, common to the three groups but applied to their independent progress histories. Both remain fixed until reset. Freshness uses the latest consumed **sample timestamp**, not message arrival time. Elapsed equality is allowed; only `elapsed > limit` expires. Validate time order before unsigned subtraction; never add a duration to a timestamp.
-- Start only when enabled, ready, fresh and a new quality-accepted sample is present. Set `start_time_us` at first activation without pretending fusion succeeded. An active session can briefly remain active without a quality-accepted sample, but `fusion_allowed` is false. Disable/readiness loss or stale/missing data stops it. Resumption before fusion timeout requires a new accepted sample; it retains the original progress deadline, rather than indefinitely extending it through pauses.
-- Each `update` revokes all old per-group permissions. On success, `fusion_allowed` authorizes at most one call for that group and sample during this tick. After actual gated fusion, pass its `FusionDecision` and matching sample timestamp to `record_fusion`, before the next update. Every valid result consumes the permission; only `fused` sets `last_fuse_time_us = now_us`. Rejected/failed results never refresh progress or affect another group. Use the latest committed state/P for successive groups as in `R-MEASUREMENT-FUSION`.
-- Once a started group exceeds its last-success deadline (or first-activation deadline if never fused), latch `recovery_required` and prohibit further fusion. This check runs even when disabled or unready. Good quality, new samples and enable/readiness toggles cannot clear the latch. Stop-reason precedence is disabled, not ready, fusion timeout, data timeout, waiting for initial/resumed quality, then none. `active` and `stop_reason == none` are not evidence of estimate validity or current fusion success.
-- `restart(group)` is explicit caller authorization after establishing safe re-entry, including external state/covariance re-alignment if needed. It clears only that group's lifecycle metadata and waits for a new accepted sample on a later update. It neither performs estimator reset nor manufactures a fusion timestamp or quality qualification. The adapter owns any reset coordination and downstream notifications. Do not call restart repeatedly merely to bypass rejection deadlines.
-- Invalid durations or changes to them return `domain_error` before time checks; invalid time order returns `out_of_range`; invalid new-sample quality returns `domain_error`. Such calls revoke all fusion permissions but preserve other lifecycle history and do not consume time/sample/configuration. Invalid group/decision values return `domain_error` from feedback/restart; feedback without permission or for another timestamp returns `out_of_range`. Invalid feedback/restart preserves the controller. The caller must supply actual quality/fusion outcomes and obey single-writer ordering; this metadata controller cannot verify that external correction ran.
-- Full `reset()` clears all groups and time/configuration history. On receiver, frame, configuration or timeline changes, the caller must also reset/reconfigure the quality monitor and re-establish readiness; this reset is not a safe-flight recovery algorithm by itself.
+- Caller supplies each group's `enabled`, `ready` and `start_without_reset`.
+  Readiness includes initialized frame/state and the group's required attitude
+  alignment. Starting without reset requires explicit caller-established safe
+  initialization; quality acceptance alone cannot establish this. Otherwise,
+  request `initialization_required`, with no fusion permission.
+- Update on every estimator tick, including no-data ticks. Nonzero current time
+  increases; distinct new samples may share one tick after previous feedback.
+  Sample timestamps strictly increase and cannot be future times. `Sample{}`
+  means no new receiver sample. Unavailable quality metadata may accompany a
+  received sample but cannot authorize fusion or refresh quality health.
+  Available quality must be an actual accepted/waiting/rejected result.
+- Three positive durations remain fixed until full reset:
+  `horizontal_timeout_us`, `height_data_timeout_us`,
+  `height_fusion_timeout_us`. Horizontal duration is at most UINT64_MAX/2.
+  Compare elapsed differences only after validating time order. No overflowing
+  timestamp-plus-duration arithmetic.
+- Receipt freshness expires at elapsed **>=** the corresponding data duration.
+  Height stops independently at its data deadline. Losing horizontal receipt
+  while a horizontal group is active stops all GNSS groups. These are ordinary
+  stops, not permanent recovery latches.
+- Accepted quality permits a new sample. Waiting/rejected/unavailable quality
+  never permits correction. Waiting represents currently passing checks during
+  qualification/recovery and refreshes last quality-pass time; unavailable
+  metadata does not. On new non-accepted data, elapsed **> horizontal timeout**
+  since the last quality pass stops all groups when horizontal aiding was active.
+- Starting an authorized session records `start_time_us`, not a fictitious
+  successful fuse. Each update revokes old permissions. Record each permitted
+  group's actual matching `FusionDecision` once before the next update.
+  Only `fused` changes `last_fuse_time_us`; rejection leaves it unchanged.
+  Numerical failure requests repair for that group immediately.
+- With accepted fresh data and an active horizontal session, decide horizontal
+  reset **before either horizontal group attempts fusion**: both position and
+  velocity progress older than one horizontal timeout, OR enabled position
+  progress older than twice that timeout. Thus one healthy horizontal group
+  can sustain the other temporarily. Request recovery for active, enabled,
+  ready horizontal groups, without changing state/P. Progress uses the later
+  of actual last fusion and caller-authorized session start; a never-started
+  group has no progress.
+- Height uses its own successful-fusion deadline, evaluated **after** its current
+  permitted attempt. Success at an overdue tick refreshes it; rejection beyond
+  the deadline requests reset because this profile has no alternate height
+  reference. Equality does not expire fusion deadlines.
+- Ordinary stops can start again after accepted quality and caller-established
+  initialization. Losing the last active horizontal group emits one
+  `restart_quality` notification; call `GnssQuality::restart_health()` before
+  processing the next sample. This clears health timestamps, preserving initial
+  qualification, filters and time/reference watermarks. The next check starts
+  a new recovery wait; it does not reuse the outage as healthy time.
+- Recovery requests persist across good quality and enable/readiness toggles.
+  `restart(group)` acknowledges actual caller-established repair and clears
+  only that group's lifecycle metadata, not state/P, quality or time watermarks.
+  A new sample is still required. Full `reset()` clears the controller; source,
+  frame, configuration or timeline changes also require quality reset and
+  re-established initialization.
+- Invalid durations/changes return domain_error; invalid time order returns
+  out_of_range; invalid available quality returns domain_error. Failed updates
+  revoke permissions but preserve history/time/configuration. Invalid feedback
+  or restart preserves metadata. The controller cannot verify whether an
+  external correction/reset actually ran.
 
-Native tests cover enable/readiness combinations, time boundaries, outages, persistent quality/gate/numerical rejection, independent group feedback, recovery latching, invalid-call behavior and actual quality-to-gated-correction integration in binary32/binary64. Lean and ESBMC evidence is pending. Automatic estimator resets, alternate-aiding selection, GNSS heading and deployment-specific freshness/alignment policy are outside this controller.
+Native tests cover startup conditions, both data deadlines, strict fusion/quality
+boundaries, coupled horizontal progress, height attempt ordering, safe re-entry,
+unavailable quality, invalid calls, same-tick samples and unsigned-time extremes.
+Lean/ESBMC evidence remains pending.
+
+#### Replay GNSS lifecycle
+
+Behavior reference: pinned [horizontal GNSS controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gps_control.cpp)
+and [height controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gnss_height_control.cpp).
+
+| Rule | Replay profile |
+|---|---|
+| Horizontal missing data / poor quality | 7 s; data expires at equality, quality strictly beyond |
+| Height missing data | 1 s, expires at equality |
+| Horizontal unsuccessful fusion | Both groups >7 s, or enabled position >14 s; before correction |
+| Height unsuccessful fusion | >5 s after current height attempt |
+| Horizontal stop | Restart quality health timing, retain initial qualification |
+| Required estimator reset | Log request and terminate; never report successful recovery |
+
+Enable lifecycle with the quality input pair, not for legacy/KITTI inputs.
+Invalid-velocity messages do not refresh receiver receipt; missing required
+quality metadata advances receipt only. Run no-data updates between events.
+Preserve group-independent gate/correction decisions, velocity/position/height
+order, and actual-success-only horizontal-aiding timestamps. Log every received
+lifecycle sample and no-data transitions in `result/gnss_lifecycle.csv`.
+Quality skips, lifecycle skips and innovation rejections are distinct outcomes.
+
+The replay's existing seed establishes its initial frame and assumed attitude
+alignment; it authorizes **only the first** start without another state reset.
+This is not EKF2's reset-on-start or an alignment detector. After an ordinary
+stop, re-entry requests initialization and terminates until reset support exists.
+The controller supports caller-authorized re-entry, but the replay must not
+invent it. Requests are logged before termination; no reset is executed.
+
+This is a lifecycle integration, not full EKF2 equivalence: one replay clock
+uses source sample recency instead of separate arrival/delayed horizons; no
+alternate sources, GNSS heading/GSF emergency yaw, height-bias estimator,
+bad-vertical-acceleration reset/override, or coupled vertical-velocity reset
+is implemented. Existing seed, sequential gates and numerical models are retained.
 
 ### R-MEASUREMENT-FUSION: gated correction of one observation group
 
@@ -468,8 +559,9 @@ S diagonal, test ratio, V diagonal and diagnostic validity. Numerical fusion
 failure is logged before stopping. Invalid prepared input stops replay as an
 input error. Event counts are not successful-correction counts; report accepted
 and rejected groups separately. A fully rejected event still counts as consumed.
-Quality qualification is described below. No fusion-lifecycle controller, bad-vertical-acceleration override, automatic
-reset, delay compensation or change to magnetic/gravity scheduling is included.
+Quality qualification is described below; the lifecycle above controls permission
+and reset requests. No bad-vertical-acceleration override, automatic reset,
+delay compensation or change to magnetic/gravity scheduling is included.
 Without the parameter file, retain legacy/KITTI ungated noise and fusion order.
 Replay checks are integration evidence, not new Lean/ESBMC proofs or accuracy claims.
 
@@ -735,8 +827,9 @@ Native temporal/boundary tests are supporting evidence only. Lean and ESBMC evid
 PX4 replay evaluates the existing monitor before its independent navigation
 gates. Follow [v1.16.2 GNSS checks](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gps_checks.cpp)
 and [health qualification](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gps_control.cpp).
-This does not implement GNSS fusion lifecycle, alignment/reset decisions or
-delayed buffering. The seed remains an initialization assumption, not qualified fusion.
+The separate lifecycle above consumes these quality results. Delayed buffering
+and estimator resets remain absent. The seed is an initialization assumption,
+not qualified fusion.
 
 - Read `EKF2_GPS_CHECK` and `EKF2_REQ_*` thresholds from the log. Map the ten
   mask bits to named checks; do not silently enable/disable checks. Support the

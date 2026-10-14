@@ -60,6 +60,20 @@ template <typename Scalar> void run_conformance(TestContext & test, std::string_
     test.expect(!update(3'000'202U).accepted() && update(3'000'203U).accepted(), profile,
                 "recovery takes strictly more than one second, not another full startup wait");
 
+    auto resumed = replay;
+    resumed.restart_health();
+    sample.time_us = 3'000'204U;
+    auto resumed_result = resumed.update(sample, metadata, sample.time_us, parameters);
+    test.expect(resumed_result.quality.qualified && !resumed_result.accepted() &&
+                    resumed_result.quality.last_fail_us == sample.time_us,
+                profile, "lifecycle stop retains qualification but seeds new health wait on next sample");
+    sample.time_us = 4'000'204U;
+    test.expect(!resumed.update(sample, metadata, sample.time_us, parameters).accepted(), profile,
+                "restarted health equality still waits");
+    sample.time_us = 4'000'205U;
+    test.expect(resumed.update(sample, metadata, sample.time_us, parameters).accepted(), profile,
+                "qualified restart needs recovery interval, not another initial qualification");
+
     metadata.in_air = 0;
     test.expect(update(3'000'204U).outcome == "unavailable", profile, "lost required metadata blocks fusion");
     metadata.in_air = 1;
@@ -71,6 +85,8 @@ template <typename Scalar> void run_conformance(TestContext & test, std::string_
     result = update(5'000'207U);
     test.expect(result.outcome == "invalid_velocity" && !result.evaluated && !result.accepted(), profile,
                 "invalid velocity is skipped before quality evaluation");
+    test.expect(result.lifecycle_sample(sample.time_us).time_us == 0U, profile,
+                "invalid receiver velocity cannot refresh lifecycle data receipt");
     metadata.velocity_valid = true;
     test.expect(update(5'000'208U).accepted(), profile, "skipped velocity message did not fabricate a quality failure");
 
@@ -93,6 +109,14 @@ template <typename Scalar> void run_conformance(TestContext & test, std::string_
     test.expect(result.evaluated && result.outcome == "rejected" && !result.accepted() &&
                     result.quality.status == formal_eskf::Status::non_finite_input,
                 profile, "numerical quality rejection is not an invalid adapter call or successful sample");
+    auto const rejected_sample = result.lifecycle_sample(sample.time_us);
+    test.expect(rejected_sample.time_us == sample.time_us && rejected_sample.quality_available &&
+                    rejected_sample.quality == Decision::rejected,
+                profile, "bad quality reaches lifecycle as received data, not an outage");
+    typename Replay::Result unavailable;
+    auto const missing_sample = unavailable.lifecycle_sample(1U);
+    test.expect(missing_sample.time_us == 1U && !missing_sample.quality_available, profile,
+                "unknown quality is received data without fabricated quality checks");
 
     parameters.enabled_checks = {};
     metadata = {true, -1, -1, -1};

@@ -170,6 +170,19 @@ if(PROJECT_IS_TOP_LEVEL)
         formal_eskf_configure_test(test_scalar_standard)
         add_test(NAME formal_eskf.scalar.standard COMMAND test_scalar_standard)
 
+        if(TARGET replay_ins)
+            foreach(GROUP IN ITEMS velocity horizontal_position vertical_position)
+                add_test(
+                    NAME formal_eskf.replay_gnss.failure.${GROUP}
+                    COMMAND ${CMAKE_COMMAND}
+                        -DREPLAY=$<TARGET_FILE:replay_ins>
+                        -DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                        -DGROUP=${GROUP}
+                        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_replay_gnss_failure.cmake
+                )
+            endforeach()
+        endif()
+
         if(FORMAL_ESKF_BUILD_EIGEN_BACKEND OR FORMAL_ESKF_BUILD_PX4_MATRIX_BACKEND OR
            FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND)
             # Independent eigenvalue oracle in test_eskf_covariance.cpp only.

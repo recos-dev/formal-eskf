@@ -126,6 +126,15 @@ public:
 
     void reset() noexcept { *this = GnssQuality{}; }
 
+    /** A stopped horizontal aiding session must re-establish recent health.
+     * Retain initial qualification, filters and source/time watermarks.
+     */
+    void restart_health() noexcept
+    {
+        m_last_fail_us = 0U;
+        m_last_pass_us = 0U;
+    }
+
     /**
      * invalid_call preserves the monitor; every other decision consumes sample.
      * Rejected numerical data reset filters and restart the health wait.
@@ -338,7 +347,7 @@ template <typename Linalg>
 void GnssQuality<Linalg>::update_health(std::uint64_t now_us, parameters_type const & parameters,
                                         result_type & result) noexcept
 {
-    if (m_sample_time_us == 0U || result.decision == GnssQualityDecision::rejected)
+    if (m_last_fail_us == 0U || result.decision == GnssQualityDecision::rejected)
     {
         m_last_fail_us = now_us;
     }

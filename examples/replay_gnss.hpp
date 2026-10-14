@@ -10,7 +10,7 @@
 
 #include <string_view>
 
-#include <formal_eskf/runtime/gnss_quality.hpp>
+#include <formal_eskf/runtime/gnss_fusion.hpp>
 
 namespace formal_eskf::example
 {
@@ -55,7 +55,16 @@ public:
         {
             return evaluated && quality.decision == runtime::GnssQualityDecision::accepted;
         }
+
+        [[nodiscard]] runtime::GnssFusion::Sample lifecycle_sample(std::uint64_t time_us) const noexcept
+        {
+            // Invalid velocity never entered the receiver buffer. Unavailable
+            // quality metadata is a received sample, but cannot refresh health.
+            return {outcome == "invalid_velocity" ? 0U : time_us, quality.decision, evaluated};
+        }
     };
+
+    void restart_health() noexcept { m_monitor.restart_health(); }
 
     [[nodiscard]] Result update(typename monitor_type::sample_type sample, Metadata const & metadata,
                                 std::uint64_t now_us,

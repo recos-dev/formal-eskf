@@ -3272,7 +3272,7 @@
     },
     {
       "id": "R-GNSS-RESET",
-      "title": "Checked GNSS horizontal/vertical-position and 3D-velocity reset, covariance decorrelation and atomic delta publication; Lean and ESBMC evidence pending",
+      "title": "Checked GNSS position, 3D-velocity and Down-only velocity resets, covariance decorrelation and atomic delta publication; Lean and ESBMC evidence pending",
       "references": {
         "spec": [
           {
@@ -3300,6 +3300,10 @@
           },
           {
             "file": "include/formal_eskf/runtime/gnss_reset.hpp",
+            "symbol": "Status try_reset_gnss_vertical_velocity("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_reset.hpp",
             "symbol": "Status try_reset_gnss_velocity("
           }
         ],
@@ -3308,7 +3312,7 @@
     },
     {
       "id": "R-GNSS-FUSION",
-      "title": "GNSS-only lifecycle, coupled horizontal recovery and height reset after rejected overdue correction; Lean and ESBMC evidence pending",
+      "title": "GNSS-only lifecycle with horizontal, height and Down-velocity recovery ordering; Lean and ESBMC evidence pending",
       "references": {
         "spec": [
           {
@@ -3341,6 +3345,10 @@
           {
             "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
             "symbol": "Status GnssFusion::record_reset("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "symbol": "Status GnssFusion::record_vertical_velocity_reset("
           },
           {
             "file": "include/formal_eskf/runtime/gnss_fusion.hpp",

@@ -386,7 +386,7 @@ void update_gnss_lifecycle(GnssLifecycle & lifecycle, GnssQuality & quality, Gns
     // The demo starts from an already seeded navigation frame and accel/mag
     // attitude. This is an initialization premise, not a detected alignment.
     // Every group's startup/re-entry uses an actual GNSS reset.
-    GnssLifecycle::Conditions const conditions{{true, true, false}, {true, true, false}, {true, true, false}};
+    GnssLifecycle::Conditions const conditions{{true, true, false}, {true, true, false}, {true, true, false}, true};
     GnssLifecycle::Parameters const timing{GNSS_HORIZONTAL_TIMEOUT_US, GNSS_HEIGHT_DATA_TIMEOUT_US,
                                            GNSS_HEIGHT_FUSION_TIMEOUT_US};
     check_status(lifecycle.update(time, conditions, timing, sample), "GNSS lifecycle", time);
@@ -835,6 +835,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::size_t predictions = 0U, navigation_events = 0U, gaps = 0U;
     std::size_t position_xy_fused = 0U, position_z_fused = 0U, velocity_fused = 0U;
     std::size_t position_xy_resets = 0U, position_z_resets = 0U, velocity_resets = 0U;
+    std::size_t vertical_velocity_resets = 0U;
     std::size_t quality_accepted = 0U, quality_rejected = 0U, quality_waiting = 0U, quality_unavailable = 0U;
     std::size_t invalid_velocity = 0U, navigation_attempts = 0U;
     std::size_t position_xy_attempts = 0U, position_z_attempts = 0U, velocity_attempts = 0U;
@@ -1013,6 +1014,26 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 else
                 {
                     ++velocity_skipped;
+                }
+
+                // Height timeout is sampled before this event's height correction.
+                // Reset only Down after normal velocity fusion (even if gated out).
+                if (quality_parameters && gnss_lifecycle.state().vertical_velocity_reset_allowed)
+                {
+                    double delta{};
+                    auto const status = formal_eskf::runtime::try_reset_gnss_vertical_velocity(
+                        state, covariance, velocity(2U), noise.velocity_z, state, covariance, delta);
+                    check_status(gnss_lifecycle.record_vertical_velocity_reset(source_time, status == Status::success),
+                                 "GNSS vertical velocity reset feedback", time);
+                    write_gnss_reset(gnss_resets, "vertical_velocity", GnssLifecycle::StopReason::fusion_timeout,
+                                     status, Linalg::vector_type<1U>::from_row_major({delta}), source_time, time);
+                    if (status != Status::success)
+                    {
+                        write_gnss_lifecycle(lifecycle_updates, previous_lifecycle, gnss_lifecycle.state(), source_time,
+                                             time);
+                    }
+                    check_status(status, "GNSS vertical velocity reset", time);
+                    ++vertical_velocity_resets;
                 }
 
                 auto const position_V = Linalg::matrix_type<2U, 2U>::identity() * noise.position_xy;
@@ -1278,6 +1299,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"horizontal_position_resets\": " << position_xy_resets
             << ",\n  \"vertical_position_resets\": " << position_z_resets
             << ",\n  \"velocity_resets\": " << velocity_resets
+            << ",\n  \"vertical_velocity_resets\": " << vertical_velocity_resets
             << ",\n  \"horizontal_position_rejected\": " << position_xy_attempts - position_xy_fused
             << ",\n  \"vertical_position_rejected\": " << position_z_attempts - position_z_fused
             << ",\n  \"velocity_rejected\": " << velocity_attempts - velocity_fused
@@ -1345,6 +1367,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
               << " gate rejected, " << position_z_resets << " reset"
               << "\n3D velocity: " << velocity_fused << " fused, " << velocity_attempts - velocity_fused
               << " gate rejected, " << velocity_resets << " reset"
+              << "\nDown velocity resets for height recovery: " << vertical_velocity_resets
               << "\nGNSS innovation gate: " << (gnss ? "ON" : "OFF (legacy input)")
               << "\nCSV interval gap holds: " << gaps << " (" << gap_us
               << " us)\nNavigation maximum tick alignment: " << max_alignment_us

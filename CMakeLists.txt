@@ -182,7 +182,8 @@ if(PROJECT_IS_TOP_LEVEL)
                 )
             endforeach()
             foreach(CASE IN ITEMS startup both_timeout position_timeout reset_failure position_reset_failure
-                    height_reset_failure height_reentry height_timeout height_overdue_success full_outage all_timeout)
+                    height_reset_failure height_reentry height_timeout height_overdue_success full_outage all_timeout
+                    vertical_velocity_reset)
                 add_test(
                     NAME formal_eskf.replay_gnss.reset.${CASE}
                     COMMAND ${CMAKE_COMMAND}

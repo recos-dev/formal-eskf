@@ -22,6 +22,8 @@ namespace formal_eskf::runtime
  * Owns no estimator, quality timer, clock, buffer or reset implementation.
  * Update every estimator tick; record each permitted group's actual decision
  * before the next update. Use horizontal OR 3D velocity, never both per sample.
+ * With has_vertical_velocity, process velocity and any permitted Down-only
+ * reset before this sample's height correction/reset.
  * Reset requests require caller-established state/P repair, not a blind retry.
  */
 class GnssFusion
@@ -68,6 +70,8 @@ public:
         GroupConditions horizontal_position{};
         GroupConditions vertical_position{};
         GroupConditions velocity{};
+        // Velocity group includes a qualified Down observation, not just N/E.
+        bool has_vertical_velocity = false;
     };
 
     struct Sample
@@ -95,6 +99,8 @@ public:
         GroupState horizontal_position{};
         GroupState vertical_position{};
         GroupState velocity{};
+        bool vertical_velocity_reset_allowed = false;
+        std::uint64_t last_vertical_velocity_reset_time_us{};
         // One-update notification: restart quality health timers, retaining qualification.
         bool restart_quality = false;
     };
@@ -117,6 +123,9 @@ public:
     /** Consume a reset permission after the checked state/P operation. */
     [[nodiscard]] Status record_reset(Group group, std::uint64_t sample_time_us, bool reset_succeeded) noexcept;
 
+    /** Acknowledge the permitted Down-only reset before this sample's height operation. */
+    [[nodiscard]] Status record_vertical_velocity_reset(std::uint64_t sample_time_us, bool reset_succeeded) noexcept;
+
     /** Acknowledge caller-established safe re-entry; does not reset estimator or quality. */
     [[nodiscard]] Status restart(Group group) noexcept;
 
@@ -134,6 +143,7 @@ private:
     std::uint64_t m_update_time_us{};
     std::uint64_t m_sample_time_us{};
     std::uint64_t m_last_quality_pass_us{};
+    bool m_vertical_velocity_reset_pending = false;
 }; /* end class GnssFusion */
 
 inline GnssFusion::GroupState * GnssFusion::select_group(Group group) noexcept
@@ -235,6 +245,8 @@ inline Status GnssFusion::update(std::uint64_t now_us, Conditions const & condit
     m_state.horizontal_position.reset_allowed = false;
     m_state.vertical_position.reset_allowed = false;
     m_state.velocity.reset_allowed = false;
+    m_state.vertical_velocity_reset_allowed = false;
+    m_vertical_velocity_reset_pending = false;
     if (parameters.horizontal_timeout_us == 0U ||
         parameters.horizontal_timeout_us > std::numeric_limits<std::uint64_t>::max() / 2U ||
         parameters.height_data_timeout_us == 0U || parameters.height_fusion_timeout_us == 0U ||
@@ -256,6 +268,7 @@ inline Status GnssFusion::update(std::uint64_t now_us, Conditions const & condit
     }
 
     bool const horizontal_was_active = m_state.horizontal_position.active || m_state.velocity.active;
+    bool const velocity_was_active = m_state.velocity.active;
     m_update_time_us = now_us;
     m_parameters = parameters;
     m_state.restart_quality = false;
@@ -307,6 +320,14 @@ inline Status GnssFusion::update(std::uint64_t now_us, Conditions const & condit
         update_group(m_state.horizontal_position, conditions.horizontal_position, new_sample, accepted,
                      horizontal_fresh);
         update_group(m_state.vertical_position, conditions.vertical_position, new_sample, accepted, height_fresh);
+        // Snapshot the height deadline before this sample's height operation.
+        // A full velocity reset already includes Down; only normal fusion can
+        // request this additional reset, after its actual result is recorded.
+        m_vertical_velocity_reset_pending =
+            conditions.has_vertical_velocity && velocity_was_active && m_state.velocity.fusion_allowed &&
+            (m_state.vertical_position.fusion_allowed || m_state.vertical_position.reset_allowed) &&
+            m_state.vertical_position.start_time_us != 0U &&
+            expired(m_state.vertical_position, parameters.height_fusion_timeout_us);
     }
     if (horizontal_was_active && !m_state.horizontal_position.active && !m_state.velocity.active)
     {
@@ -324,7 +345,9 @@ inline Status GnssFusion::record_fusion(Group group, std::uint64_t sample_time_u
     {
         return Status::domain_error;
     }
-    if (!group_state->fusion_allowed || sample_time_us != m_sample_time_us)
+    if (!group_state->fusion_allowed || sample_time_us != m_sample_time_us ||
+        (group == Group::vertical_position &&
+         (m_vertical_velocity_reset_pending || m_state.vertical_velocity_reset_allowed)))
     {
         return Status::out_of_range;
     }
@@ -336,6 +359,12 @@ inline Status GnssFusion::record_fusion(Group group, std::uint64_t sample_time_u
     else if (decision == FusionDecision::failed)
     {
         require_recovery(*group_state, StopReason::fusion_failed);
+    }
+    if (group == Group::velocity)
+    {
+        m_state.vertical_velocity_reset_allowed =
+            m_vertical_velocity_reset_pending && decision != FusionDecision::failed;
+        m_vertical_velocity_reset_pending = false;
     }
     if (group == Group::vertical_position && group_state->active &&
         expired(*group_state, m_parameters.height_fusion_timeout_us))
@@ -356,6 +385,15 @@ inline Status GnssFusion::restart(Group group) noexcept
         return Status::domain_error;
     }
     *group_state = GroupState{};
+    if (group == Group::velocity || group == Group::vertical_position)
+    {
+        m_vertical_velocity_reset_pending = false;
+        m_state.vertical_velocity_reset_allowed = false;
+    }
+    if (group == Group::velocity)
+    {
+        m_state.last_vertical_velocity_reset_time_us = 0U;
+    }
     return Status::success;
 }
 
@@ -366,7 +404,9 @@ inline Status GnssFusion::record_reset(Group group, std::uint64_t sample_time_us
     {
         return Status::domain_error;
     }
-    if (!group_state->reset_allowed || sample_time_us != m_sample_time_us)
+    if (!group_state->reset_allowed || sample_time_us != m_sample_time_us ||
+        (group == Group::vertical_position &&
+         (m_vertical_velocity_reset_pending || m_state.vertical_velocity_reset_allowed)))
     {
         return Status::out_of_range;
     }
@@ -386,6 +426,25 @@ inline Status GnssFusion::record_reset(Group group, std::uint64_t sample_time_us
     group_state->stop_reason = StopReason::none;
     group_state->last_reset_time_us = m_update_time_us;
     // No correction after reset; height may already have attempted and rejected it.
+    return Status::success;
+}
+
+inline Status GnssFusion::record_vertical_velocity_reset(std::uint64_t sample_time_us, bool reset_succeeded) noexcept
+{
+    if (!m_state.vertical_velocity_reset_allowed || sample_time_us != m_sample_time_us)
+    {
+        return Status::out_of_range;
+    }
+    m_state.vertical_velocity_reset_allowed = false;
+    if (reset_succeeded)
+    {
+        // A partial reset is neither successful 3D fusion nor horizontal progress.
+        m_state.last_vertical_velocity_reset_time_us = m_update_time_us;
+    }
+    else
+    {
+        require_recovery(m_state.velocity, StopReason::reset_failed);
+    }
     return Status::success;
 }
 

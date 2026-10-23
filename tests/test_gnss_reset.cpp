@@ -28,6 +28,7 @@ enum class ResetGroup
 {
     horizontal_position,
     vertical_position,
+    vertical_velocity,
     velocity,
 };
 
@@ -63,10 +64,10 @@ template <typename Scalar, ResetGroup Group> struct Fixture
     using linalg_type = formal_eskf::test::Backend<Scalar>;
     using state_type = formal_eskf::configuration::Ins::NominalState<linalg_type>;
     using covariance_type = formal_eskf::linalg::Matrix<linalg_type, 15U, 15U>;
-    static constexpr std::size_t size = Group == ResetGroup::horizontal_position ? 2U
-                                        : Group == ResetGroup::vertical_position ? 1U
-                                                                                 : 3U;
-    static constexpr std::size_t axis_offset = Group == ResetGroup::vertical_position ? 2U : 0U;
+    static constexpr bool vertical = Group == ResetGroup::vertical_position || Group == ResetGroup::vertical_velocity;
+    static constexpr bool velocity = Group == ResetGroup::velocity || Group == ResetGroup::vertical_velocity;
+    static constexpr std::size_t size = Group == ResetGroup::horizontal_position ? 2U : vertical ? 1U : 3U;
+    static constexpr std::size_t axis_offset = vertical ? 2U : 0U;
     using vector_type = formal_eskf::linalg::Matrix<linalg_type, size, 1U>;
 
     state_type state{};
@@ -114,11 +115,20 @@ template <typename Scalar, ResetGroup Group> struct Fixture
             return formal_eskf::runtime::try_reset_gnss_horizontal_position(
                 state, P, observation, variances, state_output, covariance_output, delta_output);
         }
-        else if constexpr (Group == ResetGroup::vertical_position)
+        else if constexpr (vertical)
         {
             Scalar delta = delta_output(0U);
-            auto const status = formal_eskf::runtime::try_reset_gnss_vertical_position(
-                state, P, observation(0U), variances(0U), state_output, covariance_output, delta);
+            Status status{};
+            if constexpr (velocity)
+            {
+                status = formal_eskf::runtime::try_reset_gnss_vertical_velocity(
+                    state, P, observation(0U), variances(0U), state_output, covariance_output, delta);
+            }
+            else
+            {
+                status = formal_eskf::runtime::try_reset_gnss_vertical_position(
+                    state, P, observation(0U), variances(0U), state_output, covariance_output, delta);
+            }
             // Forward even on failure: rollback checks must see the actual scalar output.
             delta_output.set(0U, delta);
             return status;
@@ -143,7 +153,7 @@ void check_success(TestContext & test, Fixture<Scalar, Group> const & fixture, s
     // Independent entry-wise oracle, not calls to the production reset helper.
     for (std::size_t axis = 0U; axis < F::size; ++axis)
     {
-        auto & target = Group == ResetGroup::velocity ? expected_state.v_n : expected_state.p_n;
+        auto & target = F::velocity ? expected_state.v_n : expected_state.p_n;
         auto const state_axis = F::axis_offset + axis;
         expected_delta.set(axis, fixture.observation(axis) - target(state_axis));
         target.set(state_axis, fixture.observation(axis));
@@ -154,13 +164,16 @@ void check_success(TestContext & test, Fixture<Scalar, Group> const & fixture, s
         {
             bool const decoupled = Group == ResetGroup::horizontal_position ? row < 2U || column < 2U
                                    : Group == ResetGroup::vertical_position ? row == 2U || column == 2U
-                                                                            : row < 6U || column < 6U;
+                                   : Group == ResetGroup::vertical_velocity
+                                       ? row == 2U || column == 2U || row == 5U || column == 5U
+                                       : row < 6U || column < 6U;
             if (row != column && decoupled)
             {
                 expected_P.set(row, column, Scalar{0});
             }
             bool const replaced = Group == ResetGroup::horizontal_position ? row < 2U
                                   : Group == ResetGroup::vertical_position ? row == 2U
+                                  : Group == ResetGroup::vertical_velocity ? row == 5U
                                                                            : row >= 3U && row < 6U;
             if (row == column && replaced)
             {
@@ -169,7 +182,7 @@ void check_success(TestContext & test, Fixture<Scalar, Group> const & fixture, s
                 {
                     variance = fixture.variances(0U) + fixture.variances(1U);
                 }
-                else if constexpr (Group == ResetGroup::vertical_position)
+                else if constexpr (F::vertical)
                 {
                     variance = fixture.variances(0U);
                 }
@@ -239,12 +252,13 @@ template <typename Scalar, ResetGroup Group> void run_conformance(TestContext & 
                                                                       fixture.state.q_nb) == Status::success,
                 profile, "non-identity attitude fixture is valid");
     check_success(test, fixture, profile);
-    if constexpr (Group == ResetGroup::vertical_position)
+    if constexpr (F::vertical)
     {
-        for (Scalar position_d : {Scalar{-40}, -Scalar{0}, Scalar{0}, Scalar{30}, Scalar{40}})
+        Scalar const prior = F::velocity ? fixture.state.v_n(2U) : fixture.state.p_n(2U);
+        for (Scalar down : {Scalar{-40}, -Scalar{0}, Scalar{0}, prior, Scalar{40}})
         {
             auto input = fixture;
-            input.observation.set(0U, position_d);
+            input.observation.set(0U, down);
             check_success(test, input, profile);
         }
     }
@@ -309,9 +323,9 @@ template <typename Scalar, ResetGroup Group> void run_conformance(TestContext & 
         for (Scalar observation : {max, -max})
         {
             input = fixture;
-            if constexpr (Group == ResetGroup::velocity)
+            if constexpr (F::velocity)
             {
-                input.state.v_n.set(axis, -observation);
+                input.state.v_n.set(F::axis_offset + axis, -observation);
             }
             else
             {
@@ -335,7 +349,7 @@ template <typename Scalar, ResetGroup Group> void run_conformance(TestContext & 
     }
     auto extreme = fixture;
     extreme.variances.set(0U, max);
-    if constexpr (Group != ResetGroup::vertical_position)
+    if constexpr (!F::vertical)
     {
         extreme.variances.set(1U, max);
     }
@@ -359,6 +373,8 @@ int main()
     run_conformance<double, ResetGroup::horizontal_position>(test, "horizontal position / double");
     run_conformance<float, ResetGroup::vertical_position>(test, "vertical position / float");
     run_conformance<double, ResetGroup::vertical_position>(test, "vertical position / double");
+    run_conformance<float, ResetGroup::vertical_velocity>(test, "vertical velocity / float");
+    run_conformance<double, ResetGroup::vertical_velocity>(test, "vertical velocity / double");
     run_conformance<float, ResetGroup::velocity>(test, "velocity / float");
     run_conformance<double, ResetGroup::velocity>(test, "velocity / double");
     if (test.failures() != 0)

@@ -411,6 +411,7 @@ and [velocity reset](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534
 |---|---|---|
 | `try_reset_gnss_horizontal_position` | Set `p_N,p_E` to the supplied 2-vector; leave `p_D` and all other state fields unchanged | Clear rows/columns 0 and 1, then set both diagonals to `max(variance_N + variance_E, 0.01^2)` in m^2 |
 | `try_reset_gnss_vertical_position` | Set only `p_D` to the supplied scalar; leave velocity, horizontal position, attitude and biases unchanged | Clear off-diagonal entries in row/column 2; set `P(2,2) = max(variance_D, 0.01^2)` in m^2; preserve every other entry |
+| `try_reset_gnss_vertical_velocity` | Set only `v_D` to the supplied scalar in m/s; preserve all other nominal fields | Clear off-diagonal entries in rows/columns 2 and 5; retain `P(2,2)`; set `P(5,5) = max(variance_D, 0.01^2)` in m^2/s^2; preserve every other entry |
 | `try_reset_gnss_velocity` | Set all three components of `v_n`; leave position, attitude and biases unchanged | Clear off-diagonal entries in rows/columns 0..5. Preserve position diagonals 0..2; set velocity diagonals 3..5 to `max(variance_i, 0.01^2)` in m^2/s^2 |
 
 The horizontal variance sum follows `resetHorizontalPositionToGnss` calling
@@ -420,6 +421,9 @@ and variances do not change. Untouched covariance entries are copied exactly.
 The input variances describe diagonal observation noise, not standard
 deviations or a full correlated measurement covariance. Noise preprocessing,
 including any vertical-velocity scaling, happens before this call.
+The Down-only velocity reset follows `resetVerticalVelocityTo`: decorrelate
+height as well as vertical velocity, while retaining height value/variance and
+both horizontal velocity values/variances. It reports `new v_D - old v_D`.
 
 Vertical position is already converted to the existing local NED origin. For
 an altitude-relative Down coordinate with a fixed, common datum,
@@ -456,7 +460,7 @@ API neither estimates nor changes sensor-height biases, terrain or output histor
   and aggregate/publish reset notifications. `R-GNSS-FUSION` supplies
   reset-on-start/timeout orchestration separately. These operations do not perform
   origin changes, output-predictor adjustment, height-reference/bias management,
-  height-failure vertical-velocity override or yaw reset.
+  automatic height-failure decisions or yaw reset.
 
 Native tests cover both scalar formats, per-entry state/P behavior, floors,
 Down-delta sign, retained velocity/covariance, valid aliases, invalid inputs,
@@ -527,6 +531,25 @@ OR 3D velocity per sample. Alternate aiding and reset execution remain separate.
   successful reset renews progress without changing the last correction time.
   A numerical failure never grants this permission. Equality does not expire
   fusion deadlines. Height feedback does not alter horizontal groups or quality.
+- `Conditions::has_vertical_velocity` explicitly declares that the velocity group
+  includes a qualified Down observation; horizontal-only callers leave it false.
+  For an already active velocity session doing ordinary fusion, snapshot the
+  height deadline at `update`, before this sample's height operation. Height
+  must have an established session and permit either correction or reset on
+  this fresh accepted sample. If its progress is strictly beyond the height
+  timeout, velocity feedback of `fused` OR `rejected` grants one Down-only reset.
+  Numerical failure does not. Startup and full 3D velocity resets already cover
+  Down and must not request another reset.
+- Execute/acknowledge Down-only reset with `record_vertical_velocity_reset`
+  before this sample's height correction/reset. Out-of-order height feedback
+  returns `out_of_range` without consuming permission. Even a later successful
+  height correction does not cancel the earlier velocity reset decision.
+  Success updates only `last_vertical_velocity_reset_time_us`, not height or
+  horizontal progress, the velocity group's full-reset/fusion timestamps, or
+  quality health. Failure latches velocity `reset_failed`; no automatic retry.
+  Wrong-sample/duplicate feedback returns `out_of_range`. Every update (including
+  invalid updates), or explicit velocity/height repair, revokes pending permission.
+  Restarting the velocity group also clears its Down-reset history.
 - Ordinary stops can start again after accepted quality and caller-established
   initialization. Losing the last active horizontal group emits one
   `restart_quality` notification; call `GnssQuality::restart_health()` before
@@ -566,6 +589,7 @@ and [height controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755
 | Horizontal startup / timeout reset | Execute velocity then horizontal-position reset, instead of same-sample correction |
 | Height startup / re-entry | Reset local Down position and its covariance on the accepted sample; no correction on that sample |
 | Height timeout reset | After rejected correction beyond 5 s, reset Down using the same accepted observation |
+| Height-failure vertical velocity reset | After normal 3D velocity correction (fused or rejected), reset only `v_D` when preceding height progress is >5 s old; execute before horizontal-position/height operations |
 | Numerical correction / reset failure | Log and terminate; no automatic recovery |
 
 Enable lifecycle with the quality input pair, not for legacy/KITTI inputs.
@@ -573,7 +597,8 @@ Invalid-velocity messages do not refresh receiver receipt; missing required
 quality metadata advances receipt only. Run no-data updates between events.
 Preserve group-independent gate/correction decisions, velocity/position/height
 order. Only successful horizontal position/velocity correction or reset refreshes
-horizontal-aiding timestamps; height correction/reset never does. Log every received
+horizontal-aiding timestamps; height correction/reset and Down-only velocity reset
+never do. Log every received
 lifecycle sample and no-data transitions in `result/gnss_lifecycle.csv`.
 Quality skips, lifecycle skips, innovation rejections and resets are distinct outcomes.
 Record per-axis reset reason, status and new-minus-old delta in `gnss_resets.csv`;
@@ -582,6 +607,11 @@ from correction and rejection counts. A height timeout event can contain both
 a rejected correction and a successful reset; these counters count operations,
 not mutually exclusive events. Reset success refreshes progress without
 claiming an innovation passed or restarting quality qualification.
+Log Down-only resets as `vertical_velocity` in `gnss_resets.csv`, with their own
+`vertical_velocity_resets` summary count. A normal velocity correction and this
+reset may both occur on one sample. Preserve the actual correction outcome.
+The Down observation variance is already prepared as `(1.5 * speed_std)^2`;
+the reset API must not apply that scaling again.
 
 The replay's existing seed establishes its initial frame and assumed attitude
 alignment; it is not an alignment detector. All three groups require an actual
@@ -590,16 +620,17 @@ leaves horizontal sessions running; return of qualified data resets height.
 A complete GNSS outage stops all groups and restarts quality health timing;
 reset/re-entry waits for renewed acceptance instead of treating receipt as recovery.
 
-Velocity, horizontal-position and height resets are independent checked transactions,
-in that order; a later failure does not roll back earlier completed operations. Log
+Velocity, Down-only velocity, horizontal-position and height operations are
+independent checked transactions, in that order; a later failure does not roll
+back earlier completed operations. Log
 the completed/failed operations and terminate without a success summary. Numerical
 correction failure is not converted into an automatic reset with the same input.
 
 This is a lifecycle integration, not full EKF2 equivalence: one replay clock
 uses source sample recency instead of separate arrival/delayed horizons; no
-alternate sources, GNSS heading/GSF emergency yaw, height-bias estimator,
-bad-vertical-acceleration reset/override, or coupled vertical-velocity reset
-is implemented. Existing seed, sequential gates and numerical models are retained.
+alternate sources, GNSS heading/GSF emergency yaw, height-bias estimator or
+bad-vertical-acceleration reset/override is implemented. Existing seed,
+sequential gates and numerical models are retained.
 
 ### R-MEASUREMENT-FUSION: gated correction of one observation group
 
@@ -655,8 +686,9 @@ forms its gate and correction from the latest committed prior. This differs
 from PX4's precomputed position/velocity diagnostics and scalar update schedule;
 neither identical decisions nor numerical EKF2 equivalence is claimed.
 Rejection preserves that group's prior and does not block other groups. Only
-actual horizontal-position or velocity correction/reset refreshes horizontal-aiding time;
-height-only fusion, receipt, rejection and failure never do so.
+actual horizontal-position or 3D-velocity correction/reset refreshes horizontal-aiding
+time; height operations, Down-only velocity reset, receipt, rejection and failure
+never do so.
 
 `gnss_updates.csv` records each group's outcome/status and per-axis innovation,
 S diagonal, test ratio, V diagonal and diagnostic validity. Numerical fusion
@@ -664,8 +696,9 @@ failure is logged before stopping. Invalid prepared input stops replay as an
 input error. Event counts are not successful-correction counts; report accepted
 and rejected groups separately. A fully rejected event still counts as consumed.
 Quality qualification is described below; the lifecycle above controls permission
-and horizontal reset execution. No bad-vertical-acceleration override, height
-reset, delay compensation or change to magnetic/gravity scheduling is included.
+and GNSS reset execution, including height and Down-only velocity recovery.
+No bad-vertical-acceleration override, delay compensation or change to
+magnetic/gravity scheduling is included.
 Without the parameter file, retain legacy/KITTI ungated noise and fusion order.
 Replay checks are integration evidence, not new Lean/ESBMC proofs or accuracy claims.
 
@@ -931,9 +964,9 @@ Native temporal/boundary tests are supporting evidence only. Lean and ESBMC evid
 PX4 replay evaluates the existing monitor before its independent navigation
 gates. Follow [v1.16.2 GNSS checks](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gps_checks.cpp)
 and [health qualification](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gps_control.cpp).
-The separate lifecycle above consumes these quality results. Delayed buffering
-and estimator resets remain absent. The seed is an initialization assumption,
-not qualified fusion.
+The separate lifecycle above consumes these quality results and orchestrates
+checked GNSS resets. Delayed buffering remains absent. The seed is an
+initialization assumption, not qualified fusion.
 
 - Read `EKF2_GPS_CHECK` and `EKF2_REQ_*` thresholds from the log. Map the ten
   mask bits to named checks; do not silently enable/disable checks. Support the

@@ -596,6 +596,189 @@ void test_height_reset(TestContext & test)
                 lifecycle_profile, "height-only data stop restarts through a qualified reset, not a quality restart");
 }
 
+void test_vertical_velocity_reset(TestContext & test)
+{
+    for (auto const start : {std::uint64_t{1000}, std::numeric_limits<std::uint64_t>::max() - 200U})
+    {
+        for (auto decision : {FusionDecision::fused, FusionDecision::rejected, FusionDecision::failed})
+        {
+            for (bool success : {false, true})
+            {
+                Fixture fixture;
+                fixture.conditions.has_vertical_velocity = true;
+                test.expect(fixture.update(start, {start, GnssQualityDecision::accepted}) == Status::success &&
+                                fixture.monitor.record_fusion(Group::velocity, start, FusionDecision::fused) ==
+                                    Status::success &&
+                                fixture.monitor.record_fusion(Group::vertical_position, start, FusionDecision::fused) ==
+                                    Status::success &&
+                                fixture.update(start + 50U, {start + 50U, GnssQualityDecision::accepted}) ==
+                                    Status::success &&
+                                fixture.monitor.record_fusion(Group::velocity, start + 50U, FusionDecision::rejected) ==
+                                    Status::success &&
+                                !fixture.monitor.state().vertical_velocity_reset_allowed,
+                            lifecycle_profile, "height deadline equality does not permit a Down velocity reset");
+                test.expect(
+                    fixture.update(start + 51U, {start + 51U, GnssQualityDecision::accepted}) == Status::success &&
+                        fixture.monitor.record_vertical_velocity_reset(start + 51U, true) == Status::out_of_range &&
+                        fixture.monitor.record_fusion(Group::vertical_position, start + 51U, FusionDecision::fused) ==
+                            Status::out_of_range &&
+                        fixture.monitor.record_fusion(Group::velocity, start + 51U, decision) == Status::success,
+                    lifecycle_profile,
+                    "overdue height requires velocity feedback before Down reset and height correction");
+                auto const before = fixture.monitor.state();
+                if (decision == FusionDecision::failed)
+                {
+                    test.expect(!before.vertical_velocity_reset_allowed && before.velocity.recovery_required &&
+                                    fixture.monitor.record_vertical_velocity_reset(start + 51U, true) ==
+                                        Status::out_of_range,
+                                lifecycle_profile, "numerical correction failure never authorizes automatic reset");
+                    continue;
+                }
+                test.expect(
+                    before.vertical_velocity_reset_allowed &&
+                        fixture.monitor.record_vertical_velocity_reset(start + 50U, true) == Status::out_of_range &&
+                        fixture.monitor.state().vertical_velocity_reset_allowed &&
+                        fixture.monitor.record_fusion(Group::vertical_position, start + 51U, FusionDecision::fused) ==
+                            Status::out_of_range &&
+                        fixture.monitor.record_vertical_velocity_reset(start + 51U, success) == Status::success,
+                    lifecycle_profile, "fused or gate-rejected velocity permits exactly one matching Down reset");
+                auto const & state = fixture.monitor.state();
+                test.expect(
+                    !state.vertical_velocity_reset_allowed &&
+                        state.last_vertical_velocity_reset_time_us == (success ? start + 51U : 0U) &&
+                        same_group(before.horizontal_position, state.horizontal_position) &&
+                        same_group(before.vertical_position, state.vertical_position) && !state.restart_quality &&
+                        state.velocity.last_fuse_time_us == before.velocity.last_fuse_time_us &&
+                        state.velocity.last_reset_time_us == before.velocity.last_reset_time_us &&
+                        state.velocity.start_time_us == before.velocity.start_time_us &&
+                        fixture.monitor.record_vertical_velocity_reset(start + 51U, true) == Status::out_of_range,
+                    lifecycle_profile, "Down reset cannot manufacture height or horizontal progress");
+                if (success)
+                {
+                    test.expect(
+                        same_group(before.velocity, state.velocity) &&
+                            fixture.monitor.record_fusion(Group::vertical_position, start + 51U,
+                                                          FusionDecision::fused) == Status::success &&
+                            !state.vertical_position.reset_allowed &&
+                            fixture.update(start + 52U, {start + 52U, GnssQualityDecision::accepted}) ==
+                                Status::success &&
+                            fixture.monitor.record_fusion(Group::velocity, start + 52U, FusionDecision::fused) ==
+                                Status::success &&
+                            !state.vertical_velocity_reset_allowed,
+                        lifecycle_profile,
+                        "later successful height correction prevents another reset, not the one already completed");
+                }
+                else
+                {
+                    test.expect(!state.velocity.active && state.velocity.recovery_required &&
+                                    state.velocity.stop_reason == StopReason::reset_failed &&
+                                    fixture.update(start + 52U, {start + 52U, GnssQualityDecision::accepted}) ==
+                                        Status::success &&
+                                    !state.velocity.fusion_allowed && !state.velocity.reset_allowed &&
+                                    !state.vertical_velocity_reset_allowed,
+                                lifecycle_profile, "failed Down reset is terminal for velocity until caller repair");
+                }
+            }
+        }
+    }
+}
+
+void test_vertical_velocity_reset_permissions(TestContext & test)
+{
+    for (unsigned inhibition = 0U; inhibition < 9U; ++inhibition)
+    {
+        Fixture fixture;
+        fixture.conditions.has_vertical_velocity = true;
+        test.expect(fixture.update(1000U, {1000U, GnssQualityDecision::accepted}) == Status::success &&
+                        fixture.update(1051U, {1051U, GnssQualityDecision::accepted}) == Status::success &&
+                        fixture.monitor.record_fusion(Group::velocity, 1051U, FusionDecision::rejected) ==
+                            Status::success &&
+                        fixture.monitor.state().vertical_velocity_reset_allowed,
+                    lifecycle_profile, "prepare one pending Down reset");
+        auto sample = GnssFusion::Sample{1052U, GnssQualityDecision::accepted};
+        switch (inhibition)
+        {
+        case 0U:
+            sample = {};
+            break;
+        case 1U:
+            sample.quality = GnssQualityDecision::rejected;
+            break;
+        case 2U:
+            sample.quality = GnssQualityDecision::waiting;
+            break;
+        case 3U:
+            sample.quality_available = false;
+            break;
+        case 4U:
+            fixture.conditions.velocity.enabled = false;
+            break;
+        case 5U:
+            fixture.conditions.velocity.ready = false;
+            break;
+        case 6U:
+            fixture.conditions.has_vertical_velocity = false;
+            break;
+        case 7U:
+            fixture.conditions.vertical_position.enabled = false;
+            break;
+        default:
+            sample.time_us = 1053U;
+            break;
+        }
+        test.expect(fixture.update(1052U, sample) == (inhibition == 8U ? Status::out_of_range : Status::success) &&
+                        !fixture.monitor.state().vertical_velocity_reset_allowed &&
+                        fixture.monitor.record_vertical_velocity_reset(1051U, true) == Status::out_of_range,
+                    lifecycle_profile, "every update revokes stale reset permission, including invalid calls");
+        if (fixture.monitor.state().velocity.fusion_allowed)
+        {
+            test.expect(fixture.monitor.record_fusion(Group::velocity, 1052U, FusionDecision::rejected) ==
+                                Status::success &&
+                            !fixture.monitor.state().vertical_velocity_reset_allowed,
+                        lifecycle_profile, "horizontal-only velocity and disabled height cannot authorize Down reset");
+        }
+    }
+    Fixture timeout;
+    timeout.conditions.has_vertical_velocity = true;
+    test.expect(timeout.update(1000U, {1000U, GnssQualityDecision::accepted}) == Status::success &&
+                    timeout.update(1051U, {1051U, GnssQualityDecision::accepted}) == Status::success &&
+                    timeout.monitor.record_fusion(Group::velocity, 1051U, FusionDecision::rejected) ==
+                        Status::success &&
+                    timeout.monitor.record_vertical_velocity_reset(1051U, true) == Status::success &&
+                    timeout.update(1101U, {1101U, GnssQualityDecision::accepted}) == Status::success &&
+                    timeout.monitor.state().velocity.reset_allowed &&
+                    timeout.monitor.record_reset(Group::velocity, 1101U, true) == Status::success &&
+                    !timeout.monitor.state().vertical_velocity_reset_allowed &&
+                    timeout.monitor.record_vertical_velocity_reset(1101U, true) == Status::out_of_range,
+                lifecycle_profile,
+                "Down-only reset does not postpone coupled horizontal recovery or duplicate full velocity reset");
+
+    Fixture reentry;
+    reentry.conditions.has_vertical_velocity = true;
+    reentry.conditions.vertical_position.start_without_reset = false;
+    test.expect(reentry.update(1000U, {1000U, GnssQualityDecision::accepted}) == Status::success &&
+                    reentry.monitor.record_reset(Group::vertical_position, 1000U, true) == Status::success &&
+                    reentry.update(1025U) == Status::success &&
+                    reentry.update(1051U, {1051U, GnssQualityDecision::accepted}) == Status::success &&
+                    reentry.monitor.record_reset(Group::vertical_position, 1051U, true) == Status::out_of_range &&
+                    reentry.monitor.record_fusion(Group::velocity, 1051U, FusionDecision::rejected) ==
+                        Status::success &&
+                    reentry.monitor.record_reset(Group::vertical_position, 1051U, true) == Status::out_of_range,
+                lifecycle_profile, "overdue height re-entry waits for Down reset before height initialization");
+    for (auto group : {Group::velocity, Group::vertical_position})
+    {
+        auto repaired = reentry;
+        test.expect(repaired.monitor.restart(group) == Status::success &&
+                        !repaired.monitor.state().vertical_velocity_reset_allowed &&
+                        repaired.monitor.record_vertical_velocity_reset(1051U, true) == Status::out_of_range,
+                    lifecycle_profile, "external repair revokes pending Down reset permission");
+    }
+    test.expect(reentry.monitor.record_vertical_velocity_reset(1051U, true) == Status::success &&
+                    reentry.monitor.record_reset(Group::vertical_position, 1051U, true) == Status::success &&
+                    reentry.monitor.state().vertical_position.start_time_us == 1051U,
+                lifecycle_profile, "qualified re-entry performs Down velocity then height reset");
+}
+
 template <typename Linalg> void test_quality_to_fusion(TestContext & test, std::string_view profile)
 {
     using Scalar = typename Linalg::value_type;
@@ -670,6 +853,8 @@ int main()
     test_invalid_calls(test);
     test_reset_feedback(test);
     test_height_reset(test);
+    test_vertical_velocity_reset(test);
+    test_vertical_velocity_reset_permissions(test);
     test_quality_to_fusion<formal_eskf::test::Backend<float>>(test, "float");
     test_quality_to_fusion<formal_eskf::test::Backend<double>>(test, "double");
     if (test.failures() != 0)

@@ -403,20 +403,37 @@ Behavior reference: PX4 v1.16.2, revision
 `54f0455ffcd755534539a7cf33a09a20bf71d29d`:
 [GNSS reset dispatch](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gps_control.cpp),
 [position reset](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/ekf_helper.cpp),
+[altitude reset](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/position_fusion.cpp),
+[GNSS height control](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gnss_height_control.cpp),
 and [velocity reset](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/velocity_fusion.cpp).
 
 | Operation | Nominal state | Covariance |
 |---|---|---|
 | `try_reset_gnss_horizontal_position` | Set `p_N,p_E` to the supplied 2-vector; leave `p_D` and all other state fields unchanged | Clear rows/columns 0 and 1, then set both diagonals to `max(variance_N + variance_E, 0.01^2)` in m^2 |
+| `try_reset_gnss_vertical_position` | Set only `p_D` to the supplied scalar; leave velocity, horizontal position, attitude and biases unchanged | Clear off-diagonal entries in row/column 2; set `P(2,2) = max(variance_D, 0.01^2)` in m^2; preserve every other entry |
 | `try_reset_gnss_velocity` | Set all three components of `v_n`; leave position, attitude and biases unchanged | Clear off-diagonal entries in rows/columns 0..5. Preserve position diagonals 0..2; set velocity diagonals 3..5 to `max(variance_i, 0.01^2)` in m^2/s^2 |
 
 The horizontal variance sum follows `resetHorizontalPositionToGnss` calling
 `resetLatLonTo`; it is not the per-axis policy of PX4's other position-reset
 overload. Velocity reset also decorrelates position, even though position values
 and variances do not change. Untouched covariance entries are copied exactly.
-The input variance vectors describe diagonal observation noise, not standard
+The input variances describe diagonal observation noise, not standard
 deviations or a full correlated measurement covariance. Noise preprocessing,
 including any vertical-velocity scaling, happens before this call.
+
+Vertical position is already converted to the existing local NED origin. For
+an altitude-relative Down coordinate with a fixed, common datum,
+`p_D = h_origin - h_GNSS`, so `p_D_new - p_D_old` agrees with PX4's
+`-(altitude_new - altitude_old)`: climbing gives a negative Down delta.
+An ECEF-to-NED adapter must instead supply its projected Down coordinate
+consistently; it is not generally identical to altitude difference over distance.
+This API does not accept absolute altitude or initialize an origin.
+Its covariance rule follows `resetAltitudeTo`, which
+does not change velocity. PX4's velocity controller can separately reset `v_D`
+when height recovery is required; that policy is not part of this operation.
+For GNSS-reference height reset, PX4 uses the prepared GNSS measurement variance,
+not the height-bias variance added to its ordinary correction diagnostics. This
+API neither estimates nor changes sensor-height biases, terrain or output history.
 
 - All nominal coefficients, P, observation and variances must be finite; otherwise
   return `non_finite_input` before arithmetic. P must be exactly symmetric with
@@ -438,11 +455,14 @@ including any vertical-velocity scaling, happens before this call.
   counter increment. The caller must separately acknowledge completed recovery
   and aggregate/publish reset notifications. `R-GNSS-FUSION` supplies horizontal
   reset-on-start/timeout orchestration separately. These operations do not perform
-  origin changes, output-predictor adjustment, height-position reset,
-  height-failure vertical-velocity override or yaw reset.
+  origin changes, output-predictor adjustment, height-reference/bias management,
+  height-failure vertical-velocity override or yaw reset. The vertical-position
+  API is not yet wired into lifecycle/replay; their existing unsupported-height
+  recovery behavior remains unchanged.
 
 Native tests cover both scalar formats, per-entry state/P behavior, floors,
-delta sign, valid aliases, invalid inputs and failure atomicity. Lean/ESBMC
+Down-delta sign, retained velocity/covariance, valid aliases, invalid inputs,
+both delta-overflow signs and failure atomicity. Lean/ESBMC
 evidence remains pending; existing `E-RESET` proofs do not cover these operations.
 
 ### R-GNSS-FUSION: GNSS fusion lifecycle

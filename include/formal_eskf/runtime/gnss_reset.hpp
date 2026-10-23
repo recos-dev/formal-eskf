@@ -123,6 +123,56 @@ template <typename Linalg>
 }
 
 /**
+ * Replace INS vertical position with a qualified GNSS observation in local
+ * NED meters (positive Down), not positive-up altitude. Set P(2,2) to
+ * max(variance, 0.01^2) in m^2 and clear the off-diagonal entries in row/column 2.
+ * All other nominal fields and covariance entries remain unchanged, including
+ * vertical velocity and its variance. Delta is new p_D minus old p_D.
+ *
+ * Altitude datum/sign/origin conversion, lever arms and variance preparation
+ * belong to the caller. Input validation, delta overflow and failure atomicity
+ * follow try_reset_gnss_horizontal_position. State/P outputs may independently
+ * alias their complete priors; delta output must be disjoint from state/P.
+ * No height-reference initialization, bias adjustment or velocity reset occurs.
+ */
+template <typename Linalg>
+[[nodiscard]] Status try_reset_gnss_vertical_position(configuration::Ins::NominalState<Linalg> const & state,
+                                                      linalg::Matrix<Linalg, 15U, 15U> const & covariance,
+                                                      typename Linalg::value_type position_d,
+                                                      typename Linalg::value_type variance,
+                                                      configuration::Ins::NominalState<Linalg> & state_output,
+                                                      linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
+                                                      typename Linalg::value_type & delta_output) noexcept
+{
+    using value_type = typename Linalg::value_type;
+    using scalar_vector_type = linalg::Matrix<Linalg, 1U, 1U>;
+    Status const status =
+        detail::validate_gnss_reset_inputs(state, covariance, scalar_vector_type::from_row_major({position_d}),
+                                           scalar_vector_type::from_row_major({variance}));
+    if (!succeeded(status))
+    {
+        return status;
+    }
+    value_type const delta = position_d - state.p_n(2U);
+    if (!scalar::is_finite<typename Linalg::scalar_math_type>(delta))
+    {
+        return Status::non_finite_result;
+    }
+
+    constexpr value_type minimum_standard_deviation = static_cast<value_type>(0.01);
+    constexpr value_type minimum_variance = minimum_standard_deviation * minimum_standard_deviation;
+    auto candidate = state;
+    candidate.p_n.set(2U, position_d);
+    auto P = covariance;
+    detail::uncorrelate_navigation_axis(P, 2U);
+    P.set(2U, 2U, variance < minimum_variance ? minimum_variance : variance);
+    state_output = candidate;
+    covariance_output = P;
+    delta_output = delta;
+    return Status::success;
+}
+
+/**
  * Replace all three NED velocity components with a qualified GNSS observation
  * in m/s. Set each velocity variance to max(variance_i, 0.01^2), in m^2/s^2.
  * Decouple all position AND velocity coordinates from each other and the rest

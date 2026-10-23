@@ -3272,7 +3272,7 @@
     },
     {
       "id": "R-GNSS-RESET",
-      "title": "Checked GNSS horizontal-position and 3D-velocity reset, covariance decorrelation and atomic delta publication; Lean and ESBMC evidence pending",
+      "title": "Checked GNSS horizontal/vertical-position and 3D-velocity reset, covariance decorrelation and atomic delta publication; Lean and ESBMC evidence pending",
       "references": {
         "spec": [
           {
@@ -3293,6 +3293,10 @@
           {
             "file": "include/formal_eskf/runtime/gnss_reset.hpp",
             "symbol": "Status try_reset_gnss_horizontal_position("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_reset.hpp",
+            "symbol": "Status try_reset_gnss_vertical_position("
           },
           {
             "file": "include/formal_eskf/runtime/gnss_reset.hpp",

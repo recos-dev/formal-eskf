@@ -2948,7 +2948,7 @@
     },
     {
       "id": "R-MAGNETOMETER-LIFECYCLE",
-      "title": "Magnetic startup/continuation policy, retryable stops and explicit reset requests; Lean and ESBMC evidence pending",
+      "title": "Magnetic lifecycle and acknowledged timeout heading recovery; Lean and ESBMC evidence pending",
       "references": {
         "spec": [
           {
@@ -2976,6 +2976,10 @@
           },
           {
             "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "symbol": "MagnetometerFusion::record_reset("
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
             "symbol": "MagnetometerFusion::check_fusion_timeout()"
           },
           {
@@ -2985,6 +2989,30 @@
           {
             "file": "examples/replay_ins.cpp",
             "symbol": "void replay("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
+      "id": "R-MAGNETOMETER-RESET",
+      "title": "Fixed-field heading reset with local attitude covariance transformation; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-MAGNETOMETER-RESET: fixed-field heading and covariance reset"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/magnetometer_reset.hpp",
+            "symbol": "reset_magnetic_heading("
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetometer_reset.hpp",
+            "symbol": "try_reset_magnetic_heading("
           }
         ],
         "esbmc": []

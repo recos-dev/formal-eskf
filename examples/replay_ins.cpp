@@ -31,6 +31,7 @@
 #include <formal_eskf/runtime/gnss_reset.hpp>
 #include <formal_eskf/runtime/magnetometer.hpp>
 #include <formal_eskf/runtime/magnetometer_fusion.hpp>
+#include <formal_eskf/runtime/magnetometer_reset.hpp>
 #include <formal_eskf/runtime/position.hpp>
 #include <formal_eskf/runtime/velocity.hpp>
 #include "replay_accelerometer.hpp"
@@ -67,6 +68,7 @@
 #define MAG_HEALTH_TIME_US 1000000U
 #define MAG_MAX_INTERVAL_US 500000U // Startup freshness; no-data stop uses twice this.
 #define MAG_FUSION_TIMEOUT_US 7000000U
+#define MAG_HEADING_STD 0.3 // rad; fixed replay reset noise, not inferred from field noise.
 
 // GNSS-only lifecycle profile: separate horizontal and height deadlines.
 #define GNSS_HORIZONTAL_TIMEOUT_US 7000000U
@@ -551,6 +553,8 @@ std::string_view magnetic_recovery_reason(MagneticLifecycle::RecoveryReason reas
         return "fusion_timeout";
     case MagneticLifecycle::RecoveryReason::fusion_failed:
         return "fusion_failed";
+    case MagneticLifecycle::RecoveryReason::reset_failed:
+        return "reset_failed";
     default:
         return "source_changed";
     }
@@ -570,7 +574,7 @@ void write_magnetic_update(std::ostream & stream, std::uint64_t source_time, std
            << fusion.test_ratio(1U) << ',' << fusion.test_ratio(2U) << ',' << lifecycle.active << ','
            << magnetic_stop_reason(lifecycle.stop_reason) << ',' << magnetic_recovery_reason(lifecycle.recovery_reason)
            << ',' << lifecycle.last_field_failure_time_us << ',' << lifecycle.start_time_us << ','
-           << lifecycle.last_fuse_time_us << '\n';
+           << lifecycle.last_fuse_time_us << ',' << lifecycle.last_reset_time_us << '\n';
 }
 
 /** One row per observed axis; the outcome applies to the whole group. */
@@ -806,16 +810,20 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::ofstream condition_log(output / "fusion_conditions.csv");
     std::ofstream accel_updates(output / "accelerometer_updates.csv");
     std::ofstream mag_updates(output / "magnetometer_updates.csv");
+    std::ofstream mag_resets(output / "magnetometer_resets.csv");
     states.exceptions(std::ios::failbit | std::ios::badbit);
     updates.exceptions(std::ios::failbit | std::ios::badbit);
     condition_log.exceptions(std::ios::failbit | std::ios::badbit);
     accel_updates.exceptions(std::ios::failbit | std::ios::badbit);
     mag_updates.exceptions(std::ios::failbit | std::ios::badbit);
+    mag_resets.exceptions(std::ios::failbit | std::ios::badbit);
+    mag_resets << std::setprecision(17)
+               << "source_timestamp_us,fusion_timestamp_us,status,delta_q0,delta_q1,delta_q2,delta_q3,yaw_variance\n";
     mag_updates << std::setprecision(17);
     mag_updates << "source_timestamp_us,fusion_timestamp_us,outcome,status,field_valid,strength_rejected,"
                    "inclination_rejected,horizontal_rejected,innovation_valid,ratio_x,ratio_y,ratio_z,"
                    "active,stop_reason,recovery_reason,last_field_failure_timestamp_us,start_timestamp_us,last_fuse_"
-                   "timestamp_us\n";
+                   "timestamp_us,last_reset_timestamp_us\n";
     accel_updates << std::setprecision(17);
     accel_updates << "timestamp_us,interval_us,fx,fy,fz,clipping_mask,lpf_squared_norm,within_gravity_band,"
                      "tilt_aligned,horizontal_aiding,at_rest,outcome\n";
@@ -846,6 +854,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::uint64_t accel_interval_min_us = 0U, accel_interval_max_us = 0U, accel_interval_total_us = 0U;
     std::size_t mag_events = 0U, mag_corrections = 0U, mag_rejected = 0U;
     std::size_t mag_skipped = 0U, mag_superseded = 0U;
+    std::size_t mag_heading_resets = 0U;
     std::uint64_t mag_max_alignment_us = 0U;
     while (read_row(imu, imu_row))
     {
@@ -1232,6 +1241,26 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             {
                 ++mag_skipped;
             }
+            Status reset_status = Status::success;
+            if (magnetic_lifecycle.state().reset_allowed)
+            {
+                formal_eskf::so3::UnitQuaternion<Linalg> delta;
+                reset_status = formal_eskf::runtime::try_reset_magnetic_heading(
+                    state, covariance, magnetic_sample, magnetic.m_n, MAG_HEADING_STD * MAG_HEADING_STD,
+                    MAG_MIN_HORIZONTAL, QUAT_MIN_NORM, state, covariance, delta);
+                bool const reset_succeeded = formal_eskf::succeeded(reset_status);
+                check_status(magnetic_lifecycle.record_reset(magnetic_time, reset_succeeded),
+                             "magnetometer reset feedback", time);
+                mag_resets << magnetic_time << ',' << time << ',' << static_cast<int>(reset_status);
+                for (std::size_t axis = 0U; axis < 4U; ++axis)
+                {
+                    // A failed transaction has no applied rotation.
+                    mag_resets << ',' << (reset_succeeded ? delta.coefficients()(axis) : 0.0);
+                }
+                mag_resets << ',' << MAG_HEADING_STD * MAG_HEADING_STD << '\n';
+                mag_heading_resets += reset_succeeded ? 1U : 0U;
+                outcome = reset_succeeded ? "reset" : "reset_failed";
+            }
             auto const & lifecycle = magnetic_lifecycle.state();
             if (magnetic_time != 0U || lifecycle.stop_reason != previous.stop_reason ||
                 lifecycle.recovery_reason != previous.recovery_reason)
@@ -1245,13 +1274,15 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             }
             check_status(result.field.status, "magnetic field check", time);
             check_status(result.fusion.status, "magnetometer correction", time);
-            if (lifecycle.recovery_reason != MagneticLifecycle::RecoveryReason::none)
+            check_status(reset_status, "magnetometer heading reset", time);
+            if (lifecycle.recovery_reason != MagneticLifecycle::RecoveryReason::none &&
+                lifecycle.recovery_reason != MagneticLifecycle::RecoveryReason::fusion_timeout)
             {
-                throw std::runtime_error("magnetometer requires estimator reset (" +
+                throw std::runtime_error("magnetometer requires caller repair (" +
                                          std::string(magnetic_recovery_reason(lifecycle.recovery_reason)) +
-                                         "); automatic yaw/magnetic-state reset is not implemented in replay");
+                                         "); see magnetometer_updates.csv and magnetometer_resets.csv");
             }
-            if (result.fusion.decision == formal_eskf::runtime::FusionDecision::fused)
+            if (result.fusion.decision == formal_eskf::runtime::FusionDecision::fused || outcome == "reset")
             {
                 check_state(state, covariance);
             }
@@ -1287,6 +1318,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     condition_log.close();
     accel_updates.close();
     mag_updates.close();
+    mag_resets.close();
     std::ofstream summary(output / "summary.json");
     summary.exceptions(std::ios::failbit | std::ios::badbit);
     summary << std::setprecision(17) << "{\n  \"result\": \"smoke_pass\",\n  \"accuracy_validated\": false,"
@@ -1337,6 +1369,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"magnetometer_enabled\": " << (mag_enabled && has_magnetic_input ? "true" : "false")
             << ",\n  \"magnetometer_events\": " << mag_events
             << ",\n  \"magnetometer_corrections\": " << mag_corrections
+            << ",\n  \"magnetometer_heading_resets\": " << mag_heading_resets
+            << ",\n  \"magnetometer_reset_yaw_variance\": " << MAG_HEADING_STD * MAG_HEADING_STD
             << ",\n  \"magnetometer_rejected\": " << mag_rejected
             << ",\n  \"magnetometer_lifecycle_skipped\": " << mag_skipped
             << ",\n  \"magnetometer_superseded\": " << mag_superseded
@@ -1378,6 +1412,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
               << ".." << accel_interval_max_us << " us\n"
               << "Magnetometer events: " << mag_events << " (" << mag_corrections << " fused, " << mag_rejected
               << " gate rejected, " << mag_skipped << " lifecycle skipped, " << mag_superseded << " superseded)\n"
+              << "Magnetometer heading resets: " << mag_heading_resets << '\n'
               << "Magnetometer lifecycle: " << magnetic_stop_reason(magnetic_lifecycle.state().stop_reason)
               << "; recovery: " << magnetic_recovery_reason(magnetic_lifecycle.state().recovery_reason) << '\n';
 }

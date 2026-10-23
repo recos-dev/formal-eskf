@@ -171,6 +171,16 @@ if(PROJECT_IS_TOP_LEVEL)
         add_test(NAME formal_eskf.scalar.standard COMMAND test_scalar_standard)
 
         if(TARGET replay_ins)
+            foreach(CASE IN ITEMS timeout disturbed aided)
+                add_test(
+                    NAME formal_eskf.replay_magnetometer.reset.${CASE}
+                    COMMAND ${CMAKE_COMMAND}
+                        -DREPLAY=$<TARGET_FILE:replay_ins>
+                        -DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                        -DCASE=${CASE}
+                        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_replay_magnetometer_reset.cmake
+                )
+            endforeach()
             foreach(GROUP IN ITEMS velocity horizontal_position vertical_position)
                 add_test(
                     NAME formal_eskf.replay_gnss.failure.${GROUP}
@@ -269,6 +279,7 @@ if(PROJECT_IS_TOP_LEVEL)
         formal_eskf_add_backend_test(test_measurement_fusion test_measurement_fusion formal_eskf.measurement_fusion.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_magnetometer_fusion test_magnetometer_fusion formal_eskf.magnetometer_fusion.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_magnetometer_lifecycle test_magnetometer_lifecycle formal_eskf.magnetometer_lifecycle.eigen formal_eskf::runtime)
+        formal_eskf_add_backend_test(test_magnetometer_reset test_magnetometer_reset formal_eskf.magnetometer_reset.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_eskf_position test_eskf_position formal_eskf.position.eigen formal_eskf::core)
         formal_eskf_add_backend_test(test_eskf_velocity test_eskf_velocity formal_eskf.velocity.eigen formal_eskf::core)
         formal_eskf_add_backend_test(test_eskf_magnetometer test_eskf_magnetometer formal_eskf.magnetometer.eigen formal_eskf::core)

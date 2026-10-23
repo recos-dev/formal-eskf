@@ -62,7 +62,8 @@ struct Fixture
 
 bool same_state(MagnetometerFusion::State const & a, MagnetometerFusion::State const & b)
 {
-    return a.active == b.active && a.fusion_allowed == b.fusion_allowed && a.stop_reason == b.stop_reason &&
+    return a.active == b.active && a.fusion_allowed == b.fusion_allowed && a.reset_allowed == b.reset_allowed &&
+           a.last_reset_time_us == b.last_reset_time_us && a.stop_reason == b.stop_reason &&
            a.recovery_reason == b.recovery_reason && a.last_field_failure_time_us == b.last_field_failure_time_us &&
            a.start_time_us == b.start_time_us && a.last_fuse_time_us == b.last_fuse_time_us;
 }
@@ -309,6 +310,68 @@ void test_feedback_and_recovery(TestContext & test)
     }
 }
 
+void test_reset_feedback(TestContext & test)
+{
+    Fixture fixture;
+    fixture.conditions.horizontal_aiding = false;
+    fixture.start(test);
+    test.expect(fixture.sample(172U) == Status::success &&
+                    fixture.monitor.record_fusion(172U, FusionDecision::rejected) == Status::success &&
+                    fixture.monitor.state().reset_allowed,
+                profile, "healthy overdue rejection permits actual heading reset");
+    auto const before = fixture.monitor.state();
+    test.expect(fixture.monitor.record_reset(171U, true) == Status::out_of_range &&
+                    same_state(before, fixture.monitor.state()),
+                profile, "wrong-sample reset feedback is atomic");
+    test.expect(fixture.monitor.record_reset(172U, true) == Status::success && fixture.monitor.state().active &&
+                    fixture.monitor.state().last_reset_time_us == 172U &&
+                    fixture.monitor.state().last_fuse_time_us == 121U &&
+                    fixture.monitor.state().start_time_us == 121U &&
+                    fixture.monitor.state().recovery_reason == RecoveryReason::none &&
+                    fixture.monitor.record_reset(172U, true) == Status::out_of_range &&
+                    fixture.monitor.record_fusion(172U, FusionDecision::fused) == Status::out_of_range,
+                profile, "one reset restores the session without fabricated fusion or second correction");
+    test.expect(fixture.sample(222U) == Status::success &&
+                    fixture.monitor.record_fusion(222U, FusionDecision::rejected) == Status::success &&
+                    !fixture.monitor.state().reset_allowed && fixture.monitor.state().active &&
+                    fixture.sample(223U) == Status::success &&
+                    fixture.monitor.record_fusion(223U, FusionDecision::rejected) == Status::success &&
+                    fixture.monitor.state().reset_allowed &&
+                    fixture.monitor.record_reset(223U, false) == Status::success &&
+                    fixture.monitor.state().recovery_reason == RecoveryReason::reset_failed &&
+                    fixture.monitor.state().last_reset_time_us == 172U && fixture.sample(224U) == Status::success &&
+                    !fixture.monitor.state().reset_allowed,
+                profile, "reset refreshes timeout; failed reset requires caller repair without retry loop");
+
+    Fixture disturbed;
+    disturbed.conditions.horizontal_aiding = false;
+    disturbed.start(test);
+    test.expect(disturbed.sample(172U, false) == Status::success && !disturbed.monitor.state().reset_allowed &&
+                    disturbed.sample(192U) == Status::success && !disturbed.monitor.state().reset_allowed &&
+                    disturbed.sample(193U) == Status::success && disturbed.monitor.state().reset_allowed,
+                profile, "bad field must requalify health before recovery reset");
+    test.expect(disturbed.tick(194U) == Status::success &&
+                    disturbed.monitor.record_reset(193U, true) == Status::out_of_range,
+                profile, "no-data tick revokes omitted reset feedback");
+    disturbed.conditions.starting_allowed = false;
+    test.expect(disturbed.sample(195U) == Status::success && !disturbed.monitor.state().reset_allowed, profile,
+                "external reset/yaw-alignment frame cannot reset again");
+    disturbed.conditions.starting_allowed = true;
+    test.expect(disturbed.monitor.update(206U, disturbed.conditions, disturbed.parameters,
+                                         {196U, disturbed.source, true}) == Status::success &&
+                    !disturbed.monitor.state().reset_allowed,
+                profile, "stale sample cannot authorize recovery reset");
+    disturbed.conditions.ready = false;
+    test.expect(disturbed.sample(207U) == Status::success && !disturbed.monitor.state().reset_allowed, profile,
+                "lost readiness preserves pending recovery without a reset permission");
+    disturbed.conditions.ready = true;
+    disturbed.conditions.horizontal_aiding = true;
+    test.expect(disturbed.sample(208U) == Status::success && !disturbed.monitor.state().reset_allowed &&
+                    disturbed.monitor.state().recovery_reason == RecoveryReason::none &&
+                    disturbed.monitor.state().stop_reason == StopReason::fusion_timeout,
+                profile, "restored horizontal aid cancels timeout reset in favor of ordinary stop");
+}
+
 void test_invalid_calls(TestContext & test)
 {
     for (unsigned invalid_case = 0U; invalid_case < 13U; ++invalid_case)
@@ -489,6 +552,7 @@ int main()
     test_active_and_outages(test);
     test_timeouts(test);
     test_feedback_and_recovery(test);
+    test_reset_feedback(test);
     test_invalid_calls(test);
     test_real_fusion<formal_eskf::test::Backend<float>, formal_eskf::configuration::Ahrs>(test, "float AHRS");
     test_real_fusion<formal_eskf::test::Backend<float>, formal_eskf::configuration::Ins>(test, "float INS");

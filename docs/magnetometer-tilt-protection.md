@@ -200,8 +200,8 @@ Thresholds use microtesla and radians (PX4 field units are Gauss); no values are
 silently copied. A wrong attitude/reference can fail these checks, and some
 disturbances can pass them. Passing does not establish physical sensor health.
 Health persistence, fusion deadlines and source changes are now handled by the
-optional lifecycle below. Startup alignment, actual estimator recovery, WMM
-lookup and adapter wiring remain separate work. Requirements `R-MAGNETIC-FIELD` and
+optional lifecycle below. Fixed-field timeout heading reset is supported;
+startup alignment, WMM and adapter wiring remain separate work. Requirements `R-MAGNETIC-FIELD` and
 `R-MAGNETOMETER-FUSION` record the behavior; new Lean/ESBMC evidence is pending.
 
 ## Magnetic fusion lifecycle
@@ -217,33 +217,36 @@ check_magnetic_field -> lifecycle.update (every tick, also without data)
                       fuse_magnetometer
                               |
                 lifecycle.record_fusion(actual decision)
+                              |
+                  reset_allowed (timeout recovery)
+                              |
+                try_reset_magnetic_heading -> record_reset(actual success)
 ```
 
 Feed the field check's successful, valid acceptance into `Sample::field_accepted`;
 do not substitute innovation acceptance. The existing gated transaction rechecks
 the same observation/prior before publication. Do not change the prior, reference,
 calibration or check policy between qualification and that transaction. No-data
-ticks use `Sample{}` and never call correction. This keeps the numerical APIs
+ticks use `Sample{}` and never call correction/reset. A pending timeout may grant
+reset directly on a later qualified sample. This keeps the numerical APIs
 independently callable, without adding a callback framework or scheduler.
 
 | Event | Lifecycle action |
 |---|---|
-| Startup / short disturbance recovery | Require fresh, consecutive good samples spanning `health_time_us` before granting one sample's fusion permission |
-| Bad field, stale data, disable or unready | Stop and clear health qualification; a short interruption may requalify without resetting the estimator |
+| Startup | At least four samples, fresh accepted field, stable alignment/reset frame and strictly elapsed health duration |
+| Active field rejection | Inhibit correction; preserve the session until its progress deadline; next good field can fuse without repeating startup health |
+| No data, disable or unready | Stop; retain field history for qualified restart |
 | Innovation rejection | Consume the sample permission, retaining the last successful fusion time |
-| Fusion deadline exceeded | Latch recovery; a good sample or enable toggle cannot bypass it |
+| Fusion deadline exceeded | Stop when horizontally aided and not at rest; otherwise request a heading reset on fresh, health-qualified data |
+| Heading reset succeeds | Restore the session; record reset time separately without inventing a successful correction |
+| Heading reset fails | Require caller repair; no automatic retry loop |
 | Numerical correction failure | Require recovery immediately; do not retry/reset the estimator internally |
 | Device ID or calibration count changes | Clear old-source history, bind the new source and require explicit re-entry authorization |
 | `restart()` | Caller has established safe re-entry; retain time/source records and wait for a new full good interval |
 
-Configure three positive durations explicitly: `health_time_us`,
-`maximum_sample_age_us` (also the maximum qualifying sample gap), and
-`fusion_timeout_us`. There are no selected deployment defaults. Health uses
-sample-time span with `>=`; freshness/progress expire at `>`. Restart clears
-session progress but does not rewind timestamps or fabricate a successful fuse.
-Reference/frame/check-policy changes and external yaw resets also require
-caller-coordinated restart; full `reset()` is for an explicitly reinitialized
-timeline/configuration. Neither changes state/P or emits platform reset notices.
+Detailed boundaries and the replay profile are maintained in
+[R-MAGNETOMETER-LIFECYCLE](spec/verification-requirements.md#r-magnetometer-lifecycle-magnetic-health-and-fusion-lifecycle).
+`restart()` is caller-authorized re-entry, not a substitute for performing a reset.
 
 ### Lifecycle comparison with PX4
 
@@ -251,21 +254,29 @@ The pinned [magnetometer controller](https://github.com/PX4/PX4-Autopilot/blob/5
 and [sensor/calibration change handling](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF2.cpp#L2481)
 were reviewed at PX4 v1.16.2, `54f0455ffcd755534539a7cf33a09a20bf71d29d`:
 
-- PX4 waits after field-check failures before starting and requires fresh samples
-  and alignment conditions. Its filter warm-up, strict elapsed boundary and
-  mode-specific continuation policy are not copied: this controller requires a
-  complete new sampled-good interval after every health interruption.
+- Startup versus continuation and stop-versus-reset policy follow the referenced
+  conditions. Our reset additionally requires a currently fresh, health-qualified
+  field; there is no stored magnetic LPF sample to use for recovery.
 - PX4 stops on missing data and handles fusion timeout by resetting magnetic
   states/possibly heading, or stopping, depending on aiding/motion. We retain
-  deadline monitoring but require caller-directed recovery: our fixed-field
-  INS/AHRS has no `mag_I`/`mag_B` states and cannot silently reuse those resets.
+  deadline monitoring and implement heading reset against our fixed reference.
+  INS/AHRS has no `mag_I`/`mag_B` states to reset.
 - PX4 detects device/calibration changes in the adapter and resets associated
   state/filter history. We detect the supplied identity/version changes and
   revoke permission; actual alignment/state/P repair remains outside this class.
 
+`try_reset_magnetic_heading` left-multiplies a rotation about navigation Down,
+preserving tilt. Its covariance reset removes navigation yaw correlations and
+sets yaw variance, transformed back to our local attitude coordinates using
+both the prior and new rotations. This avoids confusing body Z with navigation
+Down. The quaternion delta is available for future platform reset notifications;
+the replay records it without publishing platform messages. See
+[R-MAGNETOMETER-RESET](spec/verification-requirements.md#r-magnetometer-reset-fixed-field-heading-and-covariance-reset)
+for equations, assumptions and limits.
+
 This is a portable lifecycle with explicit recovery authority, not an EKF2
-controller clone. `active` indicates sampled health qualification and eligibility,
-not physical health or flight validity.
+controller clone. `active` records a fusion-started/restored session, not physical
+health or flight validity.
 Tests in [`test_magnetometer_lifecycle.cpp`](../tests/test_magnetometer_lifecycle.cpp)
 exercise transitions and actual AHRS/INS field-check/gate/correction sequences.
 `R-MAGNETOMETER-LIFECYCLE` records the contract; Lean/ESBMC evidence is pending.

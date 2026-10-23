@@ -21,9 +21,8 @@ namespace formal_eskf::runtime
  * Call update on every estimator tick, even without a new sample. For an allowed
  * sample call fuse_magnetometer once, then record its actual fusion.decision
  * before the next tick. This controller owns no measurements, estimator state,
- * covariance, clock, yaw alignment or reset implementation. Startup qualification
- * and active-session fusion use different conditions; only actual fusion starts
- * a session. Reset requests must be handled by the caller, never fabricated here.
+ * covariance, clock, yaw alignment or reset implementation. Timeout recovery
+ * permits a separate heading reset, acknowledged only after the caller runs it.
  */
 class MagnetometerFusion
 {
@@ -47,6 +46,7 @@ public:
         none,
         fusion_timeout,
         fusion_failed,
+        reset_failed,
         source_changed,
     };
 
@@ -85,14 +85,16 @@ public:
 
     struct State
     {
-        bool active = false; // Started by successful fusion, not proof of estimate validity.
+        bool active = false; // Fusion started, or restored by an acknowledged timeout reset.
         bool fusion_allowed = false;
+        bool reset_allowed = false;
         StopReason stop_reason = StopReason::disabled;
         RecoveryReason recovery_reason = RecoveryReason::none;
         // Fusion time of the last failed check, seeded by the first check.
         std::uint64_t last_field_failure_time_us{};
-        std::uint64_t start_time_us{};     // Successful start of the latest session.
-        std::uint64_t last_fuse_time_us{}; // Only actual fused feedback updates this.
+        std::uint64_t start_time_us{};      // Successful start of the latest session.
+        std::uint64_t last_fuse_time_us{};  // Only actual fused feedback updates this.
+        std::uint64_t last_reset_time_us{}; // Only actual successful reset feedback updates this.
     };
 
     [[nodiscard]] State const & state() const noexcept { return m_state; }
@@ -112,6 +114,9 @@ public:
 
     /** One feedback per granted sample/tick; invalid feedback preserves the controller. */
     [[nodiscard]] Status record_fusion(std::uint64_t sample_time_us, FusionDecision decision) noexcept;
+
+    /** Consume a reset permission with the actual numerical result; no fabricated fusion. */
+    [[nodiscard]] Status record_reset(std::uint64_t sample_time_us, bool reset_succeeded) noexcept;
 
     /**
      * Explicit authorization after caller establishes safe re-entry, including
@@ -139,12 +144,14 @@ private:
     std::uint64_t m_sample_time_us{};
     unsigned m_sample_count{}; // Saturates at the four-sample startup requirement.
     bool m_reset_on_timeout = false;
+    bool m_reset_sample_qualified = false;
 }; /* end class MagnetometerFusion */
 
 inline void MagnetometerFusion::stop(StopReason reason) noexcept
 {
     m_state.active = false;
     m_state.fusion_allowed = false;
+    m_state.reset_allowed = false;
     m_state.stop_reason = reason;
 }
 
@@ -159,11 +166,14 @@ inline void MagnetometerFusion::require_recovery(RecoveryReason reason) noexcept
 
 inline void MagnetometerFusion::check_fusion_timeout() noexcept
 {
-    if (m_state.active && m_update_time_us - m_state.last_fuse_time_us > m_parameters.fusion_timeout_us)
+    auto const progress =
+        m_state.last_fuse_time_us > m_state.last_reset_time_us ? m_state.last_fuse_time_us : m_state.last_reset_time_us;
+    if (m_state.active && m_update_time_us - progress > m_parameters.fusion_timeout_us)
     {
         if (m_reset_on_timeout)
         {
             require_recovery(RecoveryReason::fusion_timeout);
+            m_state.reset_allowed = m_reset_sample_qualified;
         }
         else
         {
@@ -176,6 +186,8 @@ inline Status MagnetometerFusion::update(std::uint64_t now_us, Conditions condit
                                          Sample const & sample) noexcept
 {
     m_state.fusion_allowed = false;
+    m_state.reset_allowed = false;
+    m_reset_sample_qualified = false;
     if (parameters.health_time_us == 0U || parameters.maximum_interval_us == 0U ||
         parameters.maximum_interval_us > std::numeric_limits<std::uint64_t>::max() / 2U ||
         parameters.fusion_timeout_us == 0U ||
@@ -243,7 +255,8 @@ inline Status MagnetometerFusion::update(std::uint64_t now_us, Conditions condit
     {
         stop(StopReason::not_ready);
     }
-    else if (m_state.recovery_reason != RecoveryReason::none)
+    else if (m_state.recovery_reason != RecoveryReason::none &&
+             m_state.recovery_reason != RecoveryReason::fusion_timeout)
     {
         stop(StopReason::recovery_required);
     }
@@ -253,7 +266,25 @@ inline Status MagnetometerFusion::update(std::uint64_t now_us, Conditions condit
         {
             m_state.last_field_failure_time_us = now_us;
         }
-        if (m_state.active)
+        m_reset_sample_qualified = conditions.starting_allowed && sample.field_accepted && m_sample_count >= 4U &&
+                                   now_us - m_sample_time_us < parameters.maximum_interval_us &&
+                                   now_us - m_state.last_field_failure_time_us > parameters.health_time_us;
+        if (m_state.recovery_reason == RecoveryReason::fusion_timeout)
+        {
+            if (m_reset_on_timeout)
+            {
+                stop(StopReason::recovery_required);
+                m_state.reset_allowed = m_reset_sample_qualified;
+            }
+            else
+            {
+                // A recovered horizontal aid removes the timeout-reset policy.
+                // Stop normally; a following qualified sample may retry fusion.
+                m_state.recovery_reason = RecoveryReason::none;
+                stop(StopReason::fusion_timeout);
+            }
+        }
+        else if (m_state.active)
         {
             // A field disturbance inhibits navigation-state correction without
             // ending the session. The next good field need not requalify startup.
@@ -321,6 +352,28 @@ inline Status MagnetometerFusion::record_fusion(std::uint64_t sample_time_us, Fu
         // Try the current observation first: success at an overdue horizon
         // refreshes progress instead of being discarded before correction.
         check_fusion_timeout();
+    }
+    return Status::success;
+}
+
+inline Status MagnetometerFusion::record_reset(std::uint64_t sample_time_us, bool reset_succeeded) noexcept
+{
+    if (!m_state.reset_allowed || sample_time_us != m_sample_time_us)
+    {
+        return Status::out_of_range;
+    }
+    m_state.reset_allowed = false;
+    if (reset_succeeded)
+    {
+        m_state.active = true;
+        m_state.recovery_reason = RecoveryReason::none;
+        m_state.stop_reason = StopReason::none;
+        m_state.last_reset_time_us = m_update_time_us;
+    }
+    else
+    {
+        m_state.recovery_reason = RecoveryReason::reset_failed;
+        stop(StopReason::recovery_required);
     }
     return Status::success;
 }

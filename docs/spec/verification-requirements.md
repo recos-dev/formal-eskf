@@ -267,7 +267,8 @@ it is not an independent WMM reference or evidence of magnetic health.
 Replay uses the lifecycle below with 1 s startup health, a 0.5 s maximum
 interval and a 7 s active-fusion timeout. Own covariance-based tilt alignment
 supplies readiness; yaw and the fixed field reference remain causal seed
-assumptions. No yaw/reset event occurs during replay, so starting is allowed.
+assumptions. No external yaw/reset event occurs during replay; magnetic timeout
+recovery may perform the heading reset below.
 Horizontal aiding means an actual recent horizontal GNSS fusion, not merely a
 received GNSS packet. Only a recorded `at_rest=true` enables the rest override;
 missing rest metadata is not evidence of motion.
@@ -283,24 +284,30 @@ and [common.h](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7c
 | No data | On a no-sample tick, stop at age **>= 1 s**; preserve field history and allow fresh qualified data to restart. |
 | Fusion timeout | Try the current observation first. Only an active session still without success for **> 7 s** takes the timeout branch. |
 | Timeout with horizontal aiding and no rest override | Stop, without a permanent fault latch; later qualified observations may retry automatically. |
-| Timeout without horizontal aiding or with rest override | Request estimator reset; do not manufacture a successful reset/fusion timestamp. |
+| Timeout without horizontal aiding or with rest override | Request a heading reset; execute only with current fresh, health-qualified field data and readiness. Record actual reset progress separately from fusion. |
 
 The metadata controller is not a complete EKF2 replacement. PX4 owns magnetic
 earth/bias states, magnetic LPF, WMM, declination fusion, heading-consistency and
-mode selection, state/covariance resets and separate latest/delayed timelines.
+mode selection and separate latest/delayed timelines. Our supported reset is
+heading plus covariance against the existing fixed field, not magnetic-state reset.
 Our fixed-field core has no magnetic-only update: when the field is rejected,
 navigation correction is inhibited and no fictitious magnetic-state fusion is
 reported. Thus a physical disturbance need not produce the same outcomes or
 progress timestamps as EKF2. Replay's single timestamp timeline does not model
 PX4 buffer-push recency or sensor delay.
 
-Ordinary stops restart automatically; reset-required branches do not. Replay
-logs and **fails explicitly** if a reset is requested, because yaw/magnetic-state
-reset is not implemented. Numerical errors also terminate after logging.
+Ordinary stops restart automatically. A timeout reset waits for accepted field
+health and uses `try_reset_magnetic_heading`; it does not replace the reference
+with the observed field. Replay uses an explicit 0.3 rad heading standard
+deviation (PX4's default heading noise), independent of vector noise and not
+imported from the log. Successful resets and their applied left quaternion deltas
+are logged in `magnetometer_resets.csv`; `last_reset_timestamp_us` remains distinct
+from actual fusion time. Numerical errors terminate after logging.
 Known source/calibration changes still require a new replay/reference; one
 fixed CSV session uses adapter identity `Source{1, 0}`, not a hardware ID/count.
 Absent change metadata cannot prove source continuity. Summary counts partition
-events into fused, gate-rejected, lifecycle-skipped and superseded. No-data
+events into fused, gate-rejected, lifecycle-skipped and superseded; heading resets
+are a separate action count and may follow a rejected attempt. No-data
 state transitions use source timestamp zero. Native checks are not formal proof.
 
 ### R-MAGNETOMETER-LIFECYCLE: magnetic health and fusion lifecycle
@@ -331,7 +338,7 @@ at-rest flags select the timeout action; they must reflect actual caller state.
   one maximum interval. Permission is a start attempt, not an active session.
 - Every update revokes old permission. Call the actual gated transaction at most
   once per permitted sample, then record its matching timestamp and decision.
-  Only `fused` activates a session and updates `last_fuse_time_us=now_us`;
+  Only `fused` starts a new session and updates `last_fuse_time_us=now_us`;
   an inactive-to-active success also sets `start_time_us`. A rejected startup
   stays inactive, has no invented successful time and may retry later.
 - An active session does not repeat startup health/sample-count tests. Current
@@ -344,13 +351,25 @@ at-rest flags select the timeout action; they must reflect actual caller state.
   health/count and successful-fusion history; gaps do not fabricate bad field
   checks. Fresh qualified observations can restart without calling `restart()`.
 - Apply the unsuccessful-fusion timer only to an active session after the current
-  attempt, or when a current field inhibits correction. A success at an overdue
+  attempt, or when a current field inhibits correction. Measure progress from
+  `max(last_fuse_time_us, last_reset_time_us)`. A success at an overdue
   horizon refreshes progress before this test. Elapsed equality is allowed;
   elapsed **> fusion_timeout_us** selects an ordinary `fusion_timeout` stop when
   horizontal aiding is active and the rest flag is false, otherwise a
   `recovery_required` reset request. No-data ticks use their recency branch,
   not a permanent unsuccessful-fusion latch. Inactive startup rejections do not
   acquire an active-session deadline.
+- A timeout request grants one `reset_allowed` permission only while enabled,
+  ready, without horizontal aiding or at rest, on a stable starting frame with
+  a fresh accepted sample satisfying startup count/health. A bad field must
+  requalify health; no-data ticks revoke permission. Pending recovery does not
+  fabricate a correction. Restored horizontal aiding without rest cancels this
+  timeout request into an ordinary stop; the next sample may retry fusion.
+- After the actual reset, `record_reset(sample_time, succeeded)` consumes that
+  permission. Success reactivates the existing session, clears recovery and
+  sets only `last_reset_time_us=now_us`, retaining start/fusion times. There is
+  no second correction on that sample. Failure latches `reset_failed` until
+  caller-established repair. Wrong/missing permission preserves metadata.
 - `failed` feedback requests numerical repair immediately. Source-ID/calibration
   changes clear old-source history/count and request reinitialization, invalidating
   old feedback. These requests persist until explicit caller-established safe
@@ -374,7 +393,51 @@ Native tests cover strict health/freshness boundaries, sample count, active vers
 startup behavior, data outages, both timeout actions, retry, real AHRS/INS gated
 correction, source changes, failure atomicity and unsigned-time extremes.
 Lean/ESBMC evidence remains pending. Physical health, covariance consistency,
-deployed reset implementation and reset notifications are not proved here.
+deployed reset notifications are not proved here.
+
+### R-MAGNETOMETER-RESET: fixed-field heading and covariance reset
+
+`runtime::try_reset_magnetic_heading` supports AHRS and INS independently of the
+lifecycle. Given a calibrated body field `m_b`, trusted fixed NED `m_n` and an
+aligned prior tilt, rotate only about navigation Down to align the horizontal
+direction of `R_before*m_b` with `m_n`. Fields are in microtesla. Wrap the heading
+difference to `[-pi, pi]`, form `q_delta=Exp([0,0,delta_heading])`, and normalize
+`q_after=q_delta*q_before`. Return this applied left rotation, retaining all
+other nominal fields. This does not require an Euler-angle parameterization.
+
+The covariance operation is defined in navigation attitude-error coordinates,
+then expressed in our local right-error convention. With `e_D=[0,0,1]^T`:
+
+```text
+C = I - e_D e_D^T
+A = R_after^T C R_before
+u = R_after^T e_D
+P_theta_theta' = A P_theta_theta A^T + max(yaw_variance, 0.01^2) u u^T
+P_theta_other' = A P_theta_other
+```
+
+Retain the non-attitude P block exactly and mirror the cross block. Symmetrize
+the computed attitude block. `yaw_variance` is rad²; zero receives the explicit
+floor. The transform removes navigation yaw correlations while retaining
+navigation tilt/cross terms; simply clearing body-Z rows is wrong at general tilt.
+
+Inputs must be finite, prior quaternion unit and P symmetric PSD. Check exact
+symmetry, nonnegative diagonals/variance, normal positive horizontal-field
+threshold and `0 < minimum_quaternion_norm <= 1`. Check both horizontal field
+magnitudes against that threshold and reject non-finite intermediate arithmetic.
+A negative computed attitude variance returns `not_positive_definite`.
+PSD/prior norm, physical field validity, alignment, freshness and authorization
+remain caller premises. Outputs publish together only on success. State/P may
+independently alias their entire priors; other storage, including delta, is disjoint.
+
+The reference is PX4 v1.16.2
+[heading reset](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/magnetometer/mag_control.cpp#L564)
+and [yaw covariance reset](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/yaw_fusion.cpp#L118).
+PX4's global left-error definition is explicit in
+[its derivation](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/python/ekf_derivation/derivation.py#L152).
+Our reset uses a currently qualified sample; PX4 uses filtered magnetic data and
+also resets estimated magnetic states. Native AHRS/INS float/double and replay
+tests cover this narrower operation; Lean/ESBMC and floating-point bounds are pending.
 
 ### E-INNOV: componentwise innovation gate
 

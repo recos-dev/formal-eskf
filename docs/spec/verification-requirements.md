@@ -453,12 +453,10 @@ API neither estimates nor changes sensor-height biases, terrain or output histor
   covariance. The finite valid-input reset behavior above is the aligned scope.
 - Return a delta per successful call, not a fusion success, clock update or
   counter increment. The caller must separately acknowledge completed recovery
-  and aggregate/publish reset notifications. `R-GNSS-FUSION` supplies horizontal
+  and aggregate/publish reset notifications. `R-GNSS-FUSION` supplies
   reset-on-start/timeout orchestration separately. These operations do not perform
   origin changes, output-predictor adjustment, height-reference/bias management,
-  height-failure vertical-velocity override or yaw reset. The vertical-position
-  API is not yet wired into lifecycle/replay; their existing unsupported-height
-  recovery behavior remains unchanged.
+  height-failure vertical-velocity override or yaw reset.
 
 Native tests cover both scalar formats, per-entry state/P behavior, floors,
 Down-delta sign, retained velocity/covariance, valid aliases, invalid inputs,
@@ -511,7 +509,7 @@ OR 3D velocity per sample. Alternate aiding and reset execution remain separate.
   of actual last fusion, successful reset and caller-authorized session start;
   a never-started group has no progress. A horizontal timeout request retains
   its active session while waiting for reset; it does not restart quality health.
-- Horizontal `initialization_required`/`fusion_timeout` requests may grant
+- Each group's `initialization_required`/`fusion_timeout` requests may grant
   `reset_allowed` only on a new, accepted, fresh, enabled and ready sample.
   Reset and correction permissions are mutually exclusive. Each update, even
   an invalid one, revokes old reset permission. `record_reset(group, sample, reset_succeeded)`
@@ -521,12 +519,14 @@ OR 3D velocity per sample. Alternate aiding and reset execution remain separate.
   No ordinary correction is permitted for the same sample after reset.
   Failure stops the group with persistent `reset_failed`, changes no progress
   timestamp and cannot auto-retry. `fusion_failed` also never grants automatic
-  reset permission. Height reset feedback is unsupported (`domain_error`);
-  stale/missing/duplicate horizontal feedback returns `out_of_range`.
-- Height uses its own successful-fusion deadline, evaluated **after** its current
+  reset permission. Stale/missing/duplicate feedback returns `out_of_range`.
+- Height uses its own progress deadline, evaluated **after** its current
   permitted attempt. Success at an overdue tick refreshes it; rejection beyond
-  the deadline requests reset because this profile has no alternate height
-  reference. Equality does not expire fusion deadlines.
+  the deadline grants reset permission for that same accepted sample because
+  this profile has no alternate height reference. Retain the active session;
+  successful reset renews progress without changing the last correction time.
+  A numerical failure never grants this permission. Equality does not expire
+  fusion deadlines. Height feedback does not alter horizontal groups or quality.
 - Ordinary stops can start again after accepted quality and caller-established
   initialization. Losing the last active horizontal group emits one
   `restart_quality` notification; call `GnssQuality::restart_health()` before
@@ -547,7 +547,7 @@ OR 3D velocity per sample. Alternate aiding and reset execution remain separate.
   external correction/reset actually ran.
 
 Native tests cover startup conditions, both data deadlines, strict fusion/quality
-boundaries, coupled horizontal progress, height attempt ordering, safe re-entry,
+boundaries, coupled horizontal progress, height reset/attempt ordering, safe re-entry,
 unavailable quality, invalid calls, same-tick samples and unsigned-time extremes.
 Lean/ESBMC evidence remains pending.
 
@@ -564,30 +564,34 @@ and [height controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755
 | Height unsuccessful fusion | >5 s after current height attempt |
 | Horizontal stop | Restart quality health timing, retain initial qualification |
 | Horizontal startup / timeout reset | Execute velocity then horizontal-position reset, instead of same-sample correction |
-| Height reset / numerical failure | Log and terminate; no automatic recovery |
+| Height startup / re-entry | Reset local Down position and its covariance on the accepted sample; no correction on that sample |
+| Height timeout reset | After rejected correction beyond 5 s, reset Down using the same accepted observation |
+| Numerical correction / reset failure | Log and terminate; no automatic recovery |
 
 Enable lifecycle with the quality input pair, not for legacy/KITTI inputs.
 Invalid-velocity messages do not refresh receiver receipt; missing required
 quality metadata advances receipt only. Run no-data updates between events.
 Preserve group-independent gate/correction decisions, velocity/position/height
-order, and actual correction/reset-success-only horizontal-aiding timestamps. Log every received
+order. Only successful horizontal position/velocity correction or reset refreshes
+horizontal-aiding timestamps; height correction/reset never does. Log every received
 lifecycle sample and no-data transitions in `result/gnss_lifecycle.csv`.
 Quality skips, lifecycle skips, innovation rejections and resets are distinct outcomes.
 Record per-axis reset reason, status and new-minus-old delta in `gnss_resets.csv`;
 failed resets have invalid, empty deltas. Keep successful reset counts separate
-from correction and rejection counts. Reset success refreshes progress without
+from correction and rejection counts. A height timeout event can contain both
+a rejected correction and a successful reset; these counters count operations,
+not mutually exclusive events. Reset success refreshes progress without
 claiming an innovation passed or restarting quality qualification.
 
 The replay's existing seed establishes its initial frame and assumed attitude
-alignment; it is not an alignment detector. Both horizontal groups require an
-actual reset on their first accepted sample and on re-entry. Height alone uses
-the seed for its first start. Its reset/re-entry remains unsupported; such a
-request stops replay before any group mutates the estimate for that event.
-Thus horizontal timeout recovery works, but a complete GNSS outage that also
-stops height is not yet an automatically recoverable replay scenario.
+alignment; it is not an alignment detector. All three groups require an actual
+reset on their first accepted sample and on re-entry. Height-only data loss
+leaves horizontal sessions running; return of qualified data resets height.
+A complete GNSS outage stops all groups and restarts quality health timing;
+reset/re-entry waits for renewed acceptance instead of treating receipt as recovery.
 
-Velocity and position resets are independent checked transactions, in that order;
-failure in the second does not roll back an already completed first reset. Log
+Velocity, horizontal-position and height resets are independent checked transactions,
+in that order; a later failure does not roll back earlier completed operations. Log
 the completed/failed operations and terminate without a success summary. Numerical
 correction failure is not converted into an automatic reset with the same input.
 

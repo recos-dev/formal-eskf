@@ -114,7 +114,7 @@ public:
     /** Consume one permission; only fused refreshes that group's progress. */
     [[nodiscard]] Status record_fusion(Group group, std::uint64_t sample_time_us, FusionDecision decision) noexcept;
 
-    /** Consume a horizontal reset permission after the checked state/P operation. */
+    /** Consume a reset permission after the checked state/P operation. */
     [[nodiscard]] Status record_reset(Group group, std::uint64_t sample_time_us, bool reset_succeeded) noexcept;
 
     /** Acknowledge caller-established safe re-entry; does not reset estimator or quality. */
@@ -126,8 +126,8 @@ private:
     static void require_recovery(GroupState & group, StopReason reason) noexcept;
     static void request_reset(GroupState & group, StopReason reason) noexcept;
     [[nodiscard]] bool expired(GroupState const & group, std::uint64_t duration) const noexcept;
-    void update_group(GroupState & group, GroupConditions conditions, bool new_sample, bool accepted, bool fresh,
-                      bool reset_supported) noexcept;
+    void update_group(GroupState & group, GroupConditions conditions, bool new_sample, bool accepted,
+                      bool fresh) noexcept;
 
     State m_state{};
     Parameters m_parameters{};
@@ -169,7 +169,7 @@ inline void GnssFusion::require_recovery(GroupState & group, StopReason reason) 
 
 inline void GnssFusion::request_reset(GroupState & group, StopReason reason) noexcept
 {
-    // A horizontal timeout reset keeps the session alive; it is not a quality stop.
+    // A timeout reset keeps the session alive; it is not a quality stop.
     if (!group.recovery_required)
     {
         group.stop_reason = reason;
@@ -186,7 +186,7 @@ inline bool GnssFusion::expired(GroupState const & group, std::uint64_t duration
 }
 
 inline void GnssFusion::update_group(GroupState & group, GroupConditions conditions, bool new_sample, bool accepted,
-                                     bool fresh, bool reset_supported) noexcept
+                                     bool fresh) noexcept
 {
     if (!conditions.enabled)
     {
@@ -208,9 +208,8 @@ inline void GnssFusion::update_group(GroupState & group, GroupConditions conditi
         }
         if (group.recovery_required)
         {
-            group.reset_allowed = reset_supported && accepted &&
-                                  (group.stop_reason == StopReason::initialization_required ||
-                                   group.stop_reason == StopReason::fusion_timeout);
+            group.reset_allowed = accepted && (group.stop_reason == StopReason::initialization_required ||
+                                               group.stop_reason == StopReason::fusion_timeout);
             return;
         }
         group.stop_reason = accepted ? StopReason::none : StopReason::waiting_for_quality;
@@ -304,11 +303,10 @@ inline Status GnssFusion::update(std::uint64_t now_us, Conditions const & condit
                 request_reset(m_state.velocity, StopReason::fusion_timeout);
             }
         }
-        update_group(m_state.velocity, conditions.velocity, new_sample, accepted, horizontal_fresh, true);
+        update_group(m_state.velocity, conditions.velocity, new_sample, accepted, horizontal_fresh);
         update_group(m_state.horizontal_position, conditions.horizontal_position, new_sample, accepted,
-                     horizontal_fresh, true);
-        update_group(m_state.vertical_position, conditions.vertical_position, new_sample, accepted, height_fresh,
-                     false);
+                     horizontal_fresh);
+        update_group(m_state.vertical_position, conditions.vertical_position, new_sample, accepted, height_fresh);
     }
     if (horizontal_was_active && !m_state.horizontal_position.active && !m_state.velocity.active)
     {
@@ -344,7 +342,8 @@ inline Status GnssFusion::record_fusion(Group group, std::uint64_t sample_time_u
     {
         // With GNSS the sole height reference, a failed height session needs reset.
         // Check after this attempt: successful correction at an overdue tick wins.
-        require_recovery(*group_state, StopReason::fusion_timeout);
+        request_reset(*group_state, StopReason::fusion_timeout);
+        group_state->reset_allowed = true;
     }
     return Status::success;
 }
@@ -363,7 +362,7 @@ inline Status GnssFusion::restart(Group group) noexcept
 inline Status GnssFusion::record_reset(Group group, std::uint64_t sample_time_us, bool reset_succeeded) noexcept
 {
     auto * group_state = select_group(group);
-    if (group_state == nullptr || group == Group::vertical_position)
+    if (group_state == nullptr)
     {
         return Status::domain_error;
     }
@@ -386,7 +385,7 @@ inline Status GnssFusion::record_reset(Group group, std::uint64_t sample_time_us
     group_state->recovery_required = false;
     group_state->stop_reason = StopReason::none;
     group_state->last_reset_time_us = m_update_time_us;
-    // Reset replaces this sample's correction; the next update may permit fusion.
+    // No correction after reset; height may already have attempted and rejected it.
     return Status::success;
 }
 

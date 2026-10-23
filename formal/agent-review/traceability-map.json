@@ -3308,7 +3308,7 @@
     },
     {
       "id": "R-GNSS-FUSION",
-      "title": "GNSS-only lifecycle, coupled horizontal progress and independent height deadlines; Lean and ESBMC evidence pending",
+      "title": "GNSS-only lifecycle, coupled horizontal recovery and height reset after rejected overdue correction; Lean and ESBMC evidence pending",
       "references": {
         "spec": [
           {

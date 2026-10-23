@@ -113,7 +113,7 @@ void test_start_conditions(TestContext & test)
         test.expect(fixture.update(1000U, {1000U, GnssQualityDecision::accepted}) == Status::success, lifecycle_profile,
                     "uninitialized start is a reset request, not an invalid call");
         auto const & state = fixture.monitor.state().*entry.state;
-        test.expect(state.recovery_required && !state.active && !state.fusion_allowed &&
+        test.expect(state.recovery_required && state.reset_allowed && !state.active && !state.fusion_allowed &&
                         state.stop_reason == StopReason::initialization_required,
                     lifecycle_profile, "good quality does not replace state initialization");
     }
@@ -183,6 +183,8 @@ void test_group_deadlines(TestContext & test)
                     lifecycle_profile, "height attempts current sample before its own timeout");
         auto const & state = height.monitor.state().vertical_position;
         test.expect(state.recovery_required == (decision != FusionDecision::fused) &&
+                        state.reset_allowed == (decision == FusionDecision::rejected) &&
+                        state.active == (decision != FusionDecision::failed) &&
                         state.last_fuse_time_us == (decision == FusionDecision::fused ? 1051U : 1000U),
                     lifecycle_profile, "overdue success wins; rejection/failure cannot refresh progress");
         test.expect(height.monitor.state().velocity.fusion_allowed, lifecycle_profile,
@@ -231,7 +233,7 @@ void test_pauses_and_recovery(TestContext & test)
                     fixture.monitor.state().velocity.start_time_us == 1203U,
                 lifecycle_profile, "caller-authorized re-entry starts a new session, not a permanent timeout latch");
 
-    // The replay cannot claim this authorization after its first seeded start.
+    // Re-entry can require an actual reset rather than caller-authorized startup.
     fixture.conditions.vertical_position.start_without_reset = false;
     test.expect(fixture.update(1228U) == Status::success &&
                     fixture.update(1229U, {1229U, GnssQualityDecision::accepted}) == Status::success &&
@@ -384,7 +386,7 @@ void test_invalid_calls(TestContext & test)
 
 void test_reset_feedback(TestContext & test)
 {
-    for (auto const & entry : {groups[0U], groups[2U]})
+    for (auto const & entry : groups)
     {
         Fixture fixture;
         (fixture.conditions.*entry.conditions).start_without_reset = false;
@@ -480,9 +482,9 @@ void test_reset_feedback(TestContext & test)
                     timeout.monitor.state().velocity.start_time_us == 1000U &&
                     timeout.monitor.state().velocity.last_fuse_time_us == 0U,
                 lifecycle_profile, "new timeout uses reset progress without rewriting correction/session history");
-    test.expect(timeout.monitor.record_reset(Group::vertical_position, 1202U, true) == Status::domain_error &&
+    test.expect(timeout.monitor.record_reset(Group::vertical_position, 1202U, true) == Status::out_of_range &&
                     timeout.monitor.record_reset(static_cast<Group>(99), 1202U, true) == Status::domain_error,
-                lifecycle_profile, "height and invalid reset feedback are unsupported");
+                lifecycle_profile, "unsolicited height and invalid group feedback are rejected");
 
     Fixture numerical;
     test.expect(numerical.update(1000U, {1000U, GnssQualityDecision::accepted}) == Status::success &&
@@ -516,6 +518,82 @@ void test_reset_feedback(TestContext & test)
                     reentry.monitor.state().velocity.last_reset_time_us == 1003U &&
                     !reentry.monitor.state().restart_quality,
                 lifecycle_profile, "re-entry waits for quality and completes new resets without a second quality stop");
+}
+
+void test_height_reset(TestContext & test)
+{
+    for (auto const start : {std::uint64_t{1000}, std::numeric_limits<std::uint64_t>::max() - 200U})
+    {
+        for (bool success : {false, true})
+        {
+            Fixture fixture;
+            test.expect(
+                fixture.update(start, {start, GnssQualityDecision::accepted}) == Status::success &&
+                    fixture.monitor.record_fusion(Group::vertical_position, start, FusionDecision::fused) ==
+                        Status::success &&
+                    fixture.update(start + 51U, {start + 51U, GnssQualityDecision::accepted}) == Status::success &&
+                    fixture.monitor.record_reset(Group::vertical_position, start + 51U, true) == Status::out_of_range,
+                lifecycle_profile, "overdue height must attempt correction before requesting reset");
+            auto const horizontal = fixture.monitor.state().horizontal_position;
+            auto const velocity = fixture.monitor.state().velocity;
+            test.expect(
+                fixture.monitor.record_fusion(Group::vertical_position, start + 51U, FusionDecision::rejected) ==
+                        Status::success &&
+                    fixture.monitor.state().vertical_position.reset_allowed &&
+                    fixture.monitor.record_reset(Group::vertical_position, start + 51U, success) == Status::success,
+                lifecycle_profile, "rejected overdue height grants one same-sample reset");
+            auto const & height = fixture.monitor.state().vertical_position;
+            test.expect(height.active == success && height.recovery_required == !success && !height.reset_allowed &&
+                            !height.fusion_allowed &&
+                            height.stop_reason == (success ? StopReason::none : StopReason::reset_failed) &&
+                            height.last_reset_time_us == (success ? start + 51U : 0U) &&
+                            height.last_fuse_time_us == start && height.start_time_us == start &&
+                            !fixture.monitor.state().restart_quality &&
+                            same_group(horizontal, fixture.monitor.state().horizontal_position) &&
+                            same_group(velocity, fixture.monitor.state().velocity),
+                        lifecycle_profile, "height reset preserves correction, session and horizontal history");
+            test.expect(
+                fixture.monitor.record_reset(Group::vertical_position, start + 51U, true) == Status::out_of_range &&
+                    fixture.monitor.record_fusion(Group::vertical_position, start + 51U, FusionDecision::fused) ==
+                        Status::out_of_range,
+                lifecycle_profile, "neither duplicate reset nor correction after reset is permitted");
+            test.expect(fixture.update(start + 101U, {start + 101U, GnssQualityDecision::accepted}) == Status::success,
+                        lifecycle_profile, "advance to reset-based height deadline");
+            if (success)
+            {
+                test.expect(fixture.monitor.record_fusion(Group::vertical_position, start + 101U,
+                                                          FusionDecision::rejected) == Status::success &&
+                                !height.reset_allowed && !height.recovery_required &&
+                                fixture.update(start + 102U, {start + 102U, GnssQualityDecision::accepted}) ==
+                                    Status::success &&
+                                fixture.monitor.record_fusion(Group::vertical_position, start + 102U,
+                                                              FusionDecision::rejected) == Status::success &&
+                                height.reset_allowed && fixture.update(start + 103U) == Status::success &&
+                                !height.reset_allowed &&
+                                fixture.monitor.record_reset(Group::vertical_position, start + 102U, true) ==
+                                    Status::out_of_range,
+                            lifecycle_profile, "reset renews strict deadline; next update revokes unconsumed reset");
+            }
+            else
+            {
+                test.expect(!height.reset_allowed && !height.fusion_allowed && height.recovery_required,
+                            lifecycle_profile, "failed timeout reset cannot retry on good data");
+            }
+        }
+    }
+    Fixture reentry;
+    reentry.conditions.vertical_position.start_without_reset = false;
+    test.expect(reentry.update(1000U, {1000U, GnssQualityDecision::accepted}) == Status::success &&
+                    reentry.monitor.record_reset(Group::vertical_position, 1000U, true) == Status::success &&
+                    reentry.update(1025U) == Status::success && !reentry.monitor.state().vertical_position.active &&
+                    reentry.update(1026U, {1026U, GnssQualityDecision::waiting}) == Status::success &&
+                    !reentry.monitor.state().vertical_position.reset_allowed &&
+                    reentry.update(1027U, {1027U, GnssQualityDecision::accepted}) == Status::success &&
+                    reentry.monitor.record_reset(Group::vertical_position, 1027U, true) == Status::success &&
+                    reentry.monitor.state().vertical_position.start_time_us == 1027U &&
+                    reentry.monitor.state().vertical_position.last_fuse_time_us == 0U &&
+                    !reentry.monitor.state().restart_quality,
+                lifecycle_profile, "height-only data stop restarts through a qualified reset, not a quality restart");
 }
 
 template <typename Linalg> void test_quality_to_fusion(TestContext & test, std::string_view profile)
@@ -591,6 +669,7 @@ int main()
     test_persistent_rejection(test);
     test_invalid_calls(test);
     test_reset_feedback(test);
+    test_height_reset(test);
     test_quality_to_fusion<formal_eskf::test::Backend<float>>(test, "float");
     test_quality_to_fusion<formal_eskf::test::Backend<double>>(test, "double");
     if (test.failures() != 0)

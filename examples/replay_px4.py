@@ -6,7 +6,7 @@ vehicle_land_detected supplies optional at_rest metadata.
 PX4 estimator outputs are not inputs. Magnetic measurements initialize attitude
 and provide lifecycle-controlled, gated corrections against a fixed seed field.
 Gravity correction requires complete clipping metadata and valid fusion conditions.
-GNSS quality qualifies lifecycle, horizontal resets and independent velocity/position/height gates.
+GNSS quality qualifies lifecycle, position/velocity resets and independent velocity/position/height gates.
 """
 
 import argparse
@@ -366,9 +366,9 @@ def prepare(ULOG, OUTPUT):
             "gnss_height_reference": "sole GNSS height reference; no height bias or additional bias variance",
             "gnss_accuracy_frame": "reported accuracy axes treated as fixed local NED; local-flight approximation",
             "gnss_lifecycle": "GNSS-only: horizontal data/quality timeout 7 s, height data timeout 1 s; horizontal reset at both aids >7 s or position >14 s, height fusion timeout 5 s",
-            "gnss_startup": "seeded attitude/frame is assumed aligned; accepted startup resets 3D velocity then horizontal position; height uses the seed once",
-            "gnss_resets": "horizontal startup/timeout resets replace that sample's correction; separate deltas/counts; unsupported height recovery and numerical failures abort",
-            "gnss_limits": "quality precedes lifecycle and gates; single replay clock; co-located IMU/GNSS; no alternate aiding, height reset, bad-vertical-acceleration override or emergency yaw",
+            "gnss_startup": "seeded attitude/frame is assumed aligned; each group resets on accepted startup/re-entry; execution order: 3D velocity, horizontal position, height",
+            "gnss_resets": "horizontal timeout resets replace that sample's correction; height timeout reset follows rejected correction; separate deltas/counts; numerical failures abort",
+            "gnss_limits": "quality precedes lifecycle and gates; single replay clock; co-located IMU/GNSS; no alternate aiding, height-bias estimation, bad-vertical-acceleration override, height-failure vertical-velocity reset or emergency yaw",
             "magnetic_reference_n_ut": MAG_REFERENCE[:3],
             "magnetic_noise_std_ut": MAG_REFERENCE[3], "magnetic_gate_sigma": MAG_REFERENCE[4],
             "magnetic_reference_source": "R(q_seed) times first 0.2 s mean field; not independent WMM/truth",

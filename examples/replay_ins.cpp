@@ -383,13 +383,10 @@ bool gnss_recovery_required(GnssLifecycle::State const & state)
 void update_gnss_lifecycle(GnssLifecycle & lifecycle, GnssQuality & quality, GnssLifecycle::Sample const & sample,
                            std::uint64_t time)
 {
-    auto const & state = lifecycle.state();
     // The demo starts from an already seeded navigation frame and accel/mag
     // attitude. This is an initialization premise, not a detected alignment.
-    // Horizontal startup uses actual GNSS resets. Height still uses the seed
-    // once; height re-entry requires a separate reset implementation.
-    GnssLifecycle::Conditions const conditions{
-        {true, true, false}, {true, true, state.vertical_position.start_time_us == 0U}, {true, true, false}};
+    // Every group's startup/re-entry uses an actual GNSS reset.
+    GnssLifecycle::Conditions const conditions{{true, true, false}, {true, true, false}, {true, true, false}};
     GnssLifecycle::Parameters const timing{GNSS_HORIZONTAL_TIMEOUT_US, GNSS_HEIGHT_DATA_TIMEOUT_US,
                                            GNSS_HEIGHT_FUSION_TIMEOUT_US};
     check_status(lifecycle.update(time, conditions, timing, sample), "GNSS lifecycle", time);
@@ -837,7 +834,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     write_state(states, time, state, covariance);
     std::size_t predictions = 0U, navigation_events = 0U, gaps = 0U;
     std::size_t position_xy_fused = 0U, position_z_fused = 0U, velocity_fused = 0U;
-    std::size_t position_xy_resets = 0U, velocity_resets = 0U;
+    std::size_t position_xy_resets = 0U, position_z_resets = 0U, velocity_resets = 0U;
     std::size_t quality_accepted = 0U, quality_rejected = 0U, quality_waiting = 0U, quality_unavailable = 0U;
     std::size_t invalid_velocity = 0U, navigation_attempts = 0U;
     std::size_t position_xy_attempts = 0U, position_z_attempts = 0U, velocity_attempts = 0U;
@@ -920,7 +917,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     lifecycle_updated = true;
                     lifecycle_sample_consumed = true;
                     auto const & lifecycle = gnss_lifecycle.state();
-                    if (lifecycle.vertical_position.recovery_required ||
+                    if ((lifecycle.vertical_position.recovery_required && !lifecycle.vertical_position.reset_allowed) ||
                         (lifecycle.velocity.recovery_required && !lifecycle.velocity.reset_allowed) ||
                         (lifecycle.horizontal_position.recovery_required &&
                          !lifecycle.horizontal_position.reset_allowed))
@@ -974,7 +971,10 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                                              time);
                     }
                     check_status(status, "GNSS reset", time);
-                    fusion_conditions.record_horizontal_fusion(time);
+                    if (group != GnssLifecycle::Group::vertical_position)
+                    {
+                        fusion_conditions.record_horizontal_fusion(time);
+                    }
                 };
                 auto const noise =
                     navigation_variances(navigation_row[7U], navigation_row[8U], navigation_row[9U], gnss);
@@ -1069,9 +1069,21 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                         ++position_z_fused;
                     }
                 }
-                else
+                else if (!gnss_lifecycle.state().vertical_position.reset_allowed)
                 {
                     ++position_z_skipped;
+                }
+                // Height recovery is decided after the current correction attempt.
+                // A successful overdue correction therefore needs no reset.
+                if (quality_parameters && gnss_lifecycle.state().vertical_position.reset_allowed)
+                {
+                    double delta{};
+                    auto const reason = gnss_lifecycle.state().vertical_position.stop_reason;
+                    auto const status = formal_eskf::runtime::try_reset_gnss_vertical_position(
+                        state, covariance, navigation_row[3U], noise.position_z, state, covariance, delta);
+                    record_reset(GnssLifecycle::Group::vertical_position, "vertical_position", reason, status,
+                                 Linalg::vector_type<1U>::from_row_major({delta}));
+                    ++position_z_resets;
                 }
             }
             else
@@ -1264,6 +1276,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"vertical_position_corrections\": " << position_z_fused
             << ",\n  \"velocity_corrections\": " << velocity_fused
             << ",\n  \"horizontal_position_resets\": " << position_xy_resets
+            << ",\n  \"vertical_position_resets\": " << position_z_resets
             << ",\n  \"velocity_resets\": " << velocity_resets
             << ",\n  \"horizontal_position_rejected\": " << position_xy_attempts - position_xy_fused
             << ",\n  \"vertical_position_rejected\": " << position_z_attempts - position_z_fused
@@ -1325,11 +1338,11 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
               << " accepted, " << quality_rejected << " rejected, " << quality_waiting << " waiting, "
               << quality_unavailable << " unavailable, " << invalid_velocity << " invalid velocity)"
               << "\nGNSS lifecycle: "
-              << (quality_parameters ? "ON (GNSS-only, horizontal resets)" : "OFF (legacy input)")
+              << (quality_parameters ? "ON (GNSS-only, position and velocity resets)" : "OFF (legacy input)")
               << "\nHorizontal position: " << position_xy_fused << " fused, "
               << position_xy_attempts - position_xy_fused << " gate rejected, " << position_xy_resets << " reset"
               << "\nVertical position: " << position_z_fused << " fused, " << position_z_attempts - position_z_fused
-              << " gate rejected"
+              << " gate rejected, " << position_z_resets << " reset"
               << "\n3D velocity: " << velocity_fused << " fused, " << velocity_attempts - velocity_fused
               << " gate rejected, " << velocity_resets << " reset"
               << "\nGNSS innovation gate: " << (gnss ? "ON" : "OFF (legacy input)")

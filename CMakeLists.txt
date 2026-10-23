@@ -171,6 +171,16 @@ if(PROJECT_IS_TOP_LEVEL)
         add_test(NAME formal_eskf.scalar.standard COMMAND test_scalar_standard)
 
         if(TARGET replay_ins)
+            foreach(CASE IN ITEMS known missing clipped disabled)
+                add_test(
+                    NAME formal_eskf.replay_bias.${CASE}
+                    COMMAND ${CMAKE_COMMAND}
+                        -DREPLAY=$<TARGET_FILE:replay_ins>
+                        -DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                        -DCASE=${CASE}
+                        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_replay_bias.cmake
+                )
+            endforeach()
             foreach(CASE IN ITEMS timeout disturbed aided)
                 add_test(
                     NAME formal_eskf.replay_magnetometer.reset.${CASE}
@@ -274,6 +284,7 @@ if(PROJECT_IS_TOP_LEVEL)
         formal_eskf_add_backend_test(test_accelerometer_conditions test_accelerometer_conditions formal_eskf.accelerometer_conditions.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_accelerometer_fusion test_accelerometer_fusion formal_eskf.accelerometer_fusion.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_replay_conditions test_replay_conditions formal_eskf.replay_conditions.eigen formal_eskf::runtime)
+        formal_eskf_add_backend_test(test_replay_bias test_replay_bias formal_eskf.replay_bias.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_replay_gnss test_replay_gnss formal_eskf.replay_gnss.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_replay_accelerometer test_replay_accelerometer formal_eskf.replay_accelerometer.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_measurement_fusion test_measurement_fusion formal_eskf.measurement_fusion.eigen formal_eskf::runtime)

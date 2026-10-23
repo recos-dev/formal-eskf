@@ -3200,7 +3200,7 @@
           },
           {
             "file": "examples/replay_ins.cpp",
-            "symbol": "std::array<int, 2U> read_imu_flags("
+            "symbol": "ImuFlags read_imu_flags("
           }
         ],
         "esbmc": []
@@ -3293,6 +3293,42 @@
           {
             "file": "include/formal_eskf/runtime/imu_bias_learning.hpp",
             "symbol": "bool ImuBiasLearning::update_axis("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
+      "id": "R-REPLAY-BIAS",
+      "title": "Replay decaying-peak bias inhibition and correction wiring; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-REPLAY-BIAS: replay bias-learning inhibition"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "examples/replay_bias.hpp",
+            "symbol": "class ReplayBiasLearning"
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "void replay("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "BiasLearning::Parameters read_bias_parameters("
+          },
+          {
+            "file": "examples/replay_px4.py",
+            "symbol": "def bias_parameters("
+          },
+          {
+            "file": "examples/replay_px4.py",
+            "symbol": "def imu_flags("
           }
         ],
         "esbmc": []

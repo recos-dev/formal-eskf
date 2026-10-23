@@ -35,6 +35,7 @@
 #include <formal_eskf/runtime/position.hpp>
 #include <formal_eskf/runtime/velocity.hpp>
 #include "replay_accelerometer.hpp"
+#include "replay_bias.hpp"
 #include "replay_conditions.hpp"
 #include "replay_gnss.hpp"
 #if defined(FORMAL_ESKF_REPLAY_PX4_MATRIX)
@@ -56,6 +57,11 @@
 // Bias random-walk variance densities; the core scales these by dt.
 #define ACCEL_BIAS_RW_VAR_DENSITY 1e-6 // m^2/s^5.
 #define GYRO_BIAS_RW_VAR_DENSITY 1e-8  // rad^2/s^3.
+
+// Fallback for CSV inputs without logged bias parameters.
+#define BIAS_MAX_SPECIFIC_FORCE 25.0 // m/s^2, including gravity response.
+#define BIAS_MAX_ANGULAR_RATE 3.0    // rad/s.
+#define BIAS_DECAY_TIME_CONSTANT 0.5 // s.
 
 // Gravity observation settings; independent of prediction's ACCEL_VAR.
 #define ACCEL_OBS_STD GRAVITY      // m/s^2; effective pseudo-observation weight.
@@ -103,6 +109,8 @@ using Vector3 = Linalg::vector_type<3U>;
 using Imu = Types::imu_sample_type;
 using formal_eskf::Status;
 using FusionConditions = formal_eskf::example::ReplayFusionConditions<Linalg>;
+using BiasLearning = formal_eskf::example::ReplayBiasLearning<Linalg>;
+using ImuFlags = formal_eskf::example::ReplayImuFlags;
 using Accelerometer = formal_eskf::example::ReplayAccelerometer<Linalg, ACCEL_OBS_PERIOD_US>;
 using MagneticLifecycle = formal_eskf::runtime::MagnetometerFusion;
 using GnssQuality = formal_eskf::example::ReplayGnssQuality<Linalg>;
@@ -197,11 +205,11 @@ Imu imu_sample(std::array<double, 8U> const & row)
     return {vector3(row[2U], row[3U], row[4U]), vector3(row[5U], row[6U], row[7U])};
 }
 
-std::array<int, 2U> read_imu_flags(std::ifstream & stream, std::uint64_t time)
+ImuFlags read_imu_flags(std::ifstream & stream, std::uint64_t time)
 {
     if (!stream.is_open())
     {
-        return {-1, -1};
+        return {};
     }
     std::array<double, 3U> row{};
     if (!read_row(stream, row) || timestamp(row[0U]) != time || row[1U] < -1.0 || row[1U] > 1.0 ||
@@ -210,6 +218,24 @@ std::array<int, 2U> read_imu_flags(std::ifstream & stream, std::uint64_t time)
         throw std::runtime_error("IMU flags must match the sample timestamp and flag domains");
     }
     return {static_cast<int>(row[1U]), static_cast<int>(row[2U])};
+}
+
+BiasLearning::Parameters read_bias_parameters(std::filesystem::path const & input)
+{
+    if (!std::filesystem::exists(input / "bias_parameters.csv"))
+    {
+        return {BIAS_MAX_SPECIFIC_FORCE, BIAS_MAX_ANGULAR_RATE, BIAS_DECAY_TIME_CONSTANT, true, true};
+    }
+    auto stream = open_csv(
+        input / "bias_parameters.csv",
+        "maximum_specific_force,maximum_angular_rate,decay_time_constant,accelerometer_enabled,gyroscope_enabled");
+    std::array<double, 5U> row{}, extra{};
+    if (!read_row(stream, row) || read_row(stream, extra) || !(row[0U] > 0.0) || !(row[1U] > 0.0) || !(row[2U] > 0.0) ||
+        (row[3U] != 0.0 && row[3U] != 1.0) || (row[4U] != 0.0 && row[4U] != 1.0))
+    {
+        throw std::runtime_error("invalid bias parameters");
+    }
+    return {row[0U], row[1U], row[2U], row[3U] == 1.0, row[4U] == 1.0};
 }
 
 double variance(double accuracy, double floor)
@@ -628,7 +654,8 @@ Covariance initial_covariance(NavigationVariances const & noise)
     return result;
 }
 
-void correct_navigation(State & state, Covariance & covariance, std::array<double, 10U> const & row, std::uint64_t time)
+void correct_navigation(State & state, Covariance & covariance, std::array<double, 10U> const & row, std::uint64_t time,
+                        formal_eskf::configuration::Ins::BiasUpdate const & bias_update)
 {
     // Adapter-provided standard deviations use independent axes and fixed
     // floors (m, m/s), not a full joint 6x6 observation covariance.
@@ -636,14 +663,15 @@ void correct_navigation(State & state, Covariance & covariance, std::array<doubl
     double const horizontal_variance = variance(row[7U], POS_XY_STD_MIN);
     auto const position_noise = Linalg::matrix_type<2U, 2U>::identity() * horizontal_variance;
     check_status(formal_eskf::try_correct_horizontal_position(state, covariance, position, position_noise,
-                                                              QUAT_MIN_NORM, state, covariance),
+                                                              QUAT_MIN_NORM, state, covariance, bias_update),
                  "horizontal position", time);
-    check_status(formal_eskf::try_correct_vertical_position(
-                     state, covariance, row[3U], variance(row[8U], POS_Z_STD_MIN), QUAT_MIN_NORM, state, covariance),
+    check_status(formal_eskf::try_correct_vertical_position(state, covariance, row[3U],
+                                                            variance(row[8U], POS_Z_STD_MIN), QUAT_MIN_NORM, state,
+                                                            covariance, bias_update),
                  "vertical position", time);
     auto const velocity_noise = Linalg::matrix_type<3U, 3U>::identity() * variance(row[9U], VEL_STD_MIN);
     check_status(formal_eskf::try_correct_velocity(state, covariance, vector3(row[4U], row[5U], row[6U]),
-                                                   velocity_noise, QUAT_MIN_NORM, state, covariance),
+                                                   velocity_noise, QUAT_MIN_NORM, state, covariance, bias_update),
                  "velocity", time);
 }
 
@@ -752,6 +780,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         initial_covariance(navigation_variances(horizontal_accuracy, vertical_accuracy, speed_accuracy, gnss));
     auto const settings = parameters();
     FusionConditions fusion_conditions;
+    auto const bias_parameters = read_bias_parameters(input);
+    BiasLearning bias_learning(bias_parameters);
     Accelerometer accelerometer;
     MagneticLifecycle magnetic_lifecycle;
     MagneticLifecycle::Parameters const magnetic_timing{MAG_HEALTH_TIME_US, MAG_MAX_INTERVAL_US, MAG_FUSION_TIMEOUT_US};
@@ -808,6 +838,12 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                         "innovation,innovation_variance,test_ratio,observation_variance\n";
     }
     std::ofstream condition_log(output / "fusion_conditions.csv");
+    std::ofstream bias_log(output / "bias_learning.csv");
+    bias_log.exceptions(std::ios::failbit | std::ios::badbit);
+    bias_log << std::setprecision(17);
+    bias_log
+        << "timestamp_us,at_rest,accelerometer_clipping,clipping_assumed_clear,specific_force_peak,"
+           "angular_rate_peak,high_dynamics,bax_enabled,bay_enabled,baz_enabled,bgx_enabled,bgy_enabled,bgz_enabled\n";
     std::ofstream accel_updates(output / "accelerometer_updates.csv");
     std::ofstream mag_updates(output / "magnetometer_updates.csv");
     std::ofstream mag_resets(output / "magnetometer_resets.csv");
@@ -855,6 +891,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::size_t mag_events = 0U, mag_corrections = 0U, mag_rejected = 0U;
     std::size_t mag_skipped = 0U, mag_superseded = 0U;
     std::size_t mag_heading_resets = 0U;
+    std::array<std::size_t, 3U> accel_bias_enabled{}, gyro_bias_enabled{};
+    std::size_t bias_high_dynamics = 0U;
     std::uint64_t mag_max_alignment_us = 0U;
     while (read_row(imu, imu_row))
     {
@@ -879,6 +917,17 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             accelerometer.reset();
         }
         auto const sample = imu_sample(imu_row);
+        auto const sample_flags = read_imu_flags(flags, next_time);
+        // This replay has no fake-position/height modes or bad-vertical-accel
+        // detector. Lost GNSS aiding is not a substitute for those mode flags.
+        BiasLearning::Conditions bias_conditions;
+        bias_conditions.at_rest = sample_flags.at_rest == 1;
+        // Legacy input compatibility, only for bias learning. Keep -1 for
+        // gravity fusion: absence of clipping metadata is not measured health.
+        bias_conditions.accelerometer_clipping = std::max(0, sample_flags.accelerometer_clipping);
+        auto const learning = bias_learning.update(static_cast<double>(period) * 1e-6, state, sample, bias_conditions);
+        check_status(learning.status, "bias learning", next_time);
+        auto const & bias_update = learning.bias_update;
         check_status(formal_eskf::try_predict(state, covariance, sample, static_cast<double>(period) * 1e-6, settings,
                                               state, covariance),
                      "prediction", next_time);
@@ -886,10 +935,28 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         previous_imu = sample;
         ++predictions;
         check_state(state, covariance);
-        auto const sample_flags = read_imu_flags(flags, time);
+        bias_log << time << ',' << sample_flags.at_rest << ',' << sample_flags.accelerometer_clipping << ','
+                 << (sample_flags.accelerometer_clipping < 0) << ',' << learning.specific_force_peak << ','
+                 << learning.angular_rate_peak << ',' << learning.high_dynamics;
+        for (auto const enabled : bias_update.accelerometer)
+        {
+            bias_log << ',' << enabled;
+        }
+        for (auto const enabled : bias_update.gyroscope)
+        {
+            bias_log << ',' << enabled;
+        }
+        bias_log << '\n';
+        for (std::size_t axis = 0U; axis < 3U; ++axis)
+        {
+            accel_bias_enabled[axis] += bias_update.accelerometer[axis] ? 1U : 0U;
+            gyro_bias_enabled[axis] += bias_update.gyroscope[axis] ? 1U : 0U;
+        }
+        bias_high_dynamics += learning.high_dynamics ? 1U : 0U;
         check_status(fusion_conditions.update_tilt(state.q_nb, covariance.block<6U, 6U, 3U, 3U>()),
                      "tilt alignment conditions", time);
-        auto const observation = accelerometer.update(sample, period, sample_flags[1U], QUAT_MIN_NORM);
+        auto const observation =
+            accelerometer.update(sample, period, sample_flags.accelerometer_clipping, QUAT_MIN_NORM);
         check_status(observation.status, "accelerometer observation", time);
         // First-version timing approximation: each NEW navigation event is fused
         // at the following IMU tick. Do not split sampled-noise IMU steps or
@@ -1006,8 +1073,9 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 else if (!quality_parameters || gnss_lifecycle.state().velocity.fusion_allowed)
                 {
                     ++velocity_attempts;
-                    auto const result = formal_eskf::runtime::fuse_velocity(
-                        state, covariance, velocity, velocity_V, QUAT_MIN_NORM, gnss->velocity_gate, state, covariance);
+                    auto const result =
+                        formal_eskf::runtime::fuse_velocity(state, covariance, velocity, velocity_V, QUAT_MIN_NORM,
+                                                            gnss->velocity_gate, state, covariance, bias_update);
                     if (quality_parameters)
                     {
                         check_status(
@@ -1063,7 +1131,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 {
                     ++position_xy_attempts;
                     auto const result = formal_eskf::runtime::fuse_horizontal_position(
-                        state, covariance, position, position_V, QUAT_MIN_NORM, gnss->position_gate, state, covariance);
+                        state, covariance, position, position_V, QUAT_MIN_NORM, gnss->position_gate, state, covariance,
+                        bias_update);
                     if (quality_parameters)
                     {
                         check_status(gnss_lifecycle.record_fusion(GnssLifecycle::Group::horizontal_position,
@@ -1086,7 +1155,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     ++position_z_attempts;
                     auto const result = formal_eskf::runtime::fuse_vertical_position(
                         state, covariance, navigation_row[3U], noise.position_z, QUAT_MIN_NORM, gnss->position_gate,
-                        state, covariance);
+                        state, covariance, bias_update);
                     auto const height_V = Linalg::matrix_type<1U, 1U>::from_row_major({noise.position_z});
                     if (quality_parameters)
                     {
@@ -1118,7 +1187,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             }
             else
             {
-                correct_navigation(state, covariance, navigation_row, time);
+                correct_navigation(state, covariance, navigation_row, time, bias_update);
                 ++position_xy_fused;
                 ++position_z_fused;
                 ++velocity_fused;
@@ -1141,12 +1210,13 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             write_gnss_lifecycle(lifecycle_updates, previous, gnss_lifecycle.state(), 0U, time);
         }
         // Retain raw-tick diagnostics; fusion uses the whole observation's clipping below.
-        auto const conditions = fusion_conditions.conditions(time, true, sample_flags[0U], sample_flags[1U]);
-        unknown_clipping_samples += sample_flags[1U] == -1 ? 1U : 0U;
+        auto const conditions =
+            fusion_conditions.conditions(time, true, sample_flags.at_rest, sample_flags.accelerometer_clipping);
+        unknown_clipping_samples += sample_flags.accelerometer_clipping == -1 ? 1U : 0U;
         available_condition_samples += conditions.has_value() ? 1U : 0U;
         condition_log << time << ',' << fusion_conditions.tilt_variance() << ',' << fusion_conditions.tilt_aligned()
-                      << ',' << fusion_conditions.horizontal_aiding(time) << ',' << sample_flags[0U] << ','
-                      << sample_flags[1U] << ',' << conditions.has_value() << '\n';
+                      << ',' << fusion_conditions.horizontal_aiding(time) << ',' << sample_flags.at_rest << ','
+                      << sample_flags.accelerometer_clipping << ',' << conditions.has_value() << '\n';
         if (observation.ready)
         {
             ++accel_observations;
@@ -1155,13 +1225,13 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                                                              : std::min(accel_interval_min_us, observation.interval_us);
             accel_interval_max_us = std::max(accel_interval_max_us, observation.interval_us);
             auto const observation_conditions =
-                fusion_conditions.conditions(time, true, sample_flags[0U], observation.clipping_mask);
+                fusion_conditions.conditions(time, true, sample_flags.at_rest, observation.clipping_mask);
             std::string_view outcome = "metadata_unavailable";
             if (observation_conditions)
             {
                 auto const result = formal_eskf::runtime::fuse_accelerometer(
                     state, covariance, observation.specific_force_b, settings.gravity_n, accel_V,
-                    *observation_conditions, observation.magnitude, QUAT_MIN_NORM, state, covariance);
+                    *observation_conditions, observation.magnitude, QUAT_MIN_NORM, state, covariance, bias_update);
                 check_status(result.status, "accelerometer correction", time);
                 bool const fused = result.decision == formal_eskf::runtime::FusionDecision::fused;
                 accel_corrections += fused ? 1U : 0U;
@@ -1177,7 +1247,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                           << observation.specific_force_b(1U) << ',' << observation.specific_force_b(2U) << ','
                           << observation.clipping_mask << ',' << observation.magnitude.squared_norm << ','
                           << observation.magnitude.within_gravity_band << ',' << fusion_conditions.tilt_aligned() << ','
-                          << fusion_conditions.horizontal_aiding(time) << ',' << sample_flags[0U] << ',' << outcome
+                          << fusion_conditions.horizontal_aiding(time) << ',' << sample_flags.at_rest << ',' << outcome
                           << '\n';
         }
         // Select the newest available sample once per tick. Older samples from
@@ -1218,7 +1288,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             // the existing covariance-based latch, never imported EKF2 status.
             MagneticLifecycle::Conditions const magnetic_conditions{mag_enabled, fusion_conditions.tilt_aligned(), true,
                                                                     fusion_conditions.horizontal_aiding(time),
-                                                                    sample_flags[0U] == 1};
+                                                                    sample_flags.at_rest == 1};
             check_status(magnetic_lifecycle.update(time, magnetic_conditions, magnetic_timing, lifecycle_sample),
                          "magnetometer lifecycle", time);
             std::string_view outcome = magnetic_time == 0U ? "no_sample" : "skipped";
@@ -1230,7 +1300,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             {
                 result = formal_eskf::runtime::fuse_magnetometer(state, covariance, magnetic_sample, magnetic.m_n,
                                                                  magnetic.V, field_parameters, false, QUAT_MIN_NORM,
-                                                                 magnetic.gate_sigma, state, covariance);
+                                                                 magnetic.gate_sigma, state, covariance, bias_update);
                 check_status(magnetic_lifecycle.record_fusion(magnetic_time, result.fusion.decision),
                              "magnetometer fusion feedback", time);
                 outcome = fusion_outcome(result.fusion.decision);
@@ -1316,6 +1386,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         gnss_updates.close();
     }
     condition_log.close();
+    bias_log.close();
     accel_updates.close();
     mag_updates.close();
     mag_resets.close();
@@ -1354,6 +1425,18 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"navigation_delay_compensation_ms\": 0"
             << ",\n  \"available_gravity_condition_samples\": " << available_condition_samples
             << ",\n  \"unknown_accelerometer_clipping_samples\": " << unknown_clipping_samples
+            << ",\n  \"bias_clipping_assumed_clear_samples\": " << unknown_clipping_samples
+            << ",\n  \"accelerometer_bias_estimation_enabled\": "
+            << (bias_parameters.accelerometer_enabled ? "true" : "false")
+            << ",\n  \"gyroscope_bias_estimation_enabled\": " << (bias_parameters.gyroscope_enabled ? "true" : "false")
+            << ",\n  \"bias_high_dynamics_samples\": " << bias_high_dynamics
+            << ",\n  \"accelerometer_bias_learning_samples\": [" << accel_bias_enabled[0U] << ','
+            << accel_bias_enabled[1U] << ',' << accel_bias_enabled[2U] << ']'
+            << ",\n  \"gyroscope_bias_learning_samples\": [" << gyro_bias_enabled[0U] << ',' << gyro_bias_enabled[1U]
+            << ',' << gyro_bias_enabled[2U] << ']'
+            << ",\n  \"bias_maximum_specific_force\": " << bias_parameters.maximum_specific_force
+            << ",\n  \"bias_maximum_angular_rate\": " << bias_parameters.maximum_angular_rate
+            << ",\n  \"bias_decay_time_constant\": " << bias_parameters.decay_time_constant
             << ",\n  \"accelerometer_observations\": " << accel_observations
             << ",\n  \"accelerometer_corrections\": " << accel_corrections
             << ",\n  \"accelerometer_rejected\": " << accel_rejected
@@ -1413,6 +1496,9 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
               << "Magnetometer events: " << mag_events << " (" << mag_corrections << " fused, " << mag_rejected
               << " gate rejected, " << mag_skipped << " lifecycle skipped, " << mag_superseded << " superseded)\n"
               << "Magnetometer heading resets: " << mag_heading_resets << '\n'
+              << "Bias-learning permitted samples: accel [" << accel_bias_enabled[0U] << ',' << accel_bias_enabled[1U]
+              << ',' << accel_bias_enabled[2U] << "]; gyro [" << gyro_bias_enabled[0U] << ',' << gyro_bias_enabled[1U]
+              << ',' << gyro_bias_enabled[2U] << "]\n"
               << "Magnetometer lifecycle: " << magnetic_stop_reason(magnetic_lifecycle.state().stop_reason)
               << "; recovery: " << magnetic_recovery_reason(magnetic_lifecycle.state().recovery_reason) << '\n';
 }

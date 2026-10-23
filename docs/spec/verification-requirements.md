@@ -248,7 +248,7 @@ it is not an independent WMM reference or evidence of magnetic health.
   Consume older samples from that tick without fusion and count them as superseded.
   Record the alignment offset; no physical sensor-delay compensation is claimed.
   Only lifecycle permission authorizes `runtime::fuse_magnetometer`, preserving
-  `ESKF_MAG_TILT` and default bias permissions. Record outcome/status, field
+  `ESKF_MAG_TILT` and the current replay bias-learning permissions. Record outcome/status, field
   failures, valid innovation ratios and lifecycle state/timestamps in
   `magnetometer_updates.csv`. A skipped sample is not a gate rejection.
   No-data lifecycle transitions also produce rows (`source_timestamp_us=0`).
@@ -971,7 +971,7 @@ changing prediction/navigation timing or adding a delayed fusion buffer:
   holds are never accumulated as measurements. A new replay also resets history.
 - After that tick's navigation corrections, call `runtime::fuse_accelerometer`
   only when interval clipping is known; its conditions decide whether to correct.
-  This uses the agreed V and unchanged default bias permissions. A failed
+  This uses the agreed V and the current replay bias-learning permissions. A failed
   correction ends replay. Record each observation, actual duration, aggregated
   clipping, LPF diagnostic and outcome (`fused`, `rejected`, `metadata_unavailable`)
   in `accelerometer_updates.csv`; report counts and actual interval statistics.
@@ -1005,6 +1005,61 @@ This upper-magnitude check does not detect free fall, saturation metadata, vibra
 - `status == success` means a valid policy evaluation, not that any axis may learn or a sensor may fuse. Pass the returned permissions to all relevant INS corrections at that same horizon. Call once per new IMU sample even if no correction occurs; never retain an authorization across missing updates. Reset on IMU/source/calibration/body-frame changes. The caller owns validity, freshness, fault detection and consistent event ordering.
 
 The policy does not alter nominal state, covariance, prediction, process noise or measurement admission. It is not a proof of physical observability or IMU health. `R-IMU-DYNAMICS` supplies an optional instantaneous magnitude check; sensor health, observability policy, adaptive process noise and platform wiring remain separate work. Native condition, timing and real-correction integration tests are supporting evidence; Lean and ESBMC evidence is pending.
+
+### R-REPLAY-BIAS: replay bias-learning inhibition
+
+`ReplayBiasLearning` evaluates the prior biases and unit attitude once before
+prediction, then supplies the same six `Ins::BiasUpdate` permissions to every
+GNSS, gravity and magnetic correction at that horizon. It uses decaying peaks,
+not `ImuBiasLearning`'s separate continuous-good timers. Core equations,
+prediction/process noise and bias-preserving resets remain unchanged.
+
+- For synchronized accel/gyro integration periods `dt > 0`, compute
+  `decay = 1 - clamp(dt / tau, 0, 1)` and independently update each envelope as
+  `peak = max(norm(measurement - prior_bias), decay * previous_peak)`.
+  Specific force retains gravity. Initial peaks are zero. High dynamics means
+  either peak strictly exceeds its configured limit; equality permits learning.
+  No startup wait or additional clipping-recovery timer is imposed.
+- Gyro permissions follow the gyro-bias enable switch. Accel permissions require
+  its enable switch, no high dynamics, no bad-vertical-acceleration fault, and
+  no clipping on that axis. Rest overrides only the observability restriction;
+  otherwise fake height inhibits all axes, and fake position permits only axes
+  with `abs(R_nb(2,axis)) > 0.966`. These are actual mode/fault inputs, never
+  substitutes inferred from GNSS age or sample availability.
+- Validate finite inputs, positive finite limits/tau/dt and clipping bits 0..7.
+  Invalid input or non-finite arithmetic returns disabled permissions and leaves
+  envelope history unchanged; replay terminates on failure. A new session starts
+  fresh. Missing IMU intervals do not erase peaks or supply held measurements;
+  only real samples decay the envelope using their logged integration period.
+- Preparation exports logged `EKF2_ABL_ACCLIM`, `EKF2_ABL_GYRLIM`, `EKF2_ABL_TAU`
+  and the two enable flags in `bias_parameters.csv`. New logs use
+  `EKF2_IMU_CTRL` bits 0/1; legacy `EKF2_AID_MASK` bit 2 disables accel bias,
+  with gyro bias enabled. Parameter changes within the session are rejected.
+  CSV inputs without this file use explicit 25 m/s², 3 rad/s, 0.5 s defaults
+  with both bias estimators enabled. The 0.5 s value is a decay time constant.
+- Preserve the three-column `imu_flags.csv`. In the replay input adapter only,
+  missing accel clipping assumes clear **for bias learning**, with an explicit
+  diagnostic/count. Gravity fusion still sees unknown clipping and is blocked.
+  Unknown rest does not supply a rest override. Gyro clipping is not an input to
+  this inhibition rule. Reject recorded IMU selection/calibration/frame changes;
+  absent metadata cannot prove continuity or physical sensor health.
+- The replay implements no fake-position/height modes, so their flags are false.
+  Bad-vertical-acceleration detection is **not implemented**: its input is false
+  in this profile, not a claim that the sensor has passed a health check.
+  `bias_learning.csv` records metadata, assumptions, peaks and permissions;
+  summary counts are permitted IMU samples, not successful bias corrections.
+
+Behavioral reference: PX4 v1.16.2
+[IMU bias inhibition](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/ekf_helper.cpp#L971),
+[learning limits](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/params_accel_bias.yaml),
+and [legacy parameter semantics](https://docs.px4.io/v1.13/en/advanced_config/parameter_reference#EKF2_AID_MASK).
+This aligns the inhibition rule under supplied conditions, not all EKF2 behavior:
+replay uses its own IMU horizons and precision. PX4's
+[covariance prediction](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/covariance.cpp#L145)
+adds bias process noise only below a variance threshold, independently of its learning-inhibition flags;
+replay has not added that variance-dependent rule. Vertical fault detection,
+fake-aiding modes and bias limits also remain pending.
+Native tests support this integration; Lean/ESBMC evidence remains pending.
 
 ### R-GNSS-QUALITY: GNSS quality checks and health qualification
 

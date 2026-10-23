@@ -197,6 +197,20 @@ def land_flags(ULOG, TIMES):
 def imu_flags(ULOG, IMU, START_INDEX):
     """Missing clipping/rest data is -1, never inferred from estimator outputs."""
     TIMES = [int(TIME) for TIME in IMU["timestamp"][START_INDEX:]]
+    for NAME in ("accel_calibration_count", "gyro_calibration_count"):
+        if NAME in IMU and len(set(IMU[NAME][START_INDEX:])) > 1:
+            raise ValueError(f"IMU {NAME} changes require a new replay/bias-learning session")
+    for DATA in ULOG.data_list:
+        if DATA.name == "sensor_selection" and DATA.multi_id == 0:
+            for NAME in ("accel_device_id", "gyro_device_id"):
+                if NAME in DATA.data:
+                    IDS = {int(VALUE) for TIME, VALUE in zip(DATA.data["timestamp"], DATA.data[NAME])
+                           if TIME <= TIMES[-1]}
+                    if len(IDS) > 1:
+                        raise ValueError(f"selected IMU {NAME} changes require a new replay/bias-learning session")
+    for TIME, NAME, _ in ULOG.changed_parameters:
+        if TIMES[0] <= TIME <= TIMES[-1] and NAME.startswith(("CAL_ACC", "CAL_GYRO", "SENS_BOARD")):
+            raise ValueError(f"changed {NAME} requires a new replay/bias-learning session")
     LAND = land_flags(ULOG, TIMES)
     CLIPPING = IMU.get("accelerometer_clipping")
     ROWS = []
@@ -209,6 +223,28 @@ def imu_flags(ULOG, IMU, START_INDEX):
             MASK = int(VALUE)
         ROWS.append([TIME, LAND[OFFSET][1], MASK])
     return ROWS
+
+
+def bias_parameters(ULOG, END):
+    """Translate current or legacy logged bias controls into one fixed session."""
+    NAMES = ("EKF2_ABL_ACCLIM", "EKF2_ABL_GYRLIM", "EKF2_ABL_TAU")
+    VALUES = [float(ULOG.initial_parameters[NAME]) for NAME in NAMES]
+    if not finite(VALUES) or any(VALUE <= 0 for VALUE in VALUES):
+        raise ValueError("invalid bias magnitude/decay parameters")
+    SOURCE = "EKF2_IMU_CTRL" if "EKF2_IMU_CTRL" in ULOG.initial_parameters else "EKF2_AID_MASK"
+    MASK = float(ULOG.initial_parameters[SOURCE])
+    if not math.isfinite(MASK) or not MASK.is_integer() or not 0 <= MASK <= 2**31 - 1:
+        raise ValueError(f"invalid {SOURCE} bitmask")
+    MASK = int(MASK)
+    if SOURCE == "EKF2_IMU_CTRL":
+        ACCEL, GYRO = bool(MASK & 2), bool(MASK & 1)
+    else:
+        # Legacy bit 2 inhibits accelerometer bias; no gyro-bias disable bit.
+        ACCEL, GYRO = not bool(MASK & 4), True
+    for TIME, NAME, _ in ULOG.changed_parameters:
+        if TIME <= END and NAME in (*NAMES, "EKF2_IMU_CTRL", "EKF2_AID_MASK"):
+            raise ValueError(f"changed {NAME} requires a new bias-learning session")
+    return [*VALUES, int(ACCEL), int(GYRO)]
 
 
 def gnss_displacement(PREVIOUS, CURRENT):
@@ -291,6 +327,7 @@ def prepare(ULOG, OUTPUT):
     Q = initial_quaternion(ACCEL, FIELD, math.radians(DECLINATION))
     MAG_REFERENCE = magnetic_reference(Q, FIELD, ULOG)
     MAG_ROWS = magnetic_rows(ULOG, MAG, MAG_TIMES, START, IMU_TIMES[-1])
+    BIAS_PARAMETERS = bias_parameters(ULOG, IMU_TIMES[-1])
     GNSS_PARAMETERS = gnss_parameters(ULOG, IMU_TIMES[-1])
     QUALITY_PARAMETERS = gnss_quality_parameters(ULOG, IMU_TIMES[-1])
     QUALITY_ROWS = gnss_quality_rows(ULOG, GPS, GPS_TIMES, START, IMU_TIMES[-1])
@@ -330,6 +367,9 @@ def prepare(ULOG, OUTPUT):
     write_csv(OUTPUT / "imu.csv", IMU_HEADER, IMU_ROWS)
     FLAGS = imu_flags(ULOG, IMU, SEED[-1])
     write_csv(OUTPUT / "imu_flags.csv", "timestamp_us,at_rest,accelerometer_clipping", FLAGS)
+    write_csv(OUTPUT / "bias_parameters.csv",
+              "maximum_specific_force,maximum_angular_rate,decay_time_constant,accelerometer_enabled,gyroscope_enabled",
+              [BIAS_PARAMETERS])
     write_csv(OUTPUT / "navigation.csv", NAVIGATION_HEADER, GPS_ROWS)
     write_csv(OUTPUT / "gnss_parameters.csv",
               "position_gate,velocity_gate,position_noise,velocity_noise,position_noise_limit", [GNSS_PARAMETERS])
@@ -381,6 +421,13 @@ def prepare(ULOG, OUTPUT):
             "magnetic_source_limits": "reject recorded source/calibration changes; missing metadata cannot establish absence of changes",
             "at_rest_unavailable_rows": sum(ROW[1] == -1 for ROW in FLAGS),
             "clipping_unavailable_rows": sum(ROW[2] == -1 for ROW in FLAGS),
+            "bias_parameters": dict(zip(("maximum_specific_force", "maximum_angular_rate", "decay_time_constant",
+                                          "accelerometer_enabled", "gyroscope_enabled"), BIAS_PARAMETERS)),
+            "bias_control_source": "EKF2_IMU_CTRL" if "EKF2_IMU_CTRL" in ULOG.initial_parameters else "EKF2_AID_MASK",
+            "bias_learning": "pre-prediction bias-corrected decaying peaks; all corrections share six permissions; no recovery timer or gyro clipping condition",
+            "bias_clipping_compatibility": "missing accel clipping assumed clear ONLY for bias learning; -1 retained for gravity fusion; not evidence of no clipping",
+            "bias_mode_limits": "no fake position/height modes; bad vertical acceleration detector not implemented",
+            "imu_source_limits": "reject recorded IMU selection/calibration changes; missing metadata does not prove continuity or sensor health",
             "timing": "GNSS message timestamp, fused on following IMU tick; no physical latency compensation",
             "height": "ellipsoidal GNSS altitude projected to fixed local NED; no barometer/rangefinder",
             "imu_gap_policy": "hold previous IMU rate over missing interval; report every gap",

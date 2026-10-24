@@ -1011,8 +1011,9 @@ The policy does not alter nominal state, covariance, prediction, process noise o
 `ReplayBiasLearning` evaluates the prior biases and unit attitude once before
 prediction, then supplies the same six `Ins::BiasUpdate` permissions to every
 GNSS, gravity and magnetic correction at that horizon. It uses decaying peaks,
-not `ImuBiasLearning`'s separate continuous-good timers. Core equations,
-prediction/process noise and bias-preserving resets remain unchanged.
+not `ImuBiasLearning`'s separate continuous-good timers. Learning inhibition
+does not control prediction noise; `R-BIAS-PROCESS-NOISE` supplies that independent
+policy. Core equations and bias-preserving resets remain unchanged.
 
 - For synchronized accel/gyro integration periods `dt > 0`, compute
   `decay = 1 - clamp(dt / tau, 0, 1)` and independently update each envelope as
@@ -1054,12 +1055,65 @@ Behavioral reference: PX4 v1.16.2
 [learning limits](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/params_accel_bias.yaml),
 and [legacy parameter semantics](https://docs.px4.io/v1.13/en/advanced_config/parameter_reference#EKF2_AID_MASK).
 This aligns the inhibition rule under supplied conditions, not all EKF2 behavior:
-replay uses its own IMU horizons and precision. PX4's
-[covariance prediction](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/covariance.cpp#L145)
-adds bias process noise only below a variance threshold, independently of its learning-inhibition flags;
-replay has not added that variance-dependent rule. Vertical fault detection,
-fake-aiding modes and bias limits also remain pending.
-Native tests support this integration; Lean/ESBMC evidence remains pending.
+replay uses its own IMU horizons and precision. Its variance-dependent bias noise
+selection is specified below. Vertical fault detection, fake-aiding modes and
+bias limits remain pending. Native tests support this integration;
+Lean/ESBMC evidence remains pending.
+
+### R-BIAS-PROCESS-NOISE: variance-dependent bias driving noise
+
+`runtime::try_inhibit_bias_process_noise(P, configured_noise, output_noise)`
+selects INS process noise for one prediction. Its rule follows PX4 v1.16.2
+[covariance prediction](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/covariance.cpp#L145):
+
+| Body axis i | Keep the configured intensity only when |
+|---|---|
+| Accelerometer bias | `P(9+i,9+i) < specific_force_variance(i)` |
+| Gyroscope bias | `P(12+i,12+i) < angular_rate_variance(i)` |
+
+- Otherwise set only that bias intensity to zero. Preserve both IMU measurement
+  variance vectors and every other bias axis. No new threshold parameter is
+  introduced. Zero variance/intensity is valid; equality inhibits the increment.
+- The INS bias transition rows are identity and sampled measurement noise has
+  no bias rows. Thus prior bias diagonals equal their propagated values before
+  bias noise, including with nonzero cross-covariances. Reading the prior avoids
+  a second prediction. This is scoped to this INS model, not arbitrary dynamics.
+- Validate all twelve noise coefficients and six consumed bias diagonals as
+  finite/nonnegative, even on inhibited axes. Non-finite input returns
+  `non_finite_input`; negative input returns `domain_error`. No universal
+  precedence is promised for multiple independent invalid inputs. Other entries
+  of P are not read here; valid symmetric PSD covariance remains the prediction
+  caller's premise. Failure preserves the whole output, including an alias of
+  configured noise; success permits that alias. State/P are never changed here.
+- Derive every step from the original configured noise. A correction that reduces
+  variance below its threshold releases inhibition immediately. This rule is
+  independent of bias-learning permissions, motion, clipping and enable flags.
+  Future fault-dependent IMU variance selection must happen before this rule.
+- This is a pre-increment check, not a clamp: one permitted increment may cross
+  the threshold. The next step inhibits further bias noise while variance stays
+  above it; an already-high covariance is not reduced. No hard covariance bound,
+  physical sensor-health claim or bias-value limit follows from this rule.
+
+The threshold quantities have matching units: m²/s⁴ for accelerometer bias and
+sampled specific force, rad²/s² for gyro bias and sampled angular rate. Preserve
+`E-NOISE`: the selected continuous driving-noise intensity is multiplied by `dt`.
+PX4's bias-driving parameters instead have units m/s³ and rad/s² and contribute
+`(sigma * dt)^2`. At a fixed dt, matching that contribution would require
+`intensity = sigma^2 * dt`; there is no constant conversion across variable dt.
+This feature aligns the threshold decision, not parameter values or discretization.
+Do not copy PX4's bias-noise numbers into our intensity fields unchanged.
+
+Replay applies selection before every real or gap-hold prediction, using its
+configured per-axis IMU variances (currently 1 m²/s⁴ and 0.0004 rad²/s²) and
+unchanged intensities (1e-6 m²/s⁵ and 1e-8 rad²/s³). These are existing replay
+settings, not newly calibrated flight noise. Prediction failure still aborts.
+`bias_learning.csv` records the six selected-noise flags for real IMU ticks;
+summary inhibition counts include gap-hold predictions and count only configured
+positive intensities suppressed by the rule. Selection is not proof that a tiny
+floating-point increment changed P. Native backend, threshold, rollback,
+correction/recovery and replay tests support the rule; new Lean/ESBMC evidence
+remains pending. Full PX4 covariance constraints and fault-dependent noise
+adjustments remain separate work.
 
 ### R-GNSS-QUALITY: GNSS quality checks and health qualification
 

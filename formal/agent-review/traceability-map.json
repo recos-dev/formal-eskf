@@ -3335,6 +3335,30 @@
       }
     },
     {
+      "id": "R-BIAS-PROCESS-NOISE",
+      "title": "INS variance-dependent bias driving-noise selection and replay wiring; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-BIAS-PROCESS-NOISE: variance-dependent bias driving noise"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/bias_process_noise.hpp",
+            "symbol": "[[nodiscard]] Status try_inhibit_bias_process_noise("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "void replay("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "R-GNSS-RESET",
       "title": "Checked GNSS position, 3D-velocity and Down-only velocity resets, covariance decorrelation and atomic delta publication; Lean and ESBMC evidence pending",
       "references": {

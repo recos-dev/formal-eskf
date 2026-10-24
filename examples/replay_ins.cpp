@@ -28,6 +28,7 @@
 
 #include <formal_eskf/eskf/eskf.hpp>
 #include <formal_eskf/runtime/accelerometer.hpp>
+#include <formal_eskf/runtime/bias_process_noise.hpp>
 #include <formal_eskf/runtime/gnss_reset.hpp>
 #include <formal_eskf/runtime/magnetometer.hpp>
 #include <formal_eskf/runtime/magnetometer_fusion.hpp>
@@ -843,7 +844,9 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     bias_log << std::setprecision(17);
     bias_log
         << "timestamp_us,at_rest,accelerometer_clipping,clipping_assumed_clear,specific_force_peak,"
-           "angular_rate_peak,high_dynamics,bax_enabled,bay_enabled,baz_enabled,bgx_enabled,bgy_enabled,bgz_enabled\n";
+           "angular_rate_peak,high_dynamics,bax_enabled,bay_enabled,baz_enabled,bgx_enabled,bgy_enabled,bgz_enabled,"
+           "bax_process_noise_selected,bay_process_noise_selected,baz_process_noise_selected,"
+           "bgx_process_noise_selected,bgy_process_noise_selected,bgz_process_noise_selected\n";
     std::ofstream accel_updates(output / "accelerometer_updates.csv");
     std::ofstream mag_updates(output / "magnetometer_updates.csv");
     std::ofstream mag_resets(output / "magnetometer_resets.csv");
@@ -893,6 +896,33 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::size_t mag_heading_resets = 0U;
     std::array<std::size_t, 3U> accel_bias_enabled{}, gyro_bias_enabled{};
     std::size_t bias_high_dynamics = 0U;
+    std::array<std::size_t, 3U> accel_bias_noise_inhibited{}, gyro_bias_noise_inhibited{};
+    auto predict = [&](Imu const & sample, std::uint64_t period_us, std::uint64_t prediction_time)
+    {
+        // Always start with the configured intensities, not last step's zeros.
+        auto step_settings = settings;
+        check_status(formal_eskf::runtime::try_inhibit_bias_process_noise(covariance, settings.process_noise,
+                                                                          step_settings.process_noise),
+                     "bias process noise", prediction_time);
+        check_status(formal_eskf::try_predict(state, covariance, sample, static_cast<double>(period_us) * 1e-6,
+                                              step_settings, state, covariance),
+                     "prediction", prediction_time);
+        auto const & selected = step_settings.process_noise;
+        for (std::size_t axis = 0U; axis < 3U; ++axis)
+        {
+            accel_bias_noise_inhibited[axis] +=
+                settings.process_noise.accelerometer_bias_random_walk_variance_density(axis) > 0.0 &&
+                        selected.accelerometer_bias_random_walk_variance_density(axis) == 0.0
+                    ? 1U
+                    : 0U;
+            gyro_bias_noise_inhibited[axis] +=
+                settings.process_noise.gyroscope_bias_random_walk_variance_density(axis) > 0.0 &&
+                        selected.gyroscope_bias_random_walk_variance_density(axis) == 0.0
+                    ? 1U
+                    : 0U;
+        }
+        return selected;
+    };
     std::uint64_t mag_max_alignment_us = 0U;
     while (read_row(imu, imu_row))
     {
@@ -907,9 +937,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         {
             // A logged average only covers its integral_dt. Explicitly hold
             // the PREVIOUS rate over the missing interval, then use this one.
-            check_status(formal_eskf::try_predict(state, covariance, previous_imu, static_cast<double>(missing) * 1e-6,
-                                                  settings, state, covariance),
-                         "gap hold prediction", time + missing);
+            (void)predict(previous_imu, missing, time + missing);
             ++gaps;
             gap_us += missing;
             // Held prediction rates are not new measurements. Discard the
@@ -928,9 +956,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         auto const learning = bias_learning.update(static_cast<double>(period) * 1e-6, state, sample, bias_conditions);
         check_status(learning.status, "bias learning", next_time);
         auto const & bias_update = learning.bias_update;
-        check_status(formal_eskf::try_predict(state, covariance, sample, static_cast<double>(period) * 1e-6, settings,
-                                              state, covariance),
-                     "prediction", next_time);
+        auto const selected_noise = predict(sample, period, next_time);
         time = next_time;
         previous_imu = sample;
         ++predictions;
@@ -945,6 +971,14 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         for (auto const enabled : bias_update.gyroscope)
         {
             bias_log << ',' << enabled;
+        }
+        for (std::size_t axis = 0U; axis < 3U; ++axis)
+        {
+            bias_log << ',' << (selected_noise.accelerometer_bias_random_walk_variance_density(axis) > 0.0);
+        }
+        for (std::size_t axis = 0U; axis < 3U; ++axis)
+        {
+            bias_log << ',' << (selected_noise.gyroscope_bias_random_walk_variance_density(axis) > 0.0);
         }
         bias_log << '\n';
         for (std::size_t axis = 0U; axis < 3U; ++axis)
@@ -1437,6 +1471,13 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"bias_maximum_specific_force\": " << bias_parameters.maximum_specific_force
             << ",\n  \"bias_maximum_angular_rate\": " << bias_parameters.maximum_angular_rate
             << ",\n  \"bias_decay_time_constant\": " << bias_parameters.decay_time_constant
+            << ",\n  \"covariance_predictions\": " << predictions + gaps
+            << ",\n  \"accelerometer_bias_process_noise_inhibited_predictions\": [" << accel_bias_noise_inhibited[0U]
+            << ',' << accel_bias_noise_inhibited[1U] << ',' << accel_bias_noise_inhibited[2U] << ']'
+            << ",\n  \"gyroscope_bias_process_noise_inhibited_predictions\": [" << gyro_bias_noise_inhibited[0U] << ','
+            << gyro_bias_noise_inhibited[1U] << ',' << gyro_bias_noise_inhibited[2U] << ']'
+            << ",\n  \"bias_process_noise_threshold_source\": \"configured per-axis IMU measurement variances\""
+            << ",\n  \"bias_process_noise_scaling\": \"continuous intensity times dt\""
             << ",\n  \"accelerometer_observations\": " << accel_observations
             << ",\n  \"accelerometer_corrections\": " << accel_corrections
             << ",\n  \"accelerometer_rejected\": " << accel_rejected

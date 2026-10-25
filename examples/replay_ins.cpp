@@ -36,6 +36,7 @@
 #include <formal_eskf/runtime/magnetometer_reset.hpp>
 #include <formal_eskf/runtime/position.hpp>
 #include <formal_eskf/runtime/velocity.hpp>
+#include <formal_eskf/runtime/vertical_acceleration_health.hpp>
 #include "replay_accelerometer.hpp"
 #include "replay_bias.hpp"
 #include "replay_conditions.hpp"
@@ -120,6 +121,32 @@ using Accelerometer = formal_eskf::example::ReplayAccelerometer<Linalg, ACCEL_OB
 using MagneticLifecycle = formal_eskf::runtime::MagnetometerFusion;
 using GnssQuality = formal_eskf::example::ReplayGnssQuality<Linalg>;
 using GnssLifecycle = formal_eskf::runtime::GnssFusion;
+using VerticalHealth = formal_eskf::runtime::VerticalAccelerationHealth<Linalg>;
+
+struct VerticalAccelerationEvidence
+{
+    VerticalHealth::Observations observations{};
+    std::uint64_t height_time_us{};
+    std::uint64_t velocity_time_us{};
+};
+
+void write_vertical_health(std::ostream & stream, std::uint64_t time, bool available, double average_interval,
+                           VerticalHealth::State const & health, VerticalAccelerationEvidence const & evidence)
+{
+    stream << time << ',' << available << ',' << average_interval;
+    for (auto count : health.clip_count)
+    {
+        stream << ',' << count;
+    }
+    stream << ',' << static_cast<int>(health.likelihood) << ',' << health.bad_clipping << ',' << health.bad_sample
+           << ',' << health.bad_vertical_acceleration << ',' << health.last_bad_time_us << ','
+           << health.last_good_time_us;
+    auto const & height = evidence.observations.gnss_height;
+    auto const & velocity = evidence.observations.gnss_velocity_down;
+    stream << ',' << height.active << ',' << evidence.height_time_us << ',' << height.innovation << ','
+           << height.variance << ',' << velocity.active << ',' << evidence.velocity_time_us << ','
+           << velocity.innovation << ',' << velocity.variance << '\n';
+}
 
 std::ifstream open_csv(std::filesystem::path const & path, std::string_view expected_header)
 {
@@ -818,6 +845,11 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     FusionConditions fusion_conditions;
     auto const bias_parameters = read_bias_parameters(input);
     BiasLearning bias_learning(bias_parameters);
+    VerticalHealth vertical_health;
+    VerticalAccelerationEvidence vertical_cache;
+    // This replay predicts at the logged IMU cadence, not EKF2's downsampled cadence.
+    double const nominal_interval = static_cast<double>(timestamp(imu_row[1U])) * 1e-6;
+    double average_interval = nominal_interval;
     auto const bias_limits = read_bias_limits(input);
     // Fixed valid limits + finite successful corrections make post-correction
     // limiting infallible. Validate before any replay state is published.
@@ -879,6 +911,14 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                         "innovation,innovation_variance,test_ratio,observation_variance\n";
     }
     std::ofstream condition_log(output / "fusion_conditions.csv");
+    std::ofstream vertical_log(output / "vertical_acceleration_health.csv");
+    vertical_log.exceptions(std::ios::failbit | std::ios::badbit);
+    vertical_log << std::setprecision(17);
+    vertical_log << "timestamp_us,available,average_interval_s,clip_count_x,clip_count_y,clip_count_z,"
+                    "likelihood,bad_clipping,bad_sample,bad_vertical_acceleration,last_bad_timestamp_us,"
+                    "last_good_timestamp_us,height_active,height_source_timestamp_us,height_innovation,"
+                    "height_innovation_variance,velocity_active,velocity_source_timestamp_us,"
+                    "velocity_innovation,velocity_innovation_variance\n";
     std::ofstream bias_log(output / "bias_learning.csv");
     bias_log.exceptions(std::ios::failbit | std::ios::badbit);
     bias_log << std::setprecision(17);
@@ -886,7 +926,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         << "timestamp_us,at_rest,accelerometer_clipping,clipping_assumed_clear,specific_force_peak,"
            "angular_rate_peak,high_dynamics,bax_enabled,bay_enabled,baz_enabled,bgx_enabled,bgy_enabled,bgz_enabled,"
            "bax_process_noise_selected,bay_process_noise_selected,baz_process_noise_selected,"
-           "bgx_process_noise_selected,bgy_process_noise_selected,bgz_process_noise_selected\n";
+           "bgx_process_noise_selected,bgy_process_noise_selected,bgz_process_noise_selected,"
+           "vertical_acceleration_available,bad_vertical_acceleration\n";
     std::ofstream accel_updates(output / "accelerometer_updates.csv");
     std::ofstream mag_updates(output / "magnetometer_updates.csv");
     std::ofstream mag_resets(output / "magnetometer_resets.csv");
@@ -936,6 +977,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::size_t mag_heading_resets = 0U;
     std::array<std::size_t, 3U> accel_bias_enabled{}, gyro_bias_enabled{};
     std::size_t bias_high_dynamics = 0U;
+    std::size_t vertical_evaluations = 0U, vertical_fault_samples = 0U, vertical_bias_inhibited = 0U;
     std::array<std::size_t, 3U> accel_bias_noise_inhibited{}, gyro_bias_noise_inhibited{};
     auto predict = [&](Imu const & sample, std::uint64_t period_us, std::uint64_t prediction_time)
     {
@@ -986,12 +1028,27 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         }
         auto const sample = imu_sample(imu_row);
         auto const sample_flags = read_imu_flags(flags, next_time);
-        // This replay has no fake-position/height modes or bad-vertical-accel
-        // detector. Lost GNSS aiding is not a substitute for those mode flags.
+        // Missing IMU/clipping breaks monitor continuity; never use held IMU
+        // values or the bias-learning compatibility fallback as health evidence.
+        if (missing != 0U || sample_flags.accelerometer_clipping < 0)
+        {
+            vertical_health.reset();
+            vertical_cache = {};
+            average_interval = nominal_interval;
+        }
+        average_interval = 0.99 * average_interval + 0.01 * std::clamp(static_cast<double>(period) * 1e-6,
+                                                                       0.5 * nominal_interval, 2.0 * nominal_interval);
+        bool const prior_health_available =
+            quality_parameters.has_value() && vertical_health.state().last_update_time_us != 0U;
+        // Bias inhibition precedes prediction and consumes the preceding verdict.
+        // This replay has no fake-position/height modes.
         BiasLearning::Conditions bias_conditions;
+        bias_conditions.bad_vertical_acceleration =
+            prior_health_available && vertical_health.state().bad_vertical_acceleration;
+        vertical_bias_inhibited += bias_conditions.bad_vertical_acceleration ? 1U : 0U;
         bias_conditions.at_rest = sample_flags.at_rest == 1;
         // Legacy input compatibility, only for bias learning. Keep -1 for
-        // gravity fusion: absence of clipping metadata is not measured health.
+        // gravity fusion and vertical health: absence is not measured health.
         bias_conditions.accelerometer_clipping = std::max(0, sample_flags.accelerometer_clipping);
         auto const learning = bias_learning.update(static_cast<double>(period) * 1e-6, state, sample, bias_conditions);
         check_status(learning.status, "bias learning", next_time);
@@ -1020,7 +1077,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         {
             bias_log << ',' << (selected_noise.gyroscope_bias_random_walk_variance_density(axis) > 0.0);
         }
-        bias_log << '\n';
+        bias_log << ',' << prior_health_available << ',' << bias_conditions.bad_vertical_acceleration << '\n';
         for (std::size_t axis = 0U; axis < 3U; ++axis)
         {
             accel_bias_enabled[axis] += bias_update.accelerometer[axis] ? 1U : 0U;
@@ -1036,6 +1093,17 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         // at the following IMU tick. Do not split sampled-noise IMU steps or
         // pretend this compensates receiver latency. Report alignment error.
         bool lifecycle_updated = false;
+        bool vertical_snapshot_taken = false;
+        VerticalAccelerationEvidence vertical_evidence;
+        auto capture_vertical_evidence = [&](bool height_active)
+        {
+            vertical_evidence = vertical_cache;
+            vertical_evidence.observations.gnss_velocity_down.active =
+                vertical_cache.observations.gnss_velocity_down.active && gnss_lifecycle.state().velocity.active;
+            vertical_evidence.observations.gnss_height.active =
+                vertical_cache.observations.gnss_height.active && height_active;
+            vertical_snapshot_taken = true;
+        };
         while (has_navigation && timestamp(navigation_row[0U]) <= time)
         {
             auto const source_time = timestamp(navigation_row[0U]);
@@ -1061,6 +1129,21 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 quality_waiting += result.outcome == "waiting" ? 1U : 0U;
                 quality_unavailable += result.outcome == "unavailable" ? 1U : 0U;
                 invalid_velocity += result.outcome == "invalid_velocity" ? 1U : 0U;
+                // A quality rejection need not deactivate velocity aiding. Keep
+                // current raw diagnostics without invoking a correction.
+                if (!result.accepted() && result.evaluated && gnss_lifecycle.state().velocity.active)
+                {
+                    auto const noise =
+                        navigation_variances(navigation_row[7U], navigation_row[8U], navigation_row[9U], gnss);
+                    vertical_cache.observations.gnss_velocity_down = {true, state.v_n(2U) - navigation_row[6U],
+                                                                      covariance(5U, 5U) + noise.velocity_z};
+                    vertical_cache.velocity_time_us = source_time;
+                }
+                else if (result.outcome == "unavailable")
+                {
+                    vertical_cache.observations.gnss_velocity_down = {};
+                    vertical_cache.velocity_time_us = 0U;
+                }
                 auto const lifecycle_sample = result.lifecycle_sample(source_time);
                 if (lifecycle_sample.time_us != 0U)
                 {
@@ -1087,6 +1170,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             ++navigation_events;
             if (!quality_allows_fusion)
             {
+                capture_vertical_evidence(previous_lifecycle.vertical_position.active);
                 if (lifecycle_sample_consumed)
                 {
                     write_gnss_lifecycle(lifecycle_updates, previous_lifecycle, gnss_lifecycle.state(), source_time,
@@ -1143,6 +1227,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                         state, covariance, delta);
                     record_reset(GnssLifecycle::Group::velocity, "velocity", reason, status, delta);
                     ++velocity_resets;
+                    vertical_cache.observations.gnss_velocity_down = {true, 0.0, noise.velocity_z};
+                    vertical_cache.velocity_time_us = source_time;
                 }
                 else if (!quality_parameters || gnss_lifecycle.state().velocity.fusion_allowed)
                 {
@@ -1150,6 +1236,9 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     auto const result =
                         formal_eskf::runtime::fuse_velocity(state, covariance, velocity, velocity_V, QUAT_MIN_NORM,
                                                             gnss->velocity_gate, state, covariance, bias_update);
+                    vertical_cache.observations.gnss_velocity_down = {result.diagnostics_valid, -result.innovation(2U),
+                                                                      result.innovation_variance(2U)};
+                    vertical_cache.velocity_time_us = source_time;
                     if (quality_parameters)
                     {
                         check_status(
@@ -1226,6 +1315,11 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     ++position_xy_skipped;
                 }
 
+                // Snapshot after velocity and before height diagnostics change.
+                // Evaluate once per IMU horizon below; only the next tick's bias
+                // permissions consume it. Multiple due GNSS events retain the
+                // final pre-height snapshot without changing correction order.
+                capture_vertical_evidence(previous_lifecycle.vertical_position.active);
                 if (!quality_parameters || gnss_lifecycle.state().vertical_position.fusion_allowed)
                 {
                     ++position_z_attempts;
@@ -1233,6 +1327,9 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                         state, covariance, navigation_row[3U], noise.position_z, QUAT_MIN_NORM, gnss->position_gate,
                         state, covariance, bias_update);
                     auto const height_V = Linalg::matrix_type<1U, 1U>::from_row_major({noise.position_z});
+                    vertical_cache.observations.gnss_height = {result.diagnostics_valid, -result.innovation(0U),
+                                                               result.innovation_variance(0U)};
+                    vertical_cache.height_time_us = source_time;
                     if (quality_parameters)
                     {
                         check_status(gnss_lifecycle.record_fusion(GnssLifecycle::Group::vertical_position, source_time,
@@ -1260,6 +1357,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     record_reset(GnssLifecycle::Group::vertical_position, "vertical_position", reason, status,
                                  Linalg::vector_type<1U>::from_row_major({delta}));
                     ++position_z_resets;
+                    vertical_cache.observations.gnss_height = {true, 0.0, noise.position_z};
+                    vertical_cache.height_time_us = source_time;
                 }
             }
             else
@@ -1286,7 +1385,41 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             auto const previous = gnss_lifecycle.state();
             update_gnss_lifecycle(gnss_lifecycle, quality_monitor, {}, time);
             write_gnss_lifecycle(lifecycle_updates, previous, gnss_lifecycle.state(), 0U, time);
+            capture_vertical_evidence(previous.vertical_position.active);
         }
+        if (!vertical_snapshot_taken)
+        {
+            capture_vertical_evidence(gnss_lifecycle.state().vertical_position.active);
+        }
+        bool const vertical_available = quality_parameters.has_value() && sample_flags.accelerometer_clipping >= 0;
+        if (vertical_available)
+        {
+            VerticalHealth::Sample health_sample;
+            health_sample.time_us = time;
+            health_sample.average_interval_s = average_interval;
+            health_sample.clipping_available = true;
+            for (std::size_t axis = 0U; axis < 3U; ++axis)
+            {
+                health_sample.clipped[axis] = (sample_flags.accelerometer_clipping & (1 << axis)) != 0;
+            }
+            check_status(vertical_health.update(health_sample, vertical_evidence.observations),
+                         "vertical acceleration health", time);
+            ++vertical_evaluations;
+            vertical_fault_samples += vertical_health.state().bad_vertical_acceleration ? 1U : 0U;
+        }
+        // Inactive or unknown sources must not resurrect a previous session's diagnostics.
+        if (!vertical_available || !gnss_lifecycle.state().velocity.active)
+        {
+            vertical_cache.observations.gnss_velocity_down = {};
+            vertical_cache.velocity_time_us = 0U;
+        }
+        if (!vertical_available || !gnss_lifecycle.state().vertical_position.active)
+        {
+            vertical_cache.observations.gnss_height = {};
+            vertical_cache.height_time_us = 0U;
+        }
+        write_vertical_health(vertical_log, time, vertical_available, average_interval, vertical_health.state(),
+                              vertical_evidence);
         // Retain raw-tick diagnostics; fusion uses the whole observation's clipping below.
         auto const conditions =
             fusion_conditions.conditions(time, true, sample_flags.at_rest, sample_flags.accelerometer_clipping);
@@ -1473,6 +1606,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     }
     condition_log.close();
     bias_log.close();
+    vertical_log.close();
     accel_updates.close();
     mag_updates.close();
     mag_resets.close();
@@ -1516,6 +1650,11 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << (bias_parameters.accelerometer_enabled ? "true" : "false")
             << ",\n  \"gyroscope_bias_estimation_enabled\": " << (bias_parameters.gyroscope_enabled ? "true" : "false")
             << ",\n  \"bias_high_dynamics_samples\": " << bias_high_dynamics
+            << ",\n  \"vertical_acceleration_evaluated_samples\": " << vertical_evaluations
+            << ",\n  \"vertical_acceleration_unavailable_samples\": " << predictions - vertical_evaluations
+            << ",\n  \"vertical_acceleration_fault_samples\": " << vertical_fault_samples
+            << ",\n  \"vertical_acceleration_bias_inhibited_samples\": " << vertical_bias_inhibited
+            << ",\n  \"vertical_acceleration_nominal_interval_s\": " << nominal_interval
             << ",\n  \"accelerometer_bias_learning_samples\": [" << accel_bias_enabled[0U] << ','
             << accel_bias_enabled[1U] << ',' << accel_bias_enabled[2U] << ']'
             << ",\n  \"gyroscope_bias_learning_samples\": [" << gyro_bias_enabled[0U] << ',' << gyro_bias_enabled[1U]
@@ -1595,6 +1734,9 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
               << "Magnetometer events: " << mag_events << " (" << mag_corrections << " fused, " << mag_rejected
               << " gate rejected, " << mag_skipped << " lifecycle skipped, " << mag_superseded << " superseded)\n"
               << "Magnetometer heading resets: " << mag_heading_resets << '\n'
+              << "Vertical acceleration health: " << vertical_evaluations << " evaluated, "
+              << predictions - vertical_evaluations << " unavailable, " << vertical_fault_samples << " fault samples; "
+              << vertical_bias_inhibited << " bias-inhibited ticks\n"
               << "Bias-learning permitted samples: accel [" << accel_bias_enabled[0U] << ',' << accel_bias_enabled[1U]
               << ',' << accel_bias_enabled[2U] << "]; gyro [" << gyro_bias_enabled[0U] << ',' << gyro_bias_enabled[1U]
               << ',' << gyro_bias_enabled[2U] << "]\n"

@@ -3392,7 +3392,7 @@
     },
     {
       "id": "R-VERTICAL-ACCELERATION",
-      "title": "Vertical acceleration health monitor; runtime wiring and Lean/ESBMC evidence pending",
+      "title": "Vertical acceleration health monitor and replay bias inhibition; Lean/ESBMC evidence pending",
       "references": {
         "spec": [
           {
@@ -3413,6 +3413,14 @@
           {
             "file": "include/formal_eskf/runtime/vertical_acceleration_health.hpp",
             "symbol": "Status VerticalAccelerationHealth<Linalg>::update("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "void replay("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "void write_vertical_health("
           }
         ],
         "esbmc": []

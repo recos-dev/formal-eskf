@@ -1045,10 +1045,13 @@ policy. Core equations and bias-preserving resets remain unchanged.
   this inhibition rule. Reject recorded IMU selection/calibration/frame changes;
   absent metadata cannot prove continuity or physical sensor health.
 - The replay implements no fake-position/height modes, so their flags are false.
-  `R-VERTICAL-ACCELERATION` is **not wired into replay**: its input remains false
-  in this profile, not a claim that the sensor has passed a health check.
-  `bias_learning.csv` records metadata, assumptions, peaks and permissions;
-  summary counts are permitted IMU samples, not successful bias corrections.
+  `R-VERTICAL-ACCELERATION` supplies the preceding valid IMU horizon's fault to
+  bias inhibition. A fault disables all accel axes; gyro permissions remain
+  independent. Unknown clipping or an IMU gap invalidates that verdict before
+  learning is evaluated. Unavailable health adds no fault inhibition under this
+  replay compatibility profile; this is not evidence of physical sensor health.
+  `bias_learning.csv` records metadata, assumptions, peaks, permissions and the
+  health verdict actually consumed; counts describe IMU ticks, not corrections.
 
 Behavioral reference: PX4 v1.16.2
 [IMU bias inhibition](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/ekf_helper.cpp#L971),
@@ -1056,8 +1059,8 @@ Behavioral reference: PX4 v1.16.2
 and [legacy parameter semantics](https://docs.px4.io/v1.13/en/advanced_config/parameter_reference#EKF2_AID_MASK).
 This aligns the inhibition rule under supplied conditions, not all EKF2 behavior:
 replay uses its own IMU horizons and precision. Its variance-dependent bias noise
-selection and bias-value limits are specified below. Vertical fault-response integration
-and fake-aiding modes remain pending. Native tests support this integration;
+selection and bias-value limits are specified below. Fault-dependent noise,
+GNSS overrides/resets and fake-aiding modes remain pending. Native tests support this integration;
 Lean/ESBMC evidence remains pending.
 
 ### R-BIAS-PROCESS-NOISE: variance-dependent bias driving noise
@@ -1217,9 +1220,55 @@ API safeguards; no matching invalid-data behavior or bitwise float/double parity
 is claimed. The caller must match filter cadence, averaged interval and source
 diagnostic ordering for matching timelines. PX4 evaluates after GNSS velocity
 and before height fusion; bias/noise prediction consumes the preceding fault.
-This first implementation is not wired into replay or deployment. Native tests
-cover source combinations, signed residual conversion, counters, recovery and
-failure atomicity; Lean/ESBMC evidence and fault-response integration are pending.
+Native tests cover source combinations, signed residual conversion, counters,
+recovery and failure atomicity. Lean/ESBMC evidence remains pending.
+
+Replay integration:
+
+- Evaluate once per real IMU prediction, including ticks without GNSS messages.
+  Require the GNSS quality/lifecycle profile and known clipping. Legacy inputs
+  without that profile report unavailable; do not infer source activity from a
+  correction count. Barometer/range/vision slots remain inactive. GNSS height
+  and velocity alone can only give medium likelihood, requiring clipping to
+  trigger a fault.
+- Use actual GNSS correction diagnostics, including gate-rejected results:
+  negate `r` and retain S. While velocity aiding remains active after a quality
+  rejection, refresh its raw Down innovation and `P(5,5) + V_D` without fusing.
+  Invalid receiver velocity is not a new received sample; unavailable quality
+  metadata invalidates the velocity cache. Numerical failures abort replay.
+- Take the diagnostic snapshot after current velocity processing and before
+  current height processing. It contains the current velocity cache and the
+  preceding height cache. Height activity is from before height control; velocity
+  activity reflects current horizontal control. Inactive sources are excluded;
+  caches are cleared after lifecycle stop. Successful full velocity/height resets
+  set that cache's innovation to zero and S to observation variance, as in the
+  reference's aid-status reset. A Down-only reset retains velocity diagnostics.
+- Evaluate the saved snapshot after GNSS processing. Only the next tick's bias
+  permissions consume the result, so this deferred evaluation does not change
+  current fusion or bias permissions. If multiple GNSS messages fall in one IMU
+  tick, keep the final pre-height snapshot and existing sequential corrections;
+  count clipping once. This batching is a replay timing approximation, not a
+  reproduction of EKF2's receiver-buffer/downsampling schedule.
+- Initialize nominal/average interval from the seed IMU integration period.
+  For each actual sample update `average = 0.99*average +
+  0.01*clamp(dt, 0.5*nominal, 2*nominal)`. Accel/gyro periods are synchronized in
+  replay. The averaging rule follows the reference; replay's logged prediction
+  cadence replaces EKF2's configured downsampled cadence. Do not use GNSS dt.
+  Missing intervals/unknown clipping clear monitor, diagnostic caches and average
+  history before consuming a prior verdict. Held gap predictions never increment
+  clipping counters. Restart from the next actual sample with known metadata.
+- `vertical_acceleration_health.csv` reports availability, interval, counters,
+  likelihood (0/1/2 = low/medium/high), current fault/timers and the signed input
+  diagnostics with source timestamps. `bias_learning.csv` reports the preceding
+  verdict used for permissions. Summary counts separate evaluated, unavailable,
+  fault-held and fault-inhibited ticks. An available low verdict with no active
+  diagnostics still does not prove health.
+
+This integration changes accel bias-learning permissions only. Process-noise
+inflation, GNSS gate overrides, the independent 500 ms reset condition and PX4
+adapter wiring remain separate work. Native replay tests exercise rejection,
+input ordering, actual bias preservation/recovery and metadata interruptions;
+this is not a formal proof or flight-accuracy result.
 
 ### R-GNSS-QUALITY: GNSS quality checks and health qualification
 

@@ -181,6 +181,16 @@ if(PROJECT_IS_TOP_LEVEL)
                         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_replay_bias.cmake
                 )
             endforeach()
+            foreach(CASE IN ITEMS fault height negative clear missing gap metadata_gap quality batch outage)
+                add_test(
+                    NAME formal_eskf.replay_vertical_acceleration.${CASE}
+                    COMMAND ${CMAKE_COMMAND}
+                        -DREPLAY=$<TARGET_FILE:replay_ins>
+                        -DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                        -DCASE=${CASE}
+                        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_replay_vertical_acceleration.cmake
+                )
+            endforeach()
             foreach(CASE IN ITEMS timeout disturbed aided)
                 add_test(
                     NAME formal_eskf.replay_magnetometer.reset.${CASE}

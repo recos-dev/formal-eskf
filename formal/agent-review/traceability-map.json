@@ -3391,6 +3391,34 @@
       }
     },
     {
+      "id": "R-VERTICAL-ACCELERATION",
+      "title": "Vertical acceleration health monitor; runtime wiring and Lean/ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-VERTICAL-ACCELERATION: apparent falling and clipping detection"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/vertical_acceleration_health.hpp",
+            "symbol": "class VerticalAccelerationHealth"
+          },
+          {
+            "file": "include/formal_eskf/runtime/vertical_acceleration_health.hpp",
+            "symbol": "Status VerticalAccelerationHealth<Linalg>::falling_likelihood("
+          },
+          {
+            "file": "include/formal_eskf/runtime/vertical_acceleration_health.hpp",
+            "symbol": "Status VerticalAccelerationHealth<Linalg>::update("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "R-GNSS-RESET",
       "title": "Checked GNSS position, 3D-velocity and Down-only velocity resets, covariance decorrelation and atomic delta publication; Lean and ESBMC evidence pending",
       "references": {

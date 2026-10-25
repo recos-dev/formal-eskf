@@ -1045,7 +1045,7 @@ policy. Core equations and bias-preserving resets remain unchanged.
   this inhibition rule. Reject recorded IMU selection/calibration/frame changes;
   absent metadata cannot prove continuity or physical sensor health.
 - The replay implements no fake-position/height modes, so their flags are false.
-  Bad-vertical-acceleration detection is **not implemented**: its input is false
+  `R-VERTICAL-ACCELERATION` is **not wired into replay**: its input remains false
   in this profile, not a claim that the sensor has passed a health check.
   `bias_learning.csv` records metadata, assumptions, peaks and permissions;
   summary counts are permitted IMU samples, not successful bias corrections.
@@ -1056,7 +1056,7 @@ Behavioral reference: PX4 v1.16.2
 and [legacy parameter semantics](https://docs.px4.io/v1.13/en/advanced_config/parameter_reference#EKF2_AID_MASK).
 This aligns the inhibition rule under supplied conditions, not all EKF2 behavior:
 replay uses its own IMU horizons and precision. Its variance-dependent bias noise
-selection and bias-value limits are specified below. Vertical fault detection
+selection and bias-value limits are specified below. Vertical fault-response integration
 and fake-aiding modes remain pending. Native tests support this integration;
 Lean/ESBMC evidence remains pending.
 
@@ -1151,6 +1151,75 @@ group. The axis-bound rule agrees, but sequential saturation trajectories need
 not agree. Clamping does not prove posterior covariance consistency or physical
 bias accuracy. Native boundary, failure, correction and replay tests cover this
 feature; Lean/ESBMC evidence and deployment-adapter wiring remain pending.
+
+### R-VERTICAL-ACCELERATION: apparent falling and clipping detection
+
+`runtime::VerticalAccelerationHealth<Linalg>` is a standalone monitor. It owns
+clipping counters, falling likelihood and fault timing, not estimator state/P,
+noise, bias permissions, fusion decisions or resets.
+
+| Input | Meaning |
+|---|---|
+| IMU time | Nonzero, strictly increasing estimator-horizon timestamp in microseconds |
+| Average interval | Caller-supplied average EKF interval in seconds, not observation cadence |
+| Clipping | Known per-body-axis flags accumulated over this IMU interval |
+| Six observation slots | Active flag, signed innovation and innovation variance S; pressure height, GNSS height/Down velocity, range height, vision height/Down velocity |
+
+All innovations use prediction minus observation with positive meaning apparent
+falling. Negate our core's observation-minus-prediction residual; range callers
+must also convert the opposite distance-to-ground direction. The caller supplies
+the latest cached diagnostics from active aiding sources, including gate-rejected
+observations. Lifecycle owns source activity and data expiry; this monitor adds
+no independent freshness timeout and does not treat rejection as deactivation.
+
+- An active, finite, nonnegative variance below **FLT_EPSILON** is ignored. This
+  fixed reference floor is used for float and double, not replaced by DBL_EPSILON.
+  Otherwise form `innovation / sqrt(S)`, without a gate-sigma divisor or absolute
+  value. Any source strictly above 3 gives medium likelihood. A >3 source plus
+  a >1 source of a different reference type gives high likelihood; otherwise low.
+  Types are pressure, GNSS, and ground: GNSS height/velocity share GNSS, and range
+  plus both vision slots share ground. Equality at 1 or 3 does not exceed a test.
+- Set `N = trunc(1 / average_interval_s)`. Per axis, increment if clipped and
+  count < N; otherwise decrement if count > 0. Preserve the decrement even when
+  clipping continues at N, and when a changed N is below the stored count. This
+  is not a sliding window or a saturating counter. Warning means count >= N/2
+  with integer division; critical means count >= N. `bad_clipping` means all
+  three axes warn or any axis is critical. Frequent clipping means body Z warns
+  or `bad_clipping` is set.
+- `bad_sample` means high likelihood, or medium likelihood with frequent
+  clipping. Update last-bad time on bad samples, otherwise last-good time.
+  `bad_vertical_acceleration` holds until elapsed time since last bad is >=3 s.
+  Every bad sample refreshes the hold. Use ordered timestamp subtraction to
+  avoid overflow. Low likelihood/no active sources is absence of evidence, not
+  proof of a healthy IMU. Last-good time describes the instantaneous predicate,
+  even while the fault is held; it is separate from future 500 ms reset policy.
+- Validate time first (`out_of_range`), then a finite positive interval
+  (`non_finite_input`/`domain_error`) and known clipping (`domain_error` if absent).
+  A non-finite reciprocal returns `non_finite_result`; require reciprocal in
+  [2,65536) before uint16 conversion (`out_of_range` otherwise). This keeps the
+  conversion defined and the half-limit nonzero. For each active observation,
+  require finite innovation/variance and nonnegative variance, even below the
+  floor. Non-finite input returns `non_finite_input`, negative variance returns
+  `domain_error`, and non-finite computed ratio returns `non_finite_result`.
+  Inactive observation coefficients are not consumed. Scalar-root failures
+  propagate. Validate all sources before publishing counters or timestamps.
+- Failure preserves every stored field. The stored state then belongs to the
+  previous successful timestamp and is not a verdict for the failed sample.
+  Unknown clipping must not be converted to clear. Reset clears all history;
+  callers restart on IMU gaps, unknown-metadata interruptions or source/calibration/
+  frame changes. After reset, last-update zero means no evaluation yet.
+
+Reference: PX4 v1.16.2 [height health monitor](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/height_control.cpp#L122)
+and its [source-combination tests](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/test/test_EKF_accelerometer.cpp#L111).
+Alignment covers valid inputs and finite arithmetic. Explicit invalid-input
+rejection, missing-metadata handling and overflow-safe time subtraction are our
+API safeguards; no matching invalid-data behavior or bitwise float/double parity
+is claimed. The caller must match filter cadence, averaged interval and source
+diagnostic ordering for matching timelines. PX4 evaluates after GNSS velocity
+and before height fusion; bias/noise prediction consumes the preceding fault.
+This first implementation is not wired into replay or deployment. Native tests
+cover source combinations, signed residual conversion, counters, recovery and
+failure atomicity; Lean/ESBMC evidence and fault-response integration are pending.
 
 ### R-GNSS-QUALITY: GNSS quality checks and health qualification
 

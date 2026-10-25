@@ -3455,6 +3455,58 @@
       }
     },
     {
+      "id": "R-GNSS-VERTICAL-RECOVERY",
+      "title": "Bounded GNSS vertical innovations during IMU faults; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-GNSS-VERTICAL-RECOVERY: bounded vertical innovations during IMU faults"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/gnss_measurement.hpp",
+            "symbol": "struct GnssVelocityConditions"
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_measurement.hpp",
+            "symbol": "struct GnssMeasurementResult"
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_measurement.hpp",
+            "symbol": "struct GnssInnovationCheck"
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_measurement.hpp",
+            "symbol": "void limit_gnss_innovation("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_measurement.hpp",
+            "symbol": "correct_gnss_measurement("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_measurement.hpp",
+            "symbol": "check_gnss_velocity("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_measurement.hpp",
+            "symbol": "fuse_gnss_velocity("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_measurement.hpp",
+            "symbol": "fuse_gnss_height("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "void replay("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "R-GNSS-RESET",
       "title": "Checked GNSS position, 3D-velocity and Down-only velocity resets, covariance decorrelation and atomic delta publication; Lean and ESBMC evidence pending",
       "references": {

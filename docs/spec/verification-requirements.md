@@ -692,7 +692,8 @@ correction failure is not converted into an automatic reset with the same input.
 This is a lifecycle integration, not full EKF2 equivalence: one replay clock
 uses source sample recency instead of separate arrival/delayed horizons; no
 alternate sources, GNSS heading/GSF emergency yaw, height-bias estimator or
-bad-vertical-acceleration reset/override is implemented. Existing seed,
+500 ms bad-vertical-acceleration reset is implemented. Bounded innovation
+exceptions are specified in `R-GNSS-VERTICAL-RECOVERY`. Existing seed,
 sequential gates and numerical models are retained.
 
 ### R-MEASUREMENT-FUSION: gated correction of one observation group
@@ -760,10 +761,68 @@ input error. Event counts are not successful-correction counts; report accepted
 and rejected groups separately. A fully rejected event still counts as consumed.
 Quality qualification is described below; the lifecycle above controls permission
 and GNSS reset execution, including height and Down-only velocity recovery.
-No bad-vertical-acceleration override, delay compensation or change to
-magnetic/gravity scheduling is included.
+`R-GNSS-VERTICAL-RECOVERY` supplies the bounded vertical-innovation exceptions.
+Delay compensation and changes to magnetic/gravity scheduling are not included.
 Without the parameter file, retain legacy/KITTI ungated noise and fusion order.
 Replay checks are integration evidence, not new Lean/ESBMC proofs or accuracy claims.
+
+### R-GNSS-VERTICAL-RECOVERY: bounded vertical innovations during IMU faults
+
+`runtime/gnss_measurement.hpp` adds source-specific INS velocity and NED Down
+position fusion. Generic gates and ungated correction APIs are unchanged. The
+caller must first establish source quality/lifecycle permission, frame/time,
+unit quaternion, symmetric PSD P and SPD measurement noise, as for ordinary
+fusion. A fault never grants source permission or requests a reset.
+
+| Observation | Additional condition to release a rejected gate |
+|---|---|
+| 3D GNSS velocity | Bad vertical acceleration, Down ratio > 1, both N/E ratios strictly < 1, receiver speed accuracy strictly below its configured maximum |
+| GNSS Down position | Bad vertical acceleration and rejected height gate |
+
+Only the vertical innovation is constrained to `[-gate_sigma * sqrt(S_D),
++gate_sigma * sqrt(S_D)]`. Preserve its sign, horizontal residuals, H, V and
+bias-update permissions; call the existing checked correction with that selected
+residual. Do not re-gate the rounded boundary value. Ordinary gate equality is
+accepted, but horizontal equality prevents the velocity exception. Receiver
+accuracy is its reported standard deviation in m/s, not the noise-floor-adjusted
+variance; its strict exception bound applies even when the general quality
+speed-accuracy check is disabled. Both accuracy values must be finite, accuracy
+nonnegative and maximum positive, regardless of the fault flag.
+
+`GnssMeasurementResult` retains raw innovation, S and test ratio in `fusion`, and
+separately exposes `fusion_innovation` and `innovation_limited`. Raw ratio > 1
+can therefore accompany successful limited fusion. Selected innovation is valid
+only with `diagnostics_valid`; only `decision == fused` means it was applied.
+`check_gnss_velocity` returns `GnssInnovationCheck` without correction, for an
+active source's quality-rejected sample. It reports status, diagnostic validity
+and gate rejection; it cannot report successful fusion. Gate/numerical errors retain their existing
+statuses; invalid accuracy returns non_finite_input/domain_error. Rejection or
+any failure, including LLT/normalization after limiting, preserves both outputs.
+Independent whole-prior state/P aliases are supported; other storage is disjoint.
+
+Replay enables velocity recovery only with a quality/lifecycle profile, using
+its existing maximum-speed-accuracy setting. It consumes the preceding valid
+health verdict for velocity, then evaluates current velocity/preceding height
+health before attempting height. Both health caches use selected innovations;
+quality-rejected velocity updates evidence without correction. Missing clipping
+or a broken IMU interval clears health, so no stale fault releases a gate.
+Multiple due events retain the existing sequential estimator updates and the
+single-monitor-transition batching rule in `R-VERTICAL-ACCELERATION`.
+
+`gnss_updates.csv` adds the selected innovation and group-level limit flag;
+summary counts limited successful velocity/height fusions separately. Rejected
+quality/lifecycle conditions still skip correction and do not refresh progress.
+Horizontal position has no exception. Existing timeouts/reset behavior is
+unchanged; the independent 500 ms last-good-acceleration reset is pending.
+
+Behavior reference: PX4 v1.16.2
+[velocity exception](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gps_control.cpp#L209)
+and [height exception](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/position_fusion.cpp#L36).
+Alignment covers predicates, limiting and fault-consumption order. Our grouped
+Joseph correction and latest-prior diagnostics differ from PX4's scalar update
+schedule; replay cadence/batching and missing-data safeguards also differ.
+Native backend and replay tests are evidence for these contracts, not flight
+accuracy or full EKF2 equivalence. Lean/ESBMC evidence remains pending.
 
 ### R-ACCELEROMETER-MAGNITUDE: filtered gravity-band diagnostic
 
@@ -1287,8 +1346,11 @@ Replay integration:
   and velocity alone can only give medium likelihood, requiring clipping to
   trigger a fault.
 - Use actual GNSS correction diagnostics, including gate-rejected results:
-  negate `r` and retain S. While velocity aiding remains active after a quality
-  rejection, refresh its raw Down innovation and `P(5,5) + V_D` without fusing.
+  negate the selected `fusion_innovation` and retain S. A permitted limit is
+  reflected in the monitor cache, as in the reference's aid-source status;
+  raw residuals/ratios remain in the fusion log. While velocity aiding remains
+  active after a quality rejection, evaluate its velocity gate/limit for the
+  cache without correcting the estimator.
   Invalid receiver velocity is not a new received sample; unavailable quality
   metadata invalidates the velocity cache. Numerical failures abort replay.
 - Take the diagnostic snapshot after current velocity processing and before
@@ -1298,12 +1360,13 @@ Replay integration:
   caches are cleared after lifecycle stop. Successful full velocity/height resets
   set that cache's innovation to zero and S to observation variance, as in the
   reference's aid-status reset. A Down-only reset retains velocity diagnostics.
-- Evaluate the saved snapshot after GNSS processing. Only the next tick's bias
-  permissions consume the result, so this deferred evaluation does not change
-  current fusion or bias permissions. If multiple GNSS messages fall in one IMU
-  tick, keep the final pre-height snapshot and existing sequential corrections;
-  count clipping once. This batching is a replay timing approximation, not a
-  reproduction of EKF2's receiver-buffer/downsampling schedule.
+- Evaluate the snapshot before height fusion, so height can consume the current
+  fault. Prediction, bias permissions and every velocity event at this horizon
+  consume the preceding horizon's fault. For multiple due GNSS messages,
+  re-evaluate each pre-height snapshot from the same saved preceding monitor
+  state and retain the final result. Clipping therefore advances once, while
+  every height attempt sees its current pre-height evidence. This batching
+  remains a replay approximation, not EKF2's receiver-buffer schedule.
 - Initialize nominal/average interval from the seed IMU integration period.
   For each actual sample update `average = 0.99*average +
   0.01*clamp(dt, 0.5*nominal, 2*nominal)`. Accel/gyro periods are synchronized in
@@ -1320,8 +1383,9 @@ Replay integration:
   diagnostics still does not prove health.
 
 The replay fault now feeds accel bias-learning permissions and the sampled
-noise selection in `R-IMU-PROCESS-NOISE`. GNSS gate overrides, the independent
-500 ms reset condition and PX4 adapter wiring remain separate work. Native replay
+noise selection in `R-IMU-PROCESS-NOISE`, plus the GNSS fusion exceptions in
+`R-GNSS-VERTICAL-RECOVERY`. The independent 500 ms reset condition and PX4
+adapter wiring remain separate work. Native replay
 tests exercise rejection, input ordering, actual bias preservation/recovery and
 metadata interruptions;
 this is not a formal proof or flight-accuracy result.

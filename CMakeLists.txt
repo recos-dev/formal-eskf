@@ -181,7 +181,7 @@ if(PROJECT_IS_TOP_LEVEL)
                         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_replay_bias.cmake
                 )
             endforeach()
-            foreach(CASE IN ITEMS fault height negative clear missing gap metadata_gap quality batch outage)
+            foreach(CASE IN ITEMS fault height activation horizontal speed_accuracy negative clear missing gap metadata_gap quality batch outage)
                 add_test(
                     NAME formal_eskf.replay_vertical_acceleration.${CASE}
                     COMMAND ${CMAKE_COMMAND}
@@ -287,6 +287,7 @@ if(PROJECT_IS_TOP_LEVEL)
         formal_eskf_add_backend_test(test_eskf_innovation test_eskf_innovation formal_eskf.innovation.eigen formal_eskf::core)
         formal_eskf_add_backend_test(test_gnss_quality test_gnss_quality formal_eskf.gnss_quality.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_gnss_fusion test_gnss_fusion formal_eskf.gnss_fusion.eigen formal_eskf::runtime)
+        formal_eskf_add_backend_test(test_gnss_measurement test_gnss_measurement formal_eskf.gnss_measurement.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_gnss_reset test_gnss_reset formal_eskf.gnss_reset.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_imu_bias_learning test_imu_bias_learning formal_eskf.imu_bias_learning.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_bias_process_noise test_bias_process_noise formal_eskf.bias_process_noise.eigen formal_eskf::runtime)

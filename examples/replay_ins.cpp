@@ -28,6 +28,7 @@
 
 #include <formal_eskf/eskf/eskf.hpp>
 #include <formal_eskf/runtime/accelerometer.hpp>
+#include <formal_eskf/runtime/bias_limits.hpp>
 #include <formal_eskf/runtime/bias_process_noise.hpp>
 #include <formal_eskf/runtime/gnss_reset.hpp>
 #include <formal_eskf/runtime/magnetometer.hpp>
@@ -63,6 +64,8 @@
 #define BIAS_MAX_SPECIFIC_FORCE 25.0 // m/s^2, including gravity response.
 #define BIAS_MAX_ANGULAR_RATE 3.0    // rad/s.
 #define BIAS_DECAY_TIME_CONSTANT 0.5 // s.
+#define ACCEL_BIAS_LIMIT 0.4         // m/s^2, per axis.
+#define GYRO_BIAS_LIMIT 0.15         // rad/s, per axis.
 
 // Gravity observation settings; independent of prediction's ACCEL_VAR.
 #define ACCEL_OBS_STD GRAVITY      // m/s^2; effective pseudo-observation weight.
@@ -111,6 +114,7 @@ using Imu = Types::imu_sample_type;
 using formal_eskf::Status;
 using FusionConditions = formal_eskf::example::ReplayFusionConditions<Linalg>;
 using BiasLearning = formal_eskf::example::ReplayBiasLearning<Linalg>;
+using BiasLimits = formal_eskf::runtime::BiasLimits<double>;
 using ImuFlags = formal_eskf::example::ReplayImuFlags;
 using Accelerometer = formal_eskf::example::ReplayAccelerometer<Linalg, ACCEL_OBS_PERIOD_US>;
 using MagneticLifecycle = formal_eskf::runtime::MagnetometerFusion;
@@ -237,6 +241,33 @@ BiasLearning::Parameters read_bias_parameters(std::filesystem::path const & inpu
         throw std::runtime_error("invalid bias parameters");
     }
     return {row[0U], row[1U], row[2U], row[3U] == 1.0, row[4U] == 1.0};
+}
+
+BiasLimits read_bias_limits(std::filesystem::path const & input)
+{
+    if (!std::filesystem::exists(input / "bias_limits.csv"))
+    {
+        return {ACCEL_BIAS_LIMIT, GYRO_BIAS_LIMIT};
+    }
+    auto stream = open_csv(input / "bias_limits.csv", "accelerometer,gyroscope");
+    std::array<double, 2U> row{}, extra{};
+    if (!read_row(stream, row) || read_row(stream, extra) || row[0U] < 0.0 || row[1U] < 0.0)
+    {
+        throw std::runtime_error("invalid bias limits");
+    }
+    return {row[0U], row[1U]};
+}
+
+void limit_bias(State & state, BiasLimits const & limits, std::array<std::size_t, 6U> & counts, std::uint64_t time)
+{
+    auto const b_a = state.b_a;
+    auto const b_g = state.b_g;
+    check_status(formal_eskf::runtime::try_limit_bias<Linalg>(state, limits), "bias limits", time);
+    for (std::size_t axis = 0U; axis < 3U; ++axis)
+    {
+        counts[axis] += b_a(axis) != state.b_a(axis) ? 1U : 0U;
+        counts[3U + axis] += b_g(axis) != state.b_g(axis) ? 1U : 0U;
+    }
 }
 
 double variance(double accuracy, double floor)
@@ -656,7 +687,8 @@ Covariance initial_covariance(NavigationVariances const & noise)
 }
 
 void correct_navigation(State & state, Covariance & covariance, std::array<double, 10U> const & row, std::uint64_t time,
-                        formal_eskf::configuration::Ins::BiasUpdate const & bias_update)
+                        formal_eskf::configuration::Ins::BiasUpdate const & bias_update, BiasLimits const & limits,
+                        std::array<std::size_t, 6U> & limit_counts)
 {
     // Adapter-provided standard deviations use independent axes and fixed
     // floors (m, m/s), not a full joint 6x6 observation covariance.
@@ -666,14 +698,17 @@ void correct_navigation(State & state, Covariance & covariance, std::array<doubl
     check_status(formal_eskf::try_correct_horizontal_position(state, covariance, position, position_noise,
                                                               QUAT_MIN_NORM, state, covariance, bias_update),
                  "horizontal position", time);
+    limit_bias(state, limits, limit_counts, time);
     check_status(formal_eskf::try_correct_vertical_position(state, covariance, row[3U],
                                                             variance(row[8U], POS_Z_STD_MIN), QUAT_MIN_NORM, state,
                                                             covariance, bias_update),
                  "vertical position", time);
+    limit_bias(state, limits, limit_counts, time);
     auto const velocity_noise = Linalg::matrix_type<3U, 3U>::identity() * variance(row[9U], VEL_STD_MIN);
     check_status(formal_eskf::try_correct_velocity(state, covariance, vector3(row[4U], row[5U], row[6U]),
                                                    velocity_noise, QUAT_MIN_NORM, state, covariance, bias_update),
                  "velocity", time);
+    limit_bias(state, limits, limit_counts, time);
 }
 
 void check_state(State const & state, Covariance const & covariance)
@@ -783,6 +818,11 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     FusionConditions fusion_conditions;
     auto const bias_parameters = read_bias_parameters(input);
     BiasLearning bias_learning(bias_parameters);
+    auto const bias_limits = read_bias_limits(input);
+    // Fixed valid limits + finite successful corrections make post-correction
+    // limiting infallible. Validate before any replay state is published.
+    check_status(formal_eskf::runtime::try_limit_bias<Linalg>(state, bias_limits), "initial bias limits", time);
+    std::array<std::size_t, 6U> bias_limit_counts{};
     Accelerometer accelerometer;
     MagneticLifecycle magnetic_lifecycle;
     MagneticLifecycle::Parameters const magnetic_timing{MAG_HEALTH_TIME_US, MAG_MAX_INTERVAL_US, MAG_FUSION_TIMEOUT_US};
@@ -1118,6 +1158,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     }
                     if (record_fusion(result, velocity_V, "velocity"))
                     {
+                        limit_bias(state, bias_limits, bias_limit_counts, time);
                         ++velocity_fused;
                         fusion_conditions.record_horizontal_fusion(time);
                     }
@@ -1175,6 +1216,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     }
                     if (record_fusion(result, position_V, "horizontal_position"))
                     {
+                        limit_bias(state, bias_limits, bias_limit_counts, time);
                         ++position_xy_fused;
                         fusion_conditions.record_horizontal_fusion(time);
                     }
@@ -1199,6 +1241,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     }
                     if (record_fusion(result, height_V, "vertical_position"))
                     {
+                        limit_bias(state, bias_limits, bias_limit_counts, time);
                         ++position_z_fused;
                     }
                 }
@@ -1221,7 +1264,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             }
             else
             {
-                correct_navigation(state, covariance, navigation_row, time, bias_update);
+                correct_navigation(state, covariance, navigation_row, time, bias_update, bias_limits,
+                                   bias_limit_counts);
                 ++position_xy_fused;
                 ++position_z_fused;
                 ++velocity_fused;
@@ -1268,6 +1312,10 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     *observation_conditions, observation.magnitude, QUAT_MIN_NORM, state, covariance, bias_update);
                 check_status(result.status, "accelerometer correction", time);
                 bool const fused = result.decision == formal_eskf::runtime::FusionDecision::fused;
+                if (fused)
+                {
+                    limit_bias(state, bias_limits, bias_limit_counts, time);
+                }
                 accel_corrections += fused ? 1U : 0U;
                 accel_rejected += fused ? 0U : 1U;
                 outcome = fused ? "fused" : "rejected";
@@ -1335,6 +1383,10 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 result = formal_eskf::runtime::fuse_magnetometer(state, covariance, magnetic_sample, magnetic.m_n,
                                                                  magnetic.V, field_parameters, false, QUAT_MIN_NORM,
                                                                  magnetic.gate_sigma, state, covariance, bias_update);
+                if (result.fusion.decision == formal_eskf::runtime::FusionDecision::fused)
+                {
+                    limit_bias(state, bias_limits, bias_limit_counts, time);
+                }
                 check_status(magnetic_lifecycle.record_fusion(magnetic_time, result.fusion.decision),
                              "magnetometer fusion feedback", time);
                 outcome = fusion_outcome(result.fusion.decision);
@@ -1471,7 +1523,13 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"bias_maximum_specific_force\": " << bias_parameters.maximum_specific_force
             << ",\n  \"bias_maximum_angular_rate\": " << bias_parameters.maximum_angular_rate
             << ",\n  \"bias_decay_time_constant\": " << bias_parameters.decay_time_constant
-            << ",\n  \"covariance_predictions\": " << predictions + gaps
+            << ",\n  \"accelerometer_bias_limit\": " << bias_limits.accelerometer
+            << ",\n  \"gyroscope_bias_limit\": " << bias_limits.gyroscope << ",\n  \"bias_limits_source\": \""
+            << (std::filesystem::exists(input / "bias_limits.csv") ? "bias_limits.csv" : "fallback defaults") << '\"'
+            << ",\n  \"accelerometer_bias_limited_corrections\": [" << bias_limit_counts[0U] << ','
+            << bias_limit_counts[1U] << ',' << bias_limit_counts[2U] << ']'
+            << ",\n  \"gyroscope_bias_limited_corrections\": [" << bias_limit_counts[3U] << ',' << bias_limit_counts[4U]
+            << ',' << bias_limit_counts[5U] << ']' << ",\n  \"covariance_predictions\": " << predictions + gaps
             << ",\n  \"accelerometer_bias_process_noise_inhibited_predictions\": [" << accel_bias_noise_inhibited[0U]
             << ',' << accel_bias_noise_inhibited[1U] << ',' << accel_bias_noise_inhibited[2U] << ']'
             << ",\n  \"gyroscope_bias_process_noise_inhibited_predictions\": [" << gyro_bias_noise_inhibited[0U] << ','

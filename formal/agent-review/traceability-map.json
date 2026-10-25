@@ -3359,6 +3359,38 @@
       }
     },
     {
+      "id": "R-BIAS-LIMITS",
+      "title": "Per-axis INS bias-value limits; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-BIAS-LIMITS: per-axis bias-value limits"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/bias_limits.hpp",
+            "symbol": "struct BiasLimits"
+          },
+          {
+            "file": "include/formal_eskf/runtime/bias_limits.hpp",
+            "symbol": "Status try_limit_bias("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "BiasLimits read_bias_limits("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "void limit_bias("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "R-GNSS-RESET",
       "title": "Checked GNSS position, 3D-velocity and Down-only velocity resets, covariance decorrelation and atomic delta publication; Lean and ESBMC evidence pending",
       "references": {

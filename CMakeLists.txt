@@ -171,7 +171,7 @@ if(PROJECT_IS_TOP_LEVEL)
         add_test(NAME formal_eskf.scalar.standard COMMAND test_scalar_standard)
 
         if(TARGET replay_ins)
-            foreach(CASE IN ITEMS known missing clipped disabled gap)
+            foreach(CASE IN ITEMS known missing clipped disabled gap limits zero_limits invalid_limits)
                 add_test(
                     NAME formal_eskf.replay_bias.${CASE}
                     COMMAND ${CMAKE_COMMAND}
@@ -280,6 +280,7 @@ if(PROJECT_IS_TOP_LEVEL)
         formal_eskf_add_backend_test(test_gnss_reset test_gnss_reset formal_eskf.gnss_reset.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_imu_bias_learning test_imu_bias_learning formal_eskf.imu_bias_learning.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_bias_process_noise test_bias_process_noise formal_eskf.bias_process_noise.eigen formal_eskf::runtime)
+        formal_eskf_add_backend_test(test_bias_limits test_bias_limits formal_eskf.bias_limits.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_imu_dynamics test_imu_dynamics formal_eskf.imu_dynamics.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_accelerometer_magnitude test_accelerometer_magnitude formal_eskf.accelerometer_magnitude.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_accelerometer_conditions test_accelerometer_conditions formal_eskf.accelerometer_conditions.eigen formal_eskf::runtime)

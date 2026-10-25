@@ -1056,8 +1056,8 @@ Behavioral reference: PX4 v1.16.2
 and [legacy parameter semantics](https://docs.px4.io/v1.13/en/advanced_config/parameter_reference#EKF2_AID_MASK).
 This aligns the inhibition rule under supplied conditions, not all EKF2 behavior:
 replay uses its own IMU horizons and precision. Its variance-dependent bias noise
-selection is specified below. Vertical fault detection, fake-aiding modes and
-bias limits remain pending. Native tests support this integration;
+selection and bias-value limits are specified below. Vertical fault detection
+and fake-aiding modes remain pending. Native tests support this integration;
 Lean/ESBMC evidence remains pending.
 
 ### R-BIAS-PROCESS-NOISE: variance-dependent bias driving noise
@@ -1114,6 +1114,43 @@ floating-point increment changed P. Native backend, threshold, rollback,
 correction/recovery and replay tests support the rule; new Lean/ESBMC evidence
 remains pending. Full PX4 covariance constraints and fault-dependent noise
 adjustments remain separate work.
+
+### R-BIAS-LIMITS: per-axis bias-value limits
+
+`runtime::try_limit_bias(state, limits)` explicitly limits each body-axis INS
+accelerometer bias to `[-limits.accelerometer, +limits.accelerometer]` (m/s²)
+and gyro bias to `[-limits.gyroscope, +limits.gyroscope]` (rad/s).
+
+- Bounds are inclusive and per coefficient, not a vector-norm constraint.
+  Zero is a valid limit that forces zero bias; in-range coefficients are preserved.
+  Validate both limits and all six bias coefficients before writing. Non-finite
+  inputs return `non_finite_input`; otherwise negative limits return `domain_error`.
+  Failure preserves the entire state. Success changes only the six bias fields.
+- This operation does not alter covariance, reject a measurement, reset a bias,
+  or change learning permissions. Limiting applies even to an inhibited axis if
+  its prior value is already outside the bound. With fixed limits and an in-range
+  prior, inhibition still holds the estimated bias. An inward correction can
+  leave saturation immediately; there is no latch or recovery timer.
+- Replay fixes limits for the session and validates them against the zero bias
+  initial state before publishing output. After each successful GNSS, gravity or
+  magnetic correction group, apply limits before the next correction/prediction.
+  Rejected/failed corrections do not invoke limiting. Successful core correction
+  guarantees finite biases, so limiting with those fixed valid bounds cannot fail.
+  Standalone numerical-core correction/injection APIs remain additive and unchanged.
+- Preparation writes `bias_limits.csv` from logged `EKF2_ABL_LIM` and
+  `EKF2_GYR_B_LIM`; absent values use EKF2 module defaults 0.4 m/s² and 0.15 rad/s,
+  with each source recorded in metadata. Recorded changes through session end
+  are rejected. CSV input without the file uses the same explicit defaults.
+  Summary reports effective bounds/source and per-axis counts of corrections
+  actually clipped (not time at the bound or evidence of sensor failure).
+
+Behavioral reference: PX4 v1.16.2
+[bias correction](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/ekf_helper.cpp#L757).
+PX4 limits after each scalar fusion; replay limits after each existing measurement
+group. The axis-bound rule agrees, but sequential saturation trajectories need
+not agree. Clamping does not prove posterior covariance consistency or physical
+bias accuracy. Native boundary, failure, correction and replay tests cover this
+feature; Lean/ESBMC evidence and deployment-adapter wiring remain pending.
 
 ### R-GNSS-QUALITY: GNSS quality checks and health qualification
 

@@ -247,6 +247,20 @@ def bias_parameters(ULOG, END):
     return [*VALUES, int(ACCEL), int(GYRO)]
 
 
+def bias_limits(ULOG, END):
+    """Use logged per-axis bounds, with explicit EKF2 module-default fallbacks."""
+    DEFAULTS = {"EKF2_ABL_LIM": 0.4, "EKF2_GYR_B_LIM": 0.15}
+    VALUES = [float(ULOG.initial_parameters.get(NAME, DEFAULT)) for NAME, DEFAULT in DEFAULTS.items()]
+    if not finite(VALUES) or any(VALUE < 0 for VALUE in VALUES):
+        raise ValueError("invalid bias limits")
+    for TIME, NAME, _ in ULOG.changed_parameters:
+        if TIME <= END and NAME in DEFAULTS:
+            raise ValueError(f"changed {NAME} requires a new bias-limit session")
+    SOURCES = {NAME: "logged" if NAME in ULOG.initial_parameters else "fallback EKF2 module default"
+               for NAME in DEFAULTS}
+    return VALUES, SOURCES
+
+
 def gnss_displacement(PREVIOUS, CURRENT):
     """Azimuthal equidistant N/E about the preceding fix; MSL altitude supplies Down.
 
@@ -328,6 +342,7 @@ def prepare(ULOG, OUTPUT):
     MAG_REFERENCE = magnetic_reference(Q, FIELD, ULOG)
     MAG_ROWS = magnetic_rows(ULOG, MAG, MAG_TIMES, START, IMU_TIMES[-1])
     BIAS_PARAMETERS = bias_parameters(ULOG, IMU_TIMES[-1])
+    BIAS_LIMITS, BIAS_LIMIT_SOURCES = bias_limits(ULOG, IMU_TIMES[-1])
     GNSS_PARAMETERS = gnss_parameters(ULOG, IMU_TIMES[-1])
     QUALITY_PARAMETERS = gnss_quality_parameters(ULOG, IMU_TIMES[-1])
     QUALITY_ROWS = gnss_quality_rows(ULOG, GPS, GPS_TIMES, START, IMU_TIMES[-1])
@@ -370,6 +385,7 @@ def prepare(ULOG, OUTPUT):
     write_csv(OUTPUT / "bias_parameters.csv",
               "maximum_specific_force,maximum_angular_rate,decay_time_constant,accelerometer_enabled,gyroscope_enabled",
               [BIAS_PARAMETERS])
+    write_csv(OUTPUT / "bias_limits.csv", "accelerometer,gyroscope", [BIAS_LIMITS])
     write_csv(OUTPUT / "navigation.csv", NAVIGATION_HEADER, GPS_ROWS)
     write_csv(OUTPUT / "gnss_parameters.csv",
               "position_gate,velocity_gate,position_noise,velocity_noise,position_noise_limit", [GNSS_PARAMETERS])
@@ -424,6 +440,9 @@ def prepare(ULOG, OUTPUT):
             "bias_parameters": dict(zip(("maximum_specific_force", "maximum_angular_rate", "decay_time_constant",
                                           "accelerometer_enabled", "gyroscope_enabled"), BIAS_PARAMETERS)),
             "bias_control_source": "EKF2_IMU_CTRL" if "EKF2_IMU_CTRL" in ULOG.initial_parameters else "EKF2_AID_MASK",
+            "bias_limits": dict(zip(("accelerometer_m_s2", "gyroscope_rad_s"), BIAS_LIMITS)),
+            "bias_limit_sources": BIAS_LIMIT_SOURCES,
+            "bias_limiting": "per body axis after each successful correction group; covariance unchanged by limiting; not PX4 scalar-sequential saturation",
             "bias_learning": "pre-prediction bias-corrected decaying peaks; all corrections share six permissions; no recovery timer or gyro clipping condition",
             "bias_clipping_compatibility": "missing accel clipping assumed clear ONLY for bias learning; -1 retained for gravity fusion; not evidence of no clipping",
             "bias_mode_limits": "no fake position/height modes; bad vertical acceleration detector not implemented",

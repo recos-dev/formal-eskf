@@ -445,7 +445,7 @@ def prepare(ULOG, OUTPUT):
             "bias_limiting": "per body axis after each successful correction group; covariance unchanged by limiting; not PX4 scalar-sequential saturation",
             "bias_learning": "pre-prediction bias-corrected decaying peaks; all corrections share six permissions; no recovery timer or gyro clipping condition",
             "bias_clipping_compatibility": "missing accel clipping assumed clear ONLY for bias learning; -1 retained for gravity fusion; not evidence of no clipping",
-            "bias_mode_limits": "no fake position/height modes; bad vertical acceleration detector not implemented",
+            "bias_mode_limits": "no fake position/height modes; vertical acceleration health requires GNSS lifecycle and known clipping; its fault inhibits accel bias and selects prediction noise",
             "imu_source_limits": "reject recorded IMU selection/calibration changes; missing metadata does not prove continuity or sensor health",
             "timing": "GNSS message timestamp, fused on following IMU tick; no physical latency compensation",
             "height": "ellipsoidal GNSS altitude projected to fixed local NED; no barometer/rangefinder",

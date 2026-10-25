@@ -31,6 +31,7 @@
 #include <formal_eskf/runtime/bias_limits.hpp>
 #include <formal_eskf/runtime/bias_process_noise.hpp>
 #include <formal_eskf/runtime/gnss_reset.hpp>
+#include <formal_eskf/runtime/imu_process_noise.hpp>
 #include <formal_eskf/runtime/magnetometer.hpp>
 #include <formal_eskf/runtime/magnetometer_fusion.hpp>
 #include <formal_eskf/runtime/magnetometer_reset.hpp>
@@ -55,8 +56,9 @@
 #define DT_MAX 0.05 // s.
 
 // Isotropic per-sample variances; the core scales these by dt^2.
-#define ACCEL_VAR 1.0 // m^2/s^4.
-#define GYRO_VAR 4e-4 // rad^2/s^2.
+#define ACCEL_VAR 1.0     // m^2/s^4.
+#define GYRO_VAR 4e-4     // rad^2/s^2.
+#define BAD_ACCEL_STD 4.9 // m/s^2; sampled accelerometer noise during faults/clipping.
 // Bias random-walk variance densities; the core scales these by dt.
 #define ACCEL_BIAS_RW_VAR_DENSITY 1e-6 // m^2/s^5.
 #define GYRO_BIAS_RW_VAR_DENSITY 1e-8  // rad^2/s^3.
@@ -927,7 +929,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
            "angular_rate_peak,high_dynamics,bax_enabled,bay_enabled,baz_enabled,bgx_enabled,bgy_enabled,bgz_enabled,"
            "bax_process_noise_selected,bay_process_noise_selected,baz_process_noise_selected,"
            "bgx_process_noise_selected,bgy_process_noise_selected,bgz_process_noise_selected,"
-           "vertical_acceleration_available,bad_vertical_acceleration\n";
+           "vertical_acceleration_available,bad_vertical_acceleration,"
+           "accel_variance_x,accel_variance_y,accel_variance_z\n";
     std::ofstream accel_updates(output / "accelerometer_updates.csv");
     std::ofstream mag_updates(output / "magnetometer_updates.csv");
     std::ofstream mag_resets(output / "magnetometer_resets.csv");
@@ -979,19 +982,37 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::size_t bias_high_dynamics = 0U;
     std::size_t vertical_evaluations = 0U, vertical_fault_samples = 0U, vertical_bias_inhibited = 0U;
     std::array<std::size_t, 3U> accel_bias_noise_inhibited{}, gyro_bias_noise_inhibited{};
-    auto predict = [&](Imu const & sample, std::uint64_t period_us, std::uint64_t prediction_time)
+    std::array<std::size_t, 3U> accel_noise_overridden{};
+    std::size_t accel_noise_unavailable = 0U;
+    auto predict = [&](Imu const & sample, std::uint64_t period_us, std::uint64_t prediction_time,
+                       std::optional<formal_eskf::runtime::ImuNoiseConditions> const & noise_conditions)
     {
-        // Always start with the configured intensities, not last step's zeros.
+        // Start with configured noise so both policies can release their selections.
         auto step_settings = settings;
-        check_status(formal_eskf::runtime::try_inhibit_bias_process_noise(covariance, settings.process_noise,
+        if (noise_conditions)
+        {
+            check_status(formal_eskf::runtime::try_select_imu_process_noise(settings.process_noise, *noise_conditions,
+                                                                            BAD_ACCEL_STD * BAD_ACCEL_STD,
+                                                                            step_settings.process_noise),
+                         "IMU process noise", prediction_time);
+        }
+        // Missing clipping and synthetic gap holds retain configured measurement
+        // noise with an unavailable count, not a claim of fault-free sensor data.
+        // The bias threshold must see the selected IMU variances, not the defaults.
+        check_status(formal_eskf::runtime::try_inhibit_bias_process_noise(covariance, step_settings.process_noise,
                                                                           step_settings.process_noise),
                      "bias process noise", prediction_time);
         check_status(formal_eskf::try_predict(state, covariance, sample, static_cast<double>(period_us) * 1e-6,
                                               step_settings, state, covariance),
                      "prediction", prediction_time);
         auto const & selected = step_settings.process_noise;
+        accel_noise_unavailable += !noise_conditions ? 1U : 0U;
         for (std::size_t axis = 0U; axis < 3U; ++axis)
         {
+            accel_noise_overridden[axis] += noise_conditions && (noise_conditions->bad_vertical_acceleration ||
+                                                                 noise_conditions->accelerometer_clipped[axis])
+                                                ? 1U
+                                                : 0U;
             accel_bias_noise_inhibited[axis] +=
                 settings.process_noise.accelerometer_bias_random_walk_variance_density(axis) > 0.0 &&
                         selected.accelerometer_bias_random_walk_variance_density(axis) == 0.0
@@ -1019,7 +1040,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         {
             // A logged average only covers its integral_dt. Explicitly hold
             // the PREVIOUS rate over the missing interval, then use this one.
-            (void)predict(previous_imu, missing, time + missing);
+            (void)predict(previous_imu, missing, time + missing, std::nullopt);
             ++gaps;
             gap_us += missing;
             // Held prediction rates are not new measurements. Discard the
@@ -1053,7 +1074,17 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         auto const learning = bias_learning.update(static_cast<double>(period) * 1e-6, state, sample, bias_conditions);
         check_status(learning.status, "bias learning", next_time);
         auto const & bias_update = learning.bias_update;
-        auto const selected_noise = predict(sample, period, next_time);
+        std::optional<formal_eskf::runtime::ImuNoiseConditions> noise_conditions;
+        if (sample_flags.accelerometer_clipping >= 0)
+        {
+            auto & conditions = noise_conditions.emplace();
+            conditions.bad_vertical_acceleration = bias_conditions.bad_vertical_acceleration;
+            for (std::size_t axis = 0U; axis < 3U; ++axis)
+            {
+                conditions.accelerometer_clipped[axis] = (sample_flags.accelerometer_clipping & (1 << axis)) != 0;
+            }
+        }
+        auto const selected_noise = predict(sample, period, next_time, noise_conditions);
         time = next_time;
         previous_imu = sample;
         ++predictions;
@@ -1077,7 +1108,12 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         {
             bias_log << ',' << (selected_noise.gyroscope_bias_random_walk_variance_density(axis) > 0.0);
         }
-        bias_log << ',' << prior_health_available << ',' << bias_conditions.bad_vertical_acceleration << '\n';
+        bias_log << ',' << prior_health_available << ',' << bias_conditions.bad_vertical_acceleration;
+        for (std::size_t axis = 0U; axis < 3U; ++axis)
+        {
+            bias_log << ',' << selected_noise.specific_force_variance(axis);
+        }
+        bias_log << '\n';
         for (std::size_t axis = 0U; axis < 3U; ++axis)
         {
             accel_bias_enabled[axis] += bias_update.accelerometer[axis] ? 1U : 0U;
@@ -1673,7 +1709,11 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ',' << accel_bias_noise_inhibited[1U] << ',' << accel_bias_noise_inhibited[2U] << ']'
             << ",\n  \"gyroscope_bias_process_noise_inhibited_predictions\": [" << gyro_bias_noise_inhibited[0U] << ','
             << gyro_bias_noise_inhibited[1U] << ',' << gyro_bias_noise_inhibited[2U] << ']'
-            << ",\n  \"bias_process_noise_threshold_source\": \"configured per-axis IMU measurement variances\""
+            << ",\n  \"accelerometer_fault_noise_std\": " << BAD_ACCEL_STD
+            << ",\n  \"accelerometer_noise_overridden_predictions\": [" << accel_noise_overridden[0U] << ','
+            << accel_noise_overridden[1U] << ',' << accel_noise_overridden[2U] << ']'
+            << ",\n  \"accelerometer_noise_unavailable_predictions\": " << accel_noise_unavailable
+            << ",\n  \"bias_process_noise_threshold_source\": \"selected per-axis IMU measurement variances\""
             << ",\n  \"bias_process_noise_scaling\": \"continuous intensity times dt\""
             << ",\n  \"accelerometer_observations\": " << accel_observations
             << ",\n  \"accelerometer_corrections\": " << accel_corrections

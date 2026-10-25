@@ -181,7 +181,7 @@ if(PROJECT_IS_TOP_LEVEL)
                         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_replay_bias.cmake
                 )
             endforeach()
-            foreach(CASE IN ITEMS fault height activation horizontal speed_accuracy negative clear missing gap metadata_gap quality batch outage)
+            foreach(CASE IN ITEMS fault height activation reset_quality reset_gap reset_metadata_gap horizontal speed_accuracy negative clear missing gap metadata_gap quality batch outage)
                 add_test(
                     NAME formal_eskf.replay_vertical_acceleration.${CASE}
                     COMMAND ${CMAKE_COMMAND}

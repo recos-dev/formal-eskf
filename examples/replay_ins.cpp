@@ -456,6 +456,8 @@ std::string_view gnss_stop_reason(GnssLifecycle::StopReason reason)
         return "initialization_required";
     case GnssLifecycle::StopReason::fusion_timeout:
         return "fusion_timeout";
+    case GnssLifecycle::StopReason::bad_vertical_acceleration:
+        return "bad_vertical_acceleration";
     case GnssLifecycle::StopReason::fusion_failed:
         return "fusion_failed";
     case GnssLifecycle::StopReason::reset_failed:
@@ -471,12 +473,13 @@ bool gnss_recovery_required(GnssLifecycle::State const & state)
 }
 
 void update_gnss_lifecycle(GnssLifecycle & lifecycle, GnssQuality & quality, GnssLifecycle::Sample const & sample,
-                           std::uint64_t time)
+                           std::uint64_t time, GnssLifecycle::VerticalAccelerationTimes const & health)
 {
     // The demo starts from an already seeded navigation frame and accel/mag
     // attitude. This is an initialization premise, not a detected alignment.
     // Every group's startup/re-entry uses an actual GNSS reset.
-    GnssLifecycle::Conditions const conditions{{true, true, false}, {true, true, false}, {true, true, false}, true};
+    GnssLifecycle::Conditions const conditions{
+        {true, true, false}, {true, true, false}, {true, true, false}, true, health};
     GnssLifecycle::Parameters const timing{GNSS_HORIZONTAL_TIMEOUT_US, GNSS_HEIGHT_DATA_TIMEOUT_US,
                                            GNSS_HEIGHT_FUSION_TIMEOUT_US};
     check_status(lifecycle.update(time, conditions, timing, sample), "GNSS lifecycle", time);
@@ -970,6 +973,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::size_t position_xy_fused = 0U, position_z_fused = 0U, velocity_fused = 0U;
     std::size_t position_xy_resets = 0U, position_z_resets = 0U, velocity_resets = 0U;
     std::size_t vertical_velocity_resets = 0U;
+    std::size_t acceleration_velocity_resets = 0U, acceleration_height_resets = 0U;
     std::size_t velocity_limited_fusions = 0U, height_limited_fusions = 0U;
     std::size_t quality_accepted = 0U, quality_rejected = 0U, quality_waiting = 0U, quality_unavailable = 0U;
     std::size_t invalid_velocity = 0U, navigation_attempts = 0U;
@@ -1065,6 +1069,11 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                                                                        0.5 * nominal_interval, 2.0 * nominal_interval);
         bool const prior_health_available =
             quality_parameters.has_value() && vertical_health.state().last_update_time_us != 0U;
+        auto const prior_health_times =
+            prior_health_available
+                ? GnssLifecycle::VerticalAccelerationTimes{vertical_health.state().last_update_time_us,
+                                                           vertical_health.state().last_good_time_us}
+                : GnssLifecycle::VerticalAccelerationTimes{};
         // Bias inhibition precedes prediction and consumes the preceding verdict.
         // This replay has no fake-position/height modes.
         BiasLearning::Conditions bias_conditions;
@@ -1213,7 +1222,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 auto const lifecycle_sample = result.lifecycle_sample(source_time);
                 if (lifecycle_sample.time_us != 0U)
                 {
-                    update_gnss_lifecycle(gnss_lifecycle, quality_monitor, lifecycle_sample, time);
+                    update_gnss_lifecycle(gnss_lifecycle, quality_monitor, lifecycle_sample, time, prior_health_times);
                     lifecycle_updated = true;
                     lifecycle_sample_consumed = true;
                     auto const & lifecycle = gnss_lifecycle.state();
@@ -1341,17 +1350,18 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     ++velocity_skipped;
                 }
 
-                // Height timeout is sampled before this event's height correction.
+                // Height timeout / last-good acceleration are sampled before height control.
                 // Reset only Down after normal velocity fusion (even if gated out).
                 if (quality_parameters && gnss_lifecycle.state().vertical_velocity_reset_allowed)
                 {
+                    auto const reason = gnss_lifecycle.state().vertical_velocity_reset_reason;
                     double delta{};
                     auto const status = formal_eskf::runtime::try_reset_gnss_vertical_velocity(
                         state, covariance, velocity(2U), noise.velocity_z, state, covariance, delta);
                     check_status(gnss_lifecycle.record_vertical_velocity_reset(source_time, status == Status::success),
                                  "GNSS vertical velocity reset feedback", time);
-                    write_gnss_reset(gnss_resets, "vertical_velocity", GnssLifecycle::StopReason::fusion_timeout,
-                                     status, Linalg::vector_type<1U>::from_row_major({delta}), source_time, time);
+                    write_gnss_reset(gnss_resets, "vertical_velocity", reason, status,
+                                     Linalg::vector_type<1U>::from_row_major({delta}), source_time, time);
                     if (status != Status::success)
                     {
                         write_gnss_lifecycle(lifecycle_updates, previous_lifecycle, gnss_lifecycle.state(), source_time,
@@ -1359,6 +1369,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     }
                     check_status(status, "GNSS vertical velocity reset", time);
                     ++vertical_velocity_resets;
+                    acceleration_velocity_resets +=
+                        reason == GnssLifecycle::StopReason::bad_vertical_acceleration ? 1U : 0U;
                 }
 
                 auto const position_V = Linalg::matrix_type<2U, 2U>::identity() * noise.position_xy;
@@ -1417,8 +1429,13 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     vertical_cache.height_time_us = source_time;
                     if (quality_parameters)
                     {
+                        auto const current_health_times =
+                            vertical_available
+                                ? GnssLifecycle::VerticalAccelerationTimes{time,
+                                                                           vertical_health.state().last_good_time_us}
+                                : GnssLifecycle::VerticalAccelerationTimes{};
                         check_status(gnss_lifecycle.record_fusion(GnssLifecycle::Group::vertical_position, source_time,
-                                                                  result.decision),
+                                                                  result.decision, current_health_times),
                                      "GNSS height feedback", time);
                     }
                     if (record_fusion(result, height_V, "vertical_position", measurement.fusion_innovation,
@@ -1434,7 +1451,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     ++position_z_skipped;
                 }
                 // Height recovery is decided after the current correction attempt.
-                // A successful overdue correction therefore needs no reset.
+                // Successful correction resolves a fusion timeout, but not persistent bad acceleration.
                 if (quality_parameters && gnss_lifecycle.state().vertical_position.reset_allowed)
                 {
                     double delta{};
@@ -1444,6 +1461,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     record_reset(GnssLifecycle::Group::vertical_position, "vertical_position", reason, status,
                                  Linalg::vector_type<1U>::from_row_major({delta}));
                     ++position_z_resets;
+                    acceleration_height_resets +=
+                        reason == GnssLifecycle::StopReason::bad_vertical_acceleration ? 1U : 0U;
                     vertical_cache.observations.gnss_height = {true, 0.0, noise.position_z};
                     vertical_cache.height_time_us = source_time;
                 }
@@ -1470,7 +1489,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         if (quality_parameters && !lifecycle_updated)
         {
             auto const previous = gnss_lifecycle.state();
-            update_gnss_lifecycle(gnss_lifecycle, quality_monitor, {}, time);
+            update_gnss_lifecycle(gnss_lifecycle, quality_monitor, {}, time, prior_health_times);
             write_gnss_lifecycle(lifecycle_updates, previous, gnss_lifecycle.state(), 0U, time);
             capture_vertical_evidence(previous.vertical_position.active);
         }
@@ -1699,6 +1718,9 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"vertical_position_resets\": " << position_z_resets
             << ",\n  \"velocity_resets\": " << velocity_resets
             << ",\n  \"vertical_velocity_resets\": " << vertical_velocity_resets
+            << ",\n  \"vertical_acceleration_velocity_resets\": " << acceleration_velocity_resets
+            << ",\n  \"vertical_acceleration_height_resets\": " << acceleration_height_resets
+            << ",\n  \"vertical_acceleration_reset_delay_us\": " << GnssLifecycle::acceleration_reset_delay_us
             << ",\n  \"horizontal_position_rejected\": " << position_xy_attempts - position_xy_fused
             << ",\n  \"vertical_position_rejected\": " << position_z_attempts - position_z_fused
             << ",\n  \"velocity_rejected\": " << velocity_attempts - velocity_fused

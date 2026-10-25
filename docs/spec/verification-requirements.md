@@ -576,7 +576,7 @@ OR 3D velocity per sample. Alternate aiding and reset execution remain separate.
   of actual last fusion, successful reset and caller-authorized session start;
   a never-started group has no progress. A horizontal timeout request retains
   its active session while waiting for reset; it does not restart quality health.
-- Each group's `initialization_required`/`fusion_timeout` requests may grant
+- Each group's `initialization_required`/`fusion_timeout`/`bad_vertical_acceleration` requests may grant
   `reset_allowed` only on a new, accepted, fresh, enabled and ready sample.
   Reset and correction permissions are mutually exclusive. Each update, even
   an invalid one, revokes old reset permission. `record_reset(group, sample, reset_succeeded)`
@@ -590,7 +590,9 @@ OR 3D velocity per sample. Alternate aiding and reset execution remain separate.
 - Height uses its own progress deadline, evaluated **after** its current
   permitted attempt. Success at an overdue tick refreshes it; rejection beyond
   the deadline grants reset permission for that same accepted sample because
-  this profile has no alternate height reference. Retain the active session;
+  this profile has no alternate height reference. The acceleration criterion
+  below can also request reset after a successful height correction. Retain the
+  active session;
   successful reset renews progress without changing the last correction time.
   A numerical failure never grants this permission. Equality does not expire
   fusion deadlines. Height feedback does not alter horizontal groups or quality.
@@ -600,7 +602,8 @@ OR 3D velocity per sample. Alternate aiding and reset execution remain separate.
   height deadline at `update`, before this sample's height operation. Height
   must have an established session and permit either correction or reset on
   this fresh accepted sample. If its progress is strictly beyond the height
-  timeout, velocity feedback of `fused` OR `rejected` grants one Down-only reset.
+  timeout, or the preceding acceleration-health criterion below is expired,
+  velocity feedback of `fused` OR `rejected` grants one Down-only reset.
   Numerical failure does not. Startup and full 3D velocity resets already cover
   Down and must not request another reset.
 - Execute/acknowledge Down-only reset with `record_vertical_velocity_reset`
@@ -612,7 +615,9 @@ OR 3D velocity per sample. Alternate aiding and reset execution remain separate.
   quality health. Failure latches velocity `reset_failed`; no automatic retry.
   Wrong-sample/duplicate feedback returns `out_of_range`. Every update (including
   invalid updates), or explicit velocity/height repair, revokes pending permission.
-  Restarting the velocity group also clears its Down-reset history.
+  Restarting the velocity group also clears its Down-reset history. While
+  permission is outstanding, `vertical_velocity_reset_reason` identifies
+  fusion timeout or bad vertical acceleration; consumption/revocation clears it.
 - Ordinary stops can start again after accepted quality and caller-established
   initialization. Losing the last active horizontal group emits one
   `restart_quality` notification; call `GnssQuality::restart_health()` before
@@ -636,6 +641,54 @@ Native tests cover startup conditions, both data deadlines, strict fusion/qualit
 boundaries, coupled horizontal progress, height reset/attempt ordering, safe re-entry,
 unavailable quality, invalid calls, same-tick samples and unsigned-time extremes.
 Lean/ESBMC evidence remains pending.
+
+#### Continuous bad vertical acceleration
+
+`VerticalAccelerationTimes` carries the monitor's update time and last-good time,
+not its 3 s held fault flag. `Conditions::vertical_acceleration` supplies the
+verdict available before velocity control. Height feedback additionally passes
+this horizon's times to `record_fusion`; other groups ignore that argument.
+
+- Nonzero update time means an evaluated snapshot. Known snapshots must satisfy
+  `last_good_time_us <= update_time_us <= now_us`; height feedback requires
+  `update_time_us == now_us`. Future/reversed times, or an older height snapshot,
+  return `out_of_range`. Failed updates revoke permissions without consuming
+  history; invalid feedback preserves permission and metadata for a corrected call.
+- Zero update time means unavailable; ignore its last-good field and disable
+  only the acceleration criterion. Fusion-timeout recovery remains available.
+  For a known snapshot, zero last-good means never healthy and is immediately
+  expired, matching the reference's zero-timestamp rule. Do not manufacture a
+  healthy timestamp on startup, reset or missing data.
+- With known health, request recovery if last-good is zero OR
+  `now_us - last_good_time_us > 500000`. Equality does not expire. The fixed
+  `acceleration_reset_delay_us` matches the reference's internal constant.
+  Ordered subtraction avoids overflow. The caller must provide the appropriate
+  monitor snapshot and clear availability across gaps/source changes; numerical
+  timestamp validation cannot establish physical sensor continuity.
+- For established, permitted 3D velocity, retain this criterion at `update`.
+  Actual fused/rejected velocity feedback can then authorize Down-only reset
+  before height processing. Source quality/readiness, established height
+  availability and the existing single-use/reset-order restrictions still apply.
+  Startup/full velocity reset already covers Down and grants no duplicate reset.
+- After height correction, combine its current acceleration criterion with the
+  remaining fusion timeout. Successful correction clears the timeout but does
+  not erase continuous bad-acceleration evidence. Thus a sample can legitimately
+  record both successful height fusion and successful height reset. A numerical
+  correction failure still cannot grant automatic reset. If both criteria hold,
+  report `bad_vertical_acceleration` as the reason.
+- Reset success changes estimator/progress through existing checked operations;
+  it does not change last-good acceleration time or start a cooldown. Continuing
+  bad health can require another reset on the next permitted sample. Conversely,
+  a new healthy verdict stops the acceleration criterion even while the separate
+  3 s fault remains held. Pending reset requests still require qualified data;
+  numerical reset failure remains terminal until caller repair.
+
+Reference: PX4 v1.16.2
+[height reset predicate](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/ekf_helper.cpp#L48),
+[velocity control](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gps_control.cpp#L132)
+and [height control](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gnss_height_control.cpp#L103).
+This profile remains GNSS-only with an established height reference. Native
+transition/replay evidence covers the new criterion; Lean/ESBMC evidence is pending.
 
 #### Replay GNSS lifecycle
 
@@ -666,8 +719,8 @@ lifecycle sample and no-data transitions in `result/gnss_lifecycle.csv`.
 Quality skips, lifecycle skips, innovation rejections and resets are distinct outcomes.
 Record per-axis reset reason, status and new-minus-old delta in `gnss_resets.csv`;
 failed resets have invalid, empty deltas. Keep successful reset counts separate
-from correction and rejection counts. A height timeout event can contain both
-a rejected correction and a successful reset; these counters count operations,
+from correction and rejection counts. A height-recovery event can contain both
+a correction (fused or rejected) and a successful reset; these counters count operations,
 not mutually exclusive events. Reset success refreshes progress without
 claiming an innovation passed or restarting quality qualification.
 Log Down-only resets as `vertical_velocity` in `gnss_resets.csv`, with their own
@@ -675,6 +728,12 @@ Log Down-only resets as `vertical_velocity` in `gnss_resets.csv`, with their own
 reset may both occur on one sample. Preserve the actual correction outcome.
 The Down observation variance is already prepared as `(1.5 * speed_std)^2`;
 the reset API must not apply that scaling again.
+
+Replay passes the preceding valid health times into GNSS lifecycle update and
+current pre-height health times into height fusion feedback. Missing IMU/clipping
+history supplies unavailable times. Reset logs distinguish
+`bad_vertical_acceleration` from `fusion_timeout`; summary counts acceleration
+height/Down-velocity resets separately and records the 500000 us delay.
 
 The replay's existing seed establishes its initial frame and assumed attitude
 alignment; it is not an alignment detector. All three groups require an actual
@@ -691,9 +750,9 @@ correction failure is not converted into an automatic reset with the same input.
 
 This is a lifecycle integration, not full EKF2 equivalence: one replay clock
 uses source sample recency instead of separate arrival/delayed horizons; no
-alternate sources, GNSS heading/GSF emergency yaw, height-bias estimator or
-500 ms bad-vertical-acceleration reset is implemented. Bounded innovation
-exceptions are specified in `R-GNSS-VERTICAL-RECOVERY`. Existing seed,
+alternate sources, GNSS heading/GSF emergency yaw or height-bias estimator is
+implemented. Continuous-acceleration recovery follows the criterion above;
+bounded innovation exceptions are specified in `R-GNSS-VERTICAL-RECOVERY`. Existing seed,
 sequential gates and numerical models are retained.
 
 ### R-MEASUREMENT-FUSION: gated correction of one observation group
@@ -813,7 +872,8 @@ single-monitor-transition batching rule in `R-VERTICAL-ACCELERATION`.
 summary counts limited successful velocity/height fusions separately. Rejected
 quality/lifecycle conditions still skip correction and do not refresh progress.
 Horizontal position has no exception. Existing timeouts/reset behavior is
-unchanged; the independent 500 ms last-good-acceleration reset is pending.
+separate from the gate exception; the independent 500 ms last-good-acceleration
+reset is specified in `R-GNSS-FUSION`.
 
 Behavior reference: PX4 v1.16.2
 [velocity exception](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gps_control.cpp#L209)
@@ -1309,7 +1369,8 @@ no independent freshness timeout and does not treat rejection as deactivation.
   Every bad sample refreshes the hold. Use ordered timestamp subtraction to
   avoid overflow. Low likelihood/no active sources is absence of evidence, not
   proof of a healthy IMU. Last-good time describes the instantaneous predicate,
-  even while the fault is held; it is separate from future 500 ms reset policy.
+  even while the fault is held; it supplies the independent 500 ms reset policy
+  in `R-GNSS-FUSION`.
 - Validate time first (`out_of_range`), then a finite positive interval
   (`non_finite_input`/`domain_error`) and known clipping (`domain_error` if absent).
   A non-finite reciprocal returns `non_finite_result`; require reciprocal in
@@ -1384,8 +1445,8 @@ Replay integration:
 
 The replay fault now feeds accel bias-learning permissions and the sampled
 noise selection in `R-IMU-PROCESS-NOISE`, plus the GNSS fusion exceptions in
-`R-GNSS-VERTICAL-RECOVERY`. The independent 500 ms reset condition and PX4
-adapter wiring remain separate work. Native replay
+`R-GNSS-VERTICAL-RECOVERY`. Its last-good time separately feeds the 500 ms
+reset criterion in `R-GNSS-FUSION`. PX4 adapter wiring remains pending. Native replay
 tests exercise rejection, input ordering, actual bias preservation/recovery and
 metadata interruptions;
 this is not a formal proof or flight-accuracy result.

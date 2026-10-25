@@ -3548,7 +3548,7 @@
     },
     {
       "id": "R-GNSS-FUSION",
-      "title": "GNSS-only lifecycle with horizontal, height and Down-velocity recovery ordering; Lean and ESBMC evidence pending",
+      "title": "GNSS-only lifecycle with timeout and continuous-acceleration height/Down-velocity recovery; Lean and ESBMC evidence pending",
       "references": {
         "spec": [
           {
@@ -3558,6 +3558,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "#### Replay GNSS lifecycle"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### Continuous bad vertical acceleration"
           }
         ],
         "lean": [],
@@ -3565,6 +3569,14 @@
           {
             "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
             "symbol": "class GnssFusion"
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "symbol": "struct VerticalAccelerationTimes"
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "symbol": "GnssFusion::height_reset_reason("
           },
           {
             "file": "include/formal_eskf/runtime/gnss_fusion.hpp",

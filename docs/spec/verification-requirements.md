@@ -253,9 +253,19 @@ it is not an independent WMM reference or evidence of magnetic health.
   `magnetometer_updates.csv`. A skipped sample is not a gate rejection.
   No-data lifecycle transitions also produce rows (`source_timestamp_us=0`).
   Rejection continues; numerical failure is logged and terminates replay.
-- Reject recorded sensor/calibration/frame or magnetic parameter changes that
-  invalidate the frozen reference/settings. Missing change metadata remains a
-  limitation, not evidence that the source never changed.
+- Optional `magnetic_context.csv` carries the seed context and exactly one row
+  per magnetic observation: timestamp, nonzero device ID, calibration count,
+  reference revision, causal in-air flag (`-1/0/1`) and NED field. Device/count/
+  revision are uint32 values. A changed field requires a changed revision, in the
+  same navigation frame; validate field geometry before consuming it. Missing,
+  mismatched or extra rows are errors. Without this file retain legacy session
+  identity 1/count 0/revision 0, unknown flight state and the seed field.
+- PX4 preparation now retains published device/count changes after initialization,
+  with causal land flags (unknown after 3 s). Reject changes inside the seed
+  alignment window, untracked calibration/selection changes and frame/noise/gate/
+  declination-parameter changes. Missing identity metadata uses explicitly reported
+  session fallbacks; it cannot prove continuity. The prepared NED field stays
+  fixed; no WMM data or replacement field is inferred from a changed sensor.
 - `--compare-mag` runs the same prepared inputs and initialization twice; the
   C++ `--no-mag` path disables only magnetic correction. Plots report yaw/path
   differences, not accuracy. Existing initialization still uses magnetometer
@@ -287,7 +297,7 @@ and [common.h](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7c
 | Timeout without horizontal aiding or with rest override | Request a heading reset; execute only with current fresh, health-qualified field data and readiness. Record actual reset progress separately from fusion. |
 
 The metadata controller is not a complete EKF2 replacement. PX4 owns magnetic
-earth/bias states, magnetic LPF, WMM, declination fusion, heading-consistency and
+earth/bias states, WMM, declination fusion, heading-consistency and
 mode selection and separate latest/delayed timelines. Our supported reset is
 heading plus covariance against the existing fixed field, not magnetic-state reset.
 Our fixed-field core has no magnetic-only update: when the field is rejected,
@@ -297,15 +307,21 @@ progress timestamps as EKF2. Replay's single timestamp timeline does not model
 PX4 buffer-push recency or sensor delay.
 
 Ordinary stops restart automatically. A timeout reset waits for accepted field
-health and uses `try_reset_magnetic_heading`; it does not replace the reference
-with the observed field. Replay uses an explicit 0.3 rad heading standard
-deviation (PX4's default heading noise), independent of vector noise and not
+health and uses `try_reset_magnetic_heading` with `MagnetometerFilter::field_b()`;
+it does not replace the reference with the observed field. Replay uses an explicit
+0.3 rad heading standard deviation (PX4's default heading noise), independent of vector noise and not
 imported from the log. Successful resets and their applied left quaternion deltas
 are logged in `magnetometer_resets.csv`; `last_reset_timestamp_us` remains distinct
 from actual fusion time. Numerical errors terminate after logging.
-Known source/calibration changes still require a new replay/reference; one
-fixed CSV session uses adapter identity `Source{1, 0}`, not a hardware ID/count.
-Absent change metadata cannot prove source continuity. Summary counts partition
+Known source/calibration changes now execute the reinitialization policy below:
+reseed the LPF, qualify the new source and either reset heading or attempt ordinary
+fusion. Unknown flight state leaves source recovery pending. Reference revisions
+keep the measurement LPF and apply the reference-update policy. Reset CSV rows
+include the actual cause (`fusion_timeout`, `source_changed`, `reference_changed`).
+Raw samples remain the input to field checks and normal correction. Filter updates
+run once per consumed enabled sample, even while waiting for health/readiness;
+filter failure terminates replay. No correction follows reset on that sample.
+Summary counts partition
 events into fused, gate-rejected, lifecycle-skipped and superseded; heading resets
 are a separate action count and may follow a rejected attempt. No-data
 state transitions use source timestamp zero. Native checks are not formal proof.
@@ -314,15 +330,17 @@ state transitions use source timestamp zero. Native checks are not formal proof.
 
 `runtime::MagnetometerFusion` manages one selected magnetic source without owning
 measurements, estimator state/P, clocks or numerical reset operations.
-`Conditions::ready` covers continuing prerequisites: tilt/yaw alignment, valid
-reference/state/P and permitted aiding policy. `starting_allowed` additionally
-excludes a yaw-alignment change or quaternion-reset frame. Horizontal-aiding and
+`Conditions::ready` covers continuing prerequisites: tilt alignment, valid
+reference/state/P and permitted aiding policy. Initial heading is caller-established;
+the controller tracks the new heading-reset requirement after source changes.
+`starting_allowed` additionally excludes a yaw-alignment change or quaternion-reset frame. Horizontal-aiding and
 at-rest flags select the timeout action; they must reflect actual caller state.
 
 - Call `update` on every estimator tick. Current time is nonzero and strictly
   increasing. New sample times strictly increase, including across source changes,
   and cannot be future times. `Sample{}` means no new sample and ignores the other
-  fields. A source has a nonzero adapter-assigned ID and calibration count.
+  fields. A source has a nonzero adapter-assigned ID, calibration count and
+  `reference_id` revision for the supplied field in the same navigation frame.
   `field_accepted` is the actual successful same-sample/same-prior field check,
   not an innovation outcome. The adapter supplies aligned usable samples and
   truthful freshness on one timeline; delayed buffering is outside this API.
@@ -367,24 +385,44 @@ at-rest flags select the timeout action; they must reflect actual caller state.
   timeout request into an ordinary stop; the next sample may retry fusion.
 - After the actual reset, `record_reset(sample_time, succeeded)` consumes that
   permission. Success reactivates the existing session, clears recovery and
-  sets only `last_reset_time_us=now_us`, retaining start/fusion times. There is
-  no second correction on that sample. Failure latches `reset_failed` until
+  sets `last_reset_time_us=now_us`, retaining actual fusion history. An existing
+  session retains its start time; source reinitialization starts a new session
+  at the reset time. There is no second correction on that sample. Failure latches `reset_failed` until
   caller-established repair. Wrong/missing permission preserves metadata.
-- `failed` feedback requests numerical repair immediately. Source-ID/calibration
-  changes clear old-source history/count and request reinitialization, invalidating
-  old feedback. These requests persist until explicit caller-established safe
-  re-entry; a source change replaces an earlier cause. No state/P or yaw reset
-  is implied. A known external reference/frame change requires the same caller
-  coordination, not silent continuation.
+- `failed` feedback requests numerical repair immediately. `fusion_failed` and
+  `reset_failed` remain latched even if a new source arrives; replacing a sensor
+  cannot repair invalid estimator state/P. Only explicit caller repair permits retry.
+- Device/calibration changes stop activity, clear source-specific progress/count
+  and revoke old feedback. Preserve the field-check failure timestamp (as PX4
+  does); four new samples are still required. `filter_reset` is a one-update
+  instruction to seed the measurement LPF on the first enabled sample, including
+  initial startup. It is false on no-data/invalid calls and reference-only changes.
+- Source recovery requires fresh, accepted, health-qualified data, continuing and
+  stable-start conditions, and known `FlightState`. A ground switch requires
+  heading reset. Stopping an active magnetic session without horizontal aiding
+  also latches that requirement. Subsequent takeoff or restored aiding does not
+  silently restore alignment. Unknown flight state waits; it is not ground/rest.
+  If heading reset is required, grant `reset_allowed` and use actual reset feedback.
+  Otherwise clear source recovery and grant a normal gated startup attempt; only
+  actual fusion activates it. No caller `restart()` is required for this path.
+- A reference-only change retains physical-sensor LPF/count/health/progress. An
+  active session without horizontal aiding or at rest requests heading reset
+  (`reference_changed`); current fresh field qualification remains required.
+  Aided motion retains heading and uses the new reference in ordinary gated
+  correction. Restored aiding without rest cancels a pending reference reset into
+  an ordinary stop/retry. Source recovery and numerical repair take precedence.
+  Reference updates are explicit caller-authorized field changes, not coordinate
+  frame resets or proof that a WMM/calibration is correct.
 - `restart()` acknowledges safe re-entry after any needed estimator repair. It
   clears session/health/count metadata, retains time/source/configuration
   watermarks and requires startup qualification again. Never use it to pretend
   a requested estimator reset ran. `reset()` clears everything for an explicitly
-  reinitialized timeline/configuration.
+  reinitialized timeline/configuration; an optional seed `Source` binds the identity
+  used for initial heading without inventing a measurement or fusion timestamp.
 - Invalid/changed durations return `domain_error` before time checks; invalid
   current/sample time returns `out_of_range`; zero new-source ID returns
-  `domain_error`. Invalid updates stop activity/permission but do not consume
-  time/configuration/source or rewrite health/progress history. Invalid feedback
+  `domain_error`; an invalid flight-state enum also returns `domain_error`. Invalid
+  updates stop activity/permission but do not consume time/configuration/source or rewrite health/progress history. Invalid feedback
   enum returns `domain_error`; wrong/missing permission returns `out_of_range`.
   Invalid feedback preserves all metadata. Pending reset causes remain visible
   independently of disable/readiness display.
@@ -394,6 +432,38 @@ startup behavior, data outages, both timeout actions, retry, real AHRS/INS gated
 correction, source changes, failure atomicity and unsigned-time extremes.
 Lean/ESBMC evidence remains pending. Physical health, covariance consistency,
 deployed reset notifications are not proved here.
+
+Source detection and filter/count reset follow PX4 v1.16.2
+[EKF2 input](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF2.cpp#L2481)
+and [magnetic control](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/magnetometer/mag_control.cpp#L66).
+This is the initialized, fixed-field AHRS/INS profile: initial heading is supplied
+by the caller; external-yaw modes and magnetic earth/bias states are absent.
+PX4 can reset/learn those magnetic states while preserving yaw. Here the new
+reference changes the observation model and still faces the existing gate; it
+cannot absorb sensor offsets into nonexistent magnetic states. WMM scheduling,
+frame/origin rotation and downstream reset notifications remain adapter work.
+
+### R-MAGNETOMETER-FILTER: magnetic data for heading reset
+
+`runtime::MagnetometerFilter<Linalg>` owns a three-vector body-field LPF for reset
+only. First sample or explicit reseed stores the finite input exactly; otherwise
+`filtered += alpha * (sample - filtered)`, with fixed `alpha = 0.01/(0.09+0.01)`.
+Call once per consumed magnetic sample, not per elapsed-time interval. This follows
+PX4's nominal 10 ms / 90 ms filter setup; replay sample selection/cadence remains
+its own and does not establish bitwise equivalence or a calibrated cutoff.
+
+- Input is already calibrated body-FRD field in microtesla. No extra sensor bias
+  or earth-field estimate is introduced. Reference-only changes preserve history.
+- Non-finite input returns `non_finite_input`; non-finite computed candidate returns
+  `non_finite_result`. Failure preserves history/initialization, including a reseed.
+  `reset()` discards history. The caller must abort or restart lifecycle/filter
+  coordination after a filter failure; it must not continue a changed-source
+  session with old-source filter history.
+- This LPF does not authorize correction, prove field health or change normal
+  correction input. Reset uses the filtered vector and the checked heading-reset
+  operation; source/time/readiness/field qualification belongs to the lifecycle.
+  Native float/double tests cover seeding, filtering, reseeding and failure
+  atomicity. Lean/ESBMC evidence and physical filtering-error bounds remain pending.
 
 ### R-MAGNETOMETER-RESET: fixed-field heading and covariance reset
 
@@ -435,8 +505,9 @@ The reference is PX4 v1.16.2
 and [yaw covariance reset](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/yaw_fusion.cpp#L118).
 PX4's global left-error definition is explicit in
 [its derivation](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/python/ekf_derivation/derivation.py#L152).
-Our reset uses a currently qualified sample; PX4 uses filtered magnetic data and
-also resets estimated magnetic states. Native AHRS/INS float/double and replay
+The primitive consumes the caller-supplied body field. Replay now supplies the
+reset LPF after current field qualification, as PX4 does; PX4 additionally resets
+estimated magnetic states. Native AHRS/INS float/double and replay
 tests cover this narrower operation; Lean/ESBMC and floating-point bounds are pending.
 
 ### E-INNOV: componentwise innovation gate

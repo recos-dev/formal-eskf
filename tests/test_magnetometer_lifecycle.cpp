@@ -63,9 +63,10 @@ struct Fixture
 bool same_state(MagnetometerFusion::State const & a, MagnetometerFusion::State const & b)
 {
     return a.active == b.active && a.fusion_allowed == b.fusion_allowed && a.reset_allowed == b.reset_allowed &&
-           a.last_reset_time_us == b.last_reset_time_us && a.stop_reason == b.stop_reason &&
-           a.recovery_reason == b.recovery_reason && a.last_field_failure_time_us == b.last_field_failure_time_us &&
-           a.start_time_us == b.start_time_us && a.last_fuse_time_us == b.last_fuse_time_us;
+           a.filter_reset == b.filter_reset && a.last_reset_time_us == b.last_reset_time_us &&
+           a.stop_reason == b.stop_reason && a.recovery_reason == b.recovery_reason &&
+           a.last_field_failure_time_us == b.last_field_failure_time_us && a.start_time_us == b.start_time_us &&
+           a.last_fuse_time_us == b.last_fuse_time_us;
 }
 
 void test_startup(TestContext & test)
@@ -310,6 +311,137 @@ void test_feedback_and_recovery(TestContext & test)
     }
 }
 
+void test_source_reinitialization(TestContext & test)
+{
+    using FlightState = MagnetometerFusion::FlightState;
+    for (bool calibration : {false, true})
+    {
+        for (auto flight : {FlightState::unknown, FlightState::on_ground, FlightState::in_air})
+        {
+            for (bool aided : {false, true})
+            {
+                Fixture fixture;
+                fixture.start(test);
+                fixture.conditions.horizontal_aiding = aided;
+                fixture.conditions.flight_state = flight;
+                if (calibration)
+                {
+                    ++fixture.source.calibration_count;
+                }
+                else
+                {
+                    ++fixture.source.device_id;
+                }
+                test.expect(fixture.sample(130U) == Status::success && fixture.monitor.state().filter_reset &&
+                                fixture.monitor.state().recovery_reason == RecoveryReason::source_changed &&
+                                fixture.monitor.state().last_field_failure_time_us == 100U &&
+                                fixture.monitor.state().last_fuse_time_us == 0U &&
+                                !fixture.monitor.state().fusion_allowed && !fixture.monitor.state().reset_allowed &&
+                                fixture.monitor.record_fusion(121U, FusionDecision::fused) == Status::out_of_range,
+                            profile,
+                            "new source reseeds LPF/count/session and revokes old feedback; field health persists");
+                for (auto time : {131U, 132U, 133U})
+                {
+                    test.expect(fixture.sample(time) == Status::success && !fixture.monitor.state().filter_reset,
+                                profile, "subsequent source samples retain LPF history");
+                }
+                bool const reset = flight != FlightState::unknown && (flight == FlightState::on_ground || !aided);
+                bool const fuse = flight == FlightState::in_air && aided;
+                auto const & state = fixture.monitor.state();
+                test.expect(state.reset_allowed == reset && state.fusion_allowed == fuse && !state.active, profile,
+                            "four samples: ground/unaided realign, aided flight preserves yaw, unknown waits");
+                if (reset)
+                {
+                    test.expect(fixture.monitor.record_reset(133U, true) == Status::success && state.active &&
+                                    state.start_time_us == 133U && state.last_fuse_time_us == 0U &&
+                                    state.last_reset_time_us == 133U,
+                                profile, "source heading reset starts a new session without claiming fusion");
+                }
+                else if (fuse)
+                {
+                    test.expect(fixture.monitor.record_fusion(133U, FusionDecision::fused) == Status::success &&
+                                    state.active && state.last_reset_time_us == 0U,
+                                profile, "aided in-air source re-enters through actual correction, no yaw reset");
+                }
+                else
+                {
+                    fixture.conditions.flight_state = FlightState::on_ground;
+                    test.expect(fixture.sample(134U) == Status::success && state.reset_allowed, profile,
+                                "known ground state resolves pending unknown flight context");
+                }
+            }
+        }
+    }
+    Fixture fixture;
+    fixture.start(test);
+    fixture.conditions.flight_state = FlightState::on_ground;
+    fixture.conditions.ready = false;
+    ++fixture.source.device_id;
+    test.expect(fixture.sample(130U) == Status::success && fixture.monitor.state().filter_reset, profile,
+                "source reseed does not require attitude readiness");
+    fixture.conditions.ready = true;
+    fixture.conditions.flight_state = FlightState::in_air;
+    test.expect(fixture.sample(131U) == Status::success && fixture.sample(132U) == Status::success &&
+                    fixture.sample(133U) == Status::success && fixture.monitor.state().reset_allowed,
+                profile, "ground change keeps its alignment requirement after takeoff/readiness");
+    test.expect(fixture.monitor.record_reset(133U, false) == Status::success, profile, "record real reset failure");
+    ++fixture.source.device_id;
+    test.expect(fixture.sample(134U) == Status::success && fixture.sample(200U) == Status::success &&
+                    fixture.monitor.state().recovery_reason == RecoveryReason::reset_failed &&
+                    !fixture.monitor.state().reset_allowed && !fixture.monitor.state().fusion_allowed,
+                profile, "another source cannot silently repair a numerical failure");
+}
+
+void test_reference_change(TestContext & test)
+{
+    for (bool aided : {false, true})
+    {
+        for (bool at_rest : {false, true})
+        {
+            Fixture fixture;
+            fixture.start(test);
+            fixture.conditions.horizontal_aiding = aided;
+            fixture.conditions.at_rest = at_rest;
+            ++fixture.source.reference_id;
+            bool const reset = !aided || at_rest;
+            test.expect(fixture.sample(130U) == Status::success && !fixture.monitor.state().filter_reset &&
+                            fixture.monitor.state().reset_allowed == reset &&
+                            fixture.monitor.state().fusion_allowed == !reset &&
+                            fixture.monitor.state().last_fuse_time_us == 121U,
+                        profile, "reference-only update retains sensor history; aiding/rest selects heading reset");
+            if (reset)
+            {
+                test.expect(fixture.monitor.state().recovery_reason == RecoveryReason::reference_changed &&
+                                fixture.monitor.record_reset(130U, true) == Status::success &&
+                                fixture.monitor.state().last_reset_time_us == 130U &&
+                                fixture.monitor.state().start_time_us == 121U,
+                            profile, "reference reset preserves the existing session and actual fusion history");
+            }
+        }
+    }
+    Fixture unhealthy;
+    unhealthy.start(test);
+    unhealthy.conditions.horizontal_aiding = false;
+    ++unhealthy.source.reference_id;
+    test.expect(unhealthy.sample(130U, false) == Status::success && !unhealthy.monitor.state().reset_allowed &&
+                    unhealthy.sample(150U) == Status::success && !unhealthy.monitor.state().reset_allowed &&
+                    unhealthy.sample(151U) == Status::success && unhealthy.monitor.state().reset_allowed,
+                profile, "new reference still requires strictly elapsed field health, not just a revision change");
+    auto pending = unhealthy;
+    pending.conditions.horizontal_aiding = true;
+    test.expect(pending.sample(152U) == Status::success && !pending.monitor.state().reset_allowed &&
+                    pending.monitor.state().recovery_reason == RecoveryReason::none &&
+                    pending.monitor.state().stop_reason == StopReason::none,
+                profile, "restored aiding cancels pending reference reset without reporting a timeout");
+    Fixture invalid;
+    invalid.start(test);
+    auto const before = invalid.monitor.state();
+    invalid.conditions.flight_state = static_cast<MagnetometerFusion::FlightState>(99);
+    test.expect(invalid.sample(130U) == Status::domain_error &&
+                    invalid.monitor.state().last_fuse_time_us == before.last_fuse_time_us,
+                profile, "invalid flight-state enum cannot authorize a source reset");
+}
+
 void test_reset_feedback(TestContext & test)
 {
     Fixture fixture;
@@ -552,6 +684,8 @@ int main()
     test_active_and_outages(test);
     test_timeouts(test);
     test_feedback_and_recovery(test);
+    test_source_reinitialization(test);
+    test_reference_change(test);
     test_reset_feedback(test);
     test_invalid_calls(test);
     test_real_fusion<formal_eskf::test::Backend<float>, formal_eskf::configuration::Ahrs>(test, "float AHRS");

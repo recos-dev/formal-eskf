@@ -7,6 +7,7 @@
  */
 
 #include <formal_eskf/runtime/magnetometer_reset.hpp>
+#include <formal_eskf/runtime/magnetometer_filter.hpp>
 
 #include <cmath>
 #include <iostream>
@@ -27,6 +28,39 @@ constexpr std::string_view profile = "magnetic heading reset";
 template <typename Matrix> bool same_matrix(Matrix const & a, Matrix const & b)
 {
     return formal_eskf::linalg::max_abs(a - b) == typename Matrix::value_type{0};
+}
+
+template <typename Scalar> void test_reset_filter(TestContext & test)
+{
+    using Linalg = formal_eskf::test::Backend<Scalar>;
+    using Filter = formal_eskf::runtime::MagnetometerFilter<Linalg>;
+    using Vector = typename Filter::vector_type;
+    auto const first = Vector::from_row_major({Scalar{20}, Scalar{0}, Scalar{40}});
+    auto const second = Vector::from_row_major({Scalar{0}, Scalar{20}, Scalar{40}});
+    Filter filter;
+    test.expect(filter.update(first) == Status::success && filter.initialized() && same_matrix(filter.field_b(), first),
+                profile, "first valid magnetic sample seeds reset LPF exactly");
+    test.expect(filter.update(second) == Status::success &&
+                    formal_eskf::linalg::max_abs(filter.field_b() -
+                                                 Vector::from_row_major({Scalar{18}, Scalar{2}, Scalar{40}})) <
+                        static_cast<Scalar>(1e-5),
+                profile, "reset LPF uses nominal 10 ms / 90 ms alpha");
+    test.expect(filter.update(second, true) == Status::success && same_matrix(filter.field_b(), second), profile,
+                "source reseed retains no old-source weighted field");
+    auto invalid = first;
+    invalid.set(0U, std::numeric_limits<Scalar>::quiet_NaN());
+    test.expect(filter.update(invalid, true) == Status::non_finite_input && same_matrix(filter.field_b(), second),
+                profile, "invalid reseed preserves the previous valid filter");
+    auto extreme = first;
+    extreme.set(0U, std::numeric_limits<Scalar>::max());
+    test.expect(filter.update(extreme, true) == Status::success, profile, "seed finite extreme sample");
+    test.expect(filter.update(extreme * Scalar{-1}) == Status::non_finite_result &&
+                    same_matrix(filter.field_b(), extreme),
+                profile, "overflow during filtering preserves history");
+    filter.reset();
+    test.expect(!filter.initialized() && filter.update(second) == Status::success &&
+                    same_matrix(filter.field_b(), second),
+                profile, "explicit filter reset requires a fresh seed");
 }
 
 template <typename Scalar, typename Configuration> void run_reset_tests(TestContext & test)
@@ -252,6 +286,8 @@ int main()
 {
     formal_eskf::test::configure_backend_test();
     TestContext test;
+    test_reset_filter<float>(test);
+    test_reset_filter<double>(test);
     run_reset_tests<float, formal_eskf::configuration::Ahrs>(test);
     run_reset_tests<float, formal_eskf::configuration::Ins>(test);
     run_reset_tests<double, formal_eskf::configuration::Ahrs>(test);

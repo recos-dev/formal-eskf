@@ -191,7 +191,8 @@ if(PROJECT_IS_TOP_LEVEL)
                         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_replay_vertical_acceleration.cmake
                 )
             endforeach()
-            foreach(CASE IN ITEMS timeout disturbed aided)
+            foreach(CASE IN ITEMS timeout disturbed aided source_ground source_air source_unaided
+                                  source_unknown calibration source_disturbed reference_unaided reference_aided context_invalid)
                 add_test(
                     NAME formal_eskf.replay_magnetometer.reset.${CASE}
                     COMMAND ${CMAKE_COMMAND}

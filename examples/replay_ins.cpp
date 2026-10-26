@@ -36,6 +36,7 @@
 #include <formal_eskf/runtime/magnetometer.hpp>
 #include <formal_eskf/runtime/magnetometer_fusion.hpp>
 #include <formal_eskf/runtime/magnetometer_reset.hpp>
+#include <formal_eskf/runtime/magnetometer_filter.hpp>
 #include <formal_eskf/runtime/position.hpp>
 #include <formal_eskf/runtime/velocity.hpp>
 #include <formal_eskf/runtime/vertical_acceleration_health.hpp>
@@ -594,6 +595,51 @@ MagneticReference read_magnetic_reference(std::filesystem::path const & input)
     return {vector3(mn, me, md), Linalg::matrix_type<3U, 3U>::identity() * noise_variance, gate_sigma};
 }
 
+struct MagneticContext
+{
+    MagneticLifecycle::Source source{1U, 0U, 0U};
+    MagneticLifecycle::FlightState flight_state = MagneticLifecycle::FlightState::unknown;
+    Vector3 m_n{};
+};
+
+MagneticContext read_magnetic_context(std::ifstream & stream, std::uint64_t time, MagneticContext const & previous)
+{
+    if (!stream.is_open())
+    {
+        return previous;
+    }
+    std::array<double, 8U> row{};
+    if (!read_row(stream, row) || timestamp(row[0U]) != time)
+    {
+        throw std::runtime_error("magnetic context must match the seed and each magnetic sample");
+    }
+    if (std::any_of(row.begin() + 1, row.begin() + 4,
+                    [](double value) {
+                        return value < 0.0 || value > std::numeric_limits<std::uint32_t>::max() ||
+                               std::trunc(value) != value;
+                    }))
+    {
+        throw std::runtime_error("invalid magnetic identity/revision");
+    }
+    auto const flight = metadata_integer(row[4U], -1, 1);
+    MagneticContext result{
+        {static_cast<std::uint32_t>(row[1U]), static_cast<std::uint32_t>(row[2U]), static_cast<std::uint32_t>(row[3U])},
+        flight == -1  ? MagneticLifecycle::FlightState::unknown
+        : flight == 0 ? MagneticLifecycle::FlightState::on_ground
+                      : MagneticLifecycle::FlightState::in_air,
+        vector3(row[5U], row[6U], row[7U])};
+    if (result.source.device_id == 0U || std::hypot(row[5U], row[6U]) < MAG_MIN_HORIZONTAL)
+    {
+        throw std::runtime_error("invalid magnetic source or reference");
+    }
+    if (result.source.reference_id == previous.source.reference_id &&
+        formal_eskf::linalg::max_abs(result.m_n - previous.m_n) != 0.0)
+    {
+        throw std::runtime_error("changed magnetic reference requires a new revision");
+    }
+    return result;
+}
+
 std::string_view fusion_outcome(formal_eskf::runtime::FusionDecision decision)
 {
     switch (decision)
@@ -646,6 +692,8 @@ std::string_view magnetic_recovery_reason(MagneticLifecycle::RecoveryReason reas
         return "fusion_failed";
     case MagneticLifecycle::RecoveryReason::reset_failed:
         return "reset_failed";
+    case MagneticLifecycle::RecoveryReason::reference_changed:
+        return "reference_changed";
     default:
         return "source_changed";
     }
@@ -806,6 +854,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     auto imu = open_csv(input / "imu.csv", "timestamp_us,integral_dt_us,fx,fy,fz,wx,wy,wz");
     auto navigation = open_csv(input / "navigation.csv", "timestamp_us,pn,pe,pd,vn,ve,vd,eph,epv,speed_accuracy");
     std::ifstream magnetometer;
+    std::ifstream magnetic_context_stream;
     MagneticReference magnetic;
     bool const has_magnetic_input = std::filesystem::exists(input / "magnetometer.csv");
     if (has_magnetic_input != std::filesystem::exists(input / "magnetic_reference.csv"))
@@ -816,6 +865,15 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     {
         magnetic = read_magnetic_reference(input);
         magnetometer = open_csv(input / "magnetometer.csv", "timestamp_us,mx,my,mz");
+    }
+    if (std::filesystem::exists(input / "magnetic_context.csv"))
+    {
+        if (!has_magnetic_input)
+        {
+            throw std::runtime_error("magnetic context requires magnetic observations");
+        }
+        magnetic_context_stream = open_csv(input / "magnetic_context.csv",
+                                           "timestamp_us,device_id,calibration_count,reference_id,in_air,mn,me,md");
     }
     std::ifstream flags;
     if (std::filesystem::exists(input / "imu_flags.csv"))
@@ -864,6 +922,11 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::array<std::size_t, 6U> bias_limit_counts{};
     Accelerometer accelerometer;
     MagneticLifecycle magnetic_lifecycle;
+    formal_eskf::runtime::MagnetometerFilter<Linalg> magnetic_filter;
+    auto magnetic_context = read_magnetic_context(
+        magnetic_context_stream, time, {{1U, 0U, 0U}, MagneticLifecycle::FlightState::unknown, magnetic.m_n});
+    magnetic_lifecycle.reset(magnetic_context.source);
+    magnetic.m_n = magnetic_context.m_n;
     MagneticLifecycle::Parameters const magnetic_timing{MAG_HEALTH_TIME_US, MAG_MAX_INTERVAL_US, MAG_FUSION_TIMEOUT_US};
     auto const accel_V = Linalg::matrix_type<3U, 3U>::identity() * (ACCEL_OBS_STD * ACCEL_OBS_STD);
     // Consume seed metadata, but initialization is not a successful aiding event.
@@ -946,8 +1009,9 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     accel_updates.exceptions(std::ios::failbit | std::ios::badbit);
     mag_updates.exceptions(std::ios::failbit | std::ios::badbit);
     mag_resets.exceptions(std::ios::failbit | std::ios::badbit);
-    mag_resets << std::setprecision(17)
-               << "source_timestamp_us,fusion_timestamp_us,status,delta_q0,delta_q1,delta_q2,delta_q3,yaw_variance\n";
+    mag_resets
+        << std::setprecision(17)
+        << "source_timestamp_us,fusion_timestamp_us,status,delta_q0,delta_q1,delta_q2,delta_q3,yaw_variance,reason\n";
     mag_updates << std::setprecision(17);
     mag_updates << "source_timestamp_us,fusion_timestamp_us,outcome,status,field_valid,strength_rejected,"
                    "inclination_rejected,horizontal_rejected,innovation_valid,ratio_x,ratio_y,ratio_z,"
@@ -1575,6 +1639,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             mag_superseded += magnetic_time != 0U ? 1U : 0U;
             magnetic_time = source_time;
             magnetic_sample = vector3(magnetic_row[1U], magnetic_row[2U], magnetic_row[3U]);
+            magnetic_context = read_magnetic_context(magnetic_context_stream, source_time, magnetic_context);
+            magnetic.m_n = magnetic_context.m_n;
             last_magnetic_time = source_time;
             has_magnetometer = read_row(magnetometer, magnetic_row);
         }
@@ -1589,18 +1655,24 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 result.field = formal_eskf::runtime::check_magnetic_field(state.q_nb, magnetic_sample, magnetic.m_n,
                                                                           field_parameters, false);
             }
-            // This fixed-reference CSV session has one adapter-assigned identity,
-            // not a claimed hardware ID/calibration counter. Preparation rejects
-            // recorded source/calibration changes; unrecorded changes are unknown.
-            MagneticLifecycle::Sample const lifecycle_sample{
-                magnetic_time, {1U, 0U}, formal_eskf::succeeded(result.field.status) && result.field.accepted};
+            MagneticLifecycle::Sample const lifecycle_sample{magnetic_time, magnetic_context.source,
+                                                             formal_eskf::succeeded(result.field.status) &&
+                                                                 result.field.accepted};
             // Initial yaw/reference come from the causal seed. Tilt readiness is
             // the existing covariance-based latch, never imported EKF2 status.
-            MagneticLifecycle::Conditions const magnetic_conditions{mag_enabled, fusion_conditions.tilt_aligned(), true,
+            MagneticLifecycle::Conditions const magnetic_conditions{mag_enabled,
+                                                                    fusion_conditions.tilt_aligned(),
+                                                                    true,
                                                                     fusion_conditions.horizontal_aiding(time),
-                                                                    sample_flags.at_rest == 1};
+                                                                    sample_flags.at_rest == 1,
+                                                                    magnetic_context.flight_state};
             check_status(magnetic_lifecycle.update(time, magnetic_conditions, magnetic_timing, lifecycle_sample),
                          "magnetometer lifecycle", time);
+            if (mag_enabled && magnetic_time != 0U)
+            {
+                check_status(magnetic_filter.update(magnetic_sample, magnetic_lifecycle.state().filter_reset),
+                             "magnetometer reset filter", time);
+            }
             std::string_view outcome = magnetic_time == 0U ? "no_sample" : "skipped";
             if (!formal_eskf::succeeded(result.field.status))
             {
@@ -1628,9 +1700,10 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             Status reset_status = Status::success;
             if (magnetic_lifecycle.state().reset_allowed)
             {
+                auto const reason = magnetic_lifecycle.state().recovery_reason;
                 formal_eskf::so3::UnitQuaternion<Linalg> delta;
                 reset_status = formal_eskf::runtime::try_reset_magnetic_heading(
-                    state, covariance, magnetic_sample, magnetic.m_n, MAG_HEADING_STD * MAG_HEADING_STD,
+                    state, covariance, magnetic_filter.field_b(), magnetic.m_n, MAG_HEADING_STD * MAG_HEADING_STD,
                     MAG_MIN_HORIZONTAL, QUAT_MIN_NORM, state, covariance, delta);
                 bool const reset_succeeded = formal_eskf::succeeded(reset_status);
                 check_status(magnetic_lifecycle.record_reset(magnetic_time, reset_succeeded),
@@ -1641,7 +1714,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     // A failed transaction has no applied rotation.
                     mag_resets << ',' << (reset_succeeded ? delta.coefficients()(axis) : 0.0);
                 }
-                mag_resets << ',' << MAG_HEADING_STD * MAG_HEADING_STD << '\n';
+                mag_resets << ',' << MAG_HEADING_STD * MAG_HEADING_STD << ',' << magnetic_recovery_reason(reason)
+                           << '\n';
                 mag_heading_resets += reset_succeeded ? 1U : 0U;
                 outcome = reset_succeeded ? "reset" : "reset_failed";
             }
@@ -1660,7 +1734,9 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             check_status(result.fusion.status, "magnetometer correction", time);
             check_status(reset_status, "magnetometer heading reset", time);
             if (lifecycle.recovery_reason != MagneticLifecycle::RecoveryReason::none &&
-                lifecycle.recovery_reason != MagneticLifecycle::RecoveryReason::fusion_timeout)
+                lifecycle.recovery_reason != MagneticLifecycle::RecoveryReason::fusion_timeout &&
+                lifecycle.recovery_reason != MagneticLifecycle::RecoveryReason::source_changed &&
+                lifecycle.recovery_reason != MagneticLifecycle::RecoveryReason::reference_changed)
             {
                 throw std::runtime_error("magnetometer requires caller repair (" +
                                          std::string(magnetic_recovery_reason(lifecycle.recovery_reason)) +
@@ -1678,6 +1754,11 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         throw std::runtime_error("replay incomplete: unconsumed sensor data or no prediction/navigation events");
     }
     std::array<double, 3U> extra_flags{};
+    std::array<double, 8U> extra_context{};
+    if (magnetic_context_stream.is_open() && read_row(magnetic_context_stream, extra_context))
+    {
+        throw std::runtime_error("unconsumed magnetic context");
+    }
     if (flags.is_open() && read_row(flags, extra_flags))
     {
         throw std::runtime_error("unconsumed IMU flags");

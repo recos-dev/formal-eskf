@@ -85,35 +85,44 @@ def magnetic_reference(Q, FIELD, ULOG):
     return [*REFERENCE, NOISE_STD, GATE_SIGMA]
 
 
-def magnetic_rows(ULOG, MAG, TIMES, START, END):
-    """One calibrated measurement per message; reject known frame/source changes."""
-    for NAME in ("device_id", "calibration_count"):
-        if NAME in MAG:
-            VALUES = {int(VALUE) for TIME, VALUE in zip(TIMES, MAG[NAME]) if TIME <= END}
-            if len(VALUES) != 1:
-                raise ValueError(f"magnetometer {NAME} changes require a new replay/reference")
+def magnetic_rows(ULOG, MAG, TIMES, START, END, REFERENCE):
+    """Calibrated observations plus causal source/flight context; keep the seed field."""
     SELECTION = [DATA.data for DATA in ULOG.data_list
                  if DATA.name == "sensor_selection" and DATA.multi_id == 0]
     for DATA in SELECTION:
-        if "mag_device_id" in DATA:
+        if "mag_device_id" in DATA and "device_id" not in MAG:
             IDS = {int(VALUE) for TIME, VALUE in zip(DATA["timestamp"], DATA["mag_device_id"])
                    if int(TIME) <= END}
             if len(IDS) > 1:
-                raise ValueError("selected magnetometer changes require a new replay/reference")
+                raise ValueError("magnetic source switches require per-sample device_id metadata")
     for TIME, NAME, _ in ULOG.changed_parameters:
-        if TIME <= END and NAME.startswith(("CAL_MAG", "SENS_BOARD", "EKF2_MAG_NOISE", "EKF2_MAG_GATE",
-                                           "EKF2_MAG_DECL")):
+        if TIME <= END and NAME.startswith(("SENS_BOARD", "EKF2_MAG_NOISE", "EKF2_MAG_GATE", "EKF2_MAG_DECL")):
             raise ValueError(f"changed {NAME} requires a new replay/reference")
-    ROWS = []
-    for INDEX, TIME in enumerate(TIMES):
-        if START < TIME <= END:
+        if TIME <= END and NAME.startswith("CAL_MAG") and (TIME <= START or "calibration_count" not in MAG):
+            raise ValueError(f"changed {NAME} requires per-sample calibration metadata after initialization")
+    SEED_INDEX = max(INDEX for INDEX, TIME in enumerate(TIMES) if TIME <= START)
+    INDICES = [SEED_INDEX] + [INDEX for INDEX, TIME in enumerate(TIMES) if START < TIME <= END]
+    CONTEXT_TIMES = [START] + [TIMES[INDEX] for INDEX in INDICES[1:]]
+    FLIGHT_FLAGS = land_flags(ULOG, CONTEXT_TIMES)
+    ROWS, CONTEXT = [], []
+    for ROW_INDEX, (INDEX, TIME, FLAGS) in enumerate(zip(INDICES, CONTEXT_TIMES, FLIGHT_FLAGS)):
+        IDENTITY = []
+        for NAME, DEFAULT in (("device_id", 1), ("calibration_count", 0)):
+            VALUE = float(MAG[NAME][INDEX]) if NAME in MAG else float(DEFAULT)
+            if not math.isfinite(VALUE) or not VALUE.is_integer() or not 0 <= VALUE <= 4294967295:
+                raise ValueError(f"invalid magnetic {NAME}")
+            IDENTITY.append(int(VALUE))
+        if IDENTITY[0] == 0:
+            raise ValueError("magnetic device_id must be nonzero")
+        CONTEXT.append([TIME, *IDENTITY, 0, FLAGS[0], *REFERENCE[:3]])
+        if ROW_INDEX:
             VALUES = [100.0 * VALUE for VALUE in xyz(MAG, "magnetometer_ga", INDEX)]
             if not finite(VALUES):
                 raise ValueError("non-finite magnetometer reading")
             ROWS.append([TIME, *VALUES])
     if not ROWS:
         raise ValueError("no magnetometer samples after initialization")
-    return ROWS
+    return ROWS, CONTEXT
 
 
 def gnss_parameters(ULOG, END):
@@ -331,6 +340,9 @@ def prepare(ULOG, OUTPUT):
     MAG_SEED = [INDEX for INDEX, TIME in enumerate(MAG_TIMES) if IMU_TIMES[0] <= TIME <= START]
     if not MAG_SEED:
         raise ValueError("no magnetometer samples in alignment window")
+    for NAME in ("device_id", "calibration_count"):
+        if NAME in MAG and len({int(MAG[NAME][INDEX]) for INDEX in MAG_SEED}) != 1:
+            raise ValueError(f"magnetic {NAME} changed inside the alignment window")
     ACCEL = [sum(xyz(IMU, "accelerometer_m_s2", INDEX)[AXIS] for INDEX in SEED) / len(SEED)
              for AXIS in range(3)]
     FIELD = [sum(xyz(MAG, "magnetometer_ga", INDEX)[AXIS] for INDEX in MAG_SEED) / len(MAG_SEED)
@@ -340,7 +352,7 @@ def prepare(ULOG, OUTPUT):
     DECLINATION = float(ULOG.initial_parameters["EKF2_MAG_DECL"])
     Q = initial_quaternion(ACCEL, FIELD, math.radians(DECLINATION))
     MAG_REFERENCE = magnetic_reference(Q, FIELD, ULOG)
-    MAG_ROWS = magnetic_rows(ULOG, MAG, MAG_TIMES, START, IMU_TIMES[-1])
+    MAG_ROWS, MAG_CONTEXT = magnetic_rows(ULOG, MAG, MAG_TIMES, START, IMU_TIMES[-1], MAG_REFERENCE)
     BIAS_PARAMETERS = bias_parameters(ULOG, IMU_TIMES[-1])
     BIAS_LIMITS, BIAS_LIMIT_SOURCES = bias_limits(ULOG, IMU_TIMES[-1])
     GNSS_PARAMETERS = gnss_parameters(ULOG, IMU_TIMES[-1])
@@ -398,6 +410,8 @@ def prepare(ULOG, OUTPUT):
               "vn,ve,vd,dn,de,dd,reference_timestamp_us", QUALITY_ROWS)
     write_csv(OUTPUT / "magnetic_reference.csv", "mn,me,md,noise_std,gate_sigma", [MAG_REFERENCE])
     write_csv(OUTPUT / "magnetometer.csv", "timestamp_us,mx,my,mz", MAG_ROWS)
+    write_csv(OUTPUT / "magnetic_context.csv",
+              "timestamp_us,device_id,calibration_count,reference_id,in_air,mn,me,md", MAG_CONTEXT)
     return {"start_timestamp_us": START, "end_timestamp_us": IMU_TIMES[-1],
             "imu_rows": len(IMU_ROWS), "gnss_rows": len(GPS_ROWS),
             "magnetometer_rows": len(MAG_ROWS),
@@ -431,10 +445,11 @@ def prepare(ULOG, OUTPUT):
             "magnetic_measurement": "vehicle_magnetometer instance 0, calibrated body FRD, Gauss times 100 -> microtesla",
             "magnetic_timing": "newest topic sample at each IMU tick; superseded samples counted; no sensor-delay compensation",
             "magnetic_lifecycle": "tilt alignment, startup health and sample count; retry after ordinary stops; timeout heading reset on fresh healthy data without horizontal aid or at rest; numerical failures abort",
-            "magnetic_reset": "fixed reference retained; tilt-preserving yaw and covariance reset; separate applied quaternion deltas/counts; explicit replay heading noise, no magnetic-state reset",
-            "magnetic_identity": "fixed CSV session identity 1, generation 0; not hardware device_id/calibration_count",
+            "magnetic_reset": "seed field retained; filtered body field for heading resets, raw samples for correction; separate reset reason/delta/count; no magnetic-state reset or WMM updates",
+            "magnetic_identity": {NAME: "logged" if NAME in MAG else "fixed session fallback; continuity unknown"
+                                  for NAME in ("device_id", "calibration_count")},
             "magnetic_calibration": "use published calibration; no additional CAL_MAG or EKF2_MAGBIAS subtraction",
-            "magnetic_source_limits": "reject recorded source/calibration changes; missing metadata cannot establish absence of changes",
+            "magnetic_source_limits": "source/calibration changes reseed LPF and requalify; ground/unaided heading reset, aided flight preserves heading; unknown flight waits; missing identity metadata cannot establish continuity",
             "at_rest_unavailable_rows": sum(ROW[1] == -1 for ROW in FLAGS),
             "clipping_unavailable_rows": sum(ROW[2] == -1 for ROW in FLAGS),
             "bias_parameters": dict(zip(("maximum_specific_force", "maximum_angular_rate", "decay_time_constant",

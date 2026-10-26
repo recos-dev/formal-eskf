@@ -2948,7 +2948,7 @@
     },
     {
       "id": "R-MAGNETOMETER-LIFECYCLE",
-      "title": "Magnetic lifecycle and acknowledged timeout heading recovery; Lean and ESBMC evidence pending",
+      "title": "Magnetic lifecycle with timeout and source/reference reinitialization; Lean and ESBMC evidence pending",
       "references": {
         "spec": [
           {
@@ -2989,6 +2989,30 @@
           {
             "file": "examples/replay_ins.cpp",
             "symbol": "void replay("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "MagneticContext read_magnetic_context("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
+      "id": "R-MAGNETOMETER-FILTER",
+      "title": "Magnetic reset LPF with source reseeding and failure atomicity; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-MAGNETOMETER-FILTER: magnetic data for heading reset"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/magnetometer_filter.hpp",
+            "symbol": "class MagnetometerFilter"
           }
         ],
         "esbmc": []

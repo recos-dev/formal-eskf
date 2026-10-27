@@ -336,7 +336,32 @@ def gnss_quality_rows(ULOG, GPS, TIMES, START, END):
     return ROWS
 
 
-def prepare(ULOG, OUTPUT):
+def geographic_magnetic_fields(BINARY, FIXES, BASIS):
+    """Query the host model in one batch, then rotate local NED fields into the replay frame."""
+    INPUT = "".join(f"{math.degrees(READING[0]):.17g} {math.degrees(READING[1]):.17g}\n"
+                    for _, READING in FIXES)
+    RESULT = subprocess.run([str(BINARY)], input=INPUT, text=True, capture_output=True, check=True)
+    ROWS = RESULT.stdout.splitlines()
+    if len(ROWS) != len(FIXES):
+        raise ValueError("magnetic model must return one field per geographic position")
+    FIELDS = {}
+    for (INDEX, READING), ROW in zip(FIXES, ROWS):
+        VALUES = [float(VALUE) for VALUE in ROW.split()]
+        if (len(VALUES) != 3 or not finite(VALUES) or not -180 <= VALUES[0] <= 180
+                or not -90 <= VALUES[1] <= 90 or VALUES[2] <= 0):
+            raise ValueError("invalid geographic magnetic field")
+        DECLINATION, INCLINATION, STRENGTH = math.radians(VALUES[0]), math.radians(VALUES[1]), VALUES[2]
+        LOCAL = [STRENGTH * math.cos(INCLINATION) * math.cos(DECLINATION),
+                 STRENGTH * math.cos(INCLINATION) * math.sin(DECLINATION), STRENGTH * math.sin(INCLINATION)]
+        LOCAL_BASIS = ned_basis(READING[0], READING[1])
+        ECEF_FIELD = [sum(LOCAL_BASIS[AXIS][COLUMN] * LOCAL[AXIS] for AXIS in range(3)) for COLUMN in range(3)]
+        FIELD = [dot(AXIS, ECEF_FIELD) for AXIS in BASIS]
+        FIELDS[INDEX] = [math.atan2(FIELD[1], FIELD[0]), math.atan2(FIELD[2], math.hypot(*FIELD[:2])),
+                         math.sqrt(dot(FIELD, FIELD))]
+    return FIELDS
+
+
+def prepare(ULOG, OUTPUT, MAGNETIC_MODEL=None):
     IMU = topic(ULOG, "sensor_combined")
     GPS = topic(ULOG, "vehicle_gps_position")
     MAG = topic(ULOG, "vehicle_magnetometer")
@@ -360,10 +385,7 @@ def prepare(ULOG, OUTPUT):
     # The log's configured declination is a starting assumption, not a truth
     # measurement. Biases remain unknown and are initialized to zero in C++.
     DECLINATION = float(ULOG.initial_parameters["EKF2_MAG_DECL"])
-    Q = initial_quaternion(ACCEL, FIELD, math.radians(DECLINATION))
-    MAG_REFERENCE = magnetic_reference(Q, FIELD, ULOG)
     MAG_HEADING = magnetic_heading_parameters(ULOG)
-    MAG_ROWS, MAG_CONTEXT = magnetic_rows(ULOG, MAG, MAG_TIMES, START, IMU_TIMES[-1], MAG_REFERENCE)
     BIAS_PARAMETERS = bias_parameters(ULOG, IMU_TIMES[-1])
     BIAS_LIMITS, BIAS_LIMIT_SOURCES = bias_limits(ULOG, IMU_TIMES[-1])
     GNSS_PARAMETERS = gnss_parameters(ULOG, IMU_TIMES[-1])
@@ -377,6 +399,25 @@ def prepare(ULOG, OUTPUT):
     ORIGIN_INDEX, ORIGIN = GPS_SEED[-1]
     LAT0, LON0, ALT0, V0, ACCURACY0 = ORIGIN
     ORIGIN_ECEF, BASIS = ecef(LAT0, LON0, ALT0), ned_basis(LAT0, LON0)
+    MODEL_FIELDS = {}
+    if MAGNETIC_MODEL is not None:
+        DECL_TYPE = float(ULOG.initial_parameters.get("EKF2_DECL_TYPE", -1))
+        if not math.isfinite(DECL_TYPE) or not DECL_TYPE.is_integer() or DECL_TYPE < 0 or not int(DECL_TYPE) & 1:
+            raise ValueError("geographic magnetic replay requires logged EKF2_DECL_TYPE with geographic declination enabled")
+        if any(TIME <= IMU_TIMES[-1] and NAME == "EKF2_DECL_TYPE" for TIME, NAME, _ in ULOG.changed_parameters):
+            raise ValueError("changed EKF2_DECL_TYPE requires a new replay")
+        MODEL_FIXES = [(ORIGIN_INDEX, ORIGIN)] + [(INDEX, READING) for INDEX, READING in VALID
+                                                if START < GPS_TIMES[INDEX] <= IMU_TIMES[-1]]
+        MODEL_FIELDS = geographic_magnetic_fields(MAGNETIC_MODEL, MODEL_FIXES, BASIS)
+        DECLINATION = math.degrees(MODEL_FIELDS[ORIGIN_INDEX][0])
+    Q = initial_quaternion(ACCEL, FIELD, math.radians(DECLINATION))
+    MAG_REFERENCE = magnetic_reference(Q, FIELD, ULOG)
+    MODEL_ROWS = []
+    if MODEL_FIELDS:
+        D, I, STRENGTH = MODEL_FIELDS[ORIGIN_INDEX]
+        MAG_REFERENCE[:3] = [STRENGTH * math.cos(I) * math.cos(D), STRENGTH * math.cos(I) * math.sin(D), STRENGTH * math.sin(I)]
+        MODEL_ROWS.append([START, 1, D, I, STRENGTH])
+    MAG_ROWS, MAG_CONTEXT = magnetic_rows(ULOG, MAG, MAG_TIMES, START, IMU_TIMES[-1], MAG_REFERENCE)
     IMU_ROWS, GPS_ROWS = [], []
     for INDEX in range(SEED[-1], len(IMU_TIMES)):
         PERIOD = int(IMU["gyro_integral_dt"][INDEX])
@@ -398,6 +439,8 @@ def prepare(ULOG, OUTPUT):
         VELOCITY_ECEF = [sum(LOCAL_BASIS[AXIS][COLUMN] * VELOCITY[AXIS] for AXIS in range(3))
                          for COLUMN in range(3)]
         GPS_ROWS.append([GPS_TIMES[INDEX], *POSITION, *[dot(ROW, VELOCITY_ECEF) for ROW in BASIS], *ACCURACY])
+        if MODEL_FIELDS:
+            MODEL_ROWS.append([GPS_TIMES[INDEX], int(INDEX in MODEL_FIELDS), *MODEL_FIELDS.get(INDEX, [0, 0, 0])])
     if len(IMU_ROWS) < 2 or not GPS_ROWS:
         raise ValueError("no IMU/GNSS replay interval after initialization")
     OUTPUT.mkdir(parents=True, exist_ok=False)
@@ -420,6 +463,8 @@ def prepare(ULOG, OUTPUT):
               "timestamp_us,fix_type,satellites,pdop,spoofed,vel_ned_valid,in_air,at_rest,"
               "vn,ve,vd,dn,de,dd,reference_timestamp_us", QUALITY_ROWS)
     write_csv(OUTPUT / "magnetic_reference.csv", "mn,me,md,noise_std,gate_sigma", [MAG_REFERENCE])
+    if MODEL_ROWS:
+        write_csv(OUTPUT / "magnetic_model.csv", "timestamp_us,available,declination_rad,inclination_rad,strength_ut", MODEL_ROWS)
     write_csv(OUTPUT / "magnetic_heading_parameters.csv", "heading_noise,acceleration_limit", [MAG_HEADING])
     write_csv(OUTPUT / "magnetometer.csv", "timestamp_us,mx,my,mz", MAG_ROWS)
     write_csv(OUTPUT / "magnetic_context.csv",
@@ -453,7 +498,10 @@ def prepare(ULOG, OUTPUT):
             "gnss_limits": "quality precedes lifecycle and gates; single replay clock; co-located IMU/GNSS; no alternate aiding, height-bias estimation, bad-vertical-acceleration override or emergency yaw",
             "magnetic_reference_n_ut": MAG_REFERENCE[:3],
             "magnetic_noise_std_ut": MAG_REFERENCE[3], "magnetic_gate_sigma": MAG_REFERENCE[4],
-            "magnetic_reference_source": "R(q_seed) times first 0.2 s mean field; not independent WMM/truth",
+            "magnetic_reference_source": ("host geographic model; seed origin then accepted horizontal GNSS positions, in fixed replay NED"
+                                          if MODEL_FIELDS else "R(q_seed) times first 0.2 s mean field; not independent WMM/truth"),
+            "magnetic_model_binary": (str(MAGNETIC_MODEL) if MAGNETIC_MODEL is not None else None),
+            "magnetic_model_binary_sha256": (hashlib.sha256(MAGNETIC_MODEL.read_bytes()).hexdigest() if MAGNETIC_MODEL is not None else None),
             "magnetic_heading_parameters": {NAME: {"value": VALUE,
                                                    "source": "logged" if NAME in ULOG.initial_parameters else "default"}
                                             for NAME, VALUE in zip(("EKF2_HEAD_NOISE", "EKF2_MAG_ACCLIM"), MAG_HEADING)},
@@ -461,7 +509,7 @@ def prepare(ULOG, OUTPUT):
             "magnetic_measurement": "vehicle_magnetometer instance 0, calibrated body FRD, Gauss times 100 -> microtesla",
             "magnetic_timing": "newest topic sample at each IMU tick; superseded samples counted; no sensor-delay compensation",
             "magnetic_lifecycle": "tilt alignment, startup health and sample count; retry after ordinary stops; timeout heading reset on fresh healthy data without horizontal aid or at rest with consistent heading; numerical failures abort",
-            "magnetic_reset": "seed field retained; filtered body field for heading resets, raw samples for correction; separate reset reason/delta/count; no magnetic-state reset or WMM updates",
+            "magnetic_reset": "current reference retained; filtered body field for heading resets, raw samples for correction; separate reset reason/delta/count; no estimated magnetic-state reset",
             "magnetic_identity": {NAME: "logged" if NAME in MAG else "fixed session fallback; continuity unknown"
                                   for NAME in ("device_id", "calibration_count")},
             "magnetic_calibration": "use published calibration; no additional CAL_MAG or EKF2_MAGBIAS subtraction",
@@ -484,10 +532,14 @@ def prepare(ULOG, OUTPUT):
             "claim": "wiring/numerical smoke test, not accuracy or statistical consistency validation"}
 
 
-def run_replay(LOG_FILE, BINARY, COMPARE_MAG=False):
+def run_replay(LOG_FILE, BINARY, COMPARE_MAG=False, MAGNETIC_MODEL=None):
     BINARY = BINARY.resolve()
     if not BINARY.is_file() or not os.access(BINARY, os.X_OK):
         raise ValueError(f"replay executable not found or not executable: {BINARY}; build it with CMake first")
+    if MAGNETIC_MODEL is not None:
+        MAGNETIC_MODEL = MAGNETIC_MODEL.resolve()
+        if not MAGNETIC_MODEL.is_file() or not os.access(MAGNETIC_MODEL, os.X_OK):
+            raise ValueError(f"magnetic model executable not found or not executable: {MAGNETIC_MODEL}")
     if not LOG_FILE.is_file():
         raise ValueError(f"ULog file not found: {LOG_FILE}")
     if LOG_FILE.stem in ("", ".", ".."):
@@ -496,7 +548,8 @@ def run_replay(LOG_FILE, BINARY, COMPARE_MAG=False):
     LOG_FILE = LOG_FILE.resolve()
     if OUTPUT.is_symlink() or OUTPUT.parent.is_symlink():
         raise ValueError(f"replay output path must not be a symlink: {OUTPUT}")
-    if any(PATH.is_relative_to(OUTPUT.resolve()) for PATH in (LOG_FILE, BINARY)):
+    INPUT_PATHS = [LOG_FILE, BINARY] + ([MAGNETIC_MODEL] if MAGNETIC_MODEL is not None else [])
+    if any(PATH.is_relative_to(OUTPUT.resolve()) for PATH in INPUT_PATHS):
         raise ValueError("ULog and replay executable must be outside the replay output directory")
     from pyulog import ULog
     from tqdm import tqdm as TQDM
@@ -509,7 +562,7 @@ def run_replay(LOG_FILE, BINARY, COMPARE_MAG=False):
             shutil.rmtree(OUTPUT)
             PROGRESS.write(f"Removed previous replay output: {OUTPUT}")
         OUTPUT.mkdir(parents=True, exist_ok=False)
-        META = prepare(ULOG, OUTPUT / "input")
+        META = prepare(ULOG, OUTPUT / "input", MAGNETIC_MODEL)
         with LOG_FILE.open("rb") as STREAM:
             HASH = hashlib.sha256()
             for CHUNK in iter(lambda: STREAM.read(1048576), b""):
@@ -550,12 +603,14 @@ def main():
     PARSER.add_argument("--plot", action="store_true", help="save PNG plots and display them with matplotlib")
     PARSER.add_argument("--compare-mag", action="store_true",
                         help="also replay identical inputs without mag correction; --plot adds the comparison")
+    PARSER.add_argument("--magnetic-model", type=Path,
+                        help="host px4_magnetic_model executable; use geographic fields instead of the seed-derived field")
     ARGS = PARSER.parse_args()
     try:
         if ARGS.plot:
             # Check the optional dependency before creating the output directory.
             import matplotlib.pyplot
-        OUTPUT = run_replay(ARGS.ulog, ARGS.binary, ARGS.compare_mag)
+        OUTPUT = run_replay(ARGS.ulog, ARGS.binary, ARGS.compare_mag, ARGS.magnetic_model)
         if ARGS.plot:
             plot_replay(OUTPUT)
     except subprocess.CalledProcessError as ERROR:

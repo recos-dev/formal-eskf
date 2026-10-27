@@ -249,6 +249,43 @@ Our explicit weak-field/failure handling and absence of learned magnetic states
 are scoped differences. Native float/double backend tests are supporting
 evidence; Lean/ESBMC proof and deployment tuning remain pending.
 
+### R-MAGNETIC-REFERENCE: geographic magnetic reference adoption
+
+`runtime::MagneticReference` consumes an externally supplied declination D,
+inclination I (radians), and strength B (microtesla) in the estimator's NED frame.
+It owns the adopted reference, revision and check timing, not geographic lookup,
+position validity, calibration, estimator state/P or learned magnetic states.
+
+- Form `m_n = B * [cos(I) cos(D), cos(I) sin(D), sin(I)]`. D is east-positive;
+  I is Down-positive. Require finite values, D in `[-pi,pi]`, I in
+  `[-pi/2,pi/2]`, and positive normal B. Propagate checked scalar failures and
+  reject non-finite generated coefficients. Weak horizontal field remains the
+  downstream field/heading guard's responsibility.
+- Call at strictly increasing nonzero fusion timestamps. `origin_updated`
+  requests an immediate check; otherwise a caller-valid position permits the
+  first check, then checks strictly **more than 10 seconds** apart. An origin
+  event is a lookup request, not authorization to change the navigation frame.
+  A skipped check does not consume/validate model values or alter the reference.
+- Adopt the first valid model, or a change strictly exceeding **1 degree** in D
+  or I, or **1 microtesla** in B, relative to the last adopted model. Equality
+  retains the old model. Compare angles directly, including across the pi cut,
+  following the reference implementation. Small changes accumulate against the
+  adopted model, not the last observed value.
+- Every adoption advances `reference_id` from zero (uninitialized) to one, then
+  monotonically; overflow fails instead of wrapping. Unchanged successful checks
+  advance only the check clock. Failed calls preserve the model, revision and
+  both timing watermarks, allowing a corrected retry at that timestamp. Return
+  separate `checked` and `changed` diagnostics; a failed check never publishes a
+  new reference or authorizes a reset.
+
+The schedule and change thresholds follow
+[PX4 v1.16.2 magnetic control](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/magnetometer/mag_control.cpp).
+This API additionally reports invalid domain/time and scalar failures explicitly,
+and preserves history on failure. Native tests cover
+binary32/binary64, two backends, axes/units, timing, thresholds and failure
+preservation. Lean/ESBMC evidence and the physical accuracy/version of the
+externally supplied model remain separate obligations.
+
 ### R-MAGNETOMETER-FUSION: field checks and gated magnetic correction
 
 `runtime::fuse_magnetometer` supports AHRS/INS and returns `MagnetometerFusionResult` with separate `field` and `fusion` diagnostics. `fusion.decision/status` describe the overall call. It retains the existing core's calibration, time, unit-quaternion, PSD/SPD, noise-independence and whole-object alias premises.
@@ -264,10 +301,12 @@ This is one stateless observation transaction, not full sensor health qualificat
 
 The PX4 replay supplies calibrated body-FRD `vehicle_magnetometer` instance 0
 observations in microtesla (Gauss multiplied by 100). Do not repeat sensor
-calibration or import the external estimator's learned magnetic bias. Freeze
-`m_n = R(q_seed) * mean(m_b_seed)` from the same causal 0.2 s alignment window
+calibration or import the external estimator's learned magnetic bias. By default,
+freeze `m_n = R(q_seed) * mean(m_b_seed)` from the same causal 0.2 s alignment window
 already used for initialization. This assumes that initial field is suitable;
 it is not an independent WMM reference or evidence of magnetic health.
+An optional geographic model replaces this seed-derived reference as described
+below; it does not change the fixed-field observation model or estimate mag bias.
 
 - Optional `magnetometer.csv` and `magnetic_reference.csv` must occur together;
   without both, existing navigation/accelerometer replay remains unchanged.
@@ -316,13 +355,65 @@ it is not an independent WMM reference or evidence of magnetic health.
   with causal land flags (unknown after 3 s). Reject changes inside the seed
   alignment window, untracked calibration/selection changes and frame/noise/gate/
   declination-parameter changes. Missing identity metadata uses explicitly reported
-  session fallbacks; it cannot prove continuity. The prepared NED field stays
-  fixed; no WMM data or replacement field is inferred from a changed sensor.
+  session fallbacks; it cannot prove continuity. Without a geographic provider,
+  the prepared NED field stays fixed. A changed sensor never establishes a new
+  reference field on its own.
 - `--compare-mag` runs the same prepared inputs and initialization twice; the
-  C++ `--no-mag` path disables only magnetic correction. Plots report yaw/path
+  C++ `--no-mag` path disables magnetic aiding and subsequent reference adoption. Plots report yaw/path
   differences, not accuracy. Existing initialization still uses magnetometer
   data in both runs. Missing-input and disabled paths must preserve the prior
   replay's state/navigation results. KITTI supplies no magnetic input.
+
+#### Replay geographic magnetic model
+
+`replay_px4.py --magnetic-model PATH` optionally calls the host-built
+`px4_magnetic_model` batch bridge. Build it by supplying an existing target through
+`FORMAL_ESKF_PX4_WMM_TARGET`; that target must export the model functions and
+`geo_mag_declination.h` include directory. The project neither bundles/downloads
+PX4 nor includes its data tables. Without that target, the ordinary replay and
+portable library have no new dependency. The embedded adapter should call its
+host model directly; the subprocess is only offline preparation.
+
+- The bridge consumes latitude/longitude degrees and returns declination and
+  inclination degrees plus microtesla strength using the host's `get_mag_*` APIs.
+  Invalid coordinates, malformed input, non-finite/nonpositive output and I/O
+  failure terminate preparation; never silently fall back to a measured field.
+  Preparation records the executable path/hash. Data-table epoch/version and
+  altitude/time dependence are properties of the supplied model, not certified
+  by a successful lookup. The tested reference is the pinned PX4 v1.16.2 table.
+- Require logged geographic declination enabled (`EKF2_DECL_TYPE` bit 0) and no
+  changes to that setting. Seed attitude uses the model declination at the same
+  causal GNSS origin; tilt and magnetic heading still use the initial sensor
+  window. Transform each position's local-NED model vector through ECEF into
+  the fixed replay NED frame before expressing its D/I/B. This transforms a
+  vector, not a point; never subtract the geographic origin from a field vector.
+- `magnetic_model.csv` contains one available seed row, then exactly one row per
+  navigation event: timestamp, availability, D/I/B. Unavailable rows do not carry
+  model evidence. Numerical/structural input errors and missing/mismatched/extra
+  rows fail. Only a successful horizontal-position correction/reset may cache
+  that event's available candidate; rejected quality/position and velocity-only
+  success cannot replace it. At magnetic events, recent own horizontal aiding
+  permits periodic checks of the cached candidate through `R-MAGNETIC-REFERENCE`.
+- This replay uses accepted GNSS locations, whereas PX4 normally queries its
+  own estimated global location. The fixed frame never rebases here; repeated
+  checks of a retained candidate do not claim a fresh geographic measurement.
+  The deployment adapter must supply its own valid position/origin policy.
+- Geographic mode owns the reference revision, starting at one, and forwards
+  adopted `field_n` and revision through the existing magnetic lifecycle before
+  heading/field checks and fusion. Context may still change device/calibration
+  and flight flags, but must retain revision zero and its seed field to avoid two
+  reference owners. Existing source/reference reset policy remains authoritative;
+  adoption alone is not an unconditional yaw reset or magnetic-state reset.
+- `magnetic_reference_updates.csv` records candidate source time, fusion time,
+  adoption decision, active revision and field; the summary counts checks and
+  adoptions. `--no-mag` keeps the same initialization but does not advance the
+  active model after the seed. Seed mode must retain its previous replay outputs.
+
+Native replay tests cover accepted updates, rejected positions and unavailable
+model data. The geographic-versus-seed comparison changes initialization as well
+as the reference; it is not a flight-accuracy score or an isolated correction
+experiment. Do not relax field/gate thresholds or invent magnetic bias to make
+an external reference agree with the measured field.
 
 #### Replay magnetic lifecycle
 
@@ -350,7 +441,7 @@ and [common.h](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7c
 | Timeout without horizontal aiding or with rest override | Request a heading reset; execute only with current fresh, health-qualified field data and readiness. Record actual reset progress separately from fusion. |
 
 The metadata controller is not a complete EKF2 replacement. PX4 owns magnetic
-earth/bias states, WMM, declination fusion, full mode selection and separate
+earth/bias states, integrated WMM lookup, declination fusion, full mode selection and separate
 latest/delayed timelines. Our supported reset is
 heading plus covariance against the existing fixed field, not magnetic-state reset.
 Our fixed-field core has no magnetic-only update: field rejection or aided
@@ -503,8 +594,9 @@ This is the initialized, fixed-field AHRS/INS profile: initial heading is suppli
 by the caller; external-yaw modes and magnetic earth/bias states are absent.
 PX4 can reset/learn those magnetic states while preserving yaw. Here the new
 reference changes the observation model and still faces the existing gate; it
-cannot absorb sensor offsets into nonexistent magnetic states. WMM scheduling,
-frame/origin rotation and downstream reset notifications remain adapter work.
+cannot absorb sensor offsets into nonexistent magnetic states. Reference adoption
+is covered by `R-MAGNETIC-REFERENCE`; deployment lookup/origin policy and
+downstream reset notifications remain adapter work.
 
 ### R-MAGNETOMETER-FILTER: magnetic data for heading reset
 

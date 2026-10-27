@@ -2931,6 +2931,42 @@
       }
     },
     {
+      "id": "R-MAGNETIC-REFERENCE",
+      "title": "Geographic magnetic reference adoption and replay source ownership; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-MAGNETIC-REFERENCE: geographic magnetic reference adoption"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### Replay geographic magnetic model"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/magnetic_reference.hpp",
+            "symbol": "class MagneticReference"
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "read_magnetic_model("
+          },
+          {
+            "file": "examples/replay_px4.py",
+            "symbol": "def geographic_magnetic_fields("
+          },
+          {
+            "file": "examples/px4_magnetic_model.cpp",
+            "symbol": "int main()"
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "R-MAGNETOMETER-FUSION",
       "title": "Field acceptance and same-prior innovation gate before magnetic correction; Lean and ESBMC evidence pending",
       "references": {

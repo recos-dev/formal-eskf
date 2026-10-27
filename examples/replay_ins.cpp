@@ -38,6 +38,7 @@
 #include <formal_eskf/runtime/magnetometer_reset.hpp>
 #include <formal_eskf/runtime/magnetometer_filter.hpp>
 #include <formal_eskf/runtime/magnetic_heading.hpp>
+#include <formal_eskf/runtime/magnetic_reference.hpp>
 #include <formal_eskf/runtime/position.hpp>
 #include <formal_eskf/runtime/velocity.hpp>
 #include <formal_eskf/runtime/vertical_acceleration_health.hpp>
@@ -617,6 +618,38 @@ read_magnetic_heading_parameters(std::filesystem::path const & input)
     return {row[0U], row[1U], MAG_MIN_HORIZONTAL};
 }
 
+using ReferenceModel = formal_eskf::runtime::MagneticReference<Linalg>;
+
+std::optional<ReferenceModel::Sample> read_magnetic_model(std::ifstream & stream, std::uint64_t time)
+{
+    if (!stream.is_open())
+    {
+        return std::nullopt;
+    }
+    std::array<double, 5U> row{};
+    if (!read_row(stream, row) || timestamp(row[0U]) != time)
+    {
+        throw std::runtime_error("magnetic model must match the seed and each navigation sample");
+    }
+    if (metadata_integer(row[1U], 0, 1) == 0)
+    {
+        return std::nullopt;
+    }
+    return ReferenceModel::Sample{row[2U], row[3U], row[4U]};
+}
+
+void write_magnetic_reference(std::ostream & stream, std::uint64_t source_time, std::uint64_t time,
+                              ReferenceModel::State const & state, bool changed)
+{
+    stream << source_time << ',' << time << ',' << changed << ',' << state.reference_id << ','
+           << state.model.declination << ',' << state.model.inclination << ',' << state.model.strength;
+    for (std::size_t axis = 0U; axis < 3U; ++axis)
+    {
+        stream << ',' << state.field_n(axis);
+    }
+    stream << '\n';
+}
+
 struct MagneticContext
 {
     MagneticLifecycle::Source source{1U, 0U, 0U};
@@ -882,8 +915,19 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     auto navigation = open_csv(input / "navigation.csv", "timestamp_us,pn,pe,pd,vn,ve,vd,eph,epv,speed_accuracy");
     std::ifstream magnetometer;
     std::ifstream magnetic_context_stream;
+    std::ifstream magnetic_model_stream;
     MagneticReference magnetic;
     bool const has_magnetic_input = std::filesystem::exists(input / "magnetometer.csv");
+    bool const has_magnetic_model = std::filesystem::exists(input / "magnetic_model.csv");
+    if (has_magnetic_model && !has_magnetic_input)
+    {
+        throw std::runtime_error("magnetic_model.csv requires magnetic observations and reference parameters");
+    }
+    if (has_magnetic_model)
+    {
+        magnetic_model_stream = open_csv(input / "magnetic_model.csv",
+                                         "timestamp_us,available,declination_rad,inclination_rad,strength_ut");
+    }
     if (has_magnetic_input != std::filesystem::exists(input / "magnetic_reference.csv"))
     {
         throw std::runtime_error("magnetometer.csv and magnetic_reference.csv must be supplied together");
@@ -959,8 +1003,24 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     }
     auto magnetic_context = read_magnetic_context(
         magnetic_context_stream, time, {{1U, 0U, 0U}, MagneticLifecycle::FlightState::unknown, magnetic.m_n});
-    magnetic_lifecycle.reset(magnetic_context.source);
     magnetic.m_n = magnetic_context.m_n;
+    auto const seed_field = magnetic_context.m_n;
+    ReferenceModel reference_model;
+    auto accepted_model = read_magnetic_model(magnetic_model_stream, time);
+    std::uint64_t model_source_time = time;
+    auto initial_magnetic_source = magnetic_context.source;
+    if (has_magnetic_model)
+    {
+        if (!accepted_model || initial_magnetic_source.reference_id != 0U)
+        {
+            throw std::runtime_error("geographic magnetic reference requires an available seed and owns its revision");
+        }
+        check_status(reference_model.update(time, *accepted_model, false, true).status, "initial geographic field",
+                     time);
+        magnetic.m_n = reference_model.state().field_n;
+        initial_magnetic_source.reference_id = reference_model.state().reference_id;
+    }
+    magnetic_lifecycle.reset(initial_magnetic_source);
     MagneticLifecycle::Parameters const magnetic_timing{MAG_HEALTH_TIME_US, MAG_MAX_INTERVAL_US, MAG_FUSION_TIMEOUT_US};
     auto const accel_V = Linalg::matrix_type<3U, 3U>::identity() * (ACCEL_OBS_STD * ACCEL_OBS_STD);
     // Consume seed metadata, but initialization is not a successful aiding event.
@@ -1037,6 +1097,16 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::ofstream accel_updates(output / "accelerometer_updates.csv");
     std::ofstream mag_updates(output / "magnetometer_updates.csv");
     std::ofstream mag_resets(output / "magnetometer_resets.csv");
+    std::ofstream reference_updates;
+    if (has_magnetic_model)
+    {
+        reference_updates.open(output / "magnetic_reference_updates.csv");
+        reference_updates.exceptions(std::ios::failbit | std::ios::badbit);
+        reference_updates << std::setprecision(17)
+                          << "source_timestamp_us,fusion_timestamp_us,changed,reference_id,declination_rad,"
+                             "inclination_rad,strength_ut,mn,me,md\n";
+        write_magnetic_reference(reference_updates, time, time, reference_model.state(), true);
+    }
     states.exceptions(std::ios::failbit | std::ios::badbit);
     updates.exceptions(std::ios::failbit | std::ios::badbit);
     condition_log.exceptions(std::ios::failbit | std::ios::badbit);
@@ -1085,6 +1155,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::size_t mag_events = 0U, mag_corrections = 0U, mag_rejected = 0U;
     std::size_t mag_skipped = 0U, mag_superseded = 0U;
     std::size_t mag_heading_resets = 0U;
+    std::size_t magnetic_model_checks = has_magnetic_model ? 1U : 0U;
+    std::size_t magnetic_model_changes = magnetic_model_checks;
     std::array<std::size_t, 3U> accel_bias_enabled{}, gyro_bias_enabled{};
     std::size_t bias_high_dynamics = 0U;
     std::size_t vertical_evaluations = 0U, vertical_fault_samples = 0U, vertical_bias_inhibited = 0U;
@@ -1286,6 +1358,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             {
                 throw std::runtime_error("Navigation timestamps must increase after initialization");
             }
+            auto const model_sample = read_magnetic_model(magnetic_model_stream, source_time);
+            bool position_accepted = false;
             bool quality_allows_fusion = true;
             auto const previous_lifecycle = gnss_lifecycle.state();
             bool lifecycle_sample_consumed = false;
@@ -1494,6 +1568,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     record_reset(GnssLifecycle::Group::horizontal_position, "horizontal_position", reason, status,
                                  delta);
                     ++position_xy_resets;
+                    position_accepted = true;
                 }
                 else if (!quality_parameters || gnss_lifecycle.state().horizontal_position.fusion_allowed)
                 {
@@ -1511,6 +1586,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     {
                         limit_bias(state, bias_limits, bias_limit_counts, time);
                         ++position_xy_fused;
+                        position_accepted = true;
                         fusion_conditions.record_horizontal_fusion(time);
                     }
                 }
@@ -1580,12 +1656,18 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 correct_navigation(state, covariance, navigation_row, time, bias_update, bias_limits,
                                    bias_limit_counts);
                 ++position_xy_fused;
+                position_accepted = true;
                 ++position_z_fused;
                 ++velocity_fused;
                 ++position_xy_attempts;
                 ++position_z_attempts;
                 ++velocity_attempts;
                 fusion_conditions.record_horizontal_fusion(time);
+            }
+            if (position_accepted && model_sample)
+            {
+                accepted_model = model_sample;
+                model_source_time = source_time;
             }
             if (quality_parameters)
             {
@@ -1685,7 +1767,18 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             magnetic_time = source_time;
             magnetic_sample = vector3(magnetic_row[1U], magnetic_row[2U], magnetic_row[3U]);
             magnetic_context = read_magnetic_context(magnetic_context_stream, source_time, magnetic_context);
-            magnetic.m_n = magnetic_context.m_n;
+            if (has_magnetic_model)
+            {
+                if (magnetic_context.source.reference_id != 0U ||
+                    formal_eskf::linalg::max_abs(magnetic_context.m_n - seed_field) != 0.0)
+                {
+                    throw std::runtime_error("magnetic_model.csv owns the reference; context cannot override it");
+                }
+            }
+            else
+            {
+                magnetic.m_n = magnetic_context.m_n;
+            }
             last_magnetic_time = source_time;
             has_magnetometer = read_row(magnetometer, magnetic_row);
         }
@@ -1693,6 +1786,24 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         {
             auto const previous = magnetic_lifecycle.state();
             bool const horizontal_aiding = fusion_conditions.horizontal_aiding(time);
+            auto magnetic_source = magnetic_context.source;
+            if (has_magnetic_model)
+            {
+                if (mag_enabled && magnetic_time != 0U)
+                {
+                    auto const update = reference_model.update(time, *accepted_model, horizontal_aiding);
+                    check_status(update.status, "geographic magnetic field", time);
+                    if (update.checked)
+                    {
+                        write_magnetic_reference(reference_updates, model_source_time, time, reference_model.state(),
+                                                 update.changed);
+                    }
+                    magnetic_model_checks += update.checked ? 1U : 0U;
+                    magnetic_model_changes += update.changed ? 1U : 0U;
+                }
+                magnetic.m_n = reference_model.state().field_n;
+                magnetic_source.reference_id = reference_model.state().reference_id;
+            }
             bool const source_changed =
                 previous_magnetic_source.device_id != magnetic_context.source.device_id ||
                 previous_magnetic_source.calibration_count != magnetic_context.source.calibration_count;
@@ -1714,9 +1825,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 result.field = formal_eskf::runtime::check_magnetic_field(state.q_nb, magnetic_sample, magnetic.m_n,
                                                                           field_parameters, false);
             }
-            MagneticLifecycle::Sample const lifecycle_sample{magnetic_time, magnetic_context.source,
-                                                             formal_eskf::succeeded(result.field.status) &&
-                                                                 result.field.accepted};
+            MagneticLifecycle::Sample const lifecycle_sample{
+                magnetic_time, magnetic_source, formal_eskf::succeeded(result.field.status) && result.field.accepted};
             // Initial yaw/reference come from the causal seed. Tilt readiness is
             // the existing covariance-based latch, never imported EKF2 status.
             MagneticLifecycle::Conditions const magnetic_conditions{mag_enabled,
@@ -1822,6 +1932,11 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     }
     std::array<double, 3U> extra_flags{};
     std::array<double, 8U> extra_context{};
+    std::array<double, 5U> extra_model{};
+    if (magnetic_model_stream.is_open() && read_row(magnetic_model_stream, extra_model))
+    {
+        throw std::runtime_error("unused magnetic model rows after replay");
+    }
     if (magnetic_context_stream.is_open() && read_row(magnetic_context_stream, extra_context))
     {
         throw std::runtime_error("unconsumed magnetic context");
@@ -1963,6 +2078,9 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"magnetometer_inclination_tolerance_deg\": " << MAG_INCLINATION_TOL
             << ",\n  \"magnetometer_heading_noise_rad\": " << heading_parameters.heading_noise
             << ",\n  \"magnetometer_acceleration_limit_mps2\": " << heading_parameters.acceleration_limit
+            << ",\n  \"magnetic_model_enabled\": " << (has_magnetic_model ? "true" : "false")
+            << ",\n  \"magnetic_model_checks\": " << magnetic_model_checks
+            << ",\n  \"magnetic_model_changes\": " << magnetic_model_changes
             << ",\n  \"magnetometer_minimum_horizontal_ut\": " << MAG_MIN_HORIZONTAL << "\n}\n";
     summary.close();
     std::cout << "IMU predictions: " << predictions << "\nNavigation events: " << navigation_events

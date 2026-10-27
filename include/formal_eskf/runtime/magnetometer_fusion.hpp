@@ -35,6 +35,7 @@ public:
         waiting_for_health,
         field_rejected,
         innovation_rejected,
+        heading_inconsistent,
         data_timeout,
         fusion_timeout,
         recovery_required,
@@ -76,6 +77,8 @@ public:
         bool horizontal_aiding = false;
         bool at_rest = false;
         FlightState flight_state = FlightState::unknown;
+        // Current MagneticHeading verdict; required only with horizontal aiding.
+        bool heading_consistent = false;
     };
 
     struct Source
@@ -270,7 +273,7 @@ inline Status MagnetometerFusion::update(std::uint64_t now_us, Conditions const 
 
     m_update_time_us = now_us;
     m_parameters = parameters;
-    m_reset_on_timeout = !conditions.horizontal_aiding || conditions.at_rest;
+    m_reset_on_timeout = !conditions.horizontal_aiding || (conditions.at_rest && conditions.heading_consistent);
     bool const new_sample = sample.time_us != 0U;
     if (new_sample)
     {
@@ -386,6 +389,13 @@ inline Status MagnetometerFusion::update(std::uint64_t now_us, Conditions const 
             m_state.fusion_allowed = true;
             m_state.stop_reason = StopReason::none;
         }
+    }
+    if (m_state.fusion_allowed && conditions.horizontal_aiding && !conditions.heading_consistent)
+    {
+        // Intentional navigation inhibition is neither a failed fusion attempt
+        // nor magnetic-state-only fusion. Preserve the session and real clocks.
+        m_state.fusion_allowed = false;
+        m_state.stop_reason = StopReason::heading_inconsistent;
     }
     return Status::success;
 }

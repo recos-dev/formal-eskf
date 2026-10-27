@@ -210,6 +210,45 @@ Native tests in both macro configurations are supporting evidence only. Projecti
 
 Physical disturbance detection, attitude/reference correctness and threshold tuning remain deployment assumptions. Native tests cover geometry, boundaries, frames and invalid arithmetic in binary32/binary64; Lean/ESBMC evidence remains pending.
 
+### R-MAGNETIC-HEADING: aided heading consistency
+
+`runtime::MagneticHeading` tracks heading consistency separately from field
+plausibility, startup health and the three-axis innovation gate. It consumes a
+unit `q_nb`, calibrated body field, trustworthy NED reference, explicit thresholds
+and caller-established heading alignment/horizontal aiding.
+
+- Filter the **N/E vector** of bias-corrected specific force rotated with the
+  predicted attitude. Update each actual prediction interval with
+  `alpha = dt / (1 s + dt)`, starting at zero. Take the norm after filtering;
+  opposing accelerations must cancel. Vertical force does not contribute.
+- On each consumed magnetic sample, form
+  `innovation = wrap_pi(arg((R(q_nb) m_b)_NE) - arg((m_n)_NE))`.
+  This equals predicted yaw minus tilt-compensated magnetic heading; it is not
+  the vector measurement-minus-prediction residual. No estimated mag bias is
+  subtracted. Require both horizontal fields to meet the configured minimum.
+- Filter the wrapped innovation with fixed nominal `10 ms / (90 ms + 10 ms)`
+  weight per magnetic sample. If its absolute value is **>= heading_noise**,
+  clear consistency. Otherwise set consistency only with horizontal aiding and
+  filtered acceleration norm **> acceleration_limit**; without that excitation,
+  retain the preceding latch. Observability here is a maneuver heuristic, not
+  an independent proof of correct yaw or a calibrated probability.
+- A successful actual magnetic alignment/reset explicitly sets consistency and
+  zeroes heading history. It does not claim independent observability. An
+  unaligned heading clears that history and latch. Insufficient horizontal field
+  clears consistency and marks the innovation invalid. IMU gaps clear only
+  acceleration history. Source switches do not automatically assert consistency.
+- Inputs/parameters must be finite; `dt` and minimum horizontal field are positive
+  normal values, `0 < heading_noise <= pi`, acceleration limit is nonnegative.
+  Invalid inputs/parameters or unrepresentable geometry/filter arithmetic fail
+  without changing history. Callers must handle status before using a verdict.
+  Default construction alone never establishes consistency.
+
+These rules follow [PX4 v1.16.2 heading consistency and reset](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/magnetometer/mag_control.cpp)
+and its [prediction acceleration filter](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/ekf.cpp).
+Our explicit weak-field/failure handling and absence of learned magnetic states
+are scoped differences. Native float/double backend tests are supporting
+evidence; Lean/ESBMC proof and deployment tuning remain pending.
+
 ### R-MAGNETOMETER-FUSION: field checks and gated magnetic correction
 
 `runtime::fuse_magnetometer` supports AHRS/INS and returns `MagnetometerFusionResult` with separate `field` and `fusion` diagnostics. `fusion.decision/status` describe the overall call. It retains the existing core's calibration, time, unit-quaternion, PSD/SPD, noise-independence and whole-object alias premises.
@@ -240,9 +279,22 @@ it is not an independent WMM reference or evidence of magnetic health.
   20 degrees inclination tolerance and 5 microtesla minimum horizontal field.
   The first two use the [PX4 v1.16.2 parameter defaults](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/params_magnetometer.yaml).
   The horizontal guard is a replay choice (one nominal noise sigma for this
-  log), not a PX4 rule or validated heading-accuracy bound. No independent
-  heading-observability detector is supplied: pass `heading_observable=false`,
-  retaining field checks and the innovation gate. Do not retune to match output.
+  log), not a PX4 rule or validated heading-accuracy bound. The separate
+  `R-MAGNETIC-HEADING` monitor supplies filtered consistency; keep the stateless
+  optional heading check disabled to avoid stacking two different policies.
+  Retain field checks and the vector innovation gate. Do not retune to match output.
+- Optional `magnetic_heading_parameters.csv` supplies heading noise (rad) and
+  acceleration limit (m/s^2). Preparation uses logged `EKF2_HEAD_NOISE` and
+  `EKF2_MAG_ACCLIM`, reporting fallbacks of 0.3 and 0.5 when absent; legacy CSV
+  inputs use those same defaults. Reject in-log changes to these parameters.
+  Heading noise also supplies reset variance. Log instantaneous/filtered heading
+  innovation, filtered horizontal acceleration, observability and consistency.
+  Initial magnetic alignment seeds consistency; this is not independent truth.
+  Update acceleration after prediction, using that prediction's bias-corrected
+  input and predicted attitude. Held gap IMU values provide no motion evidence.
+  Ground/unaided source changes clear heading alignment until a successful reset;
+  aided flight preserves the heading history. Reference updates are evaluated
+  against the revised reference without reseeding heading consistency.
 - Select the newest available topic-timestamped magnetic sample at each IMU
   tick, after navigation and any gravity correction, using the current prior.
   Consume older samples from that tick without fusion and count them as superseded.
@@ -281,7 +333,8 @@ assumptions. No external yaw/reset event occurs during replay; magnetic timeout
 recovery may perform the heading reset below.
 Horizontal aiding means an actual recent horizontal GNSS fusion, not merely a
 received GNSS packet. Only a recorded `at_rest=true` enables the rest override;
-missing rest metadata is not evidence of motion.
+missing rest metadata is not evidence of motion. With horizontal aiding, the
+rest override additionally requires consistent magnetic heading.
 
 The reference is [PX4 v1.16.2 magnetometer control](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/magnetometer/mag_control.cpp),
 with timing from [ekf.h](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/ekf.h)
@@ -290,27 +343,31 @@ and [common.h](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7c
 | Decision | Implemented rule |
 |---|---|
 | Start | Continuing conditions pass, stable yaw/reset frame, at least four samples, more than 1 s since the last failed field check, newest sample age strictly below 0.5 s; actual successful fusion activates. |
-| Continue | A current good field may fuse without repeating startup health. Field rejection inhibits navigation correction without ending the active session. |
+| Continue | A current good field may fuse without repeating startup health, subject to `!horizontal_aiding || heading_consistent`. Field rejection or heading inhibition does not itself end the session. |
 | No data | On a no-sample tick, stop at age **>= 1 s**; preserve field history and allow fresh qualified data to restart. |
 | Fusion timeout | Try the current observation first. Only an active session still without success for **> 7 s** takes the timeout branch. |
 | Timeout with horizontal aiding and no rest override | Stop, without a permanent fault latch; later qualified observations may retry automatically. |
 | Timeout without horizontal aiding or with rest override | Request a heading reset; execute only with current fresh, health-qualified field data and readiness. Record actual reset progress separately from fusion. |
 
 The metadata controller is not a complete EKF2 replacement. PX4 owns magnetic
-earth/bias states, WMM, declination fusion, heading-consistency and
-mode selection and separate latest/delayed timelines. Our supported reset is
+earth/bias states, WMM, declination fusion, full mode selection and separate
+latest/delayed timelines. Our supported reset is
 heading plus covariance against the existing fixed field, not magnetic-state reset.
-Our fixed-field core has no magnetic-only update: when the field is rejected,
-navigation correction is inhibited and no fictitious magnetic-state fusion is
-reported. Thus a physical disturbance need not produce the same outcomes or
+Our fixed-field core has no magnetic-only update: field rejection or aided
+heading inconsistency inhibits navigation correction without reporting
+fictitious magnetic-state fusion. Heading inhibition preserves the session and
+real progress timestamps, does not run a failed-attempt timeout, and permits
+retry once consistent or no longer horizontally aided. Field/gate rejection
+still follows the existing timeout rules. Thus a physical disturbance need not
+produce the same outcomes or
 progress timestamps as EKF2. Replay's single timestamp timeline does not model
 PX4 buffer-push recency or sensor delay.
 
 Ordinary stops restart automatically. A timeout reset waits for accepted field
 health and uses `try_reset_magnetic_heading` with `MagnetometerFilter::field_b()`;
 it does not replace the reference with the observed field. Replay uses an explicit
-0.3 rad heading standard deviation (PX4's default heading noise), independent of vector noise and not
-imported from the log. Successful resets and their applied left quaternion deltas
+heading standard deviation from the heading parameters above, independent of
+vector observation noise. Successful resets and their applied left quaternion deltas
 are logged in `magnetometer_resets.csv`; `last_reset_timestamp_us` remains distinct
 from actual fusion time. Numerical errors terminate after logging.
 Known source/calibration changes now execute the reinitialization policy below:
@@ -335,6 +392,12 @@ reference/state/P and permitted aiding policy. Initial heading is caller-establi
 the controller tracks the new heading-reset requirement after source changes.
 `starting_allowed` additionally excludes a yaw-alignment change or quaternion-reset frame. Horizontal-aiding and
 at-rest flags select the timeout action; they must reflect actual caller state.
+`heading_consistent` defaults to false and carries the current heading monitor's
+verdict. Ordinary navigation fusion requires it when horizontally aided.
+Heading inhibition reports `heading_inconsistent`, preserves health/session and
+actual progress clocks, and cannot accept fusion feedback. Aided at-rest timeout
+or reference changes cannot authorize yaw reset while heading is inconsistent;
+explicit source-change alignment recovery retains its separate reset policy.
 
 - Call `update` on every estimator tick. Current time is nonzero and strictly
   increasing. New sample times strictly increase, including across source changes,

@@ -85,6 +85,15 @@ def magnetic_reference(Q, FIELD, ULOG):
     return [*REFERENCE, NOISE_STD, GATE_SIGMA]
 
 
+def magnetic_heading_parameters(ULOG):
+    """Logged heading consistency settings, with explicit defaults for older logs."""
+    VALUES = [float(ULOG.initial_parameters.get("EKF2_HEAD_NOISE", 0.3)),
+              float(ULOG.initial_parameters.get("EKF2_MAG_ACCLIM", 0.5))]
+    if not finite(VALUES) or not 0 < VALUES[0] <= math.pi or VALUES[1] < 0:
+        raise ValueError("invalid magnetic heading parameters")
+    return VALUES
+
+
 def magnetic_rows(ULOG, MAG, TIMES, START, END, REFERENCE):
     """Calibrated observations plus causal source/flight context; keep the seed field."""
     SELECTION = [DATA.data for DATA in ULOG.data_list
@@ -96,7 +105,8 @@ def magnetic_rows(ULOG, MAG, TIMES, START, END, REFERENCE):
             if len(IDS) > 1:
                 raise ValueError("magnetic source switches require per-sample device_id metadata")
     for TIME, NAME, _ in ULOG.changed_parameters:
-        if TIME <= END and NAME.startswith(("SENS_BOARD", "EKF2_MAG_NOISE", "EKF2_MAG_GATE", "EKF2_MAG_DECL")):
+        if TIME <= END and NAME.startswith(("SENS_BOARD", "EKF2_MAG_NOISE", "EKF2_MAG_GATE", "EKF2_MAG_DECL",
+                                           "EKF2_HEAD_NOISE", "EKF2_MAG_ACCLIM")):
             raise ValueError(f"changed {NAME} requires a new replay/reference")
         if TIME <= END and NAME.startswith("CAL_MAG") and (TIME <= START or "calibration_count" not in MAG):
             raise ValueError(f"changed {NAME} requires per-sample calibration metadata after initialization")
@@ -352,6 +362,7 @@ def prepare(ULOG, OUTPUT):
     DECLINATION = float(ULOG.initial_parameters["EKF2_MAG_DECL"])
     Q = initial_quaternion(ACCEL, FIELD, math.radians(DECLINATION))
     MAG_REFERENCE = magnetic_reference(Q, FIELD, ULOG)
+    MAG_HEADING = magnetic_heading_parameters(ULOG)
     MAG_ROWS, MAG_CONTEXT = magnetic_rows(ULOG, MAG, MAG_TIMES, START, IMU_TIMES[-1], MAG_REFERENCE)
     BIAS_PARAMETERS = bias_parameters(ULOG, IMU_TIMES[-1])
     BIAS_LIMITS, BIAS_LIMIT_SOURCES = bias_limits(ULOG, IMU_TIMES[-1])
@@ -409,6 +420,7 @@ def prepare(ULOG, OUTPUT):
               "timestamp_us,fix_type,satellites,pdop,spoofed,vel_ned_valid,in_air,at_rest,"
               "vn,ve,vd,dn,de,dd,reference_timestamp_us", QUALITY_ROWS)
     write_csv(OUTPUT / "magnetic_reference.csv", "mn,me,md,noise_std,gate_sigma", [MAG_REFERENCE])
+    write_csv(OUTPUT / "magnetic_heading_parameters.csv", "heading_noise,acceleration_limit", [MAG_HEADING])
     write_csv(OUTPUT / "magnetometer.csv", "timestamp_us,mx,my,mz", MAG_ROWS)
     write_csv(OUTPUT / "magnetic_context.csv",
               "timestamp_us,device_id,calibration_count,reference_id,in_air,mn,me,md", MAG_CONTEXT)
@@ -442,9 +454,13 @@ def prepare(ULOG, OUTPUT):
             "magnetic_reference_n_ut": MAG_REFERENCE[:3],
             "magnetic_noise_std_ut": MAG_REFERENCE[3], "magnetic_gate_sigma": MAG_REFERENCE[4],
             "magnetic_reference_source": "R(q_seed) times first 0.2 s mean field; not independent WMM/truth",
+            "magnetic_heading_parameters": {NAME: {"value": VALUE,
+                                                   "source": "logged" if NAME in ULOG.initial_parameters else "default"}
+                                            for NAME, VALUE in zip(("EKF2_HEAD_NOISE", "EKF2_MAG_ACCLIM"), MAG_HEADING)},
+            "magnetic_heading_policy": "NED horizontal acceleration LPF (1 s); wrapped heading innovation LPF (nominal 10 ms / 90 ms); aided navigation fusion requires consistent heading; actual magnetic alignment/reset seeds consistency, not independent observability",
             "magnetic_measurement": "vehicle_magnetometer instance 0, calibrated body FRD, Gauss times 100 -> microtesla",
             "magnetic_timing": "newest topic sample at each IMU tick; superseded samples counted; no sensor-delay compensation",
-            "magnetic_lifecycle": "tilt alignment, startup health and sample count; retry after ordinary stops; timeout heading reset on fresh healthy data without horizontal aid or at rest; numerical failures abort",
+            "magnetic_lifecycle": "tilt alignment, startup health and sample count; retry after ordinary stops; timeout heading reset on fresh healthy data without horizontal aid or at rest with consistent heading; numerical failures abort",
             "magnetic_reset": "seed field retained; filtered body field for heading resets, raw samples for correction; separate reset reason/delta/count; no magnetic-state reset or WMM updates",
             "magnetic_identity": {NAME: "logged" if NAME in MAG else "fixed session fallback; continuity unknown"
                                   for NAME in ("device_id", "calibration_count")},

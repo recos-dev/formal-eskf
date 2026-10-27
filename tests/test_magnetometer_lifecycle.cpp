@@ -32,7 +32,8 @@ struct Fixture
 {
     MagnetometerFusion monitor;
     MagnetometerFusion::Parameters parameters{20U, 10U, 50U};
-    MagnetometerFusion::Conditions conditions{true, true, true, true, false};
+    MagnetometerFusion::Conditions conditions{true, true, true, true, false, MagnetometerFusion::FlightState::unknown,
+                                              true};
     MagnetometerFusion::Source source{1U, 0U};
 
     Status sample(std::uint64_t time, bool accepted = true)
@@ -67,6 +68,54 @@ bool same_state(MagnetometerFusion::State const & a, MagnetometerFusion::State c
            a.stop_reason == b.stop_reason && a.recovery_reason == b.recovery_reason &&
            a.last_field_failure_time_us == b.last_field_failure_time_us && a.start_time_us == b.start_time_us &&
            a.last_fuse_time_us == b.last_fuse_time_us;
+}
+
+void test_heading_policy(TestContext & test)
+{
+    Fixture fixture;
+    fixture.start(test);
+    fixture.conditions.heading_consistent = false;
+    fixture.conditions.at_rest = true;
+    for (auto time : {130U, 150U, 180U, 200U})
+    {
+        test.expect(fixture.sample(time) == Status::success && fixture.monitor.state().active &&
+                        !fixture.monitor.state().fusion_allowed && !fixture.monitor.state().reset_allowed &&
+                        fixture.monitor.state().stop_reason == StopReason::heading_inconsistent &&
+                        fixture.monitor.state().last_fuse_time_us == 121U,
+                    profile, "intentional inhibition retains session without fake fusion or at-rest yaw reset");
+    }
+    test.expect(fixture.monitor.record_fusion(200U, FusionDecision::fused) == Status::out_of_range, profile,
+                "inhibited sample cannot report fusion");
+    fixture.conditions.heading_consistent = true;
+    test.expect(fixture.sample(201U) == Status::success && fixture.monitor.state().fusion_allowed &&
+                    fixture.monitor.record_fusion(201U, FusionDecision::fused) == Status::success,
+                profile, "consistency recovery tries the observation before judging timeout");
+    fixture.conditions.heading_consistent = false;
+    fixture.conditions.horizontal_aiding = false;
+    test.expect(fixture.sample(202U) == Status::success && fixture.monitor.state().fusion_allowed, profile,
+                "without horizontal aiding, inconsistency does not veto magnetic heading aiding");
+    fixture.conditions.horizontal_aiding = true;
+    ++fixture.source.reference_id;
+    test.expect(fixture.sample(203U) == Status::success && !fixture.monitor.state().reset_allowed &&
+                    fixture.monitor.state().recovery_reason == RecoveryReason::none,
+                profile, "reference change at rest cannot reset an inconsistent aided heading");
+    test.expect(fixture.sample(260U, false) == Status::success && !fixture.monitor.state().reset_allowed &&
+                    fixture.monitor.state().stop_reason == StopReason::fusion_timeout,
+                profile, "a subsequent field failure times out without an inconsistent aided yaw reset");
+
+    Fixture startup;
+    startup.conditions.heading_consistent = false;
+    for (auto time : {100U, 108U, 116U, 121U})
+    {
+        test.expect(startup.sample(time) == Status::success, profile, "unconfirmed startup consumes healthy samples");
+    }
+    test.expect(!startup.monitor.state().active && !startup.monitor.state().fusion_allowed &&
+                    startup.monitor.state().stop_reason == StopReason::heading_inconsistent &&
+                    startup.monitor.state().last_field_failure_time_us == 100U,
+                profile, "heading inhibition does not falsify field health");
+    startup.conditions.heading_consistent = true;
+    test.expect(startup.sample(122U) == Status::success && startup.monitor.state().fusion_allowed, profile,
+                "establishing consistency releases already-qualified startup");
 }
 
 void test_startup(TestContext & test)
@@ -681,6 +730,7 @@ int main()
     formal_eskf::test::configure_backend_test();
     TestContext test;
     test_startup(test);
+    test_heading_policy(test);
     test_active_and_outages(test);
     test_timeouts(test);
     test_feedback_and_recovery(test);

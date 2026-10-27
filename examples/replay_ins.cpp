@@ -37,6 +37,7 @@
 #include <formal_eskf/runtime/magnetometer_fusion.hpp>
 #include <formal_eskf/runtime/magnetometer_reset.hpp>
 #include <formal_eskf/runtime/magnetometer_filter.hpp>
+#include <formal_eskf/runtime/magnetic_heading.hpp>
 #include <formal_eskf/runtime/position.hpp>
 #include <formal_eskf/runtime/velocity.hpp>
 #include <formal_eskf/runtime/vertical_acceleration_health.hpp>
@@ -83,7 +84,8 @@
 #define MAG_HEALTH_TIME_US 1000000U
 #define MAG_MAX_INTERVAL_US 500000U // Startup freshness; no-data stop uses twice this.
 #define MAG_FUSION_TIMEOUT_US 7000000U
-#define MAG_HEADING_STD 0.3 // rad; fixed replay reset noise, not inferred from field noise.
+#define MAG_HEADING_STD 0.3 // rad; legacy input default, also used for heading consistency.
+#define MAG_ACCEL_LIMIT 0.5 // m/s^2; legacy input default.
 
 // GNSS-only lifecycle profile: separate horizontal and height deadlines.
 #define GNSS_HORIZONTAL_TIMEOUT_US 7000000U
@@ -595,6 +597,26 @@ MagneticReference read_magnetic_reference(std::filesystem::path const & input)
     return {vector3(mn, me, md), Linalg::matrix_type<3U, 3U>::identity() * noise_variance, gate_sigma};
 }
 
+formal_eskf::runtime::MagneticHeading<Linalg>::Parameters
+read_magnetic_heading_parameters(std::filesystem::path const & input)
+{
+    std::array<double, 2U> row{MAG_HEADING_STD, MAG_ACCEL_LIMIT};
+    if (std::filesystem::exists(input / "magnetic_heading_parameters.csv"))
+    {
+        auto stream = open_csv(input / "magnetic_heading_parameters.csv", "heading_noise,acceleration_limit");
+        std::array<double, 2U> extra{};
+        if (!read_row(stream, row) || read_row(stream, extra))
+        {
+            throw std::runtime_error("expected exactly one magnetic heading parameter row");
+        }
+    }
+    if (!(row[0U] > 0.0) || row[0U] > std::numbers::pi || row[1U] < 0.0)
+    {
+        throw std::runtime_error("invalid magnetic heading parameters");
+    }
+    return {row[0U], row[1U], MAG_MIN_HORIZONTAL};
+}
+
 struct MagneticContext
 {
     MagneticLifecycle::Source source{1U, 0U, 0U};
@@ -669,6 +691,8 @@ std::string_view magnetic_stop_reason(MagneticLifecycle::StopReason reason)
         return "field_rejected";
     case MagneticLifecycle::StopReason::innovation_rejected:
         return "innovation_rejected";
+    case MagneticLifecycle::StopReason::heading_inconsistent:
+        return "heading_inconsistent";
     case MagneticLifecycle::StopReason::data_timeout:
         return "data_timeout";
     case MagneticLifecycle::StopReason::fusion_timeout:
@@ -702,7 +726,8 @@ std::string_view magnetic_recovery_reason(MagneticLifecycle::RecoveryReason reas
 void write_magnetic_update(std::ostream & stream, std::uint64_t source_time, std::uint64_t time,
                            std::string_view outcome,
                            formal_eskf::runtime::MagnetometerFusionResult<Linalg> const & result,
-                           MagneticLifecycle::State const & lifecycle)
+                           MagneticLifecycle::State const & lifecycle,
+                           formal_eskf::runtime::MagneticHeading<Linalg>::State const & heading)
 {
     auto const & field = result.field;
     auto const & fusion = result.fusion;
@@ -713,7 +738,9 @@ void write_magnetic_update(std::ostream & stream, std::uint64_t source_time, std
            << fusion.test_ratio(1U) << ',' << fusion.test_ratio(2U) << ',' << lifecycle.active << ','
            << magnetic_stop_reason(lifecycle.stop_reason) << ',' << magnetic_recovery_reason(lifecycle.recovery_reason)
            << ',' << lifecycle.last_field_failure_time_us << ',' << lifecycle.start_time_us << ','
-           << lifecycle.last_fuse_time_us << ',' << lifecycle.last_reset_time_us << '\n';
+           << lifecycle.last_fuse_time_us << ',' << lifecycle.last_reset_time_us << ',' << heading.innovation_valid
+           << ',' << heading.innovation << ',' << heading.filtered_innovation << ',' << heading.horizontal_acceleration
+           << ',' << heading.observable << ',' << heading.consistent << '\n';
 }
 
 /** One row per observed axis; the outcome applies to the whole group. */
@@ -923,6 +950,13 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     Accelerometer accelerometer;
     MagneticLifecycle magnetic_lifecycle;
     formal_eskf::runtime::MagnetometerFilter<Linalg> magnetic_filter;
+    formal_eskf::runtime::MagneticHeading<Linalg> magnetic_heading;
+    auto const heading_parameters = read_magnetic_heading_parameters(input);
+    bool magnetic_heading_aligned = true; // Replay starts from an explicitly aligned magnetic seed.
+    if (has_magnetic_input)
+    {
+        magnetic_heading.reset_heading();
+    }
     auto magnetic_context = read_magnetic_context(
         magnetic_context_stream, time, {{1U, 0U, 0U}, MagneticLifecycle::FlightState::unknown, magnetic.m_n});
     magnetic_lifecycle.reset(magnetic_context.source);
@@ -1016,7 +1050,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     mag_updates << "source_timestamp_us,fusion_timestamp_us,outcome,status,field_valid,strength_rejected,"
                    "inclination_rejected,horizontal_rejected,innovation_valid,ratio_x,ratio_y,ratio_z,"
                    "active,stop_reason,recovery_reason,last_field_failure_timestamp_us,start_timestamp_us,last_fuse_"
-                   "timestamp_us,last_reset_timestamp_us\n";
+                   "timestamp_us,last_reset_timestamp_us,heading_valid,heading_innovation,heading_innovation_lpf,"
+                   "horizontal_acceleration,heading_observable,heading_consistent\n";
     accel_updates << std::setprecision(17);
     accel_updates << "timestamp_us,interval_us,fx,fy,fz,clipping_mask,lpf_squared_norm,within_gravity_band,"
                      "tilt_aligned,horizontal_aiding,at_rest,outcome\n";
@@ -1118,6 +1153,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             // Held prediction rates are not new measurements. Discard the
             // incomplete observation and LPF history across a missing interval.
             accelerometer.reset();
+            magnetic_heading.reset_acceleration();
         }
         auto const sample = imu_sample(imu_row);
         auto const sample_flags = read_imu_flags(flags, next_time);
@@ -1161,7 +1197,15 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 conditions.accelerometer_clipped[axis] = (sample_flags.accelerometer_clipping & (1 << axis)) != 0;
             }
         }
+        auto const bias_corrected_force = sample.specific_force_b - state.b_a;
         auto const selected_noise = predict(sample, period, next_time, noise_conditions);
+        if (has_magnetic_input && mag_enabled)
+        {
+            check_status(
+                magnetic_heading.update_acceleration(formal_eskf::so3::rotate(state.q_nb, bias_corrected_force),
+                                                     static_cast<double>(period) * 1e-6),
+                "magnetic heading acceleration", next_time);
+        }
         time = next_time;
         previous_imu = sample;
         ++predictions;
@@ -1626,6 +1670,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         }
         // Select the newest available sample once per tick. Older samples from
         // the same tick are superseded, not repeatedly fused at one horizon.
+        auto const previous_magnetic_source = magnetic_context.source;
         std::uint64_t magnetic_time = 0U;
         Vector3 magnetic_sample;
         while (has_magnetometer && timestamp(magnetic_row[0U]) <= time)
@@ -1647,11 +1692,25 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         if (has_magnetic_input)
         {
             auto const previous = magnetic_lifecycle.state();
+            bool const horizontal_aiding = fusion_conditions.horizontal_aiding(time);
+            bool const source_changed =
+                previous_magnetic_source.device_id != magnetic_context.source.device_id ||
+                previous_magnetic_source.calibration_count != magnetic_context.source.calibration_count;
+            if ((source_changed || previous.recovery_reason == MagneticLifecycle::RecoveryReason::source_changed) &&
+                (magnetic_context.flight_state == MagneticLifecycle::FlightState::on_ground ||
+                 (source_changed && previous.active && !horizontal_aiding)))
+            {
+                magnetic_heading_aligned = false;
+            }
             formal_eskf::runtime::MagnetometerFusionResult<Linalg> result;
             if (mag_enabled && magnetic_time != 0U)
             {
+                // Filtered heading consistency is distinct from the optional
+                // instantaneous heading check; do not stack both policies.
+                check_status(magnetic_heading.update(state.q_nb, magnetic_sample, magnetic.m_n, heading_parameters,
+                                                     magnetic_heading_aligned, horizontal_aiding),
+                             "magnetic heading consistency", time);
                 // Same prior for field qualification and, if authorized, fusion.
-                // GNSS availability alone does not prove heading observability.
                 result.field = formal_eskf::runtime::check_magnetic_field(state.q_nb, magnetic_sample, magnetic.m_n,
                                                                           field_parameters, false);
             }
@@ -1663,9 +1722,10 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             MagneticLifecycle::Conditions const magnetic_conditions{mag_enabled,
                                                                     fusion_conditions.tilt_aligned(),
                                                                     true,
-                                                                    fusion_conditions.horizontal_aiding(time),
+                                                                    horizontal_aiding,
                                                                     sample_flags.at_rest == 1,
-                                                                    magnetic_context.flight_state};
+                                                                    magnetic_context.flight_state,
+                                                                    magnetic_heading.state().consistent};
             check_status(magnetic_lifecycle.update(time, magnetic_conditions, magnetic_timing, lifecycle_sample),
                          "magnetometer lifecycle", time);
             if (mag_enabled && magnetic_time != 0U)
@@ -1703,9 +1763,15 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 auto const reason = magnetic_lifecycle.state().recovery_reason;
                 formal_eskf::so3::UnitQuaternion<Linalg> delta;
                 reset_status = formal_eskf::runtime::try_reset_magnetic_heading(
-                    state, covariance, magnetic_filter.field_b(), magnetic.m_n, MAG_HEADING_STD * MAG_HEADING_STD,
-                    MAG_MIN_HORIZONTAL, QUAT_MIN_NORM, state, covariance, delta);
+                    state, covariance, magnetic_filter.field_b(), magnetic.m_n,
+                    heading_parameters.heading_noise * heading_parameters.heading_noise, MAG_MIN_HORIZONTAL,
+                    QUAT_MIN_NORM, state, covariance, delta);
                 bool const reset_succeeded = formal_eskf::succeeded(reset_status);
+                if (reset_succeeded)
+                {
+                    magnetic_heading.reset_heading();
+                    magnetic_heading_aligned = true;
+                }
                 check_status(magnetic_lifecycle.record_reset(magnetic_time, reset_succeeded),
                              "magnetometer reset feedback", time);
                 mag_resets << magnetic_time << ',' << time << ',' << static_cast<int>(reset_status);
@@ -1714,8 +1780,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     // A failed transaction has no applied rotation.
                     mag_resets << ',' << (reset_succeeded ? delta.coefficients()(axis) : 0.0);
                 }
-                mag_resets << ',' << MAG_HEADING_STD * MAG_HEADING_STD << ',' << magnetic_recovery_reason(reason)
-                           << '\n';
+                mag_resets << ',' << heading_parameters.heading_noise * heading_parameters.heading_noise << ','
+                           << magnetic_recovery_reason(reason) << '\n';
                 mag_heading_resets += reset_succeeded ? 1U : 0U;
                 outcome = reset_succeeded ? "reset" : "reset_failed";
             }
@@ -1724,7 +1790,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 lifecycle.recovery_reason != previous.recovery_reason)
             {
                 // Include no-data transitions so dropouts/timeouts remain visible.
-                write_magnetic_update(mag_updates, magnetic_time, time, outcome, result, lifecycle);
+                write_magnetic_update(mag_updates, magnetic_time, time, outcome, result, lifecycle,
+                                      magnetic_heading.state());
             }
             if (magnetic_time != 0U)
             {
@@ -1876,7 +1943,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"magnetometer_events\": " << mag_events
             << ",\n  \"magnetometer_corrections\": " << mag_corrections
             << ",\n  \"magnetometer_heading_resets\": " << mag_heading_resets
-            << ",\n  \"magnetometer_reset_yaw_variance\": " << MAG_HEADING_STD * MAG_HEADING_STD
+            << ",\n  \"magnetometer_reset_yaw_variance\": "
+            << heading_parameters.heading_noise * heading_parameters.heading_noise
             << ",\n  \"magnetometer_rejected\": " << mag_rejected
             << ",\n  \"magnetometer_lifecycle_skipped\": " << mag_skipped
             << ",\n  \"magnetometer_superseded\": " << mag_superseded
@@ -1893,6 +1961,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"magnetometer_tilt_protection\": " << (ESKF_MAG_TILT ? "true" : "false")
             << ",\n  \"magnetometer_strength_tolerance_ut\": " << MAG_STRENGTH_TOL
             << ",\n  \"magnetometer_inclination_tolerance_deg\": " << MAG_INCLINATION_TOL
+            << ",\n  \"magnetometer_heading_noise_rad\": " << heading_parameters.heading_noise
+            << ",\n  \"magnetometer_acceleration_limit_mps2\": " << heading_parameters.acceleration_limit
             << ",\n  \"magnetometer_minimum_horizontal_ut\": " << MAG_MIN_HORIZONTAL << "\n}\n";
     summary.close();
     std::cout << "IMU predictions: " << predictions << "\nNavigation events: " << navigation_events

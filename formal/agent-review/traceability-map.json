@@ -2903,6 +2903,34 @@
       }
     },
     {
+      "id": "R-MAGNETIC-HEADING",
+      "title": "Aided magnetic heading consistency and maneuver history; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-MAGNETIC-HEADING: aided heading consistency"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/magnetic_heading.hpp",
+            "symbol": "class MagneticHeading"
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "symbol": "MagnetometerFusion::update("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "read_magnetic_heading_parameters("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "R-MAGNETOMETER-FUSION",
       "title": "Field acceptance and same-prior innovation gate before magnetic correction; Lean and ESBMC evidence pending",
       "references": {

@@ -85,6 +85,22 @@ def magnetic_reference(Q, FIELD, ULOG):
     return [*REFERENCE, NOISE_STD, GATE_SIGMA]
 
 
+def magnetic_declination(ULOG, MODEL_DECLINATION=None):
+    """Select initial heading declination; no learned earth-field state is available."""
+    MASK = float(ULOG.initial_parameters.get("EKF2_DECL_TYPE", 3))
+    # Older logs also carry bit 2. It does not select an initialization source.
+    if not math.isfinite(MASK) or not MASK.is_integer() or not 0 <= MASK <= 7:
+        raise ValueError("invalid magnetic declination source mask")
+    if int(MASK) & 1 and MODEL_DECLINATION is not None:
+        if not math.isfinite(MODEL_DECLINATION):
+            raise ValueError("invalid model declination")
+        return math.degrees(MODEL_DECLINATION), "geographic_model"
+    SAVED = float(ULOG.initial_parameters.get("EKF2_MAG_DECL", 0))
+    if int(MASK) & 2 and math.isfinite(SAVED) and SAVED != 0:
+        return SAVED, "saved_parameter"
+    return 0.0, "magnetic_north"
+
+
 def magnetic_heading_parameters(ULOG):
     """Logged heading consistency settings, with explicit defaults for older logs."""
     VALUES = [float(ULOG.initial_parameters.get("EKF2_HEAD_NOISE", 0.3)),
@@ -92,6 +108,17 @@ def magnetic_heading_parameters(ULOG):
     if not finite(VALUES) or not 0 < VALUES[0] <= math.pi or VALUES[1] < 0:
         raise ValueError("invalid magnetic heading parameters")
     return VALUES
+
+
+def magnetic_field_parameters(ULOG):
+    """PX4 field-check selection; missing legacy settings use explicit v1.16.2 defaults."""
+    VALUES = [float(ULOG.initial_parameters.get("EKF2_MAG_CHECK", 1)),
+              float(ULOG.initial_parameters.get("EKF2_MAG_CHK_STR", 0.2)),
+              float(ULOG.initial_parameters.get("EKF2_MAG_CHK_INC", 20.0))]
+    if (not finite(VALUES) or not VALUES[0].is_integer() or not 0 <= VALUES[0] <= 7
+            or not 0 <= VALUES[1] <= 1 or not 0 <= VALUES[2] <= 90):
+        raise ValueError("invalid magnetic field check settings")
+    return [int(VALUES[0]), VALUES[1] * 100.0, math.radians(VALUES[2])]
 
 
 def magnetic_rows(ULOG, MAG, TIMES, START, END, REFERENCE):
@@ -105,8 +132,8 @@ def magnetic_rows(ULOG, MAG, TIMES, START, END, REFERENCE):
             if len(IDS) > 1:
                 raise ValueError("magnetic source switches require per-sample device_id metadata")
     for TIME, NAME, _ in ULOG.changed_parameters:
-        if TIME <= END and NAME.startswith(("SENS_BOARD", "EKF2_MAG_NOISE", "EKF2_MAG_GATE", "EKF2_MAG_DECL",
-                                           "EKF2_HEAD_NOISE", "EKF2_MAG_ACCLIM")):
+        if TIME <= END and NAME.startswith(("SENS_BOARD", "EKF2_MAG_NOISE", "EKF2_MAG_GATE", "EKF2_MAG_DECL", "EKF2_DECL_TYPE",
+                                           "EKF2_HEAD_NOISE", "EKF2_MAG_ACCLIM", "EKF2_MAG_CHECK", "EKF2_MAG_CHK")):
             raise ValueError(f"changed {NAME} requires a new replay/reference")
         if TIME <= END and NAME.startswith("CAL_MAG") and (TIME <= START or "calibration_count" not in MAG):
             raise ValueError(f"changed {NAME} requires per-sample calibration metadata after initialization")
@@ -382,10 +409,8 @@ def prepare(ULOG, OUTPUT, MAGNETIC_MODEL=None):
              for AXIS in range(3)]
     FIELD = [sum(xyz(MAG, "magnetometer_ga", INDEX)[AXIS] for INDEX in MAG_SEED) / len(MAG_SEED)
              for AXIS in range(3)]
-    # The log's configured declination is a starting assumption, not a truth
-    # measurement. Biases remain unknown and are initialized to zero in C++.
-    DECLINATION = float(ULOG.initial_parameters["EKF2_MAG_DECL"])
     MAG_HEADING = magnetic_heading_parameters(ULOG)
+    MAG_FIELD = magnetic_field_parameters(ULOG)
     BIAS_PARAMETERS = bias_parameters(ULOG, IMU_TIMES[-1])
     BIAS_LIMITS, BIAS_LIMIT_SOURCES = bias_limits(ULOG, IMU_TIMES[-1])
     GNSS_PARAMETERS = gnss_parameters(ULOG, IMU_TIMES[-1])
@@ -404,12 +429,11 @@ def prepare(ULOG, OUTPUT, MAGNETIC_MODEL=None):
         DECL_TYPE = float(ULOG.initial_parameters.get("EKF2_DECL_TYPE", -1))
         if not math.isfinite(DECL_TYPE) or not DECL_TYPE.is_integer() or DECL_TYPE < 0 or not int(DECL_TYPE) & 1:
             raise ValueError("geographic magnetic replay requires logged EKF2_DECL_TYPE with geographic declination enabled")
-        if any(TIME <= IMU_TIMES[-1] and NAME == "EKF2_DECL_TYPE" for TIME, NAME, _ in ULOG.changed_parameters):
-            raise ValueError("changed EKF2_DECL_TYPE requires a new replay")
         MODEL_FIXES = [(ORIGIN_INDEX, ORIGIN)] + [(INDEX, READING) for INDEX, READING in VALID
                                                 if START < GPS_TIMES[INDEX] <= IMU_TIMES[-1]]
         MODEL_FIELDS = geographic_magnetic_fields(MAGNETIC_MODEL, MODEL_FIXES, BASIS)
-        DECLINATION = math.degrees(MODEL_FIELDS[ORIGIN_INDEX][0])
+    DECLINATION, DECLINATION_SOURCE = magnetic_declination(
+        ULOG, MODEL_FIELDS[ORIGIN_INDEX][0] if MODEL_FIELDS else None)
     Q = initial_quaternion(ACCEL, FIELD, math.radians(DECLINATION))
     MAG_REFERENCE = magnetic_reference(Q, FIELD, ULOG)
     MODEL_ROWS = []
@@ -466,6 +490,8 @@ def prepare(ULOG, OUTPUT, MAGNETIC_MODEL=None):
     if MODEL_ROWS:
         write_csv(OUTPUT / "magnetic_model.csv", "timestamp_us,available,declination_rad,inclination_rad,strength_ut", MODEL_ROWS)
     write_csv(OUTPUT / "magnetic_heading_parameters.csv", "heading_noise,acceleration_limit", [MAG_HEADING])
+    write_csv(OUTPUT / "magnetic_field_parameters.csv",
+              "check_mask,strength_tolerance_ut,inclination_tolerance_rad", [MAG_FIELD])
     write_csv(OUTPUT / "magnetometer.csv", "timestamp_us,mx,my,mz", MAG_ROWS)
     write_csv(OUTPUT / "magnetic_context.csv",
               "timestamp_us,device_id,calibration_count,reference_id,in_air,mn,me,md", MAG_CONTEXT)
@@ -477,7 +503,10 @@ def prepare(ULOG, OUTPUT, MAGNETIC_MODEL=None):
             "gnss_valid_rows_outside_replay": sum(not START < GPS_TIMES[I] <= IMU_TIMES[-1] for I, _ in VALID),
             "origin_lat_deg": math.degrees(LAT0), "origin_lon_deg": math.degrees(LON0),
             "origin_alt_ellipsoid_m": ALT0, "initialization": "first 0.2 s accel/mag; latest valid GNSS",
-            "magnetic_declination_deg": DECLINATION, "gnss_delay_compensation_ms": 0,
+            "magnetic_declination_deg": DECLINATION, "magnetic_declination_source": DECLINATION_SOURCE,
+            "magnetic_declination_mask": int(ULOG.initial_parameters.get("EKF2_DECL_TYPE", 3)),
+            "magnetic_declination_mask_source": "logged" if "EKF2_DECL_TYPE" in ULOG.initial_parameters else "PX4 v1.16.2 default",
+            "gnss_delay_compensation_ms": 0,
             "gnss_parameters": dict(zip(("position_gate", "velocity_gate", "position_noise_std_m",
                                           "velocity_noise_std_mps", "position_noise_limit_m"), GNSS_PARAMETERS)),
             "gnss_quality_parameters": dict(zip(("check_mask", "minimum_satellites", "maximum_pdop",
@@ -505,6 +534,10 @@ def prepare(ULOG, OUTPUT, MAGNETIC_MODEL=None):
             "magnetic_heading_parameters": {NAME: {"value": VALUE,
                                                    "source": "logged" if NAME in ULOG.initial_parameters else "default"}
                                             for NAME, VALUE in zip(("EKF2_HEAD_NOISE", "EKF2_MAG_ACCLIM"), MAG_HEADING)},
+            "magnetic_field_parameters": dict(zip(("check_mask", "strength_tolerance_ut", "inclination_tolerance_rad"), MAG_FIELD)),
+            "magnetic_field_parameter_sources": {NAME: "logged" if NAME in ULOG.initial_parameters else "PX4 v1.16.2 default"
+                                                  for NAME in ("EKF2_MAG_CHECK", "EKF2_MAG_CHK_STR", "EKF2_MAG_CHK_INC")},
+            "magnetic_field_reference_available": bool(MODEL_FIELDS),
             "magnetic_heading_policy": "NED horizontal acceleration LPF (1 s); wrapped heading innovation LPF (nominal 10 ms / 90 ms); aided navigation fusion requires consistent heading; actual magnetic alignment/reset seeds consistency, not independent observability",
             "magnetic_measurement": "vehicle_magnetometer instance 0, calibrated body FRD, Gauss times 100 -> microtesla",
             "magnetic_timing": "newest topic sample at each IMU tick; superseded samples counted; no sensor-delay compensation",

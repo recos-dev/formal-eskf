@@ -2872,12 +2872,16 @@
     },
     {
       "id": "R-MAGNETIC-FIELD",
-      "title": "Instantaneous magnetic field geometry and conditional heading checks; Lean and ESBMC evidence pending",
+      "title": "Selectable magnetic field checks, independent-reference availability and fallback; Lean and ESBMC evidence pending",
       "references": {
         "spec": [
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "### R-MAGNETIC-FIELD: instantaneous magnetic-field plausibility"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### Replay magnetic field checks"
           }
         ],
         "lean": [],
@@ -2897,6 +2901,18 @@
           {
             "file": "include/formal_eskf/runtime/magnetic_field.hpp",
             "symbol": "check_magnetic_field("
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetic_field.hpp",
+            "symbol": "struct MagneticFieldChecks"
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "read_magnetic_field_parameters("
+          },
+          {
+            "file": "examples/replay_px4.py",
+            "symbol": "def magnetic_field_parameters("
           }
         ],
         "esbmc": []
@@ -3003,6 +3019,10 @@
             "symbol": "MagneticReference read_magnetic_reference("
           },
           {
+            "file": "examples/replay_px4.py",
+            "symbol": "def magnetic_declination("
+          },
+          {
             "file": "examples/replay_ins.cpp",
             "symbol": "void replay("
           }
@@ -3012,7 +3032,7 @@
     },
     {
       "id": "R-MAGNETOMETER-LIFECYCLE",
-      "title": "Magnetic lifecycle with timeout and source/reference reinitialization; Lean and ESBMC evidence pending",
+      "title": "Magnetic lifecycle with optional health delay, timeout and source/reference reinitialization; Lean and ESBMC evidence pending",
       "references": {
         "spec": [
           {

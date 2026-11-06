@@ -159,6 +159,72 @@ template <typename Linalg> void test_field_checks(TestContext & test, std::strin
                 "computed inclination just beyond tolerance rejects");
 }
 
+template <typename Linalg> void test_field_selection(TestContext & test, std::string_view profile)
+{
+    using value_type = typename Linalg::value_type;
+    using vector_type = Vector<Linalg>;
+    formal_eskf::so3::UnitQuaternion<Linalg> const identity;
+    auto const reference = vector_type::from_row_major({value_type{30}, value_type{0}, value_type{40}});
+    auto const parameters = field_parameters<Linalg>();
+    std::array<vector_type, 3U> const samples{
+        reference, reference * value_type{2},
+        vector_type::from_row_major({value_type{40}, value_type{0}, value_type{30}})};
+    for (unsigned mask = 0U; mask < 8U; ++mask)
+    {
+        for (bool available : {false, true})
+        {
+            formal_eskf::runtime::MagneticFieldChecks const checks{(mask & 1U) != 0U, (mask & 2U) != 0U,
+                                                                   (mask & 4U) != 0U, available};
+            for (std::size_t sample = 0U; sample < samples.size(); ++sample)
+            {
+                auto const result =
+                    check_magnetic_field(identity, samples[sample], reference, parameters, false, checks);
+                bool const waiting = !available && checks.require_reference && (checks.strength || checks.inclination);
+                bool const strength_checked = checks.strength && (available || !checks.require_reference);
+                bool const inclination_checked = checks.inclination && available;
+                bool const bad_strength = strength_checked && sample == 1U;
+                bool const bad_inclination = inclination_checked && sample == 2U;
+                test.expect(
+                    result.status == Status::success && result.diagnostics_valid &&
+                        result.failures.reference == waiting && result.strength_checked == strength_checked &&
+                        result.inclination_checked == inclination_checked && result.failures.strength == bad_strength &&
+                        result.failures.inclination == bad_inclination &&
+                        result.accepted == !(waiting || bad_strength || bad_inclination),
+                    profile, "all field selections distinguish absent reference, disabled checks and disturbances");
+                if (!inclination_checked)
+                {
+                    test.expect(result.inclination_error == value_type{0}, profile,
+                                "unchecked inclination has no reported comparison residual");
+                }
+            }
+        }
+    }
+    formal_eskf::runtime::MagneticFieldChecks const fallback{true, true, false, false};
+    for (value_type magnitude : {value_type{5}, value_type{85}})
+    {
+        auto const sample = vector_type::from_row_major({magnitude, value_type{0}, value_type{0}});
+        auto const result = check_magnetic_field(identity, sample, reference, parameters, false, fallback);
+        test.expect(result.accepted && result.strength_checked && !result.inclination_checked &&
+                        result.reference_strength == value_type{45},
+                    profile, "without a reference the inclusive 5 to 85 microtesla range applies");
+    }
+    for (value_type magnitude :
+         {std::nextafter(value_type{5}, value_type{0}), std::nextafter(value_type{85}, value_type{100})})
+    {
+        auto const sample = vector_type::from_row_major({magnitude, value_type{0}, value_type{0}});
+        test.expect(check_magnetic_field(identity, sample, reference, parameters, false, fallback).failures.strength,
+                    profile, "just outside the fallback range rejects independently of configured tolerance");
+    }
+    auto const vertical = vector_type::from_row_major({value_type{0}, value_type{0}, value_type{50}});
+    formal_eskf::runtime::MagneticFieldChecks const disabled{false, false, false, false};
+    test.expect(
+        check_magnetic_field(identity, vertical, reference, parameters, false, disabled).failures.horizontal_field,
+        profile, "disabling physical checks retains the separate weak-heading guard");
+    auto const east = vector_type::from_row_major({value_type{0}, value_type{30}, value_type{40}});
+    test.expect(check_magnetic_field(identity, east, reference, parameters, true, disabled).failures.heading, profile,
+                "field selection does not disable the separately requested heading check");
+}
+
 template <typename Linalg> void test_field_frames(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
@@ -288,6 +354,7 @@ template <typename Linalg, typename Configuration> struct FusionFixture
     value_type sigma = value_type{3};
     bool heading_observable = true;
     Ins::BiasUpdate bias_update{};
+    formal_eskf::runtime::MagneticFieldChecks checks{};
 
     FusionFixture()
     {
@@ -313,12 +380,13 @@ template <typename Linalg, typename Configuration> struct FusionFixture
         {
             return formal_eskf::runtime::fuse_magnetometer(state, P, sample, reference, V, parameters,
                                                            heading_observable, minimum_norm, sigma, output, output_P,
-                                                           bias_update);
+                                                           bias_update, checks);
         }
         else
         {
             return formal_eskf::runtime::fuse_magnetometer(state, P, sample, reference, V, parameters,
-                                                           heading_observable, minimum_norm, sigma, output, output_P);
+                                                           heading_observable, minimum_norm, sigma, output, output_P,
+                                                           checks);
         }
     }
 
@@ -336,6 +404,24 @@ template <typename Linalg, typename Configuration> struct FusionFixture
         }
     }
 };
+
+template <typename Linalg, typename Configuration>
+void test_missing_reference(TestContext & test, std::string_view profile)
+{
+    FusionFixture<Linalg, Configuration> fixture;
+    fixture.checks.require_reference = true;
+    fixture.checks.reference_available = false;
+    // A missing required reference must reject before consuming covariance/noise.
+    fixture.V(0U, 0U) = std::numeric_limits<typename Linalg::value_type>::quiet_NaN();
+    auto output = fixture.state;
+    auto output_P = fixture.P;
+    auto const result = fixture.fuse(output, output_P);
+    test.expect(result.fusion.status == Status::success && result.fusion.decision == FusionDecision::rejected &&
+                    result.field.failures.reference && result.field.diagnostics_valid &&
+                    !result.fusion.diagnostics_valid && same_state(output, fixture.state) &&
+                    same_bits(output_P, fixture.P),
+                profile, "missing required reference rejects atomically before innovation/correction");
+}
 
 template <typename Linalg, typename Configuration> void test_fusion(TestContext & test, std::string_view profile)
 {
@@ -567,6 +653,9 @@ template <typename Linalg> void run_tests(TestContext & test, std::string_view p
 {
     test_field_checks<Linalg>(test, profile);
     test_field_frames<Linalg>(test, profile);
+    test_field_selection<Linalg>(test, profile);
+    test_missing_reference<Linalg, Ahrs>(test, profile);
+    test_missing_reference<Linalg, Ins>(test, profile);
     test_invalid_field<Linalg>(test, profile);
     test_fusion<Linalg, Ahrs>(test, profile);
     test_fusion<Linalg, Ins>(test, profile);

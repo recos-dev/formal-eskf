@@ -201,14 +201,16 @@ Native tests in both macro configurations are supporting evidence only. Projecti
 
 `runtime::check_magnetic_field` consumes a unit `q_nb`, calibrated body-frame `m_b`, trustworthy NED reference `m_n` (both microtesla), explicit `MagneticFieldParameters`, and a caller-supplied `heading_observable` condition. It owns no state, clocks, calibration or WMM lookup. This check is for already aligned magnetic aiding, not initial yaw alignment or proof of sensor health.
 
-- Form `measured_n = R(q_nb) m_b`. For measured/reference NED fields compute strength, horizontal magnitude and Down-positive inclination `atan2(z, sqrt(x*x+y*y))`. Compare absolute strength and inclination differences against their tolerances. Strength in the rotated frame equals body strength under the unit-quaternion premise; finite-precision decisions use the computed quantities.
+- Form `measured_n = R(q_nb) m_b`. For measured/reference NED fields compute strength, horizontal magnitude and Down-positive inclination `atan2(z, sqrt(x*x+y*y))`. Strength in the rotated frame equals body strength under the unit-quaternion premise; finite-precision decisions use the computed quantities.
+- `MagneticFieldChecks` selects strength/inclination tests and whether an independent reference is required/available. Existing calls default to both selected and their supplied `m_n` available; this is a caller premise, not automatic WMM availability. With an available reference, compare selected absolute strength/inclination differences to configured tolerances. With no independent reference, a selected required-reference check rejects with `failures.reference`; otherwise selected strength uses the inclusive `[5,85]` microtesla range and inclination is skipped. Requiring a reference with neither test selected does not create a check. This health fallback never changes the observation vector `m_n`.
+- Selection does not disable input/arithmetic validation, horizontal-field protection, the separately requested instantaneous heading check, filtered heading consistency, lifecycle or innovation gating. Consequently disabled physical checks do not authorize unsafe geometry or bypass correction checks.
 - Require both horizontal magnitudes to be at least `minimum_horizontal_field`, regardless of heading-check selection or `ESKF_MAG_TILT`. This policy rejects fields with insufficient heading information; it is not a general vertical-field tilt-aiding API.
 - Only when `heading_observable` is true and both horizontal fields are sufficient, compute `wrap_pi(atan2(measured_E, measured_N) - atan2(reference_E, reference_N))` and compare its absolute value with `heading_tolerance`. The caller must establish aligned heading with independent aiding and suitable motion/observability; neither magnetometer consistency nor a GNSS fix alone establishes that condition. False skips only this extra check, never the innovation gate. No heading filter, hysteresis or reset is implied.
-- All consumed coefficients and all four parameters must be finite. Strength tolerance is nonnegative; both angle tolerances are in `[0, pi]`; minimum horizontal field is positive normal. Zero field vectors and invalid parameters return `domain_error`; non-finite inputs return `non_finite_input`. Default parameters are invalid until explicitly configured. No fallback field, tolerance clamp or implicit normalization is allowed.
+- All consumed coefficients and all four parameters must be finite. Strength tolerance is nonnegative; both angle tolerances are in `[0, pi]`; minimum horizontal field is positive normal. Zero field vectors and invalid parameters return `domain_error`; non-finite inputs return `non_finite_input`. Default parameters are invalid until explicitly configured. No replacement observation field, tolerance clamp or implicit normalization is allowed.
 - Non-finite rotation or squared-magnitude arithmetic returns `non_finite_result`; total squared magnitude below the smallest positive normal value returns `zero_or_unsafe_divisor`. Propagate checked square-root/atan2 failures. These checks intentionally reject extreme arithmetic domains rather than promise arbitrary-scale geometry. Inputs remain unchanged.
-- Return fresh diagnostics only after all required arithmetic succeeds. On success, `diagnostics_valid` is true; named strength/inclination/horizontal-field/heading failure flags determine `accepted`. Upper-threshold equality and minimum-horizontal equality pass. `heading_error` is meaningful only when `heading_checked` is true; otherwise it is a zero placeholder. Any failure returns `accepted=false` and invalid zero diagnostics. A current rejection is `success` with `accepted=false`, not a numerical failure.
+- Return fresh diagnostics only after all required arithmetic succeeds. On success, `diagnostics_valid` is true; named reference/strength/inclination/horizontal-field/heading failure flags determine `accepted`. Upper-threshold equality and minimum-horizontal equality pass. `strength_checked`, `inclination_checked` and `heading_checked` distinguish unperformed tests from passes. Unchecked inclination/heading errors are zero placeholders. `reference_strength` is the supplied field strength when available, otherwise the fallback center (45 microtesla); it is not evidence that a WMM was supplied. Any failure returns `accepted=false` and invalid zero diagnostics. A current rejection is `success` with `accepted=false`, not a numerical failure.
 
-Physical disturbance detection, attitude/reference correctness and threshold tuning remain deployment assumptions. Native tests cover geometry, boundaries, frames and invalid arithmetic in binary32/binary64; Lean/ESBMC evidence remains pending.
+Physical disturbance detection, attitude/reference correctness and threshold tuning remain deployment assumptions. Native tests cover geometry, boundaries, frames, all eight selections with/without a reference, and invalid arithmetic in binary32/binary64; Lean/ESBMC evidence remains pending.
 
 ### R-MAGNETIC-HEADING: aided heading consistency
 
@@ -308,6 +310,16 @@ it is not an independent WMM reference or evidence of magnetic health.
 An optional geographic model replaces this seed-derived reference as described
 below; it does not change the fixed-field observation model or estimate mag bias.
 
+Initial declination follows the pinned `getMagDeclination()` source selection:
+use an available geographic declination when `EKF2_DECL_TYPE` bit 0 is set;
+otherwise use finite nonzero `EKF2_MAG_DECL` only when bit 1 is set; otherwise
+use zero (magnetic north, not established true north). Missing source settings
+use the explicit mask default 3 and saved-value default 0. Legacy bit 2 does not
+select an initialization source; reject other unknown bits. Record the selected
+source/default and reject source-setting changes during the replay. No learned
+earth-field branch is available. The executable's bit-1 condition takes precedence
+over its parameter description, which suggests unconditional saved-value fallback.
+
 - Optional `magnetometer.csv` and `magnetic_reference.csv` must occur together;
   without both, existing navigation/accelerometer replay remains unchanged.
   The reference row supplies NED field, per-axis noise standard deviation and
@@ -364,6 +376,40 @@ below; it does not change the fixed-field observation model or estimate mag bias
   data in both runs. Missing-input and disabled paths must preserve the prior
   replay's state/navigation results. KITTI supplies no magnetic input.
 
+#### Replay magnetic field checks
+
+Preparation reads `EKF2_MAG_CHECK`, `EKF2_MAG_CHK_STR` (gauss), and
+`EKF2_MAG_CHK_INC` (degrees). Missing values use explicit PX4 v1.16.2 defaults
+`1`, `0.2`, and `20`; metadata identifies every default. Reject non-finite,
+nonintegral/unknown mask bits, values outside the reference parameter ranges,
+and changes during the prepared interval. Convert tolerance units once to
+microtesla/radians and write `magnetic_field_parameters.csv` with exactly one
+`check_mask,strength_tolerance_ut,inclination_tolerance_rad` row.
+
+- Mask bits 0/1/2 select strength, inclination and required independent reference.
+  Only an initialized geographic provider establishes reference availability in
+  this path. The measured seed remains the correction reference when no model
+  is supplied; it cannot satisfy the required-reference flag.
+- Feed the same selection/tolerances to lifecycle field qualification and gated
+  correction. Missing required reference is a health rejection, not numerical
+  failure; it cannot trigger a correction or heading reset. Log missing reference,
+  each performed test, strength/reference strength and inclination residual.
+- Older prepared inputs without this file retain their supplied-reference checks
+  and state results. Their summary marks the parameters unconfigured. Newly
+  prepared logs always select explicitly; defaults are not recovered historical
+  configuration or evidence of physical suitability.
+
+The selection, fallback range and reference requirement follow
+[PX4 v1.16.2 field checks](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/magnetometer/mag_control.cpp#L496)
+and [parameter definitions](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/params_magnetometer.yaml#L101).
+Mask zero disables the health-duration qualification, including reset qualification.
+Other masks retain the configured duration, including force-only mask 4.
+Our weak-horizontal/numerical guards, sample count, recency, readiness and heading
+policy remain active even for mask zero.
+Computed rotated strength/atan2 inclination and grouped correction also preclude
+claims of bitwise equivalence or identical estimator outcomes. Observation noise,
+innovation gate and heading consistency thresholds are separate parameters.
+
 #### Replay geographic magnetic model
 
 `replay_px4.py --magnetic-model PATH` optionally calls the host-built
@@ -387,6 +433,10 @@ host model directly; the subprocess is only offline preparation.
   window. Transform each position's local-NED model vector through ECEF into
   the fixed replay NED frame before expressing its D/I/B. This transforms a
   vector, not a point; never subtract the geographic origin from a field vector.
+  Model-for-health-only with a separately selected heading reference remains
+  unsupported: this fixed-field replay uses one reference for correction and
+  field checks. Reject that combination explicitly; do not rotate the WMM vector
+  to a configured heading and then claim it is the original geographic model.
 - `magnetic_model.csv` contains one available seed row, then exactly one row per
   navigation event: timestamp, availability, D/I/B. Unavailable rows do not carry
   model evidence. Numerical/structural input errors and missing/mismatched/extra
@@ -417,7 +467,7 @@ an external reference agree with the measured field.
 
 #### Replay magnetic lifecycle
 
-Replay uses the lifecycle below with 1 s startup health, a 0.5 s maximum
+Replay uses the lifecycle below with 1 s startup health (disabled for check mask zero), a 0.5 s maximum
 interval and a 7 s active-fusion timeout. Own covariance-based tilt alignment
 supplies readiness; yaw and the fixed field reference remain causal seed
 assumptions. No external yaw/reset event occurs during replay; magnetic timeout
@@ -433,7 +483,7 @@ and [common.h](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7c
 
 | Decision | Implemented rule |
 |---|---|
-| Start | Continuing conditions pass, stable yaw/reset frame, at least four samples, more than 1 s since the last failed field check, newest sample age strictly below 0.5 s; actual successful fusion activates. |
+| Start | Continuing conditions pass, stable yaw/reset frame, at least four samples, more than 1 s since the last failed field check unless the health duration is disabled, newest sample age strictly below 0.5 s; actual successful fusion activates. |
 | Continue | A current good field may fuse without repeating startup health, subject to `!horizontal_aiding || heading_consistent`. Field rejection or heading inhibition does not itself end the session. |
 | No data | On a no-sample tick, stop at age **>= 1 s**; preserve field history and allow fresh qualified data to restart. |
 | Fusion timeout | Try the current observation first. Only an active session still without success for **> 7 s** takes the timeout branch. |
@@ -498,14 +548,16 @@ explicit source-change alignment recovery retains its separate reset policy.
   `field_accepted` is the actual successful same-sample/same-prior field check,
   not an innovation outcome. The adapter supplies aligned usable samples and
   truthful freshness on one timeline; delayed buffering is outside this API.
-- Positive `health_time_us`, `maximum_interval_us` and `fusion_timeout_us`
-  remain fixed until full reset. Require `maximum_interval_us <= UINT64_MAX/2`
+- `health_time_us=0` disables only health-duration qualification; a positive value
+  requires strictly more elapsed time. Positive `maximum_interval_us` and
+  `fusion_timeout_us`, and the selected health duration remain fixed until full
+  reset. Require `maximum_interval_us <= UINT64_MAX/2`
   so the two-interval no-data bound is representable. Compare elapsed unsigned
   differences after validating order; never add durations to timestamps.
 - Count consumed samples while enabled, saturating at four. Check health on new
   enabled/ready samples. A rejected field sets `last_field_failure_time_us=now_us`;
   the first check seeds that timestamp even when good. Startup requires strictly
-  more than the health duration since that timestamp, at least four samples,
+  more than the enabled health duration since that timestamp, at least four samples,
   current field acceptance, stable starting conditions and age strictly less than
   one maximum interval. Permission is a start attempt, not an active session.
 - Every update revokes old permission. Call the actual gated transaction at most

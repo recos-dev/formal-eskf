@@ -15,6 +15,15 @@
 namespace formal_eskf::runtime
 {
 
+/** Per-call field-check selection and availability of an independent reference. */
+struct MagneticFieldChecks
+{
+    bool strength = true;
+    bool inclination = true;
+    bool require_reference = false;
+    bool reference_available = true; // A measured seed alone does not establish this.
+};
+
 template <typename Scalar> struct MagneticFieldParameters
 {
     Scalar strength_tolerance{};       // Absolute difference, microtesla.
@@ -25,6 +34,7 @@ template <typename Scalar> struct MagneticFieldParameters
 
 struct MagneticFieldFailures
 {
+    bool reference = false;
     bool strength = false;
     bool inclination = false;
     bool horizontal_field = false;
@@ -36,6 +46,8 @@ template <typename Scalar> struct MagneticFieldCheck
     Status status = Status::success;
     bool accepted = false;
     bool diagnostics_valid = false;
+    bool strength_checked = false;
+    bool inclination_checked = false;
     bool heading_checked = false;
     MagneticFieldFailures failures{};
     Scalar strength{}; // Microtesla, measured field rotated into NED.
@@ -95,11 +107,16 @@ template <typename Linalg>
 /**
  * Stateless field plausibility, not sensor-health qualification or yaw alignment.
  * q_nb is unit and maps calibrated body m_b into NED; m_n is a trustworthy fixed
- * reference. Both fields use microtesla at the same fusion horizon. No WMM,
- * fallback field, bias estimate, clock, filtering or implicit threshold is used.
+ * observation reference. Both fields use microtesla at the same fusion horizon.
+ * No model lookup, bias estimate, clock or filtering is owned here.
  *
- * Compare strength and inclination to m_n, and require a sufficient horizontal
- * field in BOTH vectors. Apply the wrapped horizontal-direction check only when
+ * Selected strength/inclination checks use m_n when the caller marks it as an
+ * independent reference. Without one, require_reference rejects selected checks;
+ * otherwise strength uses 45 +/- 40 microtesla and inclination is skipped.
+ * This fallback is only a health test: it never replaces m_n for correction.
+ * Default selection preserves the supplied-reference contract of existing calls.
+ * Always require a sufficient horizontal field in BOTH vectors.
+ * Apply the wrapped horizontal-direction check only when
  * heading_observable is true: the caller must establish aligned, independently
  * aided heading observability. Do not infer it from this magnetometer itself.
  * False skips that one check, not the later innovation gate. All upper-threshold
@@ -113,8 +130,8 @@ template <typename Linalg>
 [[nodiscard]] MagneticFieldCheck<typename Linalg::value_type>
 check_magnetic_field(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Matrix<Linalg, 3U, 1U> const & m_b,
                      linalg::Matrix<Linalg, 3U, 1U> const & m_n,
-                     MagneticFieldParameters<typename Linalg::value_type> const & parameters,
-                     bool heading_observable) noexcept
+                     MagneticFieldParameters<typename Linalg::value_type> const & parameters, bool heading_observable,
+                     MagneticFieldChecks const & checks = {}) noexcept
 {
     using value_type = typename Linalg::value_type;
     using math_type = typename Linalg::scalar_math_type;
@@ -186,18 +203,26 @@ check_magnetic_field(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Matrix<Li
         }
     }
     result.strength = measured.strength;
-    result.reference_strength = reference.strength;
-    result.inclination_error = inclination_error;
+    result.reference_strength = checks.reference_available ? reference.strength : value_type{45};
+    result.strength_checked = checks.strength && (checks.reference_available || !checks.require_reference);
+    result.inclination_checked = checks.inclination && checks.reference_available;
+    result.inclination_error = result.inclination_checked ? inclination_error : value_type{0};
     result.heading_error = heading_error;
     result.heading_checked = heading_checked;
+    result.failures.reference =
+        checks.require_reference && !checks.reference_available && (checks.strength || checks.inclination);
     result.failures.strength =
-        scalar::absolute<math_type>(measured.strength - reference.strength) > parameters.strength_tolerance;
-    result.failures.inclination = scalar::absolute<math_type>(inclination_error) > parameters.inclination_tolerance;
+        result.strength_checked &&
+        (checks.reference_available ? scalar::absolute<math_type>(measured.strength - result.reference_strength) >
+                                          parameters.strength_tolerance
+                                    : measured.strength < value_type{5} || measured.strength > value_type{85});
+    result.failures.inclination =
+        result.inclination_checked && scalar::absolute<math_type>(inclination_error) > parameters.inclination_tolerance;
     result.failures.horizontal_field = horizontal_failure;
     result.failures.heading =
         heading_checked && scalar::absolute<math_type>(heading_error) > parameters.heading_tolerance;
-    result.accepted = !result.failures.strength && !result.failures.inclination && !result.failures.horizontal_field &&
-                      !result.failures.heading;
+    result.accepted = !result.failures.reference && !result.failures.strength && !result.failures.inclination &&
+                      !result.failures.horizontal_field && !result.failures.heading;
     result.diagnostics_valid = true;
     return result;
 }

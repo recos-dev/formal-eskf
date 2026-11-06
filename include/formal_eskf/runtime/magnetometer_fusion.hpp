@@ -61,6 +61,7 @@ public:
 
     struct Parameters
     {
+        // Zero disables only the health-duration qualification.
         std::uint64_t health_time_us{};
         // Startup requires age < interval; no-data stop uses age >= 2 * interval.
         std::uint64_t maximum_interval_us{};
@@ -243,7 +244,7 @@ inline Status MagnetometerFusion::update(std::uint64_t now_us, Conditions const 
     m_state.reset_allowed = false;
     m_state.filter_reset = false;
     m_reset_sample_qualified = false;
-    if (parameters.health_time_us == 0U || parameters.maximum_interval_us == 0U ||
+    if (parameters.maximum_interval_us == 0U ||
         parameters.maximum_interval_us > std::numeric_limits<std::uint64_t>::max() / 2U ||
         parameters.fusion_timeout_us == 0U ||
         (m_update_time_us != 0U && (parameters.health_time_us != m_parameters.health_time_us ||
@@ -319,9 +320,10 @@ inline Status MagnetometerFusion::update(std::uint64_t now_us, Conditions const 
         {
             m_state.last_field_failure_time_us = now_us;
         }
+        bool const health_qualified =
+            parameters.health_time_us == 0U || now_us - m_state.last_field_failure_time_us > parameters.health_time_us;
         m_reset_sample_qualified = conditions.starting_allowed && sample.field_accepted && m_sample_count >= 4U &&
-                                   now_us - m_sample_time_us < parameters.maximum_interval_us &&
-                                   now_us - m_state.last_field_failure_time_us > parameters.health_time_us;
+                                   now_us - m_sample_time_us < parameters.maximum_interval_us && health_qualified;
         if (m_state.recovery_reason == RecoveryReason::source_changed)
         {
             stop(StopReason::recovery_required);
@@ -379,7 +381,7 @@ inline Status MagnetometerFusion::update(std::uint64_t now_us, Conditions const 
         {
             stop(StopReason::field_rejected);
         }
-        else if (m_sample_count < 4U || now_us - m_state.last_field_failure_time_us <= parameters.health_time_us)
+        else if (m_sample_count < 4U || !health_qualified)
         {
             stop(StopReason::waiting_for_health);
         }

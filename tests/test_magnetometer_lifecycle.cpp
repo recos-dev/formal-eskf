@@ -553,6 +553,66 @@ void test_reset_feedback(TestContext & test)
                 profile, "restored horizontal aid cancels timeout reset in favor of ordinary stop");
 }
 
+void test_disabled_health_wait(TestContext & test)
+{
+    Fixture fixture;
+    fixture.parameters.health_time_us = 0U;
+    for (auto time : {100U, 101U, 102U})
+    {
+        test.expect(fixture.sample(time) == Status::success && !fixture.monitor.state().fusion_allowed, profile,
+                    "disabled health wait still requires four samples");
+    }
+    test.expect(fixture.sample(103U, false) == Status::success && !fixture.monitor.state().fusion_allowed, profile,
+                "disabled health wait cannot bypass a current field rejection");
+    test.expect(fixture.monitor.update(114U, fixture.conditions, fixture.parameters, {104U, fixture.source, true}) ==
+                        Status::success &&
+                    !fixture.monitor.state().fusion_allowed &&
+                    fixture.monitor.state().stop_reason == StopReason::data_timeout,
+                profile, "disabled health wait still requires a fresh sample");
+    fixture.conditions.starting_allowed = false;
+    test.expect(fixture.sample(115U) == Status::success && !fixture.monitor.state().fusion_allowed, profile,
+                "disabled health wait preserves startup inhibition");
+    fixture.conditions.starting_allowed = true;
+    fixture.conditions.ready = false;
+    test.expect(fixture.sample(116U) == Status::success && !fixture.monitor.state().fusion_allowed, profile,
+                "disabled health wait preserves alignment prerequisites");
+    fixture.conditions.ready = true;
+    fixture.conditions.heading_consistent = false;
+    test.expect(fixture.sample(117U) == Status::success && !fixture.monitor.state().fusion_allowed, profile,
+                "disabled health wait preserves aided heading consistency");
+    fixture.conditions.heading_consistent = true;
+    test.expect(fixture.sample(118U) == Status::success && fixture.monitor.state().fusion_allowed &&
+                    fixture.monitor.record_fusion(118U, FusionDecision::fused) == Status::success,
+                profile, "qualified sample can start without the health delay");
+    test.expect(fixture.sample(119U, false) == Status::success && fixture.monitor.state().active &&
+                    !fixture.monitor.state().fusion_allowed && fixture.sample(120U) == Status::success &&
+                    fixture.monitor.state().fusion_allowed,
+                profile, "brief disturbance retains the session and recovery can retry immediately");
+
+    fixture.conditions.flight_state = MagnetometerFusion::FlightState::on_ground;
+    ++fixture.source.device_id;
+    for (auto time : {121U, 122U, 123U})
+    {
+        test.expect(fixture.sample(time) == Status::success && !fixture.monitor.state().reset_allowed, profile,
+                    "source change still needs four samples before heading reset");
+    }
+    test.expect(fixture.sample(124U, false) == Status::success && !fixture.monitor.state().reset_allowed &&
+                    fixture.sample(125U) == Status::success && fixture.monitor.state().reset_allowed,
+                profile, "source reset needs a good field but no disabled health delay");
+
+    Fixture alignment;
+    alignment.parameters.health_time_us = 0U;
+    alignment.conditions.ready = false;
+    for (auto time : {100U, 101U, 102U})
+    {
+        test.expect(alignment.sample(time) == Status::success, profile, "unaligned samples only establish the count");
+    }
+    alignment.conditions.ready = true;
+    test.expect(alignment.sample(103U) == Status::success && alignment.monitor.state().fusion_allowed &&
+                    alignment.monitor.state().last_field_failure_time_us == 103U,
+                profile, "zero duration permits the first health check once other prerequisites hold");
+}
+
 void test_invalid_calls(TestContext & test)
 {
     for (unsigned invalid_case = 0U; invalid_case < 13U; ++invalid_case)
@@ -566,6 +626,7 @@ void test_invalid_calls(TestContext & test)
         switch (invalid_case)
         {
         case 0U:
+            // Zero is valid at initialization, but durations cannot change mid-session.
             parameters.health_time_us = 0U;
             break;
         case 1U:
@@ -737,6 +798,7 @@ int main()
     test_source_reinitialization(test);
     test_reference_change(test);
     test_reset_feedback(test);
+    test_disabled_health_wait(test);
     test_invalid_calls(test);
     test_real_fusion<formal_eskf::test::Backend<float>, formal_eskf::configuration::Ahrs>(test, "float AHRS");
     test_real_fusion<formal_eskf::test::Backend<float>, formal_eskf::configuration::Ins>(test, "float INS");

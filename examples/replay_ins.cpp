@@ -620,6 +620,40 @@ read_magnetic_heading_parameters(std::filesystem::path const & input)
 
 using ReferenceModel = formal_eskf::runtime::MagneticReference<Linalg>;
 
+struct MagneticFieldConfiguration
+{
+    formal_eskf::runtime::MagneticFieldParameters<double> parameters{
+        MAG_STRENGTH_TOL, MAG_INCLINATION_TOL * std::numbers::pi / 180.0, 0.0, MAG_MIN_HORIZONTAL};
+    formal_eskf::runtime::MagneticFieldChecks checks{};
+    bool configured = false;
+};
+
+MagneticFieldConfiguration read_magnetic_field_parameters(std::filesystem::path const & input, bool model_available)
+{
+    MagneticFieldConfiguration result;
+    if (!std::filesystem::exists(input / "magnetic_field_parameters.csv"))
+    {
+        return result; // Legacy prepared inputs use their supplied field for both checks.
+    }
+    auto stream =
+        open_csv(input / "magnetic_field_parameters.csv", "check_mask,strength_tolerance_ut,inclination_tolerance_rad");
+    std::array<double, 3U> row{}, extra{};
+    if (!read_row(stream, row) || read_row(stream, extra))
+    {
+        throw std::runtime_error("expected exactly one magnetic field parameter row");
+    }
+    auto const mask = metadata_integer(row[0U], 0, 7);
+    if (row[1U] < 0.0 || row[1U] > 100.0 || row[2U] < 0.0 || row[2U] > std::numbers::pi / 2.0)
+    {
+        throw std::runtime_error("invalid magnetic field tolerances");
+    }
+    result.parameters.strength_tolerance = row[1U];
+    result.parameters.inclination_tolerance = row[2U];
+    result.checks = {(mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0, model_available};
+    result.configured = true;
+    return result;
+}
+
 std::optional<ReferenceModel::Sample> read_magnetic_model(std::ifstream & stream, std::uint64_t time)
 {
     if (!stream.is_open())
@@ -773,7 +807,9 @@ void write_magnetic_update(std::ostream & stream, std::uint64_t source_time, std
            << ',' << lifecycle.last_field_failure_time_us << ',' << lifecycle.start_time_us << ','
            << lifecycle.last_fuse_time_us << ',' << lifecycle.last_reset_time_us << ',' << heading.innovation_valid
            << ',' << heading.innovation << ',' << heading.filtered_innovation << ',' << heading.horizontal_acceleration
-           << ',' << heading.observable << ',' << heading.consistent << '\n';
+           << ',' << heading.observable << ',' << heading.consistent << ',' << field.failures.reference << ','
+           << field.strength_checked << ',' << field.inclination_checked << ',' << field.strength << ','
+           << field.reference_strength << ',' << field.inclination_error << '\n';
 }
 
 /** One row per observed axis; the outcome applies to the whole group. */
@@ -1021,7 +1057,6 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         initial_magnetic_source.reference_id = reference_model.state().reference_id;
     }
     magnetic_lifecycle.reset(initial_magnetic_source);
-    MagneticLifecycle::Parameters const magnetic_timing{MAG_HEALTH_TIME_US, MAG_MAX_INTERVAL_US, MAG_FUSION_TIMEOUT_US};
     auto const accel_V = Linalg::matrix_type<3U, 3U>::identity() * (ACCEL_OBS_STD * ACCEL_OBS_STD);
     // Consume seed metadata, but initialization is not a successful aiding event.
     (void)read_imu_flags(flags, time);
@@ -1034,8 +1069,13 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     {
         throw std::runtime_error("empty magnetometer input");
     }
-    auto const field_parameters = formal_eskf::runtime::MagneticFieldParameters<double>{
-        MAG_STRENGTH_TOL, MAG_INCLINATION_TOL * std::numbers::pi / 180.0, 0.0, MAG_MIN_HORIZONTAL};
+    auto const field_configuration = read_magnetic_field_parameters(input, has_magnetic_model);
+    auto const & field_parameters = field_configuration.parameters;
+    auto const & field_checks = field_configuration.checks;
+    bool const field_checks_disabled =
+        !field_checks.strength && !field_checks.inclination && !field_checks.require_reference;
+    MagneticLifecycle::Parameters const magnetic_timing{field_checks_disabled ? 0U : MAG_HEALTH_TIME_US,
+                                                        MAG_MAX_INTERVAL_US, MAG_FUSION_TIMEOUT_US};
     if (!std::filesystem::create_directory(output))
     {
         throw std::runtime_error("output directory already exists: " + output.string());
@@ -1121,7 +1161,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                    "inclination_rejected,horizontal_rejected,innovation_valid,ratio_x,ratio_y,ratio_z,"
                    "active,stop_reason,recovery_reason,last_field_failure_timestamp_us,start_timestamp_us,last_fuse_"
                    "timestamp_us,last_reset_timestamp_us,heading_valid,heading_innovation,heading_innovation_lpf,"
-                   "horizontal_acceleration,heading_observable,heading_consistent\n";
+                   "horizontal_acceleration,heading_observable,heading_consistent,reference_unavailable,"
+                   "strength_checked,inclination_checked,strength_ut,reference_strength_ut,inclination_error_rad\n";
     accel_updates << std::setprecision(17);
     accel_updates << "timestamp_us,interval_us,fx,fy,fz,clipping_mask,lpf_squared_norm,within_gravity_band,"
                      "tilt_aligned,horizontal_aiding,at_rest,outcome\n";
@@ -1823,7 +1864,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                              "magnetic heading consistency", time);
                 // Same prior for field qualification and, if authorized, fusion.
                 result.field = formal_eskf::runtime::check_magnetic_field(state.q_nb, magnetic_sample, magnetic.m_n,
-                                                                          field_parameters, false);
+                                                                          field_parameters, false, field_checks);
             }
             MagneticLifecycle::Sample const lifecycle_sample{
                 magnetic_time, magnetic_source, formal_eskf::succeeded(result.field.status) && result.field.accepted};
@@ -1850,9 +1891,9 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             }
             else if (magnetic_lifecycle.state().fusion_allowed)
             {
-                result = formal_eskf::runtime::fuse_magnetometer(state, covariance, magnetic_sample, magnetic.m_n,
-                                                                 magnetic.V, field_parameters, false, QUAT_MIN_NORM,
-                                                                 magnetic.gate_sigma, state, covariance, bias_update);
+                result = formal_eskf::runtime::fuse_magnetometer(
+                    state, covariance, magnetic_sample, magnetic.m_n, magnetic.V, field_parameters, false,
+                    QUAT_MIN_NORM, magnetic.gate_sigma, state, covariance, bias_update, field_checks);
                 if (result.fusion.decision == formal_eskf::runtime::FusionDecision::fused)
                 {
                     limit_bias(state, bias_limits, bias_limit_counts, time);
@@ -2063,7 +2104,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"magnetometer_rejected\": " << mag_rejected
             << ",\n  \"magnetometer_lifecycle_skipped\": " << mag_skipped
             << ",\n  \"magnetometer_superseded\": " << mag_superseded
-            << ",\n  \"magnetometer_health_time_us\": " << MAG_HEALTH_TIME_US
+            << ",\n  \"magnetometer_health_time_us\": " << magnetic_timing.health_time_us
             << ",\n  \"magnetometer_maximum_interval_us\": " << MAG_MAX_INTERVAL_US
             << ",\n  \"magnetometer_data_timeout_us\": " << 2U * MAG_MAX_INTERVAL_US
             << ",\n  \"magnetometer_fusion_timeout_us\": " << MAG_FUSION_TIMEOUT_US
@@ -2073,9 +2114,16 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"magnetometer_max_alignment_us\": " << mag_max_alignment_us
             << ",\n  \"magnetometer_observation_variance\": " << magnetic.V(0U, 0U)
             << ",\n  \"magnetometer_gate_sigma\": " << magnetic.gate_sigma
-            << ",\n  \"magnetometer_tilt_protection\": " << (ESKF_MAG_TILT ? "true" : "false")
-            << ",\n  \"magnetometer_strength_tolerance_ut\": " << MAG_STRENGTH_TOL
-            << ",\n  \"magnetometer_inclination_tolerance_deg\": " << MAG_INCLINATION_TOL
+            << ",\n  \"magnetometer_tilt_protection\": " << (ESKF_MAG_TILT ? "true" : "false");
+    summary << ",\n  \"magnetometer_field_parameters_configured\": "
+            << (field_configuration.configured ? "true" : "false") << ",\n  \"magnetometer_check_mask\": "
+            << ((field_checks.strength ? 1 : 0) | (field_checks.inclination ? 2 : 0) |
+                (field_checks.require_reference ? 4 : 0))
+            << ",\n  \"magnetometer_check_reference_available\": "
+            << (field_checks.reference_available ? "true" : "false")
+            << ",\n  \"magnetometer_strength_tolerance_ut\": " << field_parameters.strength_tolerance
+            << ",\n  \"magnetometer_inclination_tolerance_deg\": "
+            << field_parameters.inclination_tolerance * 180.0 / std::numbers::pi
             << ",\n  \"magnetometer_heading_noise_rad\": " << heading_parameters.heading_noise
             << ",\n  \"magnetometer_acceleration_limit_mps2\": " << heading_parameters.acceleration_limit
             << ",\n  \"magnetic_model_enabled\": " << (has_magnetic_model ? "true" : "false")

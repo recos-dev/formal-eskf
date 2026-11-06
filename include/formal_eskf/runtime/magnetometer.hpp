@@ -28,15 +28,14 @@ namespace detail
 {
 
 template <typename State, typename Linalg, std::size_t Size>
-[[nodiscard]] MagnetometerFusionResult<Linalg>
-fuse_magnetometer_state(State const & state, linalg::Matrix<Linalg, Size, Size> const & covariance,
-                        linalg::Matrix<Linalg, 3U, 1U> const & m_b, linalg::Matrix<Linalg, 3U, 1U> const & m_n,
-                        linalg::Matrix<Linalg, 3U, 3U> const & V,
-                        MagneticFieldParameters<typename Linalg::value_type> const & field_parameters,
-                        bool heading_observable, typename Linalg::value_type minimum_quaternion_norm,
-                        typename Linalg::value_type gate_sigma, State & state_output,
-                        linalg::Matrix<Linalg, Size, Size> & covariance_output,
-                        configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+[[nodiscard]] MagnetometerFusionResult<Linalg> fuse_magnetometer_state(
+    State const & state, linalg::Matrix<Linalg, Size, Size> const & covariance,
+    linalg::Matrix<Linalg, 3U, 1U> const & m_b, linalg::Matrix<Linalg, 3U, 1U> const & m_n,
+    linalg::Matrix<Linalg, 3U, 3U> const & V,
+    MagneticFieldParameters<typename Linalg::value_type> const & field_parameters, bool heading_observable,
+    typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma, State & state_output,
+    linalg::Matrix<Linalg, Size, Size> & covariance_output, configuration::Ins::BiasUpdate const & bias_update = {},
+    MagneticFieldChecks const & field_checks = {}) noexcept
 {
     MagnetometerFusionResult<Linalg> result;
     if (!finite_fusion_state(state))
@@ -44,7 +43,7 @@ fuse_magnetometer_state(State const & state, linalg::Matrix<Linalg, Size, Size> 
         result.fusion.status = Status::non_finite_input;
         return result;
     }
-    result.field = check_magnetic_field(state.q_nb, m_b, m_n, field_parameters, heading_observable);
+    result.field = check_magnetic_field(state.q_nb, m_b, m_n, field_parameters, heading_observable, field_checks);
     result.fusion.status = result.field.status;
     if (!succeeded(result.field.status))
     {
@@ -108,27 +107,28 @@ fuse_magnetometer(configuration::Ahrs::NominalState<Linalg> const & state,
                   MagneticFieldParameters<typename Linalg::value_type> const & field_parameters,
                   bool heading_observable, typename Linalg::value_type minimum_quaternion_norm,
                   typename Linalg::value_type gate_sigma, configuration::Ahrs::NominalState<Linalg> & state_output,
-                  linalg::Matrix<Linalg, 3U, 3U> & covariance_output) noexcept
+                  linalg::Matrix<Linalg, 3U, 3U> & covariance_output,
+                  MagneticFieldChecks const & field_checks = {}) noexcept
 {
     return detail::fuse_magnetometer_state(state, covariance, m_b, m_n, V, field_parameters, heading_observable,
-                                           minimum_quaternion_norm, gate_sigma, state_output, covariance_output);
+                                           minimum_quaternion_norm, gate_sigma, state_output, covariance_output, {},
+                                           field_checks);
 }
 
 /** INS forwards per-axis bias permissions unchanged; neither gate uses them. */
 template <typename Linalg>
-[[nodiscard]] MagnetometerFusionResult<Linalg>
-fuse_magnetometer(configuration::Ins::NominalState<Linalg> const & state,
-                  linalg::Matrix<Linalg, 15U, 15U> const & covariance, linalg::Matrix<Linalg, 3U, 1U> const & m_b,
-                  linalg::Matrix<Linalg, 3U, 1U> const & m_n, linalg::Matrix<Linalg, 3U, 3U> const & V,
-                  MagneticFieldParameters<typename Linalg::value_type> const & field_parameters,
-                  bool heading_observable, typename Linalg::value_type minimum_quaternion_norm,
-                  typename Linalg::value_type gate_sigma, configuration::Ins::NominalState<Linalg> & state_output,
-                  linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                  configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+[[nodiscard]] MagnetometerFusionResult<Linalg> fuse_magnetometer(
+    configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
+    linalg::Matrix<Linalg, 3U, 1U> const & m_b, linalg::Matrix<Linalg, 3U, 1U> const & m_n,
+    linalg::Matrix<Linalg, 3U, 3U> const & V,
+    MagneticFieldParameters<typename Linalg::value_type> const & field_parameters, bool heading_observable,
+    typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
+    configuration::Ins::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
+    configuration::Ins::BiasUpdate const & bias_update = {}, MagneticFieldChecks const & field_checks = {}) noexcept
 {
     return detail::fuse_magnetometer_state(state, covariance, m_b, m_n, V, field_parameters, heading_observable,
                                            minimum_quaternion_norm, gate_sigma, state_output, covariance_output,
-                                           bias_update);
+                                           bias_update, field_checks);
 }
 
 } /* end namespace formal_eskf::runtime */

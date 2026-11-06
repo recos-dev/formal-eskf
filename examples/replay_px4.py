@@ -426,9 +426,6 @@ def prepare(ULOG, OUTPUT, MAGNETIC_MODEL=None):
     ORIGIN_ECEF, BASIS = ecef(LAT0, LON0, ALT0), ned_basis(LAT0, LON0)
     MODEL_FIELDS = {}
     if MAGNETIC_MODEL is not None:
-        DECL_TYPE = float(ULOG.initial_parameters.get("EKF2_DECL_TYPE", -1))
-        if not math.isfinite(DECL_TYPE) or not DECL_TYPE.is_integer() or DECL_TYPE < 0 or not int(DECL_TYPE) & 1:
-            raise ValueError("geographic magnetic replay requires logged EKF2_DECL_TYPE with geographic declination enabled")
         MODEL_FIXES = [(ORIGIN_INDEX, ORIGIN)] + [(INDEX, READING) for INDEX, READING in VALID
                                                 if START < GPS_TIMES[INDEX] <= IMU_TIMES[-1]]
         MODEL_FIELDS = geographic_magnetic_fields(MAGNETIC_MODEL, MODEL_FIXES, BASIS)
@@ -436,10 +433,12 @@ def prepare(ULOG, OUTPUT, MAGNETIC_MODEL=None):
         ULOG, MODEL_FIELDS[ORIGIN_INDEX][0] if MODEL_FIELDS else None)
     Q = initial_quaternion(ACCEL, FIELD, math.radians(DECLINATION))
     MAG_REFERENCE = magnetic_reference(Q, FIELD, ULOG)
+    MODEL_HEADING = DECLINATION_SOURCE == "geographic_model"
     MODEL_ROWS = []
     if MODEL_FIELDS:
         D, I, STRENGTH = MODEL_FIELDS[ORIGIN_INDEX]
-        MAG_REFERENCE[:3] = [STRENGTH * math.cos(I) * math.cos(D), STRENGTH * math.cos(I) * math.sin(D), STRENGTH * math.sin(I)]
+        if MODEL_HEADING:
+            MAG_REFERENCE[:3] = [STRENGTH * math.cos(I) * math.cos(D), STRENGTH * math.cos(I) * math.sin(D), STRENGTH * math.sin(I)]
         MODEL_ROWS.append([START, 1, D, I, STRENGTH])
     MAG_ROWS, MAG_CONTEXT = magnetic_rows(ULOG, MAG, MAG_TIMES, START, IMU_TIMES[-1], MAG_REFERENCE)
     IMU_ROWS, GPS_ROWS = [], []
@@ -486,7 +485,8 @@ def prepare(ULOG, OUTPUT, MAGNETIC_MODEL=None):
     write_csv(OUTPUT / "gnss_quality.csv",
               "timestamp_us,fix_type,satellites,pdop,spoofed,vel_ned_valid,in_air,at_rest,"
               "vn,ve,vd,dn,de,dd,reference_timestamp_us", QUALITY_ROWS)
-    write_csv(OUTPUT / "magnetic_reference.csv", "mn,me,md,noise_std,gate_sigma", [MAG_REFERENCE])
+    write_csv(OUTPUT / "magnetic_reference.csv", "mn,me,md,noise_std,gate_sigma,use_model_heading",
+              [[*MAG_REFERENCE, int(MODEL_HEADING)]])
     if MODEL_ROWS:
         write_csv(OUTPUT / "magnetic_model.csv", "timestamp_us,available,declination_rad,inclination_rad,strength_ut", MODEL_ROWS)
     write_csv(OUTPUT / "magnetic_heading_parameters.csv", "heading_noise,acceleration_limit", [MAG_HEADING])
@@ -528,7 +528,8 @@ def prepare(ULOG, OUTPUT, MAGNETIC_MODEL=None):
             "magnetic_reference_n_ut": MAG_REFERENCE[:3],
             "magnetic_noise_std_ut": MAG_REFERENCE[3], "magnetic_gate_sigma": MAG_REFERENCE[4],
             "magnetic_reference_source": ("host geographic model; seed origin then accepted horizontal GNSS positions, in fixed replay NED"
-                                          if MODEL_FIELDS else "R(q_seed) times first 0.2 s mean field; not independent WMM/truth"),
+                                          if MODEL_HEADING else "R(q_seed) times first 0.2 s mean field; not independent WMM/truth"),
+            "magnetic_model_for_heading": MODEL_HEADING,
             "magnetic_model_binary": (str(MAGNETIC_MODEL) if MAGNETIC_MODEL is not None else None),
             "magnetic_model_binary_sha256": (hashlib.sha256(MAGNETIC_MODEL.read_bytes()).hexdigest() if MAGNETIC_MODEL is not None else None),
             "magnetic_heading_parameters": {NAME: {"value": VALUE,
@@ -637,7 +638,7 @@ def main():
     PARSER.add_argument("--compare-mag", action="store_true",
                         help="also replay identical inputs without mag correction; --plot adds the comparison")
     PARSER.add_argument("--magnetic-model", type=Path,
-                        help="host px4_magnetic_model executable; use geographic fields instead of the seed-derived field")
+                        help="host px4_magnetic_model executable for field checks; EKF2_DECL_TYPE selects heading use")
     ARGS = PARSER.parse_args()
     try:
         if ARGS.plot:

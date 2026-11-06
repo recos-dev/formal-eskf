@@ -207,6 +207,7 @@ if(PROJECT_IS_TOP_LEVEL)
             foreach(CASE IN ITEMS timeout disturbed aided source_ground source_air source_unaided
                                   source_unknown calibration source_disturbed reference_unaided reference_aided context_invalid
                                   model_aided model_rejected_position model_unavailable
+                                  model_health_only model_health_disturbed
                                   field_required field_fallback field_disabled field_force_only model_required)
                 add_test(
                     NAME formal_eskf.replay_magnetometer.reset.${CASE}

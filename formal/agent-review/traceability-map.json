@@ -2872,7 +2872,7 @@
     },
     {
       "id": "R-MAGNETIC-FIELD",
-      "title": "Selectable magnetic field checks, independent-reference availability and fallback; Lean and ESBMC evidence pending",
+      "title": "Selectable magnetic field checks with separate health/heading references and fallback; Lean and ESBMC evidence pending",
       "references": {
         "spec": [
           {
@@ -2984,7 +2984,7 @@
     },
     {
       "id": "R-MAGNETOMETER-FUSION",
-      "title": "Field acceptance and same-prior innovation gate before magnetic correction; Lean and ESBMC evidence pending",
+      "title": "Independent health reference and same-prior innovation gate before magnetic correction; Lean and ESBMC evidence pending",
       "references": {
         "spec": [
           {

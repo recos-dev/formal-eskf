@@ -649,11 +649,81 @@ void test_fusion_boundaries(TestContext & test, std::string_view profile)
     }
 }
 
+template <typename Linalg, typename Configuration>
+void test_separate_references(TestContext & test, std::string_view profile)
+{
+    using fixture_type = FusionFixture<Linalg, Configuration>;
+    using value_type = typename fixture_type::value_type;
+    fixture_type fixture;
+    // Same strength/inclination, but a 90-degree different model declination.
+    auto health = Vector<Linalg>::from_row_major({value_type{0}, value_type{30}, value_type{40}});
+    typename fixture_type::state_type output, expected;
+    typename fixture_type::covariance_type output_P, expected_P;
+    auto fuse = [&]()
+    {
+        if constexpr (std::is_same_v<Configuration, Ins>)
+        {
+            return formal_eskf::runtime::fuse_magnetometer(
+                fixture.state, fixture.P, fixture.sample, fixture.reference, health, fixture.V, fixture.parameters,
+                fixture.heading_observable, fixture.minimum_norm, fixture.sigma, output, output_P, fixture.bias_update,
+                fixture.checks);
+        }
+        else
+        {
+            return formal_eskf::runtime::fuse_magnetometer(
+                fixture.state, fixture.P, fixture.sample, fixture.reference, health, fixture.V, fixture.parameters,
+                fixture.heading_observable, fixture.minimum_norm, fixture.sigma, output, output_P, fixture.checks);
+        }
+    };
+    test.expect(fixture.correct(expected, expected_P) == Status::success, profile, "core comparison succeeds");
+    auto const result = fuse();
+    test.expect(result.fusion.decision == FusionDecision::fused && result.field.heading_checked &&
+                    !result.field.failures.heading && same_state(output, expected) && same_bits(output_P, expected_P) &&
+                    result.fusion.innovation(0U) == value_type{0} && result.fusion.innovation(1U) == value_type{0.5} &&
+                    result.fusion.innovation(2U) == value_type{0},
+                profile, "health declination does not drive heading checks, innovation or state/covariance correction");
+    auto const before = output;
+    auto const before_P = output_P;
+    health = health * value_type{2};
+    auto const rejected = fuse();
+    test.expect(rejected.fusion.decision == FusionDecision::rejected && rejected.field.failures.strength &&
+                    !rejected.fusion.diagnostics_valid && same_state(output, before) && same_bits(output_P, before_P),
+                profile, "a matching observation reference cannot bypass a bad geographic strength check");
+    health = Vector<Linalg>::from_row_major({value_type{0}, value_type{40}, value_type{30}});
+    auto const inclined = fuse();
+    test.expect(inclined.fusion.decision == FusionDecision::rejected && inclined.field.failures.inclination &&
+                    !inclined.field.failures.strength && same_state(output, before) && same_bits(output_P, before_P),
+                profile, "geographic inclination is independent of the observation reference");
+    health.set(0U, std::numeric_limits<value_type>::quiet_NaN());
+    auto const invalid = fuse();
+    test.expect(invalid.fusion.status == Status::non_finite_input && !invalid.field.diagnostics_valid &&
+                    same_state(output, before) && same_bits(output_P, before_P),
+                profile, "invalid consumed health reference fails without publishing state or covariance");
+    fixture.checks.reference_available = false;
+    auto const fallback = fuse();
+    test.expect(fallback.fusion.decision == FusionDecision::fused && !fallback.field.inclination_checked &&
+                    fallback.field.reference_strength == value_type{45} && same_state(output, expected),
+                profile, "unavailable health reference is unused and retains the ordinary fallback");
+    fixture.checks = {false, false, false, true};
+    test.expect(fuse().fusion.decision == FusionDecision::fused, profile,
+                "disabled physical checks do not consume an independent health vector");
+    fixture.checks = {true, false, false, true};
+    health = Vector<Linalg>::from_row_major({value_type{0}, value_type{0}, value_type{50}});
+    test.expect(fuse().fusion.decision == FusionDecision::fused, profile,
+                "a strength-only reference needs no heading information");
+    health = Vector<Linalg>{};
+    test.expect(fuse().fusion.status == Status::domain_error, profile, "zero consumed health reference fails");
+    health.set(0U, std::numeric_limits<value_type>::max());
+    test.expect(fuse().fusion.status == Status::non_finite_result, profile, "health geometry overflow fails");
+}
+
 template <typename Linalg> void run_tests(TestContext & test, std::string_view profile)
 {
     test_field_checks<Linalg>(test, profile);
     test_field_frames<Linalg>(test, profile);
     test_field_selection<Linalg>(test, profile);
+    test_separate_references<Linalg, Ahrs>(test, profile);
+    test_separate_references<Linalg, Ins>(test, profile);
     test_missing_reference<Linalg, Ahrs>(test, profile);
     test_missing_reference<Linalg, Ins>(test, profile);
     test_invalid_field<Linalg>(test, profile);

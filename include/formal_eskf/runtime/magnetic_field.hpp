@@ -107,15 +107,17 @@ template <typename Linalg>
 /**
  * Stateless field plausibility, not sensor-health qualification or yaw alignment.
  * q_nb is unit and maps calibrated body m_b into NED; m_n is a trustworthy fixed
- * observation reference. Both fields use microtesla at the same fusion horizon.
+ * observation reference. field_reference_n supplies independent health geometry.
+ * All fields use microtesla in the same navigation frame and fusion horizon.
  * No model lookup, bias estimate, clock or filtering is owned here.
  *
- * Selected strength/inclination checks use m_n when the caller marks it as an
+ * Selected strength/inclination checks use field_reference_n when marked as an
  * independent reference. Without one, require_reference rejects selected checks;
  * otherwise strength uses 45 +/- 40 microtesla and inclination is skipped.
  * This fallback is only a health test: it never replaces m_n for correction.
  * Default selection preserves the supplied-reference contract of existing calls.
- * Always require a sufficient horizontal field in BOTH vectors.
+ * Always require sufficient horizontal field in the measured and observation
+ * vectors. The health reference never supplies the heading check or correction.
  * Apply the wrapped horizontal-direction check only when
  * heading_observable is true: the caller must establish aligned, independently
  * aided heading observability. Do not infer it from this magnetometer itself.
@@ -130,6 +132,7 @@ template <typename Linalg>
 [[nodiscard]] MagneticFieldCheck<typename Linalg::value_type>
 check_magnetic_field(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Matrix<Linalg, 3U, 1U> const & m_b,
                      linalg::Matrix<Linalg, 3U, 1U> const & m_n,
+                     linalg::Matrix<Linalg, 3U, 1U> const & field_reference_n,
                      MagneticFieldParameters<typename Linalg::value_type> const & parameters, bool heading_observable,
                      MagneticFieldChecks const & checks = {}) noexcept
 {
@@ -173,7 +176,31 @@ check_magnetic_field(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Matrix<Li
     {
         return result;
     }
-    auto const inclination_error = measured.inclination - reference.inclination;
+    detail::MagneticFieldGeometry<value_type> field_reference;
+    if (checks.reference_available && (checks.strength || checks.inclination))
+    {
+        if (!linalg::all_finite(field_reference_n))
+        {
+            result.status = Status::non_finite_input;
+            return result;
+        }
+        if (!(linalg::max_abs(field_reference_n) > value_type{0}))
+        {
+            result.status = Status::domain_error;
+            return result;
+        }
+        // The single-reference overload has already computed this geometry.
+        field_reference = reference;
+        if (&field_reference_n != &m_n)
+        {
+            result.status = detail::magnetic_field_geometry(field_reference_n, field_reference);
+        }
+        if (!succeeded(result.status))
+        {
+            return result;
+        }
+    }
+    auto const inclination_error = measured.inclination - field_reference.inclination;
     bool const horizontal_failure = measured.horizontal < parameters.minimum_horizontal_field ||
                                     reference.horizontal < parameters.minimum_horizontal_field;
     value_type heading_error{};
@@ -203,7 +230,7 @@ check_magnetic_field(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Matrix<Li
         }
     }
     result.strength = measured.strength;
-    result.reference_strength = checks.reference_available ? reference.strength : value_type{45};
+    result.reference_strength = checks.reference_available ? field_reference.strength : value_type{45};
     result.strength_checked = checks.strength && (checks.reference_available || !checks.require_reference);
     result.inclination_checked = checks.inclination && checks.reference_available;
     result.inclination_error = result.inclination_checked ? inclination_error : value_type{0};
@@ -225,6 +252,17 @@ check_magnetic_field(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Matrix<Li
                       !result.failures.horizontal_field && !result.failures.heading;
     result.diagnostics_valid = true;
     return result;
+}
+
+/** Use the observation field for health checks when no separate reference is supplied. */
+template <typename Linalg>
+[[nodiscard]] MagneticFieldCheck<typename Linalg::value_type>
+check_magnetic_field(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Matrix<Linalg, 3U, 1U> const & m_b,
+                     linalg::Matrix<Linalg, 3U, 1U> const & m_n,
+                     MagneticFieldParameters<typename Linalg::value_type> const & parameters, bool heading_observable,
+                     MagneticFieldChecks const & checks = {}) noexcept
+{
+    return check_magnetic_field(q_nb, m_b, m_n, m_n, parameters, heading_observable, checks);
 }
 
 } /* end namespace formal_eskf::runtime */

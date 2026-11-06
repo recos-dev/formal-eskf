@@ -577,25 +577,38 @@ struct MagneticReference
     Vector3 m_n{};
     Linalg::matrix_type<3U, 3U> V{};
     double gate_sigma{};
+    bool use_model_heading = true; // Legacy model inputs use the geographic field for both roles.
 };
 
 MagneticReference read_magnetic_reference(std::filesystem::path const & input)
 {
-    auto stream = open_csv(input / "magnetic_reference.csv", "mn,me,md,noise_std,gate_sigma");
-    std::array<double, 5U> row{};
-    std::array<double, 5U> extra{};
-    if (!read_row(stream, row) || read_row(stream, extra))
+    std::ifstream stream(input / "magnetic_reference.csv");
+    std::string header;
+    std::getline(stream, header);
+    if (!header.empty() && header.back() == '\r')
+    {
+        header.pop_back();
+    }
+    bool const explicit_source = header == "mn,me,md,noise_std,gate_sigma,use_model_heading";
+    if (!stream || (!explicit_source && header != "mn,me,md,noise_std,gate_sigma"))
+    {
+        throw std::runtime_error("cannot read expected magnetic reference header");
+    }
+    std::array<double, 6U> row{0.0, 0.0, 0.0, 0.0, 0.0, 1.0}, extra{};
+    auto const columns = explicit_source ? 6U : 5U;
+    if (!read_row(stream, std::span{row}.first(columns)) || read_row(stream, std::span{extra}.first(columns)))
     {
         throw std::runtime_error("expected exactly one magnetic reference");
     }
-    auto const & [mn, me, md, noise_std, gate_sigma] = row;
+    auto const & [mn, me, md, noise_std, gate_sigma, use_model_heading] = row;
     double const noise_variance = noise_std * noise_std;
     if (!(noise_std > 0.0) || !(gate_sigma > 0.0) || !std::isfinite(noise_variance) ||
         noise_variance < std::numeric_limits<double>::min() || std::hypot(mn, me) < MAG_MIN_HORIZONTAL)
     {
         throw std::runtime_error("invalid magnetic reference/noise/gate or insufficient horizontal field");
     }
-    return {vector3(mn, me, md), Linalg::matrix_type<3U, 3U>::identity() * noise_variance, gate_sigma};
+    return {vector3(mn, me, md), Linalg::matrix_type<3U, 3U>::identity() * noise_variance, gate_sigma,
+            metadata_integer(use_model_heading, 0, 1) != 0};
 }
 
 formal_eskf::runtime::MagneticHeading<Linalg>::Parameters
@@ -1042,19 +1055,23 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     magnetic.m_n = magnetic_context.m_n;
     auto const seed_field = magnetic_context.m_n;
     ReferenceModel reference_model;
+    bool const model_heading = has_magnetic_model && magnetic.use_model_heading;
     auto accepted_model = read_magnetic_model(magnetic_model_stream, time);
     std::uint64_t model_source_time = time;
     auto initial_magnetic_source = magnetic_context.source;
     if (has_magnetic_model)
     {
-        if (!accepted_model || initial_magnetic_source.reference_id != 0U)
+        if (!accepted_model || (model_heading && initial_magnetic_source.reference_id != 0U))
         {
             throw std::runtime_error("geographic magnetic reference requires an available seed and owns its revision");
         }
         check_status(reference_model.update(time, *accepted_model, false, true).status, "initial geographic field",
                      time);
-        magnetic.m_n = reference_model.state().field_n;
-        initial_magnetic_source.reference_id = reference_model.state().reference_id;
+        if (model_heading)
+        {
+            magnetic.m_n = reference_model.state().field_n;
+            initial_magnetic_source.reference_id = reference_model.state().reference_id;
+        }
     }
     magnetic_lifecycle.reset(initial_magnetic_source);
     auto const accel_V = Linalg::matrix_type<3U, 3U>::identity() * (ACCEL_OBS_STD * ACCEL_OBS_STD);
@@ -1808,7 +1825,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             magnetic_time = source_time;
             magnetic_sample = vector3(magnetic_row[1U], magnetic_row[2U], magnetic_row[3U]);
             magnetic_context = read_magnetic_context(magnetic_context_stream, source_time, magnetic_context);
-            if (has_magnetic_model)
+            if (model_heading)
             {
                 if (magnetic_context.source.reference_id != 0U ||
                     formal_eskf::linalg::max_abs(magnetic_context.m_n - seed_field) != 0.0)
@@ -1842,9 +1859,14 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     magnetic_model_checks += update.checked ? 1U : 0U;
                     magnetic_model_changes += update.changed ? 1U : 0U;
                 }
-                magnetic.m_n = reference_model.state().field_n;
-                magnetic_source.reference_id = reference_model.state().reference_id;
+                if (model_heading)
+                {
+                    magnetic.m_n = reference_model.state().field_n;
+                    magnetic_source.reference_id = reference_model.state().reference_id;
+                }
             }
+            auto const & field_reference_n =
+                has_magnetic_model && !model_heading ? reference_model.state().field_n : magnetic.m_n;
             bool const source_changed =
                 previous_magnetic_source.device_id != magnetic_context.source.device_id ||
                 previous_magnetic_source.calibration_count != magnetic_context.source.calibration_count;
@@ -1864,7 +1886,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                              "magnetic heading consistency", time);
                 // Same prior for field qualification and, if authorized, fusion.
                 result.field = formal_eskf::runtime::check_magnetic_field(state.q_nb, magnetic_sample, magnetic.m_n,
-                                                                          field_parameters, false, field_checks);
+                                                                          field_reference_n, field_parameters, false,
+                                                                          field_checks);
             }
             MagneticLifecycle::Sample const lifecycle_sample{
                 magnetic_time, magnetic_source, formal_eskf::succeeded(result.field.status) && result.field.accepted};
@@ -1892,8 +1915,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             else if (magnetic_lifecycle.state().fusion_allowed)
             {
                 result = formal_eskf::runtime::fuse_magnetometer(
-                    state, covariance, magnetic_sample, magnetic.m_n, magnetic.V, field_parameters, false,
-                    QUAT_MIN_NORM, magnetic.gate_sigma, state, covariance, bias_update, field_checks);
+                    state, covariance, magnetic_sample, magnetic.m_n, field_reference_n, magnetic.V, field_parameters,
+                    false, QUAT_MIN_NORM, magnetic.gate_sigma, state, covariance, bias_update, field_checks);
                 if (result.fusion.decision == formal_eskf::runtime::FusionDecision::fused)
                 {
                     limit_bias(state, bias_limits, bias_limit_counts, time);
@@ -2127,6 +2150,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << ",\n  \"magnetometer_heading_noise_rad\": " << heading_parameters.heading_noise
             << ",\n  \"magnetometer_acceleration_limit_mps2\": " << heading_parameters.acceleration_limit
             << ",\n  \"magnetic_model_enabled\": " << (has_magnetic_model ? "true" : "false")
+            << ",\n  \"magnetic_model_for_heading\": " << (model_heading ? "true" : "false")
             << ",\n  \"magnetic_model_checks\": " << magnetic_model_checks
             << ",\n  \"magnetic_model_changes\": " << magnetic_model_changes
             << ",\n  \"magnetometer_minimum_horizontal_ut\": " << MAG_MIN_HORIZONTAL << "\n}\n";

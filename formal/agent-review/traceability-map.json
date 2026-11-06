@@ -3622,6 +3622,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "### R-GNSS-RESET: checked GNSS position and velocity reset"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### PX4 GNSS integration"
           }
         ],
         "lean": [],
@@ -3649,6 +3653,10 @@
           {
             "file": "include/formal_eskf/runtime/gnss_reset.hpp",
             "symbol": "Status try_reset_gnss_velocity("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::fuse_gps()"
           }
         ],
         "esbmc": []
@@ -3670,6 +3678,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "#### Continuous bad vertical acceleration"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### PX4 GNSS integration"
           }
         ],
         "lean": [],
@@ -3733,6 +3745,10 @@
           {
             "file": "examples/replay_ins.cpp",
             "symbol": "auto record_fusion ="
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::fuse_gps()"
           }
         ],
         "esbmc": []
@@ -3750,6 +3766,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "#### Replay GNSS quality"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### PX4 GNSS integration"
           }
         ],
         "lean": [],
@@ -3777,6 +3797,10 @@
           {
             "file": "examples/replay_ins.cpp",
             "symbol": "GnssQuality::Result check_gnss_quality("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::update_gps_quality()"
           }
         ],
         "esbmc": []

@@ -154,6 +154,15 @@ class Flight:
             raise RuntimeError(f"Missing {NAME} in listener output")
         return int(MATCH[1])
 
+    @staticmethod
+    def magnetic_model_status(OUTPUT):
+        MATCH = re.search(r"mag model: available=(\d+) checks=(\d+) model_revision=(\d+) "
+                          r"heading_revision=(\d+) source=(\d+) unavailable=(\d+)", OUTPUT)
+        if MATCH is None:
+            raise RuntimeError("Missing magnetic model status")
+        return dict(zip(("available", "checks", "model_revision", "heading_revision", "source", "unavailable"),
+                        map(int, MATCH.groups())))
+
     def ground_fault_checks(self):
         """Exercise actual simulated sensor publishers, with the vehicle disarmed."""
         if self.armed():
@@ -283,6 +292,12 @@ class Flight:
             (self.output / "startup.json").write_text(json.dumps(STARTUP, indent=2))
             if "initialized=1 fault=0" not in STARTUP[0]["output"]:
                 raise RuntimeError("formal-eskf did not initialize cleanly")
+            MODEL_INITIAL = self.magnetic_model_status(STARTUP[0]["output"])
+            DECL_TYPE = int(ENV.get("PX4_PARAM_FESKF_DECL_TYPE", "3"))
+            SAVED_DECL = float(ENV.get("PX4_PARAM_FESKF_MAG_DECL", "0"))
+            EXPECTED_SOURCE = 2 if DECL_TYPE & 1 else 1 if DECL_TYPE & 2 and SAVED_DECL != 0 else 0
+            if MODEL_INITIAL["available"] != 1 or MODEL_INITIAL["source"] != EXPECTED_SOURCE:
+                raise RuntimeError("WMM availability or configured heading source mismatch")
             if (self.build / "bin/px4-ekf2").exists():
                 raise RuntimeError("POC build unexpectedly contains EKF2")
             self.setpoint = (0., 0., -5., 0.)
@@ -306,6 +321,13 @@ class Flight:
             RESULT["final_status"] = self.cli("formal_eskf", "status")
             if "fault=0" not in RESULT["final_status"]["output"] or "numerical_errors=0" not in RESULT["final_status"]["output"]:
                 raise RuntimeError("Estimator reported a numerical failure")
+            MODEL_FINAL = self.magnetic_model_status(RESULT["final_status"]["output"])
+            RESULT["magnetic_model"] = {"initial": MODEL_INITIAL, "final": MODEL_FINAL,
+                                        "declination_type": DECL_TYPE, "saved_declination_deg": SAVED_DECL}
+            if MODEL_FINAL["checks"] <= MODEL_INITIAL["checks"] or MODEL_FINAL["source"] != EXPECTED_SOURCE:
+                raise RuntimeError("Periodic WMM lookup did not advance or rewrote heading-source selection")
+            if not DECL_TYPE & 1 and MODEL_FINAL["heading_revision"] != MODEL_INITIAL["heading_revision"]:
+                raise RuntimeError("Health-only WMM lookup changed the observation reference")
             if self.args.check_faults:
                 RESULT["ground_fault_checks"] = self.ground_fault_checks()
             RESULT["result"] = "flight_pass_pending_ulog_analysis"

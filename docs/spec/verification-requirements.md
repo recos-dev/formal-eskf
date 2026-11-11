@@ -780,11 +780,57 @@ are unchanged. Native tests and SITL are evidence, not Lean/ESBMC proof of this 
 
 The observation remains a three-component fixed-field model with compile-time
 `ESKF_MAG_TILT=1`; it is not PX4's magnetic-state estimator or an identical scalar
-yaw update. The startup WMM reference stays fixed. Periodic WMM/reference changes,
-saved-declination fallback, magnetic-bias learning, AUTO/3D switching and terrain-based
+yaw update. Geographic reference updates and heading-source selection follow the
+contract below. Magnetic-bias learning, AUTO/3D switching and terrain-based
 in-flight realignment are not integrated here. Magnetic projection does not claim
 that all non-attitude state gains vanish. Neither delayed fusion nor hardware
 flight performance is established by this integration.
+
+#### PX4 module geographic magnetic reference
+
+`MagneticModel` connects `R-MAGNETIC-REFERENCE` to the module without owning
+lookup I/O, estimator state/P or magnetic bias states. The host's WMM table and
+epoch remain external dependencies. No table is copied into formal-eskf.
+
+- Query the host at the qualified GNSS origin during stationary startup. Later,
+  on fresh usable magnetic samples, query strictly more than 10 s after the last
+  attempt while the module's own horizontal position is valid. Reproject the
+  **estimated position**, not an unchecked incoming GNSS fix. An origin change
+  requests an immediate lookup, using the origin if position is invalid. This
+  does not add an origin-rebasing API or change the estimator's coordinates.
+- Host D/I are degrees and strength is gauss. Convert to radians/microtesla,
+  rotate local geographic NED through ECEF into the fixed origin NED, then feed
+  D/I/B to the existing adoption policy. The >1 degree / >1 microtesla thresholds
+  apply in this common frame. This frame handling differs from directly using
+  local geographic NED; it is required by our fixed-frame estimator convention.
+- A missing/invalid lookup cannot replace either reference or authorize a reset.
+  Retain an already accepted model and record the unavailable attempt. Attempts,
+  including failures, are spaced by the same 10 s rule. Without any accepted
+  model, use the existing broad 5–85 microtesla strength fallback, with model
+  availability false; a measured seed is not WMM evidence.
+- Read `FESKF_DECL_TYPE` (mask 0..3, default 3) and `FESKF_MAG_DECL`
+  (east-positive degrees in [-180,180], default 0) at module start. Invalid settings
+  reject startup; changes require module restart. Bit 0 selects available geographic
+  heading; otherwise bit 1 permits a finite nonzero stored declination; otherwise
+  select zero/magnetic north. WMM health checking remains independent of both bits.
+  This follows PX4's executable `getMagDeclination()` fallback order, without its
+  learned-earth-field branch or automatic parameter saving.
+- Geographic mode uses the adopted field for observation, heading consistency
+  and reset. In saved/zero mode those operations use the stationary seed rotated
+  by the selected yaw; only health checks use the WMM field. Both references share
+  the same NED frame. Initialization waits for the existing 5 microtesla minimum
+  horizontal seed field before assigning heading.
+- Only a geographic-heading adoption advances the observation revision supplied
+  to the lifecycle. A health-only adoption advances the model revision, leaves
+  the observation field/revision exactly unchanged and cannot itself request a
+  yaw reset. If an initially unavailable geographic source later becomes available,
+  adoption follows the same real lifecycle/reset permission rules, not an implicit
+  quaternion assignment. Reference changes retain the measurement LPF history.
+
+Native tests exercise source selection, timing, frame conversion, invalid/missing
+model retention and real correction/reset integration. SITL checks the selected
+source and advancing periodic lookup count. These are not Lean/ESBMC proofs,
+calibration evidence, model-epoch validation or long-distance flight qualification.
 
 ### E-INNOV: componentwise innovation gate
 

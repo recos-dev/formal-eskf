@@ -34,6 +34,7 @@
 #include <formal_eskf/runtime/velocity.hpp>
 
 #include "MagneticAiding.hpp"
+#include "MagneticModel.hpp"
 
 // Single writer: all filter state is owned by this work item. The core has no
 // PX4 dependencies except its explicitly selected matrix backend.
@@ -58,6 +59,7 @@ private:
     using imu_type = types_type::imu_sample_type;
     using status_type = formal_eskf::Status;
     using magnetic_type = formal_eskf::px4::MagneticAiding<backend_type>;
+    using magnetic_model_type = formal_eskf::px4::MagneticModel<backend_type>;
 
     void Run() override;
     void initialize(vehicle_imu_s const & sample, imu_type const & imu);
@@ -67,6 +69,8 @@ private:
     void publish(imu_type const & imu);
     void publish_status(uint64_t now);
     void update_gps_quality();
+    void update_magnetic_model();
+    std::optional<magnetic_model_type::sample_type> lookup_magnetic_model(double latitude, double longitude) const;
     bool gps_good() const;
     bool magnetic_heading_valid() const;
     uint16_t gps_failure_flags() const;
@@ -119,9 +123,13 @@ private:
     covariance_type m_covariance{};
     types_type::parameter_type m_parameters{};
     imu_type m_previous_imu{};
-    vector3_type m_accel_sum{}, m_gyro_sum{}, m_mag_sum{}, m_mag_n{};
+    vector3_type m_accel_sum{}, m_gyro_sum{}, m_mag_sum{};
     magnetic_type m_magnetic_aiding{};
+    magnetic_model_type m_magnetic_model{};
+    magnetic_model_type::Settings m_magnetic_settings{};
     magnetic_type::source_type m_mag_init_source{};
+    uint64_t m_mag_model_origin_time{};
+    uint32_t m_mag_model_unavailable{};
     MapProjection m_projection{}, m_gps_previous_fix{};
     formal_eskf::runtime::GnssQuality<backend_type> m_gnss_quality{};
     formal_eskf::runtime::GnssQualityParameters<double> m_gnss_quality_parameters{};

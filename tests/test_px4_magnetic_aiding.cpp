@@ -27,6 +27,8 @@ template <typename Linalg> struct MagneticFixture
 
     MagneticFixture() { aiding.initialize(source, now); }
 
+    typename aiding_type::Reference reference_data() const { return {this->reference, this->reference, true}; }
+
     auto tick(bool received = true)
     {
         now += 10000U;
@@ -35,7 +37,7 @@ template <typename Linalg> struct MagneticFixture
         {
             observation = {now, source, sample};
         }
-        return aiding.update(now, observation, context, reference, state, P);
+        return aiding.update(now, observation, context, reference_data(), state, P);
     }
 
     void start(Context & test)
@@ -103,11 +105,11 @@ template <typename Linalg> void run(Context & test)
         auto const progress = f.aiding.progress_time();
         typename F::aiding_type::Sample stale{f.now + 10000U, f.source, f.sample};
         f.now = stale.time_us + F::aiding_type::timing.maximum_interval_us;
-        auto result = f.aiding.update(f.now, stale, f.context, f.reference, f.state, f.P);
+        auto result = f.aiding.update(f.now, stale, f.context, f.reference_data(), f.state, f.P);
         test.expect(result.rejected && !result.fused && equal(P, f.P) && f.aiding.progress_time() == progress, "time",
                     "late arrival cannot update state or refresh fusion progress");
         f.now += F::aiding_type::timing.maximum_interval_us;
-        result = f.aiding.update(f.now, {}, f.context, f.reference, f.state, f.P);
+        result = f.aiding.update(f.now, {}, f.context, f.reference_data(), f.state, f.P);
         test.expect(result.status == Status::success && !f.aiding.lifecycle().active, "time",
                     "late arrival cannot postpone data timeout");
     }
@@ -260,13 +262,13 @@ template <typename Linalg> void run(Context & test)
         auto const time = f.now;
         typename F::aiding_type::Sample future{time + 20000U, f.source, f.sample};
         f.now += 10000U;
-        test.expect(!f.aiding.update(f.now, future, f.context, f.reference, f.state, f.P).fused && equal(P, f.P),
+        test.expect(!f.aiding.update(f.now, future, f.context, f.reference_data(), f.state, f.P).fused && equal(P, f.P),
                     "time", "future sample waits without mutation");
         f.now += 10000U;
-        test.expect(f.aiding.update(f.now, future, f.context, f.reference, f.state, f.P).fused, "time",
+        test.expect(f.aiding.update(f.now, future, f.context, f.reference_data(), f.state, f.P).fused, "time",
                     "sample becomes eligible at its timestamp");
         f.now += 10000U;
-        test.expect(!f.aiding.update(f.now, future, f.context, f.reference, f.state, f.P).fused, "time",
+        test.expect(!f.aiding.update(f.now, future, f.context, f.reference_data(), f.state, f.P).fused, "time",
                     "duplicate sample cannot fuse twice");
     }
 }

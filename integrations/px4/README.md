@@ -125,14 +125,36 @@ flowchart LR
 ## Adapter behavior and verification boundary
 
 - Uses integrated IMU instance 0 in FRD coordinates and `timestamp_sample`. A single work-queue writer owns the filter, with mutex-serialized shell diagnostics.
-- Initializes tilt and gyro bias from stationary IMU samples; magnetometer and the magnetic model at the GNSS position initialize yaw. No EKF2 or ground-truth subscriptions enter the estimator.
+- Initializes tilt and gyro bias from stationary IMU samples; magnetometer and the selected geographic/stored/zero declination initialize yaw. No EKF2 or ground-truth subscriptions enter the estimator.
 - Qualifies GNSS with the portable quality monitor before startup and fusion. Uses independent velocity, horizontal-position and height gates. Future samples wait; stale/invalid samples cannot refresh health. Velocity and horizontal position have the portable lifecycle and checked resets; each successful reset publishes its deltas/counters. Relative barometer altitude and magnetic measurements remain separate aiding paths.
 - Connects magnetic field checks, heading consistency, lifecycle, gated correction and real heading/covariance resets through `module/MagneticAiding.hpp`. The module supplies sensor identity, calibrated FRD samples and current aiding/flight conditions; the helper owns magnetic history, not the estimator state or platform effects. It uses the fixed PX4 v1.16.2 defaults for noise (5 microtesla), gate (3 sigma), strength tolerance (20 microtesla), health (>1 s), no-data stop (1 s) and unsuccessful-fusion timeout (>7 s). These are not live EKF2 parameter bindings.
 - Publishes NED position/velocity, scalar-first body-to-NED quaternions, covariance diagonals, biases and estimator status. Horizontal aiding uses actual fusion/reset progress: report dead reckoning after 1 s, withdraw horizontal validity after 5 s, and stop GNSS sessions after 7 s of missing data or sustained poor quality. Height and magnetometer retain the adapter's 1 s freshness policy.
 - Holds the previous IMU rate for small missing intervals; discontinuities beyond 50 ms and IMU identity/calibration changes latch a fault. Numerical failures also latch a fault. Restart is required for recovery.
 - Reserves a 60 KiB work-queue stack. The module disables fast-math, FMA contraction, exceptions and RTTI. Lockstep virtual-time performance counters do not measure wall-clock CPU cost.
 
-This is a single-sensor SITL POC with stationary startup and simulated sensor noise. It has no receiver-delay compensation, output predictor, redundant sensors, multi-source height reset arbitration, or wind, terrain, barometer-bias and magnetic-bias states. Magnetic fusion retains the fixed startup WMM field and three-component observation with `ESKF_MAG_TILT=1`; it reports heading aiding, not 3D magnetic-state estimation. Periodic WMM changes, saved-declination fallback, AUTO/3D switching and terrain-based in-flight realignment remain unconnected. See [the magnetic integration contract](../../docs/spec/verification-requirements.md#px4-module-magnetic-aiding). Heading variance approximates yaw variance with the local attitude-error z component for the tested low-tilt flight. Sensor failure checks cover flag withdrawal and recovery on the ground, not continued flight through sensor failures.
+This is a single-sensor SITL POC with stationary startup and simulated sensor noise. It has no receiver-delay compensation, output predictor, redundant sensors, multi-source height reset arbitration, or wind, terrain, barometer-bias and magnetic-bias states. Magnetic fusion retains a three-component observation with `ESKF_MAG_TILT=1`; it reports heading aiding, not 3D magnetic-state estimation. AUTO/3D switching and terrain-based in-flight realignment remain unconnected. See [the magnetic integration contract](../../docs/spec/verification-requirements.md#px4-module-magnetic-aiding). Heading variance approximates yaw variance with the local attitude-error z component for the tested low-tilt flight. Sensor failure checks cover flag withdrawal and recovery on the ground, not continued flight through sensor failures.
+
+### Geographic magnetic reference
+
+The module queries PX4's host WMM at startup and then at intervals greater than
+10 s while its own horizontal position is valid. It expresses each model in the
+fixed origin NED and adopts changes greater than 1 degree or 1 microtesla.
+Unavailable lookups retain the last valid model; without one, strength checks
+use the broad fallback range. `formal_eskf status` reports lookup count, model
+and heading revisions, selected source and unavailable attempts.
+
+| Startup parameter | Default | Meaning |
+| --- | --- | --- |
+| `FESKF_DECL_TYPE` | 3 | Bit 0: geographic heading when available; bit 1: permit stored declination fallback |
+| `FESKF_MAG_DECL` | 0° | Stored east-positive declination, -180° to 180° |
+
+Mask 0 selects magnetic north; 1 selects geographic or zero; 2 selects stored
+or zero; 3 selects geographic, then stored, then zero. Restart the module after
+changing settings. WMM still supplies independent health checks when geographic
+heading is disabled; its updates cannot rewrite the seed-based heading reference
+in that mode. Parameters use `FESKF_` because this board excludes EKF2.
+There is no learned-field branch or automatic declination saving.
+See [the reference contract](../../docs/spec/verification-requirements.md#px4-module-geographic-magnetic-reference).
 
 The wrapper is outside the portable numerical core and its existing Lean/ESBMC claims. Magnetic integration is linked in the requirement/traceability map with its formal evidence still pending; no proof of PX4, concurrency, total stack use or hardware flight is asserted. Native tests and closed-loop SITL are separate empirical evidence.
 
@@ -206,6 +228,32 @@ have no new Lean or ESBMC proof in this change.
 An additional Cppcheck 2.21 compilation-database scan reported no diagnostics
 in the module/core, but 334 in upstream/generated PX4 headers. This is not a
 clean whole-PX4 static-analysis result or a substitute for formal evidence.
+
+## Magnetic reference validation: 2026-11-11
+
+Two closed-loop runs exercised geographic heading (mask 3) and stored heading
+(mask 2, 3.4056056°, the host model's declination at the SIH origin). Both passed
+all 18 ULog acceptance checks and 14 ground failure/recovery scenarios.
+
+| Check | Geographic | Stored |
+| --- | --- | --- |
+| WMM lookup count, startup to landing | 1 → 10 | 1 → 10 |
+| Selected heading source | Geographic | Stored |
+| Observation reference revision, startup to landing | 1 → 1 | 1 → 1 |
+| Position / velocity RMSE | 0.346 m / 0.259 m/s | 0.404 m / 0.256 m/s |
+| Attitude RMSE | 1.519° | 1.649° |
+
+Evidence is in `output/px4-wmm-geographic/` and `output/px4-wmm-saved/`, with
+source manifests and binary hashes. The stored run used the final build after
+splitting the declination status line to avoid console truncation. These short
+flights did not cross model-adoption thresholds. Native tests separately exercise
+changed models, real heading reset, health-only rejection without heading reset,
+all four source masks with/without WMM, failed lookups and frame conversion.
+Three native suites passed on each backend (Eigen/PX4 matrix, float/double);
+the four adapter suites also passed ASan/UBSan with leak detection enabled.
+The pinned host build, all eight package tests, repository Cppcheck profiles
+(unix32/unix64) and formatting checks passed. This change adds no Lean/ESBMC
+proof or evidence of long-distance/in-flight disturbance behavior.
 
 ## GNSS integration scope
 

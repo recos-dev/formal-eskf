@@ -47,6 +47,13 @@ public:
         bool reset = false;
     };
 
+    struct Reference
+    {
+        vector_type observation_n{};
+        vector_type health_n{};
+        bool model_available = false;
+    };
+
     // Fixed deployment profile; runtime EKF2 parameter changes do not configure it.
     static constexpr runtime::MagneticFieldParameters<value_type> field_parameters{
         value_type{20}, std::numbers::pi_v<value_type> / value_type{9}, value_type{0}, value_type{5}};
@@ -92,8 +99,7 @@ public:
 
     /** Every real estimator tick; a zero timestamp denotes no new observation. */
     [[nodiscard]] Result update(std::uint64_t now_us, Sample const & sample, Context const & context,
-                                vector_type const & reference_n, state_type & state,
-                                covariance_type & covariance) noexcept;
+                                Reference const & reference, state_type & state, covariance_type & covariance) noexcept;
 
 private:
     runtime::MagneticHeading<Linalg> m_heading{};
@@ -111,11 +117,12 @@ private:
 template <typename Linalg>
 typename MagneticAiding<Linalg>::Result
 MagneticAiding<Linalg>::update(std::uint64_t now_us, Sample const & sample, Context const & context,
-                               vector_type const & reference_n, state_type & state,
-                               covariance_type & covariance) noexcept
+                               Reference const & reference, state_type & state, covariance_type & covariance) noexcept
 {
     Result result;
     auto const previous = lifecycle();
+    auto checks = field_checks;
+    checks.reference_available = reference.model_available;
     m_horizontal_aiding = context.horizontal_aiding;
     lifecycle_type::Sample event;
     bool usable = false;
@@ -155,14 +162,14 @@ MagneticAiding<Linalg>::update(std::uint64_t now_us, Sample const & sample, Cont
         }
         if (usable)
         {
-            result.status = m_heading.update(state.q_nb, sample.field_b, reference_n, heading_parameters, m_aligned,
-                                             context.horizontal_aiding);
+            result.status = m_heading.update(state.q_nb, sample.field_b, reference.observation_n, heading_parameters,
+                                             m_aligned, context.horizontal_aiding);
             if (!succeeded(result.status))
             {
                 return result;
             }
-            m_observation.field = runtime::check_magnetic_field(state.q_nb, sample.field_b, reference_n,
-                                                                field_parameters, false, field_checks);
+            m_observation.field = runtime::check_magnetic_field(state.q_nb, sample.field_b, reference.observation_n,
+                                                                reference.health_n, field_parameters, false, checks);
             result.status = m_observation.field.status;
             if (!succeeded(result.status))
             {
@@ -205,9 +212,9 @@ MagneticAiding<Linalg>::update(std::uint64_t now_us, Sample const & sample, Cont
     if (lifecycle().fusion_allowed)
     {
         auto const V = Linalg::template matrix_type<3U, 3U>::identity() * noise_variance;
-        m_observation =
-            runtime::fuse_magnetometer(state, covariance, sample.field_b, reference_n, V, field_parameters, false,
-                                       minimum_norm, gate_sigma, state, covariance, {}, field_checks);
+        m_observation = runtime::fuse_magnetometer(state, covariance, sample.field_b, reference.observation_n,
+                                                   reference.health_n, V, field_parameters, false, minimum_norm,
+                                                   gate_sigma, state, covariance, {}, checks);
         result.status = m_lifecycle.record_fusion(event.time_us, m_observation.fusion.decision);
         if (!succeeded(result.status))
         {
@@ -221,7 +228,7 @@ MagneticAiding<Linalg>::update(std::uint64_t now_us, Sample const & sample, Cont
     {
         quaternion_type delta;
         auto const reset_status = runtime::try_reset_magnetic_heading(
-            state, covariance, m_filter.field_b(), reference_n,
+            state, covariance, m_filter.field_b(), reference.observation_n,
             heading_parameters.heading_noise * heading_parameters.heading_noise,
             field_parameters.minimum_horizontal_field, minimum_norm, state, covariance, delta);
         result.reset = succeeded(reset_status);

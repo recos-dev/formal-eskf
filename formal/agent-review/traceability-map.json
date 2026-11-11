@@ -2886,6 +2886,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "#### PX4 module magnetic aiding"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### PX4 module geographic magnetic reference"
           }
         ],
         "lean": [],
@@ -2938,6 +2942,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "#### PX4 module magnetic aiding"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### PX4 module geographic magnetic reference"
           }
         ],
         "lean": [],
@@ -2978,6 +2986,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "#### Replay geographic magnetic model"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### PX4 module geographic magnetic reference"
           }
         ],
         "lean": [],
@@ -2997,6 +3009,18 @@
           {
             "file": "examples/px4_magnetic_model.cpp",
             "symbol": "int main()"
+          },
+          {
+            "file": "integrations/px4/module/MagneticModel.hpp",
+            "symbol": "class MagneticModel"
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "FormalEskf::lookup_magnetic_model("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::update_magnetic_model()"
           }
         ],
         "esbmc": []
@@ -3014,6 +3038,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "#### PX4 module magnetic aiding"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### PX4 module geographic magnetic reference"
           }
         ],
         "lean": [],
@@ -3074,6 +3102,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "#### PX4 module magnetic aiding"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### PX4 module geographic magnetic reference"
           }
         ],
         "lean": [],
@@ -3162,6 +3194,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "#### PX4 module magnetic aiding"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### PX4 module geographic magnetic reference"
           }
         ],
         "lean": [],

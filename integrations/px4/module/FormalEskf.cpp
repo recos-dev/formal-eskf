@@ -3,6 +3,7 @@
 #include <cmath>
 #include "FormalEskf.hpp"
 #include <lib/world_magnetic_model/geo_mag_declination.h>
+#include <px4_platform_common/param.h>
 
 using time_literals::operator""_ms;
 // Double precision dense 15-state operations need more stack than EKF2's
@@ -38,6 +39,16 @@ FormalEskf::~FormalEskf()
 
 bool FormalEskf::init()
 {
+    int32_t declination_source{};
+    float saved_declination{};
+    if (param_get(param_find("FESKF_DECL_TYPE"), &declination_source) != 0 ||
+        param_get(param_find("FESKF_MAG_DECL"), &saved_declination) != 0 || declination_source < 0 ||
+        declination_source > 3 || !std::isfinite(saved_declination) || std::abs(saved_declination) > 180.f)
+    {
+        PX4_ERR("invalid magnetic declination settings");
+        return false;
+    }
+    m_magnetic_settings = {uint32_t(declination_source), math::radians(double(saved_declination))};
     if (!m_imu_sub.registerCallback())
     {
         return false;
@@ -230,10 +241,19 @@ void FormalEskf::initialize(vehicle_imu_s const & sample, imu_type const & imu)
     const double pitch = std::atan2(accel(0), std::hypot(accel(1), accel(2)));
     const matrix::Dcm<double> tilt{matrix::Euler<double>(roll, pitch, 0.)};
     const matrix::Vector3<double> level_mag = tilt * matrix::Vector3<double>(mag(0), mag(1), mag(2));
-    const double decl = math::radians(get_mag_declination_degrees(m_gps.latitude_deg, m_gps.longitude_deg));
-    const double incl = math::radians(get_mag_inclination_degrees(m_gps.latitude_deg, m_gps.longitude_deg));
-    const double strength = 100. * double(get_mag_strength_gauss(m_gps.latitude_deg, m_gps.longitude_deg));
-    const double yaw = decl - std::atan2(level_mag(1), level_mag(0));
+    if (100. * std::hypot(level_mag(0), level_mag(1)) < magnetic_type::field_parameters.minimum_horizontal_field)
+    {
+        return;
+    }
+    auto const model = lookup_magnetic_model(m_gps.latitude_deg, m_gps.longitude_deg);
+    m_mag_model_unavailable += !model.has_value();
+    if (!check(m_magnetic_model.initialize(m_time, m_magnetic_settings,
+                                           vector3(100. * level_mag(0), 100. * level_mag(1), 100. * level_mag(2)),
+                                           model)))
+    {
+        return;
+    }
+    const double yaw = m_magnetic_model.declination() - std::atan2(level_mag(1), level_mag(0));
     const matrix::Quaternion<double> q{matrix::Euler<double>(roll, pitch, yaw)};
     if (!check(state_type::quaternion_type::try_from_coefficients(q(0), q(1), q(2), q(3), minimum_quaternion_norm,
                                                                   m_state.q_nb)))
@@ -242,8 +262,6 @@ void FormalEskf::initialize(vehicle_imu_s const & sample, imu_type const & imu)
     }
     m_state.b_g = m_gyro_sum / double(m_init_samples);
     m_state.v_n = vector3(m_gps.vel_n_m_s, m_gps.vel_e_m_s, m_gps.vel_d_m_s);
-    m_mag_n = vector3(strength * std::cos(incl) * std::cos(decl), strength * std::cos(incl) * std::sin(decl),
-                      strength * std::sin(incl));
     const double diagonal[15] = {1., 1., 2.25, 0.09, 0.09, 0.09, 0.01, 0.01, 0.04, 0.04, 0.04, 0.04, 1e-4, 1e-4, 1e-4};
     for (size_t i = 0; i < 15; ++i)
     {
@@ -251,11 +269,13 @@ void FormalEskf::initialize(vehicle_imu_s const & sample, imu_type const & imu)
     }
     m_origin_time = m_time;
     m_projection.initReference(m_gps.latitude_deg, m_gps.longitude_deg, m_origin_time);
+    m_mag_model_origin_time = m_origin_time;
     m_origin_alt = m_gps.altitude_msl_m;
     m_origin_ellipsoid = m_gps.altitude_ellipsoid_m;
     m_baro_origin = m_baro.baro_alt_meter;
 
     m_mag_seen = m_mag.timestamp_sample;
+    m_mag_init_source.reference_id = m_magnetic_model.reference_id();
     m_magnetic_aiding.initialize(m_mag_init_source, m_mag_seen);
     m_baro_seen = m_baro_fused = m_baro.timestamp_sample;
     m_last_imu = sample;
@@ -487,6 +507,49 @@ bool FormalEskf::magnetic_heading_valid() const
     return m_magnetic_aiding.heading_aiding() && recent(m_magnetic_aiding.progress_time()) && m_covariance(8, 8) < 0.1;
 }
 
+std::optional<FormalEskf::magnetic_model_type::sample_type> FormalEskf::lookup_magnetic_model(double latitude,
+                                                                                              double longitude) const
+{
+    if (!std::isfinite(latitude) || !std::isfinite(longitude) || std::abs(latitude) > 90. || std::abs(longitude) > 180.)
+    {
+        return std::nullopt;
+    }
+    magnetic_model_type::sample_type const local{
+        math::radians(double(get_mag_declination_degrees(latitude, longitude))),
+        math::radians(double(get_mag_inclination_degrees(latitude, longitude))),
+        100. * double(get_mag_strength_gauss(latitude, longitude))};
+    magnetic_model_type::sample_type model;
+    double const origin_lat = m_projection.isInitialized() ? m_projection.getProjectionReferenceLat() : latitude;
+    double const origin_lon = m_projection.isInitialized() ? m_projection.getProjectionReferenceLon() : longitude;
+    if (!formal_eskf::succeeded(
+            magnetic_model_type::to_origin_frame(local, latitude, longitude, origin_lat, origin_lon, model)))
+    {
+        return std::nullopt;
+    }
+    return model;
+}
+
+void FormalEskf::update_magnetic_model()
+{
+    bool const position_valid = gps_position_valid();
+    bool const origin_updated = m_origin_time > m_mag_model_origin_time;
+    if (!m_magnetic_model.lookup_due(m_time, position_valid, origin_updated))
+    {
+        return;
+    }
+    double latitude = m_projection.getProjectionReferenceLat();
+    double longitude = m_projection.getProjectionReferenceLon();
+    if (position_valid)
+    {
+        m_projection.reproject(m_state.p_n(0), m_state.p_n(1), latitude, longitude);
+    }
+    auto const model = lookup_magnetic_model(latitude, longitude);
+    m_mag_model_unavailable += !model.has_value();
+    m_mag_model_origin_time = m_origin_time;
+    auto const result = m_magnetic_model.update(m_time, model, position_valid, origin_updated);
+    check(result.status);
+}
+
 void FormalEskf::fuse_mag()
 {
     using FlightState = magnetic_type::lifecycle_type::FlightState;
@@ -512,11 +575,24 @@ void FormalEskf::fuse_mag()
     {
         m_mag_seen = m_mag.timestamp_sample;
         sample = {m_mag.timestamp_sample,
-                  {m_mag.device_id, m_mag.calibration_count, 1U},
+                  {m_mag.device_id, m_mag.calibration_count, 0U},
                   vector3(100. * double(m_mag.magnetometer_ga[0]), 100. * double(m_mag.magnetometer_ga[1]),
                           100. * double(m_mag.magnetometer_ga[2]))};
+        if (m_time - sample.time_us < magnetic_type::timing.maximum_interval_us && sample.source.device_id != 0U &&
+            formal_eskf::linalg::all_finite(sample.field_b) &&
+            formal_eskf::linalg::dot(sample.field_b, sample.field_b) > 0.)
+        {
+            update_magnetic_model();
+        }
+        sample.source.reference_id = m_magnetic_model.reference_id();
     }
-    auto const result = m_magnetic_aiding.update(m_time, sample, context, m_mag_n, m_state, m_covariance);
+    if (m_fault)
+    {
+        return;
+    }
+    magnetic_type::Reference const reference{m_magnetic_model.observation_n(), m_magnetic_model.health_n(),
+                                             m_magnetic_model.available()};
+    auto const result = m_magnetic_aiding.update(m_time, sample, context, reference, m_state, m_covariance);
     if (!check(result.status))
     {
         return;
@@ -816,6 +892,11 @@ int FormalEskf::print_status()
              unsigned(m_magnetic_aiding.lifecycle().active), unsigned(m_magnetic_aiding.aligned()),
              unsigned(m_magnetic_aiding.heading().consistent), unsigned(m_magnetic_aiding.lifecycle().stop_reason),
              unsigned(m_magnetic_aiding.lifecycle().recovery_reason), unsigned(m_magnetic_aiding.reset_counter()));
+    PX4_INFO("mag model: available=%u checks=%llu model_revision=%u heading_revision=%u source=%u unavailable=%u",
+             unsigned(m_magnetic_model.available()), (unsigned long long)m_magnetic_model.lookup_count(),
+             unsigned(m_magnetic_model.model_revision()), unsigned(m_magnetic_model.reference_id()),
+             unsigned(m_magnetic_model.heading_source()), unsigned(m_mag_model_unavailable));
+    PX4_INFO("mag declination: %.3f deg", math::degrees(m_magnetic_model.declination()));
     perf_print_counter(m_cycle_perf);
     return 0;
 }

@@ -170,10 +170,16 @@ class Flight:
             ("gnss_restart", ("sensor_gps_sim", "start"), 4., "xy_valid: True"),
             ("mag_timeout", ("sensor_mag_sim", "stop"), 3., "heading_good_for_control: False"),
             ("mag_restart", ("sensor_mag_sim", "start"), 4., "heading_good_for_control: True"),
+            ("mag_unaided", ("sensor_gps_sim", "stop"), 8.5, "xy_valid: False"),
+            ("mag_unaided_timeout", ("sensor_mag_sim", "stop"), 1.5, "heading_good_for_control: False"),
+            ("mag_unaided_restart", ("sensor_mag_sim", "start"), 2., "heading_good_for_control: True"),
+            ("gnss_after_mag_restart", ("sensor_gps_sim", "start"), 4., "xy_valid: True"),
         ]
+        GNSS_RECOVERY = ("gnss_quality_recovery", "gnss_restart", "gnss_after_mag_restart")
         BASELINE = self.cli("listener", "vehicle_local_position", "-n", "1")["output"]
         PREVIOUS_POSITION_RESET = self.listener_integer(BASELINE, "xy_reset_counter")
         PREVIOUS_VELOCITY_RESET = self.listener_integer(BASELINE, "vxy_reset_counter")
+        PREVIOUS_HEADING_RESET = self.listener_integer(BASELINE, "heading_reset_counter")
         try:
             for NAME, COMMAND, DURATION, EXPECTED in STEPS:
                 ACTION = self.cli(*COMMAND)
@@ -182,7 +188,7 @@ class Flight:
                 ELAPSED = self.pump_simulation(DURATION)
                 LOCAL = self.cli("listener", "vehicle_local_position", "-n", "1")
                 RECOVERY = []
-                if NAME in ("gnss_quality_recovery", "gnss_restart"):
+                if NAME in GNSS_RECOVERY:
                     # A long gap can produce a failing stationary-speed LPF sample.
                     # Wait for real health recovery, never bypass its checks/timer.
                     for ATTEMPT in range(40):
@@ -198,10 +204,11 @@ class Flight:
                         LOCAL = self.cli("listener", "vehicle_local_position", "-n", "1")
                 STATUS = self.cli("listener", "estimator_status", "-n", "1")
                 FLAGS = self.cli("listener", "estimator_status_flags", "-n", "1")
+                ATTITUDE = self.cli("listener", "vehicle_attitude", "-n", "1")
                 PASSED = EXPECTED in LOCAL["output"]
                 POSITION_RESET = self.listener_integer(LOCAL["output"], "xy_reset_counter")
                 VELOCITY_RESET = self.listener_integer(LOCAL["output"], "vxy_reset_counter")
-                if NAME in ("gnss_quality_recovery", "gnss_restart"):
+                if NAME in GNSS_RECOVERY:
                     PASSED = PASSED and (POSITION_RESET - PREVIOUS_POSITION_RESET) % 256 == 1
                     PASSED = PASSED and (VELOCITY_RESET - PREVIOUS_VELOCITY_RESET) % 256 == 1
                 else:
@@ -215,10 +222,25 @@ class Flight:
                     PASSED = PASSED and "dead_reckoning: True" in LOCAL["output"]
                 if NAME in ("invalid_gnss_stop", "gnss_timeout"):
                     PASSED = PASSED and "cs_gnss_pos: False" in FLAGS["output"] and "cs_gnss_vel: False" in FLAGS["output"]
+                HEADING_RESET = self.listener_integer(LOCAL["output"], "heading_reset_counter")
+                EXPECTED_RESETS = int(NAME == "mag_unaided_restart")
+                PASSED = PASSED and (HEADING_RESET - PREVIOUS_HEADING_RESET) % 256 == EXPECTED_RESETS
+                PASSED = PASSED and self.listener_integer(ATTITUDE["output"], "quat_reset_counter") == HEADING_RESET
+                PASSED = PASSED and self.listener_integer(STATUS["output"], "reset_count_quat") == HEADING_RESET
+                PASSED = PASSED and "cs_mag_3d: False" in FLAGS["output"]
+                if NAME.startswith("mag_"):
+                    ACTIVE = NAME not in ("mag_timeout", "mag_unaided_timeout")
+                    ALIGNED = NAME != "mag_unaided_timeout"
+                    PASSED = PASSED and f"cs_mag: {ACTIVE}" in FLAGS["output"]
+                    PASSED = PASSED and f"cs_mag_hdg: {ACTIVE}" in FLAGS["output"]
+                    PASSED = PASSED and f"cs_yaw_align: {ALIGNED}" in FLAGS["output"]
+                    if ACTIVE:
+                        PASSED = PASSED and "cs_mag_heading_consistent: True" in FLAGS["output"]
                 PREVIOUS_POSITION_RESET = POSITION_RESET
                 PREVIOUS_VELOCITY_RESET = VELOCITY_RESET
+                PREVIOUS_HEADING_RESET = HEADING_RESET
                 CHECKS.append({"name": NAME, "pass": PASSED, "expected": EXPECTED, "simulation_time": ELAPSED,
-                               "action": ACTION, "local": LOCAL, "status": STATUS, "flags": FLAGS,
+                               "action": ACTION, "local": LOCAL, "status": STATUS, "flags": FLAGS, "attitude": ATTITUDE,
                                "recovery": RECOVERY})
                 self.event(f"ground fault check {NAME}: {'PASS' if PASSED else 'FAIL'}")
                 if not PASSED:

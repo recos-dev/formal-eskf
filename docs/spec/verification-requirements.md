@@ -612,6 +612,12 @@ explicit source-change alignment recovery retains its separate reset policy.
 - `failed` feedback requests numerical repair immediately. `fusion_failed` and
   `reset_failed` remain latched even if a new source arrives; replacing a sensor
   cannot repair invalid estimator state/P. Only explicit caller repair permits retry.
+- `heading_aligned=false` inhibits ordinary correction and requests a real heading
+  reset on a fresh, accepted, health-qualified sample with stable starting
+  conditions. It does not bypass a numerical-repair latch or the known-flight
+  requirement during source recovery. The default is true for callers that
+  already establish yaw alignment. The caller clears lost alignment and reports
+  it true again only after actual successful alignment/reset.
 - Device/calibration changes stop activity, clear source-specific progress/count
   and revoke old feedback. Preserve the field-check failure timestamp (as PX4
   does); four new samples are still required. `filter_reset` is a one-update
@@ -730,6 +736,55 @@ The primitive consumes the caller-supplied body field. Replay now supplies the
 reset LPF after current field qualification, as PX4 does; PX4 additionally resets
 estimated magnetic states. Native AHRS/INS float/double and replay
 tests cover this narrower operation; Lean/ESBMC and floating-point bounds are pending.
+
+#### PX4 module magnetic aiding
+
+`integrations/px4/module/MagneticAiding.hpp` connects the existing field check,
+heading monitor, lifecycle, gated correction, reset LPF and heading reset for the
+fixed-field INS. It owns only magnetic history and reset metadata; the module
+owns state/P, clocks, uORB and serialized execution. The numerical core equations
+are unchanged. Native tests and SITL are evidence, not Lean/ESBMC proof of this wiring.
+
+- Read calibrated FRD `vehicle_magnetometer` data, convert gauss to microtesla,
+  and bind `device_id`/`calibration_count`. Startup accumulation cannot mix sources.
+  Future samples wait; duplicate samples cannot fuse twice. With no delayed fusion
+  horizon, arrivals aged 500 ms or more are discarded without refreshing lifecycle
+  data/progress. Missing data still advances the lifecycle on each estimator tick.
+- Use a fixed profile matching the pinned PX4 v1.16.2 defaults: 5 microtesla
+  measurement standard deviation, 3-sigma componentwise gate, strength-only
+  check with 20 microtesla tolerance, healthy duration strictly greater than 1 s,
+  at least four samples, no-data stop at 1 s and unsuccessful-fusion timeout
+  strictly greater than 7 s. Heading consistency uses 0.3 rad and 0.5 m/s²;
+  reset yaw variance is 0.3² rad². The explicit 5 microtesla minimum horizontal
+  field is our geometry guard. These are fixed settings, not live EKF2 parameters.
+- Supply horizontal-aiding **session activity**, not output-validity grace flags.
+  Fresh land-detector state supplies flight/rest context; fresh arming state is
+  the flight-only fallback. Missing context is unknown, never assumed at rest.
+  Acceleration history uses actual prediction intervals and is cleared on IMU gaps.
+- Initialize the heading-consistency latch only after the existing real startup
+  alignment. This creates no successful fusion timestamp. Non-finite/zero external
+  field samples stop aiding without pretending the estimator has a numerical
+  failure. Numerical failures from correction/reset still latch the module fault.
+- Inhibit navigation correction on field rejection or aided heading inconsistency.
+  Source/calibration changes reseed the reset LPF; ground changes require a
+  qualified heading reset. A stop without horizontal aiding clears yaw alignment;
+  returning qualified data must actually reset it before ordinary correction.
+  Record success/rejection from the actual transaction, and never correct twice
+  on a reset sample. Failed resets cannot change state/P or reset counters.
+- Publish separate session (`cs_mag`), heading-aiding (`cs_mag_hdg`), alignment,
+  consistency and disturbed-field flags. Keep `cs_mag_3d=false` for this protected
+  heading mode. Publish the applied quaternion/heading delta and increment the
+  attitude, local heading and estimator-status reset counters only on real reset;
+  also increment the aggregate odometry reset counter. Heading output validity
+  additionally requires recent progress and the existing variance check.
+
+The observation remains a three-component fixed-field model with compile-time
+`ESKF_MAG_TILT=1`; it is not PX4's magnetic-state estimator or an identical scalar
+yaw update. The startup WMM reference stays fixed. Periodic WMM/reference changes,
+saved-declination fallback, magnetic-bias learning, AUTO/3D switching and terrain-based
+in-flight realignment are not integrated here. Magnetic projection does not claim
+that all non-attitude state gains vanish. Neither delayed fusion nor hardware
+flight performance is established by this integration.
 
 ### E-INNOV: componentwise innovation gate
 

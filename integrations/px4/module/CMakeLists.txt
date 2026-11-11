@@ -11,6 +11,8 @@ px4_add_module(
 )
 target_include_directories(modules__formal_eskf PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/core/include")
 set_target_properties(modules__formal_eskf PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED YES)
-target_compile_definitions(modules__formal_eskf PRIVATE ESKF_QUAT_APPROX=0 ESKF_RESET_APPROX=0)
+target_compile_definitions(modules__formal_eskf PRIVATE ESKF_QUAT_APPROX=0 ESKF_RESET_APPROX=0 ESKF_MAG_TILT=1)
 # Override PX4's relaxed floating-point options for this numerical core only.
 target_compile_options(modules__formal_eskf PRIVATE -fno-fast-math -ffp-contract=off -fstack-usage -fno-exceptions -fno-rtti)
+# Scalar domain checks intentionally distinguish exact zero, including signed zero.
+target_compile_options(modules__formal_eskf PRIVATE -Wno-float-equal)

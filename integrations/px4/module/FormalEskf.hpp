@@ -33,6 +33,8 @@
 #include <formal_eskf/runtime/position.hpp>
 #include <formal_eskf/runtime/velocity.hpp>
 
+#include "MagneticAiding.hpp"
+
 // Single writer: all filter state is owned by this work item. The core has no
 // PX4 dependencies except its explicitly selected matrix backend.
 class FormalEskf final : public ModuleBase<FormalEskf>, public px4::ScheduledWorkItem
@@ -55,6 +57,7 @@ private:
     using matrix3_type = backend_type::matrix_type<3, 3>;
     using imu_type = types_type::imu_sample_type;
     using status_type = formal_eskf::Status;
+    using magnetic_type = formal_eskf::px4::MagneticAiding<backend_type>;
 
     void Run() override;
     void initialize(vehicle_imu_s const & sample, imu_type const & imu);
@@ -65,6 +68,7 @@ private:
     void publish_status(uint64_t now);
     void update_gps_quality();
     bool gps_good() const;
+    bool magnetic_heading_valid() const;
     uint16_t gps_failure_flags() const;
     bool gps_position_valid(uint64_t max_age = 5000000) const;
     bool gps_velocity_valid(uint64_t max_age = 5000000) const;
@@ -97,25 +101,6 @@ private:
     static double square(double x) { return x * x; }
     static constexpr double minimum_quaternion_norm = 1e-6;
 
-    // Axis-wise 5-sigma gate including projected prior covariance. This is a
-    // conservative per-axis gate, not a full chi-square/NIS test.
-    template <size_t N>
-    double gate(backend_type::vector_type<N> const & residual, const backend_type::matrix_type<N, 15> & H,
-                const backend_type::matrix_type<N, N> & R) const
-    {
-        const auto S = formal_eskf::linalg::sandwich(H, m_covariance) + R;
-        double ratio = 0.;
-        for (size_t i = 0; i < N; ++i)
-        {
-            if (!std::isfinite(residual(i)) || !std::isfinite(S(i, i)) || S(i, i) <= 0.)
-            {
-                return INFINITY;
-            }
-            ratio = std::max(ratio, square(residual(i)) / (25. * S(i, i)));
-        }
-        return ratio;
-    }
-
     uORB::SubscriptionCallbackWorkItem m_imu_sub{this, ORB_ID(vehicle_imu)};
     uORB::Subscription m_gps_sub{ORB_ID(vehicle_gps_position)};
     uORB::Subscription m_mag_sub{ORB_ID(vehicle_magnetometer)};
@@ -135,6 +120,8 @@ private:
     types_type::parameter_type m_parameters{};
     imu_type m_previous_imu{};
     vector3_type m_accel_sum{}, m_gyro_sum{}, m_mag_sum{}, m_mag_n{};
+    magnetic_type m_magnetic_aiding{};
+    magnetic_type::source_type m_mag_init_source{};
     MapProjection m_projection{}, m_gps_previous_fix{};
     formal_eskf::runtime::GnssQuality<backend_type> m_gnss_quality{};
     formal_eskf::runtime::GnssQualityParameters<double> m_gnss_quality_parameters{};
@@ -157,7 +144,7 @@ private:
     vehicle_status_s m_vehicle_status{};
     uint64_t m_time{}, m_origin_time{}, m_last_status{}, m_last_output{};
     uint64_t m_gps_seen{}, m_mag_seen{}, m_baro_seen{}, m_mag_init_seen{};
-    uint64_t m_gps_height_fused{}, m_mag_fused{}, m_baro_fused{}, m_max_fusion_age{};
+    uint64_t m_gps_height_fused{}, m_baro_fused{}, m_max_fusion_age{};
     uint32_t m_init_samples{}, m_init_mag_samples{}, m_predictions{}, m_gps_updates{}, m_mag_updates{},
         m_baro_updates{};
     uint32_t m_rejections{}, m_errors{}, m_gaps{};

@@ -71,7 +71,7 @@ public:
     struct Conditions
     {
         bool enabled = false;
-        // Caller establishes alignment, valid reference, state/P and aiding policy.
+        // Caller establishes valid tilt/reference, state/P and aiding policy.
         bool ready = false;
         // No yaw-alignment change or external quaternion reset in this tick.
         bool starting_allowed = true;
@@ -80,6 +80,8 @@ public:
         FlightState flight_state = FlightState::unknown;
         // Current MagneticHeading verdict; required only with horizontal aiding.
         bool heading_consistent = false;
+        // False requests qualified heading alignment before ordinary fusion.
+        bool heading_aligned = true;
     };
 
     struct Source
@@ -324,7 +326,14 @@ inline Status MagnetometerFusion::update(std::uint64_t now_us, Conditions const 
             parameters.health_time_us == 0U || now_us - m_state.last_field_failure_time_us > parameters.health_time_us;
         m_reset_sample_qualified = conditions.starting_allowed && sample.field_accepted && m_sample_count >= 4U &&
                                    now_us - m_sample_time_us < parameters.maximum_interval_us && health_qualified;
-        if (m_state.recovery_reason == RecoveryReason::source_changed)
+        if (!conditions.heading_aligned)
+        {
+            stop(StopReason::not_ready);
+            m_state.reset_allowed =
+                m_reset_sample_qualified && (m_state.recovery_reason != RecoveryReason::source_changed ||
+                                             conditions.flight_state != FlightState::unknown);
+        }
+        else if (m_state.recovery_reason == RecoveryReason::source_changed)
         {
             stop(StopReason::recovery_required);
             if (m_reset_sample_qualified && conditions.flight_state != FlightState::unknown)

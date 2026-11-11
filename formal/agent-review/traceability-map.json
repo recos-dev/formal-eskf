@@ -2882,6 +2882,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "#### Replay magnetic field checks"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### PX4 module magnetic aiding"
           }
         ],
         "lean": [],
@@ -2913,6 +2917,10 @@
           {
             "file": "examples/replay_px4.py",
             "symbol": "def magnetic_field_parameters("
+          },
+          {
+            "file": "integrations/px4/module/MagneticAiding.hpp",
+            "symbol": "class MagneticAiding"
           }
         ],
         "esbmc": []
@@ -2926,6 +2934,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "### R-MAGNETIC-HEADING: aided heading consistency"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### PX4 module magnetic aiding"
           }
         ],
         "lean": [],
@@ -2941,6 +2953,14 @@
           {
             "file": "examples/replay_ins.cpp",
             "symbol": "read_magnetic_heading_parameters("
+          },
+          {
+            "file": "integrations/px4/module/MagneticAiding.hpp",
+            "symbol": "class MagneticAiding"
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::fuse_mag()"
           }
         ],
         "esbmc": []
@@ -2990,6 +3010,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "### R-MAGNETOMETER-FUSION: field checks and gated magnetic correction"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### PX4 module magnetic aiding"
           }
         ],
         "lean": [],
@@ -3025,6 +3049,10 @@
           {
             "file": "examples/replay_ins.cpp",
             "symbol": "void replay("
+          },
+          {
+            "file": "integrations/px4/module/MagneticAiding.hpp",
+            "symbol": "class MagneticAiding"
           }
         ],
         "esbmc": []
@@ -3042,6 +3070,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "#### Replay magnetic lifecycle"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### PX4 module magnetic aiding"
           }
         ],
         "lean": [],
@@ -3077,6 +3109,14 @@
           {
             "file": "examples/replay_ins.cpp",
             "symbol": "MagneticContext read_magnetic_context("
+          },
+          {
+            "file": "integrations/px4/module/MagneticAiding.hpp",
+            "symbol": "class MagneticAiding"
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::fuse_mag()"
           }
         ],
         "esbmc": []
@@ -3090,6 +3130,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "### R-MAGNETOMETER-FILTER: magnetic data for heading reset"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### PX4 module magnetic aiding"
           }
         ],
         "lean": [],
@@ -3097,6 +3141,10 @@
           {
             "file": "include/formal_eskf/runtime/magnetometer_filter.hpp",
             "symbol": "class MagnetometerFilter"
+          },
+          {
+            "file": "integrations/px4/module/MagneticAiding.hpp",
+            "symbol": "class MagneticAiding"
           }
         ],
         "esbmc": []
@@ -3110,6 +3158,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "### R-MAGNETOMETER-RESET: fixed-field heading and covariance reset"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### PX4 module magnetic aiding"
           }
         ],
         "lean": [],
@@ -3121,6 +3173,22 @@
           {
             "file": "include/formal_eskf/runtime/magnetometer_reset.hpp",
             "symbol": "try_reset_magnetic_heading("
+          },
+          {
+            "file": "integrations/px4/module/MagneticAiding.hpp",
+            "symbol": "class MagneticAiding"
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::fuse_mag()"
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::publish("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::publish_status("
           }
         ],
         "esbmc": []

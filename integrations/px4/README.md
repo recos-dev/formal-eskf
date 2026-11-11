@@ -75,7 +75,7 @@ MPLCONFIGDIR=/tmp/formal-eskf-mpl \
 xdg-open "$RUN_DIR/flight.png"
 ```
 
-The test starts PX4 SIH, uses normal arming, takes off to 5 m, hovers, flies an 8 x 8 m square with a 45-degree heading change, returns, lands and waits for automatic disarming. It then checks invalid GNSS, GNSS timeout and magnetometer timeout, including the 7 s horizontal grace/stop interval and reset counters on recovery. Omit `--check-faults` for flight only. Each run needs a fresh output directory and takes about two minutes. Instance 1 uses localhost UDP 14541; `--instance` selects another instance from 1 through 9.
+The test starts PX4 SIH, uses normal arming, takes off to 5 m, hovers, flies an 8 x 8 m square with a 45-degree heading change, returns, lands and waits for automatic disarming. It then checks invalid GNSS, GNSS timeout and magnetometer timeout, including the 7 s horizontal grace/stop interval and reset counters on recovery. Magnetic checks distinguish outages with and without horizontal aiding, and verify alignment, fusion flags and heading reset notifications across three uORB topics. Omit `--check-faults` for flight only. Each run needs a fresh output directory and takes a few minutes. Instance 1 uses localhost UDP 14541; `--instance` selects another instance from 1 through 9.
 
 The script sends MAVLink commands without the force-arm flag. `COM_RC_IN_MODE=4` configures operation without manual stick input; estimator and sensor arming checks remain enabled. Sensor failure checks run after landing and wait for simulation time to advance, with a bounded wall-clock timeout. The script shuts down the PX4 instance it started.
 
@@ -127,13 +127,14 @@ flowchart LR
 - Uses integrated IMU instance 0 in FRD coordinates and `timestamp_sample`. A single work-queue writer owns the filter, with mutex-serialized shell diagnostics.
 - Initializes tilt and gyro bias from stationary IMU samples; magnetometer and the magnetic model at the GNSS position initialize yaw. No EKF2 or ground-truth subscriptions enter the estimator.
 - Qualifies GNSS with the portable quality monitor before startup and fusion. Uses independent velocity, horizontal-position and height gates. Future samples wait; stale/invalid samples cannot refresh health. Velocity and horizontal position have the portable lifecycle and checked resets; each successful reset publishes its deltas/counters. Relative barometer altitude and magnetic measurements remain separate aiding paths.
+- Connects magnetic field checks, heading consistency, lifecycle, gated correction and real heading/covariance resets through `module/MagneticAiding.hpp`. The module supplies sensor identity, calibrated FRD samples and current aiding/flight conditions; the helper owns magnetic history, not the estimator state or platform effects. It uses the fixed PX4 v1.16.2 defaults for noise (5 microtesla), gate (3 sigma), strength tolerance (20 microtesla), health (>1 s), no-data stop (1 s) and unsuccessful-fusion timeout (>7 s). These are not live EKF2 parameter bindings.
 - Publishes NED position/velocity, scalar-first body-to-NED quaternions, covariance diagonals, biases and estimator status. Horizontal aiding uses actual fusion/reset progress: report dead reckoning after 1 s, withdraw horizontal validity after 5 s, and stop GNSS sessions after 7 s of missing data or sustained poor quality. Height and magnetometer retain the adapter's 1 s freshness policy.
 - Holds the previous IMU rate for small missing intervals; discontinuities beyond 50 ms and IMU identity/calibration changes latch a fault. Numerical failures also latch a fault. Restart is required for recovery.
 - Reserves a 60 KiB work-queue stack. The module disables fast-math, FMA contraction, exceptions and RTTI. Lockstep virtual-time performance counters do not measure wall-clock CPU cost.
 
-This is a single-sensor SITL POC with stationary startup and simulated sensor noise. It has no receiver-delay compensation, output predictor, redundant sensors, multi-source height reset arbitration, or wind, terrain, barometer-bias and magnetic-bias states. Heading variance approximates yaw variance with the local attitude-error z component for the tested low-tilt flight. Sensor failure checks cover flag withdrawal and recovery on the ground, not continued flight through sensor failures.
+This is a single-sensor SITL POC with stationary startup and simulated sensor noise. It has no receiver-delay compensation, output predictor, redundant sensors, multi-source height reset arbitration, or wind, terrain, barometer-bias and magnetic-bias states. Magnetic fusion retains the fixed startup WMM field and three-component observation with `ESKF_MAG_TILT=1`; it reports heading aiding, not 3D magnetic-state estimation. Periodic WMM changes, saved-declination fallback, AUTO/3D switching and terrain-based in-flight realignment remain unconnected. See [the magnetic integration contract](../../docs/spec/verification-requirements.md#px4-module-magnetic-aiding). Heading variance approximates yaw variance with the local attitude-error z component for the tested low-tilt flight. Sensor failure checks cover flag withdrawal and recovery on the ground, not continued flight through sensor failures.
 
-The wrapper is outside the portable numerical core and its existing Lean/ESBMC claims. Existing numerical requirements and proof traceability remain unchanged; no proof of PX4, concurrency, total stack use or hardware flight is asserted. Native tests and closed-loop SITL are separate empirical evidence.
+The wrapper is outside the portable numerical core and its existing Lean/ESBMC claims. Magnetic integration is linked in the requirement/traceability map with its formal evidence still pending; no proof of PX4, concurrency, total stack use or hardware flight is asserted. Native tests and closed-loop SITL are separate empirical evidence.
 
 The host patch selects the estimator at boot, starts the lockstep logger from IMU updates during alignment, logs odometry variances and adds SIH's direct `lat_lon_alt` dependency. The reduced board can print missing optional DDS, GPS-driver, camera and VTOL command/parameter messages from the shared startup script.
 
@@ -173,6 +174,34 @@ stationary-speed check transient; it is retained and is not counted as a pass.
 The test now waits for actual quality recovery with a bounded additional 20 s
 window, checking that resets do not occur before recovery. Quality thresholds
 and health timing were not relaxed.
+
+## Magnetic integration validation: 2026-11-11
+
+The pinned host build, normal flight and independent ULog analysis passed.
+The 14 ground scenarios include magnetic outages with/without GNSS aiding,
+loss of unaided yaw alignment and one real heading reset on recovery.
+Attitude, local-position and estimator-status reset counters agreed; the
+recorded reset was -0.02268 rad. This is a control-flow test, not heading-accuracy
+ground truth for a physical compass disturbance.
+
+| Check | Result |
+| --- | --- |
+| Magnetic native suites, float/double | 5 Eigen + 5 PX4 matrix passed |
+| Adapter/lifecycle ASan + UBSan, both backends | 4 passed, leak detection enabled |
+| Package installation/export | 8 passed |
+| Ground failure/recovery scenarios | 14 passed |
+| Independent ULog acceptance checks | 18 passed |
+| Position / velocity RMSE against SIH truth | 0.404 m / 0.258 m/s |
+| Attitude RMSE / maximum error | 1.643 / 3.555 degrees |
+| Valid estimates in flight | 100% |
+| Numerical faults / airborne failsafes / ULog dropouts | 0 / 0 / 0 |
+
+Evidence is in `output/px4-mag-sitl-02/`, including the source manifest, binary
+hash, ULog, fault records, `analysis.json` and `flight.png`. Native tests also
+exercise field rejection, heading inconsistency, calibration/source changes,
+stale/future/duplicate samples and reset failure. They do not establish aircraft
+behavior under in-flight magnetic disturbances. The wrapper/lifecycle additions
+have no new Lean or ESBMC proof in this change.
 
 An additional Cppcheck 2.21 compilation-database scan reported no diagnostics
 in the module/core, but 334 in upstream/generated PX4 headers. This is not a

@@ -202,8 +202,15 @@ void FormalEskf::initialize(vehicle_imu_s const & sample, imu_type const & imu)
     }
     if (m_mag.timestamp_sample > m_mag_init_seen && recent(m_mag.timestamp_sample, 500000))
     {
+        if (m_mag.device_id != m_mag_init_source.device_id ||
+            m_mag.calibration_count != m_mag_init_source.calibration_count)
+        {
+            m_mag_sum = {};
+            m_init_mag_samples = 0;
+        }
+        m_mag_init_source = {m_mag.device_id, m_mag.calibration_count, 1U};
         const auto m = vector3(m_mag.magnetometer_ga[0], m_mag.magnetometer_ga[1], m_mag.magnetometer_ga[2]);
-        if (formal_eskf::linalg::all_finite(m) && formal_eskf::linalg::norm(m) > 0.1)
+        if (m_mag.device_id != 0 && formal_eskf::linalg::all_finite(m) && formal_eskf::linalg::norm(m) > 0.1)
         {
             m_mag_sum = m_mag_sum + m;
             ++m_init_mag_samples;
@@ -248,7 +255,8 @@ void FormalEskf::initialize(vehicle_imu_s const & sample, imu_type const & imu)
     m_origin_ellipsoid = m_gps.altitude_ellipsoid_m;
     m_baro_origin = m_baro.baro_alt_meter;
 
-    m_mag_seen = m_mag_fused = m_mag.timestamp_sample;
+    m_mag_seen = m_mag.timestamp_sample;
+    m_magnetic_aiding.initialize(m_mag_init_source, m_mag_seen);
     m_baro_seen = m_baro_fused = m_baro.timestamp_sample;
     m_last_imu = sample;
     m_previous_imu = imu;
@@ -325,6 +333,7 @@ void FormalEskf::Run()
                         if (gap > 200)
                         {
                             ++m_gaps;
+                            m_magnetic_aiding.reset_acceleration();
                             check(formal_eskf::try_predict(m_state, m_covariance, m_previous_imu, double(gap) * 1e-6,
                                                            m_parameters, m_state, m_covariance));
                         }
@@ -332,7 +341,12 @@ void FormalEskf::Run()
                                                                        m_state, m_covariance)))
                         {
                             ++m_predictions;
-                            fuse_gps();
+                            auto const acceleration_n =
+                                formal_eskf::so3::rotate(m_state.q_nb, imu.specific_force_b - m_state.b_a);
+                            if (check(m_magnetic_aiding.update_acceleration(acceleration_n, accel_dt)))
+                            {
+                                fuse_gps();
+                            }
                             if (!m_fault)
                             {
                                 fuse_baro();
@@ -468,34 +482,52 @@ void FormalEskf::fuse_gps()
     m_max_fusion_age = std::max(m_max_fusion_age, m_time - m_gnss_sample.time_us);
 }
 
+bool FormalEskf::magnetic_heading_valid() const
+{
+    return m_magnetic_aiding.heading_aiding() && recent(m_magnetic_aiding.progress_time()) && m_covariance(8, 8) < 0.1;
+}
+
 void FormalEskf::fuse_mag()
 {
-    if (m_mag.timestamp_sample <= m_mag_seen || m_mag.timestamp_sample > m_time)
+    using FlightState = magnetic_type::lifecycle_type::FlightState;
+    magnetic_type::Context context;
+    // Activity is distinct from the 5 s output-validity and 1 s dead-reckoning flags.
+    context.horizontal_aiding =
+        m_gnss_fusion.state().horizontal_position.active || m_gnss_fusion.state().velocity.active;
+    uint64_t const now = hrt_absolute_time();
+    if (m_vehicle_status.timestamp != 0 && m_vehicle_status.timestamp <= now &&
+        now - m_vehicle_status.timestamp < 3000000)
+    {
+        context.flight_state = m_vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_ARMED
+                                   ? FlightState::in_air
+                                   : FlightState::on_ground;
+    }
+    if (m_land.timestamp != 0 && m_land.timestamp <= now && now - m_land.timestamp < 3000000)
+    {
+        context.flight_state = m_land.landed ? FlightState::on_ground : FlightState::in_air;
+        context.at_rest = m_land.at_rest;
+    }
+    magnetic_type::Sample sample;
+    if (m_mag.timestamp_sample > m_mag_seen && m_mag.timestamp_sample <= m_time)
+    {
+        m_mag_seen = m_mag.timestamp_sample;
+        sample = {m_mag.timestamp_sample,
+                  {m_mag.device_id, m_mag.calibration_count, 1U},
+                  vector3(100. * double(m_mag.magnetometer_ga[0]), 100. * double(m_mag.magnetometer_ga[1]),
+                          100. * double(m_mag.magnetometer_ga[2]))};
+    }
+    auto const result = m_magnetic_aiding.update(m_time, sample, context, m_mag_n, m_state, m_covariance);
+    if (!check(result.status))
     {
         return;
     }
-    m_mag_seen = m_mag.timestamp_sample;
-    const auto mag = vector3(100. * double(m_mag.magnetometer_ga[0]), 100. * double(m_mag.magnetometer_ga[1]),
-                             100. * double(m_mag.magnetometer_ga[2]));
-    if (!recent(m_mag.timestamp_sample, 200000) || !formal_eskf::linalg::all_finite(mag) ||
-        std::abs(formal_eskf::linalg::norm(mag) - formal_eskf::linalg::norm(m_mag_n)) > 20.)
+    m_mag_updates += result.fused;
+    m_rejections += result.rejected;
+    m_odometry_reset_counter += result.reset;
+    if (sample.time_us != 0)
     {
-        ++m_rejections;
-        return;
-    }
-    const auto R = matrix3_type::identity() * 9.; // microtesla^2; PX4 gauss -> microtesla above.
-    m_mag_ratio = gate(mag - formal_eskf::so3::inverse_rotate(m_state.q_nb, m_mag_n),
-                       formal_eskf::magnetometer_jacobian(m_state, m_mag_n), R);
-    if (m_mag_ratio > 1.)
-    {
-        ++m_rejections;
-        return;
-    }
-    if (check(formal_eskf::try_correct_magnetometer(m_state, m_covariance, mag, m_mag_n, R, minimum_quaternion_norm,
-                                                    m_state, m_covariance)))
-    {
-        m_mag_fused = m_mag.timestamp_sample;
-        ++m_mag_updates;
+        auto const & fusion = m_magnetic_aiding.observation().fusion;
+        m_mag_ratio = fusion.diagnostics_valid ? formal_eskf::linalg::max_abs(fusion.test_ratio) : double(INFINITY);
     }
 }
 
@@ -530,15 +562,16 @@ void FormalEskf::publish(imu_type const & imu)
 {
     const uint64_t now = hrt_absolute_time();
     const bool nav_valid = (gps_position_valid() || gps_velocity_valid()) && now < m_time + 100000;
-    const bool heading_valid = recent(m_mag_fused) && m_covariance(8, 8) < 0.1;
+    const bool heading_valid = magnetic_heading_valid();
     vehicle_attitude_s attitude{};
     attitude.timestamp_sample = m_time;
     attitude.timestamp = now;
     for (size_t i = 0; i < 4; ++i)
     {
         attitude.q[i] = float(m_state.q_nb.coefficients()(i));
+        attitude.delta_q_reset[i] = float(m_magnetic_aiding.reset_delta().coefficients()(i));
     }
-    attitude.delta_q_reset[0] = 1.f;
+    attitude.quat_reset_counter = m_magnetic_aiding.reset_counter();
     m_attitude_pub.publish(attitude);
     if (m_time - m_last_output < 10000)
     {
@@ -576,6 +609,9 @@ void FormalEskf::publish(imu_type const & imu)
     local.heading_var = m_covariance(8, 8);
     local.tilt_var = m_covariance(6, 6) + m_covariance(7, 7);
     local.heading_good_for_control = heading_valid;
+    auto const & delta = m_magnetic_aiding.reset_delta().coefficients();
+    local.delta_heading = 2. * std::atan2(delta(3), delta(0));
+    local.heading_reset_counter = m_magnetic_aiding.reset_counter();
     local.xy_global = local.z_global = true;
     local.ref_timestamp = m_origin_time;
     local.ref_lat = m_projection.getProjectionReferenceLat();
@@ -634,18 +670,23 @@ void FormalEskf::publish_status(uint64_t now)
     const bool gps_vel_valid = healthy && gps_velocity_valid();
     const bool gps_valid = gps_pos_valid || gps_vel_valid;
     const bool gps_height_valid = healthy && recent(m_gps_height_fused);
-    const bool mag_valid = healthy && recent(m_mag_fused);
+    const bool mag_valid = healthy && magnetic_heading_valid();
+    const bool mag_aiding = healthy && m_magnetic_aiding.heading_aiding();
     const bool baro_valid = healthy && recent(m_baro_fused);
     estimator_status_s status{};
     status.timestamp = now;
     status.timestamp_sample = m_time;
     if (healthy)
     {
-        status.control_mode_flags |= (1ULL << status.CS_TILT_ALIGN) | (1ULL << status.CS_YAW_ALIGN);
+        status.control_mode_flags |= (1ULL << status.CS_TILT_ALIGN);
+        if (m_magnetic_aiding.aligned())
+        {
+            status.control_mode_flags |= (1ULL << status.CS_YAW_ALIGN);
+        }
     }
-    if (mag_valid)
+    if (mag_aiding)
     {
-        status.control_mode_flags |= (1ULL << status.CS_MAG_3D);
+        status.control_mode_flags |= (1ULL << status.CS_MAG_HDG);
     }
     if (healthy && m_gnss_fusion.state().horizontal_position.active)
     {
@@ -668,6 +709,7 @@ void FormalEskf::publish_status(uint64_t now)
         status.control_mode_flags |= (1ULL << status.CS_IN_AIR);
     }
     status.gps_check_fail_flags = gps_failure_flags();
+    status.reset_count_quat = m_magnetic_aiding.reset_counter();
     status.reset_count_pos_ne = m_position_reset_counter;
     status.reset_count_vel_ne = status.reset_count_vel_d = m_velocity_reset_counter;
     status.filter_fault_flags = m_fault ? (1 << 16) : 0;
@@ -696,11 +738,16 @@ void FormalEskf::publish_status(uint64_t now)
     flags.timestamp = now;
     flags.timestamp_sample = m_time;
     flags.cs_tilt_align = healthy;
-    flags.cs_yaw_align = healthy; // Alignment persists when magnetometer aiding stops.
+    flags.cs_yaw_align = healthy && m_magnetic_aiding.aligned();
     flags.cs_gnss_pos = healthy && m_gnss_fusion.state().horizontal_position.active;
     flags.cs_gnss_vel = healthy && m_gnss_fusion.state().velocity.active;
     flags.cs_gps_hgt = gps_height_valid;
-    flags.cs_mag_3d = flags.cs_mag = mag_valid;
+    flags.cs_mag = healthy && m_magnetic_aiding.lifecycle().active;
+    flags.cs_mag_hdg = mag_aiding;
+    flags.cs_mag_heading_consistent = healthy && m_magnetic_aiding.heading().consistent;
+    auto const & magnetic_field = m_magnetic_aiding.observation().field;
+    flags.cs_mag_field_disturbed =
+        magnetic_field.diagnostics_valid && (magnetic_field.failures.strength || magnetic_field.failures.inclination);
     flags.cs_baro_hgt = baro_valid;
     flags.cs_in_air = !m_land.landed;
     flags.cs_inertial_dead_reckoning = !(healthy && (gps_position_valid(1000000) || gps_velocity_valid(1000000)));
@@ -708,7 +755,7 @@ void FormalEskf::publish_status(uint64_t now)
     flags.reject_hor_pos = m_pos_ratio > 1.;
     flags.reject_hor_vel = flags.reject_ver_vel = m_vel_ratio > 1.;
     flags.reject_ver_pos = m_height_ratio > 1.;
-    flags.reject_yaw = m_mag_ratio > 1.;
+    flags.reject_yaw = m_magnetic_aiding.observation().fusion.diagnostics_valid && m_mag_ratio > 1.;
     m_flags_pub.publish(flags);
     if (!m_initialized)
     {
@@ -765,6 +812,10 @@ int FormalEskf::print_status()
              (unsigned long long)m_max_fusion_age);
     PX4_INFO("p=[%.3f %.3f %.3f] v=[%.3f %.3f %.3f]", m_state.p_n(0), m_state.p_n(1), m_state.p_n(2), m_state.v_n(0),
              m_state.v_n(1), m_state.v_n(2));
+    PX4_INFO("mag: active=%u aligned=%u consistent=%u stop=%u recovery=%u resets=%u",
+             unsigned(m_magnetic_aiding.lifecycle().active), unsigned(m_magnetic_aiding.aligned()),
+             unsigned(m_magnetic_aiding.heading().consistent), unsigned(m_magnetic_aiding.lifecycle().stop_reason),
+             unsigned(m_magnetic_aiding.lifecycle().recovery_reason), unsigned(m_magnetic_aiding.reset_counter()));
     perf_print_counter(m_cycle_perf);
     return 0;
 }

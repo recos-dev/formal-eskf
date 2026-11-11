@@ -196,6 +196,7 @@ class Flight:
         PREVIOUS_VELOCITY_RESET = self.listener_integer(BASELINE, "vxy_reset_counter")
         PREVIOUS_HEADING_RESET = self.listener_integer(BASELINE, "heading_reset_counter")
         PREVIOUS_HEIGHT_RESET = self.listener_integer(BASELINE, "z_reset_counter")
+        GRAVITY_ENABLED = int(os.environ.get("PX4_PARAM_FESKF_GRAV_EN", "1")) != 0
         try:
             for NAME, COMMAND, DURATION, EXPECTED in STEPS:
                 ACTION = self.cli(*COMMAND)
@@ -224,6 +225,19 @@ class Flight:
                 GLOBAL = self.cli("listener", "vehicle_global_position", "-n", "1")
                 HEIGHT = self.cli("formal_eskf", "status")
                 PASSED = EXPECTED in LOCAL["output"]
+                GRAVITY = re.search(r"gravity: enabled=(\d+) tilt=(\d+) active=(\d+) samples=(\d+) fused=(\d+)",
+                                    HEIGHT["output"])
+                if not GRAVITY:
+                    raise RuntimeError("Missing gravity diagnostics")
+                ENABLED, TILT, ACTIVE, SAMPLES, FUSED = map(int, GRAVITY.groups())
+                PASSED = PASSED and ENABLED == int(GRAVITY_ENABLED) and TILT == 1 and SAMPLES > 0
+                if not GRAVITY_ENABLED:
+                    PASSED = PASSED and ACTIVE == 0 and FUSED == 0
+                elif NAME in ("invalid_gnss_stop", "gnss_timeout", "mag_unaided"):
+                    PASSED = PASSED and ACTIVE == 1 and FUSED > 0
+                elif NAME in GNSS_RECOVERY:
+                    PASSED = PASSED and ACTIVE == 0
+                PASSED = PASSED and f"cs_gravity_vector: {bool(ACTIVE)}" in FLAGS["output"]
                 POSITION_RESET = self.listener_integer(LOCAL["output"], "xy_reset_counter")
                 VELOCITY_RESET = self.listener_integer(LOCAL["output"], "vxy_reset_counter")
                 if NAME in GNSS_RECOVERY:

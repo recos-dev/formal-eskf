@@ -1457,7 +1457,7 @@ select the latest raw sample every 10 ms. The selected target is not a promise o
 exactly 100 Hz or an instruction to fuse each roughly 250 Hz raw input. Fixed LPF
 alpha remains `0.1`; its effective time constant depends on actual update intervals.
 
-`examples/replay_accelerometer.hpp` prepares non-overlapping observations without
+`runtime::AccelerometerSample` (also exposed through the replay alias) prepares non-overlapping observations without
 changing prediction/navigation timing or adding a delayed fusion buffer:
 
 - For each real sample, form `dtheta = omega_m * dt`, `dv = f_m * dt` and
@@ -1494,6 +1494,29 @@ lack clipping and therefore do not exercise successful accel correction. These
 starting settings and native tests are not calibrated flight parameters or new
 Lean/ESBMC evidence. Prediction/measurement reuse correlation, interval-averaging
 model error and full PX4 estimator equivalence remain outside the claim.
+
+The PX4 module shares this sampler and `runtime::TiltAlignment` with replay.
+`px4::GravityAiding` runs after navigation corrections and before magnetic aiding.
+It receives actual gyro/accel integration periods: sampler angular rate is scaled
+by their ratio, preserving measured delta-angle while averaging force over the
+accel period. Fresh `vehicle_land_detected.at_rest` (at most 2 s old, not future)
+provides the rest override; missing/stale rest is false. Horizontal aiding is the
+actual GNSS position/velocity lifecycle activity, not merely a valid fix.
+Tilt alignment latches when the NED roll/pitch variance sum is below (3°)²;
+module alignment flags expose that same latch. Clipping is ORed across intervals.
+Rejected IMU samples and small gaps clear partial samples and LPF history;
+synthetic holds never enter the sampler. Existing restart-required identity,
+calibration and large-gap faults terminate the session before further sampling.
+
+`FESKF_GRAV_EN` defaults to 1 and is read only at startup. It requests the existing
+eligibility/correction path, not unconditional fusion. Disabled sampling still
+updates the LPF. The current-horizon module uses the same g² I weight and no
+innovation gate. Each successful correction applies the shared bias limits;
+rejection preserves state/P. Status distinguishes emitted samples from successful
+corrections and publishes the latest emission interval and gravity mode. Mode is
+not a successful-fusion count. The pinned PX4 gravity controller supplies the
+condition reference; its normalized sequential/gated update remains a declared
+difference. Native tests, flight A/B evidence and formal-proof gaps remain distinct.
 
 ### R-IMU-DYNAMICS: instantaneous IMU magnitude check
 
@@ -1806,7 +1829,7 @@ operation. Rejections and resets do not invoke limiting. Each height source is
 handled separately, rather than waiting until the entire height update returns.
 Native adapter tests exercise accepted and rejected sources with inhibited
 learning; the existing limiter tests cover boundaries, numerical failures and
-inward recovery. Gravity wiring remains the separate F-02.1 integration task.
+inward recovery. The gravity adapter applies the same limiter after successful gravity correction.
 
 ### R-VERTICAL-ACCELERATION: apparent falling and clipping detection
 

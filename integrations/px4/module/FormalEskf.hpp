@@ -35,6 +35,7 @@
 #include <formal_eskf/runtime/velocity.hpp>
 
 #include "BiasLimits.hpp"
+#include "GravityAiding.hpp"
 #include "HeightAiding.hpp"
 #include "ImuPrediction.hpp"
 #include "MagneticAiding.hpp"
@@ -74,6 +75,7 @@ private:
     void fuse_gps();
     void fuse_mag();
     void fuse_height();
+    void fuse_gravity(vehicle_imu_s const & sample, imu_type const & imu);
     void record_vertical_velocity_reset(double delta);
     bool update_imu_bias(vehicle_imu_s const & sample, imu_type const & imu);
     bool update_imu_health(vehicle_imu_s const & sample);
@@ -140,6 +142,10 @@ private:
     imu_type m_previous_imu{};
     vector3_type m_accel_sum{}, m_gyro_sum{}, m_mag_sum{};
     height_type m_height_aiding{};
+    formal_eskf::px4::GravityAiding<backend_type> m_gravity_aiding{};
+    bool m_gravity_enabled = true;
+    uint32_t m_gravity_samples{}, m_gravity_updates{};
+    uint64_t m_gravity_interval{};
     bias_learning_type m_bias_learning{{25., 3., 0.5, true, true}};
     bias_learning_type::Result m_bias_learning_result{};
     vertical_health_type m_vertical_health{};

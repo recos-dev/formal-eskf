@@ -222,10 +222,25 @@ Startup clipping, gyro clipping and undefined clipping bits remain rejected.
 Rejected/missing IMU data resets health continuity; synthetic gap holds retain
 configured noise without inventing clipping metadata. This is the pinned PX4
 noise-selection rule, not reconstruction of lost acceleration or complete EKF2
-timing equivalence. Gravity fusion and
-bad-acceleration reset exceptions remain separate work. See
+timing equivalence. Bad-acceleration reset exceptions remain separate work. See
 [the noise contract](../../docs/spec/verification-requirements.md#r-imu-process-noise-fault-dependent-sampled-imu-variance)
 and [the health/bias contract](../../docs/spec/verification-requirements.md#r-px4-imu-bias-module-health-and-bias-learning-inhibition).
+
+Gravity aiding now uses the shared replay sampler and tilt-alignment test.
+Actual IMU increments form rotation-aware, non-overlapping observations near
+10 ms; the last emitted duration is printed in module status. Prediction holds
+are excluded and discontinuities clear sampler/LPF history. The module supplies
+actual GNSS lifecycle activity, fresh land-detector rest information and
+interval clipping. An aligned, unaided filter may correct when gravity-band or
+rest conditions permit; clipping still blocks correction. Successful corrections
+apply the same bias limits as the other measurement groups.
+
+`FESKF_GRAV_EN=1` enables this path by default; read at startup, with 0 available
+for A/B checks. The model and g² I observation weight are unchanged from replay.
+PX4 v1.16.2 supplies the eligibility/downsampling reference; its normalized,
+sequential, innovation-gated correction is not reproduced. Gravity innovation
+gating remains deferred. `cs_gravity_vector` reports mode activity; the printed
+fusion count increases only after an actual successful correction.
 
 The wrapper is outside the portable numerical core and its existing Lean/ESBMC claims. Magnetic, height and IMU/bias integration are linked in the requirement/traceability map with its formal evidence still pending; no proof of PX4, concurrency, total stack use or hardware flight is asserted. Native tests and closed-loop SITL are separate empirical evidence.
 
@@ -437,6 +452,32 @@ with the pinned PX4 build, 8 package tests, formatting and unix32/unix64 Cppchec
 All existing correction call sites were reviewed. This commit adds no formal
 proof or dedicated flight experiment; integration flight regression continues
 with F-02.1.
+
+## Gravity integration validation: 2026-11-12
+
+F-02.1 reuses the existing sampler/tilt logic without changing numerical-core
+models. Eight native and eight ASan/UBSan suites cover both backends and scalar
+formats, including disabled/aided/unaligned states, rest override, clipping,
+unknown metadata, independent integration periods, actual tilt correction,
+bias limiting and history reset. Leak detection remains enabled. Pinned PX4
+build, 8 package tests (71 installed files), formatting and unix32/unix64
+Cppcheck passed. A test-only unread-result warning was corrected and rechecked.
+
+| Same binary, startup gravity setting | Enabled | Disabled |
+| --- | --- | --- |
+| Independent ULog flight checks | 18/18 | 18/18 |
+| Ground failure/recovery scenarios | 20/20 | 20/20 |
+| Gravity corrections through final ground scenario | 3160 | 0 |
+| Position / velocity RMSE | 0.186 m / 0.220 m/s | 0.163 m / 0.256 m/s |
+| Attitude RMSE | 1.063° | 1.642° |
+
+`output/px4-gravity-{on,off}-sitl-01/` records settings, source/binary hashes and
+ULog evidence. Enabled gravity starts after horizontal aiding stops and stops
+on GNSS recovery. The 250 Hz input emitted 8 ms observations in these runs;
+10 ms is a nominal whole-sample target, not an exact-rate promise. Both flights
+had 100% valid estimates and no numerical faults, airborne failsafes or dropouts.
+Independent runs/ground outages are not a paired accuracy-improvement experiment
+or physical acceleration-fault validation. Lean/ESBMC adapter evidence is pending.
 
 ## GNSS integration scope
 

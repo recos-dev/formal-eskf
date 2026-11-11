@@ -3413,6 +3413,10 @@
           {
             "file": "examples/replay_ins.cpp",
             "symbol": "ImuFlags read_imu_flags("
+          },
+          {
+            "file": "include/formal_eskf/runtime/tilt_alignment.hpp",
+            "symbol": "class TiltAlignment"
           }
         ],
         "esbmc": []
@@ -3443,12 +3447,20 @@
             "symbol": "[[nodiscard]] AccelerometerFusionResult fuse_accelerometer("
           },
           {
-            "file": "examples/replay_accelerometer.hpp",
-            "symbol": "class ReplayAccelerometer"
+            "file": "include/formal_eskf/runtime/accelerometer_sample.hpp",
+            "symbol": "class AccelerometerSample"
           },
           {
             "file": "examples/replay_ins.cpp",
             "symbol": "void replay("
+          },
+          {
+            "file": "integrations/px4/module/GravityAiding.hpp",
+            "symbol": "class GravityAiding"
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::fuse_gravity("
           }
         ],
         "esbmc": []
@@ -3713,6 +3725,10 @@
           {
             "file": "integrations/px4/module/MagneticAiding.hpp",
             "symbol": "MagneticAiding<Linalg>::update("
+          },
+          {
+            "file": "integrations/px4/module/GravityAiding.hpp",
+            "symbol": "class GravityAiding"
           }
         ],
         "esbmc": []

@@ -10,11 +10,10 @@
 
 #include <cmath>
 #include <cstdint>
-#include <numbers>
 #include <optional>
 
 #include <formal_eskf/runtime/accelerometer_conditions.hpp>
-#include <formal_eskf/so3/operations.hpp>
+#include <formal_eskf/runtime/tilt_alignment.hpp>
 
 namespace formal_eskf::example
 {
@@ -29,30 +28,12 @@ template <typename Linalg> class ReplayFusionConditions
 public:
     using value_type = typename Linalg::value_type;
     static constexpr std::uint64_t horizontal_timeout_us = 7'000'000U;
-    static constexpr value_type tilt_limit = std::numbers::pi_v<value_type> / value_type{60};
+    static constexpr value_type tilt_limit = runtime::TiltAlignment<Linalg>::tilt_limit;
 
-    /** Unit q_nb and symmetric PSD body-local attitude covariance are caller premises. */
     [[nodiscard]] Status update_tilt(so3::UnitQuaternion<Linalg> const & q_nb,
                                      linalg::Matrix<Linalg, 3U, 3U> const & P_theta_b) noexcept
     {
-        if (!linalg::all_finite(q_nb.coefficients()) || !linalg::all_finite(P_theta_b))
-        {
-            return Status::non_finite_input;
-        }
-        auto const R_nb = so3::to_rotation_matrix(q_nb);
-        auto const P_theta_n = R_nb * P_theta_b * linalg::transpose(R_nb);
-        auto const variance = P_theta_n(0U, 0U) + P_theta_n(1U, 1U);
-        if (!linalg::all_finite(P_theta_n) || !std::isfinite(variance))
-        {
-            return Status::non_finite_result;
-        }
-        if (P_theta_n(0U, 0U) < value_type{0} || P_theta_n(1U, 1U) < value_type{0})
-        {
-            return Status::domain_error;
-        }
-        m_tilt_variance = variance;
-        m_tilt_aligned = m_tilt_aligned || variance < tilt_limit * tilt_limit;
-        return Status::success;
+        return m_tilt.update(q_nb, P_theta_b);
     }
 
     /** Call only after actual horizontal position/velocity correction succeeds. */
@@ -64,8 +45,8 @@ public:
         return m_last_horizontal_fusion_us != 0U &&
                (now_us < m_last_horizontal_fusion_us || now_us - m_last_horizontal_fusion_us < horizontal_timeout_us);
     }
-    [[nodiscard]] bool tilt_aligned() const noexcept { return m_tilt_aligned; }
-    [[nodiscard]] value_type tilt_variance() const noexcept { return m_tilt_variance; }
+    [[nodiscard]] bool tilt_aligned() const noexcept { return m_tilt.aligned(); }
+    [[nodiscard]] value_type tilt_variance() const noexcept { return m_tilt.variance(); }
 
     /**
      * -1 means unavailable. Unknown rest disables only its override; unknown
@@ -82,15 +63,14 @@ public:
         }
         return runtime::AccelerometerFusionConditions{
             enabled,
-            m_tilt_aligned,
+            m_tilt.aligned(),
             horizontal_aiding(now_us),
             at_rest == 1,
             {(clipping_mask & 1) != 0, (clipping_mask & 2) != 0, (clipping_mask & 4) != 0}};
     }
 
 private:
-    value_type m_tilt_variance{};
-    bool m_tilt_aligned = false;
+    runtime::TiltAlignment<Linalg> m_tilt{};
     std::uint64_t m_last_horizontal_fusion_us{};
 }; /* end class ReplayFusionConditions */
 

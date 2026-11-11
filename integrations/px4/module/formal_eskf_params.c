@@ -44,3 +44,16 @@ PARAM_DEFINE_INT32(FESKF_DECL_TYPE, 3);
  * @group Formal ESKF
  */
 PARAM_DEFINE_FLOAT(FESKF_MAG_DECL, 0.0f);
+
+/**
+ * Enable gravity vector aiding
+ *
+ * Uses the existing unnormalized gravity observation only when tilt is aligned,
+ * horizontal aiding is inactive and gravity-band/rest conditions permit it.
+ * Clipped intervals are rejected. Read at module start.
+ *
+ * @boolean
+ * @reboot_required true
+ * @group Formal ESKF
+ */
+PARAM_DEFINE_INT32(FESKF_GRAV_EN, 1);

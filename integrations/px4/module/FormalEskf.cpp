@@ -39,6 +39,13 @@ FormalEskf::~FormalEskf()
 
 bool FormalEskf::init()
 {
+    int32_t gravity_enabled{};
+    if (param_get(param_find("FESKF_GRAV_EN"), &gravity_enabled) != 0 || gravity_enabled < 0 || gravity_enabled > 1)
+    {
+        PX4_ERR("invalid gravity aiding setting");
+        return false;
+    }
+    m_gravity_enabled = gravity_enabled != 0;
     int32_t declination_source{};
     float saved_declination{};
     if (param_get(param_find("FESKF_DECL_TYPE"), &declination_source) != 0 ||
@@ -330,6 +337,7 @@ void FormalEskf::Run()
             // Rejected/missing IMU data cannot preserve a learning authorization or health verdict.
             m_bias_learning_result = {};
             m_vertical_health.reset();
+            m_gravity_aiding.reset_samples();
             m_average_imu_interval = nominal_imu_interval;
         }
         else
@@ -374,6 +382,7 @@ void FormalEskf::Run()
                         {
                             ++m_gaps;
                             m_vertical_health.reset();
+                            m_gravity_aiding.reset_samples();
                             m_average_imu_interval = nominal_imu_interval;
                             m_magnetic_aiding.reset_acceleration();
                             check(formal_eskf::px4::try_predict_imu(m_state, m_covariance, m_previous_imu,
@@ -394,6 +403,10 @@ void FormalEskf::Run()
                             if (!m_fault && update_imu_health(sample))
                             {
                                 fuse_height();
+                            }
+                            if (!m_fault)
+                            {
+                                fuse_gravity(sample, imu);
                             }
                             if (!m_fault)
                             {
@@ -525,6 +538,24 @@ void FormalEskf::fuse_gps()
         }
     }
     m_max_fusion_age = std::max(m_max_fusion_age, m_time - m_gnss_sample.time_us);
+}
+
+void FormalEskf::fuse_gravity(vehicle_imu_s const & sample, imu_type const & imu)
+{
+    auto const & gnss = m_gnss_fusion.state();
+    formal_eskf::px4::GravityAiding<backend_type>::Context const context{
+        m_gravity_enabled, recent(m_land.timestamp, 2000000) && m_land.at_rest,
+        gnss.horizontal_position.active || gnss.velocity.active};
+    auto const result = m_gravity_aiding.update(imu, sample.delta_angle_dt, sample.delta_velocity_dt,
+                                                sample.delta_velocity_clipping, context, m_parameters.gravity_n,
+                                                m_state, m_covariance, m_bias_learning_result.bias_update);
+    if (!check(result.status) || !result.ready)
+    {
+        return;
+    }
+    ++m_gravity_samples;
+    m_gravity_interval = result.interval_us;
+    m_gravity_updates += result.fusion.decision == formal_eskf::runtime::FusionDecision::fused;
 }
 
 bool FormalEskf::magnetic_heading_valid() const
@@ -836,7 +867,10 @@ void FormalEskf::publish_status(uint64_t now)
     status.timestamp_sample = m_time;
     if (healthy)
     {
-        status.control_mode_flags |= (1ULL << status.CS_TILT_ALIGN);
+        if (m_gravity_aiding.tilt_aligned())
+        {
+            status.control_mode_flags |= (1ULL << status.CS_TILT_ALIGN);
+        }
         if (m_magnetic_aiding.aligned())
         {
             status.control_mode_flags |= (1ULL << status.CS_YAW_ALIGN);
@@ -899,7 +933,8 @@ void FormalEskf::publish_status(uint64_t now)
     estimator_status_flags_s flags{};
     flags.timestamp = now;
     flags.timestamp_sample = m_time;
-    flags.cs_tilt_align = healthy;
+    flags.cs_tilt_align = healthy && m_gravity_aiding.tilt_aligned();
+    flags.cs_gravity_vector = healthy && m_gravity_aiding.active();
     flags.cs_yaw_align = healthy && m_magnetic_aiding.aligned();
     flags.cs_gnss_pos = healthy && m_gnss_fusion.state().horizontal_position.active;
     flags.cs_gnss_vel = healthy && m_gnss_fusion.state().velocity.active;
@@ -1000,6 +1035,9 @@ int FormalEskf::print_status()
              unsigned(m_bias_learning_result.high_dynamics));
     PX4_INFO("vertical IMU health: available=%u bad=%u", unsigned(m_vertical_health.state().last_update_time_us != 0),
              unsigned(m_vertical_health.state().bad_vertical_acceleration));
+    PX4_INFO("gravity: enabled=%u tilt=%u active=%u samples=%u fused=%u interval_us=%llu", unsigned(m_gravity_enabled),
+             unsigned(m_gravity_aiding.tilt_aligned()), unsigned(m_gravity_aiding.active()), m_gravity_samples,
+             m_gravity_updates, (unsigned long long)m_gravity_interval);
     perf_print_counter(m_cycle_perf);
     return 0;
 }

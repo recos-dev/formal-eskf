@@ -372,8 +372,8 @@ void FormalEskf::Run()
                             m_vertical_health.reset();
                             m_average_imu_interval = nominal_imu_interval;
                             m_magnetic_aiding.reset_acceleration();
-                            check(formal_eskf::try_predict(m_state, m_covariance, m_previous_imu, double(gap) * 1e-6,
-                                                           m_parameters, m_state, m_covariance));
+                            check(formal_eskf::px4::try_predict_imu(m_state, m_covariance, m_previous_imu,
+                                                                    double(gap) * 1e-6, m_parameters, 0, false));
                         }
                         if (!m_fault && update_imu_bias(sample, imu) &&
                             check(formal_eskf::px4::try_predict_imu(

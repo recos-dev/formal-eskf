@@ -210,7 +210,11 @@ After initialization the module continues prediction with accelerometer-clipped
 samples. Before prediction, the production `ImuPrediction.hpp` path selects
 `4.9^2 m²/s⁴` sampled accel variance per clipped body axis, or on all axes when
 the preceding vertical-health verdict is bad. It starts from configured noise
-each time, preserving gyro variance and both bias driving intensities. Current
+each time, preserving gyro variance. It then selects each bias driving intensity
+using the prior bias variance and selected IMU variance: equality or a larger
+bias variance suppresses that axis's increment. Gap holds apply this bias-noise
+rule with configured IMU variance. Intensities retain `intensity * dt` scaling
+and can resume after a later covariance reduction. Current
 clipping also inhibits the corresponding accel-bias learning and reaches the
 health detector after GNSS velocity, before height fusion.
 
@@ -218,7 +222,7 @@ Startup clipping, gyro clipping and undefined clipping bits remain rejected.
 Rejected/missing IMU data resets health continuity; synthetic gap holds retain
 configured noise without inventing clipping metadata. This is the pinned PX4
 noise-selection rule, not reconstruction of lost acceleration or complete EKF2
-timing equivalence. Bias driving-noise selection/limits, gravity fusion and
+timing equivalence. Bias-value limits, gravity fusion and
 bad-acceleration reset exceptions remain separate work. See
 [the noise contract](../../docs/spec/verification-requirements.md#r-imu-process-noise-fault-dependent-sampled-imu-variance)
 and [the health/bias contract](../../docs/spec/verification-requirements.md#r-px4-imu-bias-module-health-and-bias-learning-inhibition).
@@ -407,6 +411,19 @@ not open SITL's local UDP socket or complete LeakSanitizer; the successful runs
 used the host environment with leak detection retained. No Lean/ESBMC proof
 was added; those gaps remain explicit in the traceability map.
 
+## Bias driving-noise integration validation: 2026-11-12
+
+F-01.2 connects the existing per-axis variance policy after IMU noise selection,
+including gap holds. Module/policy suites passed on both backends (4 native and
+4 ASan/UBSan suites, float/double, leak detection enabled). Threshold equality,
+selected clipping variance, release and failure rollback are covered. Formatting,
+unix32/unix64 Cppcheck and the pinned PX4 build passed.
+
+`output/px4-bias-noise-sitl-01/` passed all 18 independent flight checks and all
+20 ground scenarios: position/velocity/attitude RMSE 0.163 m / 0.257 m/s / 1.669°;
+100% valid estimates, no numerical faults, airborne failsafes or ULog dropouts.
+This is integration regression evidence; no Lean/ESBMC proof was added.
+
 ## GNSS integration scope
 
 Behavior is checked against the pinned
@@ -419,6 +436,6 @@ and message conventions are specified in
 
 The single-source GNSS height lifecycle remains disabled; `HeightAiding` now
 coordinates the GNSS/barometer height sources. Emergency yaw, receiver selection,
-lever arms, delayed fusion and bias driving-noise/limit wiring remain separate work.
+lever arms, delayed fusion and bias-limit wiring remain separate work.
 GNSS sample-time handling is still immediate and differs from EKF2's buffered
 publication-time path. This is not complete EKF2 parity.

@@ -102,12 +102,39 @@ template <typename Linalg> void run(Context & test)
                         equal(state.p_n, Vector::from_row_major({0, Scalar{0.015625}, 0})),
                     "clipped motion", "retain measured increments rather than skipping or zeroing the interval");
     }
-    for (unsigned failure = 0; failure < 3; ++failure)
+    for (auto const clipping : {std::uint8_t{0}, std::uint8_t{1}})
+    {
+        auto state = initial;
+        Covariance P;
+        std::array<Scalar, 6> const prior{1, 3, Scalar{2.5}, 4, Scalar{4.5}, 7};
+        for (std::size_t axis = 0; axis < prior.size(); ++axis)
+        {
+            P.set(9 + axis, 9 + axis, prior[axis]);
+        }
+        test.expect(try_predict_imu(state, P, imu, dt, parameters, clipping, false) == Status::success, "bias noise",
+                    "module and gap-hold predictions select bias driving noise");
+        std::array<Scalar, 6> const increment{clipping == 0 ? Scalar{0} : dt, 0, Scalar{3} * dt, 0, Scalar{5} * dt, 0};
+        for (std::size_t axis = 0; axis < prior.size(); ++axis)
+        {
+            test.expect(P(9 + axis, 9 + axis) == prior[axis] + increment[axis], "bias noise",
+                        "strict threshold uses selected IMU variance; intensity scales by dt without clamping P");
+        }
+        P.set(9, 9, Scalar{0.5});
+        test.expect(try_predict_imu(state, P, imu, dt, parameters, 0, false) == Status::success &&
+                        P(9, 9) == Scalar{0.5} + dt,
+                    "bias noise", "lower prior variance restores configured driving noise on a later prediction");
+    }
+    for (unsigned failure = 0; failure < 4; ++failure)
     {
         auto state = initial;
         state.p_n = Vector::from_row_major({1, 2, 3});
         auto const before = state;
         Covariance P = Covariance::identity();
+        if (failure == 3)
+        {
+            P.set(9, 9, Scalar{-1});
+        }
+        auto const before_P = P;
         auto invalid = parameters;
         if (failure == 0)
         {
@@ -115,10 +142,10 @@ template <typename Linalg> void run(Context & test)
         }
         test.expect(try_predict_imu(state, P, imu, failure == 1 ? -dt : dt, invalid, failure == 2 ? 8 : 1, false) !=
                         Status::success,
-                    "failure", "invalid configured noise, interval or clipping mask is rejected");
+                    "failure", "invalid noise, interval, clipping mask or bias variance is rejected");
         test.expect(equal(state.p_n, before.p_n) && equal(state.v_n, before.v_n) && equal(state.b_a, before.b_a) &&
                         equal(state.b_g, before.b_g) && equal(state.q_nb.coefficients(), before.q_nb.coefficients()) &&
-                        equal(P, Covariance::identity()),
+                        equal(P, before_P),
                     "failure", "selection or prediction failure preserves the complete estimate");
     }
     // Follow the module order: preceding health -> bias permissions -> prediction -> current health.

@@ -1674,10 +1674,9 @@ selection, even if configured and replacement variances happen to be equal.
 
 The PX4 module uses `px4::try_predict_imu` for actual accepted IMU intervals.
 It copies configured parameters, selects noise with fixed `4.9^2` fault variance,
-then calls atomic INS prediction in place. It does not modify configured noise,
-gyro variance or either bias driving intensity. Selection/prediction failure
-preserves state/P and feeds the existing numerical-fault latch. Bias driving
-noise selection remains a separate module task; replay already applies it.
+applies `R-BIAS-PROCESS-NOISE`, then calls atomic INS prediction in place.
+Configured noise and gyro variance are preserved. Selection/prediction failure
+preserves state/P and feeds the existing numerical-fault latch.
 
 The module first checks timestamps, periods, finite increments and continuity.
 It accepts only the three defined accel-clipping bits, only after initialization;
@@ -1686,13 +1685,13 @@ permissions consume the preceding health verdict plus current clipping. After
 the GNSS velocity attempt, current clipping reaches the health detector before
 height fusion. A newly detected held fault therefore affects the next prediction.
 Clearing clipping restores configured noise unless the held fault remains set.
-Synthetic gap holds retain configured noise and do not consume either adjacent
+Synthetic gap holds retain configured IMU variances and do not consume either adjacent
 sample's clipping or update health/peaks. The existing health-history reset on
 gaps is unchanged. This fallback and gyro rejection are explicit module limits,
 not assertions of EKF2 equivalence. Clipping flags do not reconstruct lost motion.
 
 Native tests cover all selector choices, aliases, actual rotated covariance,
-module clipping admission/prediction, restoration, unchanged gyro/bias noise,
+module clipping admission/prediction, restoration, gyro variance and bias-noise thresholds,
 failure rollback and detector/bias-policy sequencing. Replay retains its existing
 metadata behavior. Lean/ESBMC evidence and physical clipping/calibration validation
 remain pending; normal-flight SITL does not establish clipped-flight accuracy.
@@ -1752,6 +1751,16 @@ positive intensities suppressed by the rule. Selection is not proof that a tiny
 floating-point increment changed P. Native backend, threshold, rollback,
 correction/recovery and replay tests support the rule; new Lean/ESBMC evidence
 remains pending. Full PX4 covariance constraints remain separate work.
+
+The PX4 module applies the same production selector through `px4::try_predict_imu`
+before real and synthetic gap-hold predictions. Real intervals first select
+fault/clipping-dependent IMU variance; gap holds use configured IMU variance.
+Both use the prior covariance and start from configured intensities on every
+call, so suppression does not latch. Fixed intensities remain 1e-6 m²/s⁵ and
+1e-8 rad²/s³, with the existing `intensity * dt` scaling. No correction permission
+or bias-value limit is introduced here. Native module tests check equality,
+above/below threshold, clipping-dependent release, subsequent recovery and
+failure rollback; new formal evidence remains pending.
 
 ### R-BIAS-LIMITS: per-axis bias-value limits
 

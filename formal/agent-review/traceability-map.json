@@ -3640,7 +3640,7 @@
     },
     {
       "id": "R-BIAS-PROCESS-NOISE",
-      "title": "INS variance-dependent bias driving-noise selection and replay wiring; Lean and ESBMC evidence pending",
+      "title": "INS variance-dependent bias driving-noise selection with replay and PX4 module wiring; Lean and ESBMC evidence pending",
       "references": {
         "spec": [
           {
@@ -3653,6 +3653,14 @@
           {
             "file": "include/formal_eskf/runtime/bias_process_noise.hpp",
             "symbol": "[[nodiscard]] Status try_inhibit_bias_process_noise("
+          },
+          {
+            "file": "integrations/px4/module/ImuPrediction.hpp",
+            "symbol": "Status try_predict_imu("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::Run()"
           },
           {
             "file": "examples/replay_ins.cpp",

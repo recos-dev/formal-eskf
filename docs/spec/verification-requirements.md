@@ -1947,15 +1947,91 @@ v1.16.2 (`54f0455ffcd755534539a7cf33a09a20bf71d29d`), not moving `main`.
   position OR velocity progress report dead reckoning; after 5 s withdraw
   horizontal position/velocity validity. These do not prematurely stop the 7 s
   session. Alignment persists through loss of magnetometer freshness.
-  Height remains an independent qualified/gated measurement because
-  barometer also aids. The GNSS-only height lifecycle and Down-only timeout
-  resets are disabled: multi-source height/bias/reference arbitration is pending.
+  Height is managed separately by `R-HEIGHT-FUSION`; the GNSS-only height
+  lifecycle remains disabled. Its shared height-progress timeout now authorizes
+  the Down-only velocity reset after normal velocity correction and before height
+  processing. Height does not refresh horizontal progress.
   No emergency yaw, lever-arm correction, vertical-acceleration exception or
   receiver blending is claimed.
 
 PX4 compilation, existing native runtime tests and closed-loop SITL with quality
 failure, outage and recovery checks are empirical evidence. This adapter has no
 Lean/ESBMC proof and does not establish complete EKF2 equivalence.
+
+
+### R-HEIGHT-FUSION: PX4 GNSS/barometer height management
+
+`integrations/px4/module/HeightAiding.hpp` owns the two-source deployment policy;
+`HeightBias.hpp` holds separate scalar sensor offsets, outside the 15-state INS.
+The module supplies calibrated MSL altitude, source identity, qualified GNSS,
+ordered IMU time and velocity-aiding activity. uORB, clocks and estimator ownership
+remain in the module. No numerical-core equations or state dimensions change.
+The caller retains the core's finite-state, unit-quaternion and symmetric-PSD
+covariance preconditions; this helper does not prove or recheck positive semidefiniteness.
+
+- Use the pinned v1.16.2 public defaults: GNSS is preferred height reference,
+  barometer is enabled, barometer standard deviation 3.5 m, GNSS standard deviation
+  `max(epv, 0.75 m)` capped at 10 m when barometer is active, and 5-sigma height gates.
+  Process barometer before GNSS, after horizontal/velocity operations. These are
+  fixed deployment settings, not live `EKF2_*` parameter bindings.
+- With altitude `h = origin_altitude - p_D`, define each offset as `b = z_h - h`.
+  The core observes `p_D = origin_altitude - z_h + b` with variance `R + P_b`.
+  Freeze the current observation at the prior offset before training the offset
+  for subsequent samples. Only active non-reference sources predict/learn their
+  offset; the current reference's offset and variance remain frozen.
+- Offset estimation uses a scalar Kalman update with a strict 3-sigma gate,
+  0.13 m/sqrt(s) process noise density; prediction and accepted updates constrain
+  variance between `1e-8` and `max(R, 1e-4)` m². Persistent signed innovations increase process variance by
+  1000: signed-ratio LPF magnitude >0.2 or a one-sided sequence >10 s, with a 10 s
+  LPF time constant. Prediction and sequence monitoring use the estimator tick
+  interval; their cadence is not a claim of bit-identical EKF2 bias evolution.
+- Start GNSS only with caller-qualified, finite data; start barometer after more
+  than 20 finite samples, with a reset-only altitude LPF (alpha 0.1). These fixed
+  warmup/LPF values follow the reference's 200 ms / 10 ms / 90 ms defaults;
+  this adapter does not implement the delayed observation queue. Source or
+  calibration changes stop that session and clear its offset history; barometer
+  also clears its fault latch and repeats warmup.
+  Altitude must lie strictly between -12000 and 100000 m, with finite positive
+  measurement variance. An invalid initial GNSS altitude delays module startup
+  instead of latching a numerical-core fault.
+- GNSS start/re-entry resets height/P to its raw qualified altitude, selects GNSS
+  as reference and zeroes its offset. Secondary barometer start aligns its offset
+  to the current estimate without resetting navigation. Track session startup
+  grace separately from actual successful fusion/reset progress. An invalid or
+  unqualified observation stops only that source; it cannot claim fusion success.
+- Missing-data deadlines are 400 ms for barometer and 1 s for GNSS, equality
+  expired. Retain the adapter's stricter sample-age limits (200/500 ms). Future
+  samples wait; duplicate/stale samples cannot refresh progress. When the reference
+  stops, select an active GNSS source, otherwise active barometer, otherwise none.
+  Fallback selection alone changes no state/P or reset counter.
+- After the current height attempt, a source whose progress is >5 s old stops
+  if it cannot reset. A failed barometer is fault-latched when another height
+  source still has recent progress; ordinary good samples do not clear that latch.
+  If **all** height progress is >5 s old, only the current reference with a fresh,
+  qualified sample may reset height: GNSS uses raw altitude; barometer uses its
+  filtered altitude minus offset. An outage without data cannot authorize a reset.
+- A real height reset preserves origin coordinates, decorrelates Down position
+  using the existing checked reset primitive and transports every sensor offset
+  by the applied Down delta. Barometer also resets only Down velocity to zero,
+  variance 10 (m/s)², when no velocity-aiding session is active. With active GNSS
+  velocity, the module instead uses the shared preceding height timeout for its
+  checked Down-only reset after the normal velocity attempt. Horizontal values
+  and reset counters are unaffected by either Down-only operation.
+- Commit the height tick's state/P, history and counters only if all numerical
+  operations succeed. Rejection can update diagnostics/lifecycle but cannot act
+  as successful correction. Preserve raw gate evidence after a timeout reset;
+  reset metadata is separate. Publish applied Down/altitude deltas with opposite
+  signs and matching local/global/status counters, plus aggregate odometry reset
+  count. Accumulate multiple reset deltas within a tick. Height validity lasts
+  at most 5 s after actual height fusion/reset, separately from session activity.
+
+This profile covers GNSS and barometer with a fixed GNSS preference. IMU-fault
+reset/innovation exceptions, ground effect, dynamic-pressure correction, lever
+arms, delayed fusion, output prediction, range/vision height and configurable
+reference selection are not part of it. Native/backend tests and closed-loop
+SITL are empirical evidence; Lean/ESBMC proofs of this policy, scalar offsets,
+module wiring and numerical bounds remain pending. The bias estimates are not
+independent altitude truth or a proof of physical sensor health.
 
 ## Quaternion and SO(3)
 

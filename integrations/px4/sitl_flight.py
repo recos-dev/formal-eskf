@@ -183,12 +183,19 @@ class Flight:
             ("mag_unaided_timeout", ("sensor_mag_sim", "stop"), 1.5, "heading_good_for_control: False"),
             ("mag_unaided_restart", ("sensor_mag_sim", "start"), 2., "heading_good_for_control: True"),
             ("gnss_after_mag_restart", ("sensor_gps_sim", "start"), 4., "xy_valid: True"),
+            ("baro_timeout", ("sensor_baro_sim", "stop"), 0.6, "z_valid: True"),
+            ("baro_restart", ("sensor_baro_sim", "start"), 2., "z_valid: True"),
+            ("gnss_height_fallback", ("sensor_gps_sim", "stop"), 1.2, "z_valid: True"),
+            ("all_height_timeout", ("sensor_baro_sim", "stop"), 5.2, "z_valid: False"),
+            ("baro_height_recovery", ("sensor_baro_sim", "start"), 2., "z_valid: True"),
+            ("gnss_height_recovery", ("sensor_gps_sim", "start"), 4., "xy_valid: True"),
         ]
-        GNSS_RECOVERY = ("gnss_quality_recovery", "gnss_restart", "gnss_after_mag_restart")
+        GNSS_RECOVERY = ("gnss_quality_recovery", "gnss_restart", "gnss_after_mag_restart", "gnss_height_recovery")
         BASELINE = self.cli("listener", "vehicle_local_position", "-n", "1")["output"]
         PREVIOUS_POSITION_RESET = self.listener_integer(BASELINE, "xy_reset_counter")
         PREVIOUS_VELOCITY_RESET = self.listener_integer(BASELINE, "vxy_reset_counter")
         PREVIOUS_HEADING_RESET = self.listener_integer(BASELINE, "heading_reset_counter")
+        PREVIOUS_HEIGHT_RESET = self.listener_integer(BASELINE, "z_reset_counter")
         try:
             for NAME, COMMAND, DURATION, EXPECTED in STEPS:
                 ACTION = self.cli(*COMMAND)
@@ -214,6 +221,8 @@ class Flight:
                 STATUS = self.cli("listener", "estimator_status", "-n", "1")
                 FLAGS = self.cli("listener", "estimator_status_flags", "-n", "1")
                 ATTITUDE = self.cli("listener", "vehicle_attitude", "-n", "1")
+                GLOBAL = self.cli("listener", "vehicle_global_position", "-n", "1")
+                HEIGHT = self.cli("formal_eskf", "status")
                 PASSED = EXPECTED in LOCAL["output"]
                 POSITION_RESET = self.listener_integer(LOCAL["output"], "xy_reset_counter")
                 VELOCITY_RESET = self.listener_integer(LOCAL["output"], "vxy_reset_counter")
@@ -245,15 +254,34 @@ class Flight:
                     PASSED = PASSED and f"cs_yaw_align: {ALIGNED}" in FLAGS["output"]
                     if ACTIVE:
                         PASSED = PASSED and "cs_mag_heading_consistent: True" in FLAGS["output"]
+                HEIGHT_RESET = self.listener_integer(LOCAL["output"], "z_reset_counter")
+                PASSED = PASSED and (HEIGHT_RESET - PREVIOUS_HEIGHT_RESET) % 256 == int(NAME in GNSS_RECOVERY)
+                PASSED = PASSED and self.listener_integer(GLOBAL["output"], "alt_reset_counter") == HEIGHT_RESET
+                PASSED = PASSED and self.listener_integer(STATUS["output"], "reset_count_pod_d") == HEIGHT_RESET
+                if NAME in GNSS_RECOVERY:
+                    LOCAL_DELTA = float(re.search(r"\bdelta_z:\s+([^\s]+)", LOCAL["output"])[1])
+                    GLOBAL_DELTA = float(re.search(r"\bdelta_alt:\s+([^\s]+)", GLOBAL["output"])[1])
+                    PASSED = PASSED and abs(LOCAL_DELTA + GLOBAL_DELTA) < 1e-4
+                HEIGHT_EXPECTATIONS = {
+                    "baro_timeout": "height: ref=1 baro=0 gnss=1",
+                    "baro_restart": "height: ref=1 baro=1 gnss=1",
+                    "gnss_height_fallback": "height: ref=0 baro=1 gnss=0",
+                    "all_height_timeout": "height: ref=2 baro=0 gnss=0",
+                    "baro_height_recovery": "height: ref=0 baro=1 gnss=0",
+                    "gnss_height_recovery": "height: ref=1 baro=1 gnss=1",
+                }
+                if NAME in HEIGHT_EXPECTATIONS:
+                    PASSED = PASSED and HEIGHT_EXPECTATIONS[NAME] in HEIGHT["output"]
+                PREVIOUS_HEIGHT_RESET = HEIGHT_RESET
                 PREVIOUS_POSITION_RESET = POSITION_RESET
                 PREVIOUS_VELOCITY_RESET = VELOCITY_RESET
                 PREVIOUS_HEADING_RESET = HEADING_RESET
                 CHECKS.append({"name": NAME, "pass": PASSED, "expected": EXPECTED, "simulation_time": ELAPSED,
                                "action": ACTION, "local": LOCAL, "status": STATUS, "flags": FLAGS, "attitude": ATTITUDE,
-                               "recovery": RECOVERY})
+                               "recovery": RECOVERY, "global": GLOBAL, "height": HEIGHT})
                 self.event(f"ground fault check {NAME}: {'PASS' if PASSED else 'FAIL'}")
                 if not PASSED:
-                    raise RuntimeError(f"GNSS/magnetometer state, diagnostics or reset assertion failed after {NAME}")
+                    raise RuntimeError(f"Sensor state, diagnostics or reset assertion failed after {NAME}")
         finally:
             (self.output / "faults.json").write_text(json.dumps(CHECKS, indent=2))
         return CHECKS

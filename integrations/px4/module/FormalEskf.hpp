@@ -33,6 +33,7 @@
 #include <formal_eskf/runtime/position.hpp>
 #include <formal_eskf/runtime/velocity.hpp>
 
+#include "HeightAiding.hpp"
 #include "MagneticAiding.hpp"
 #include "MagneticModel.hpp"
 
@@ -58,6 +59,7 @@ private:
     using matrix3_type = backend_type::matrix_type<3, 3>;
     using imu_type = types_type::imu_sample_type;
     using status_type = formal_eskf::Status;
+    using height_type = formal_eskf::px4::HeightAiding<backend_type>;
     using magnetic_type = formal_eskf::px4::MagneticAiding<backend_type>;
     using magnetic_model_type = formal_eskf::px4::MagneticModel<backend_type>;
 
@@ -65,7 +67,8 @@ private:
     void initialize(vehicle_imu_s const & sample, imu_type const & imu);
     void fuse_gps();
     void fuse_mag();
-    void fuse_baro();
+    void fuse_height();
+    void record_vertical_velocity_reset(double delta);
     void publish(imu_type const & imu);
     void publish_status(uint64_t now);
     void update_gps_quality();
@@ -124,6 +127,7 @@ private:
     types_type::parameter_type m_parameters{};
     imu_type m_previous_imu{};
     vector3_type m_accel_sum{}, m_gyro_sum{}, m_mag_sum{};
+    height_type m_height_aiding{};
     magnetic_type m_magnetic_aiding{};
     magnetic_model_type m_magnetic_model{};
     magnetic_model_type::Settings m_magnetic_settings{};
@@ -136,14 +140,17 @@ private:
     formal_eskf::runtime::GnssQualityResult<double> m_gnss_quality_result{};
     formal_eskf::runtime::GnssFusion m_gnss_fusion{};
     formal_eskf::runtime::GnssFusion::Sample m_gnss_sample{};
-    // Fixed v1.16.2 SITL profile. Height lifecycle is disabled while baro also aids.
+    // Horizontal-only profile; HeightAiding owns GNSS/barometer height arbitration.
     static constexpr formal_eskf::runtime::GnssFusion::Parameters gnss_fusion_parameters{7000000, 1000000, 5000000};
     double m_gps_previous_alt{};
     uint32_t m_gps_device_id{};
     bool m_gps_metadata_valid{};
     backend_type::vector_type<2> m_position_reset_delta{};
     vector3_type m_velocity_reset_delta{};
-    uint8_t m_position_reset_counter{}, m_velocity_reset_counter{}, m_odometry_reset_counter{};
+    uint8_t m_position_reset_counter{}, m_velocity_reset_counter{}, m_vertical_velocity_reset_counter{},
+        m_odometry_reset_counter{};
+    double m_vertical_velocity_reset_delta{};
+    uint64_t m_vertical_velocity_reset_time{};
     vehicle_imu_s m_last_imu{};
     sensor_gps_s m_gps{};
     vehicle_magnetometer_s m_mag{};
@@ -151,12 +158,11 @@ private:
     vehicle_land_detected_s m_land{};
     vehicle_status_s m_vehicle_status{};
     uint64_t m_time{}, m_origin_time{}, m_last_status{}, m_last_output{};
-    uint64_t m_gps_seen{}, m_mag_seen{}, m_baro_seen{}, m_mag_init_seen{};
-    uint64_t m_gps_height_fused{}, m_baro_fused{}, m_max_fusion_age{};
+    uint64_t m_gps_seen{}, m_mag_seen{}, m_mag_init_seen{}, m_max_fusion_age{};
     uint32_t m_init_samples{}, m_init_mag_samples{}, m_predictions{}, m_gps_updates{}, m_mag_updates{},
         m_baro_updates{};
     uint32_t m_rejections{}, m_errors{}, m_gaps{};
-    double m_origin_alt{}, m_origin_ellipsoid{}, m_baro_origin{};
+    double m_origin_alt{}, m_origin_ellipsoid{};
     double m_pos_ratio{}, m_vel_ratio{}, m_height_ratio{}, m_gps_height_ratio{}, m_mag_ratio{};
     bool m_initialized{}, m_fault{};
     // PX4 shell status runs on another thread; serialize diagnostic reads.

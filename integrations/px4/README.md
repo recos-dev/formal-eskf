@@ -126,13 +126,13 @@ flowchart LR
 
 - Uses integrated IMU instance 0 in FRD coordinates and `timestamp_sample`. A single work-queue writer owns the filter, with mutex-serialized shell diagnostics.
 - Initializes tilt and gyro bias from stationary IMU samples; magnetometer and the selected geographic/stored/zero declination initialize yaw. No EKF2 or ground-truth subscriptions enter the estimator.
-- Qualifies GNSS with the portable quality monitor before startup and fusion. Uses independent velocity, horizontal-position and height gates. Future samples wait; stale/invalid samples cannot refresh health. Velocity and horizontal position have the portable lifecycle and checked resets; each successful reset publishes its deltas/counters. Relative barometer altitude and magnetic measurements remain separate aiding paths.
+- Qualifies GNSS with the portable quality monitor before startup and fusion. Uses independent velocity, horizontal-position and height gates. Future samples wait; stale/invalid samples cannot refresh health. Velocity and horizontal position have the portable lifecycle and checked resets; each successful reset publishes its deltas/counters. GNSS/barometer height arbitration and magnetic measurements use separate adapter helpers.
 - Connects magnetic field checks, heading consistency, lifecycle, gated correction and real heading/covariance resets through `module/MagneticAiding.hpp`. The module supplies sensor identity, calibrated FRD samples and current aiding/flight conditions; the helper owns magnetic history, not the estimator state or platform effects. It uses the fixed PX4 v1.16.2 defaults for noise (5 microtesla), gate (3 sigma), strength tolerance (20 microtesla), health (>1 s), no-data stop (1 s) and unsuccessful-fusion timeout (>7 s). These are not live EKF2 parameter bindings.
-- Publishes NED position/velocity, scalar-first body-to-NED quaternions, covariance diagonals, biases and estimator status. Horizontal aiding uses actual fusion/reset progress: report dead reckoning after 1 s, withdraw horizontal validity after 5 s, and stop GNSS sessions after 7 s of missing data or sustained poor quality. Height and magnetometer retain the adapter's 1 s freshness policy.
+- Publishes NED position/velocity, scalar-first body-to-NED quaternions, covariance diagonals, biases and estimator status. Horizontal aiding uses actual fusion/reset progress: report dead reckoning after 1 s, withdraw horizontal validity after 5 s, and stop GNSS sessions after 7 s of missing data or sustained poor quality. Height source activity and validity follow the policy below; magnetic progress retains its existing freshness check.
 - Holds the previous IMU rate for small missing intervals; discontinuities beyond 50 ms and IMU identity/calibration changes latch a fault. Numerical failures also latch a fault. Restart is required for recovery.
 - Reserves a 60 KiB work-queue stack. The module disables fast-math, FMA contraction, exceptions and RTTI. Lockstep virtual-time performance counters do not measure wall-clock CPU cost.
 
-This is a single-sensor SITL POC with stationary startup and simulated sensor noise. It has no receiver-delay compensation, output predictor, redundant sensors, multi-source height reset arbitration, or wind, terrain, barometer-bias and magnetic-bias states. Magnetic fusion retains a three-component observation with `ESKF_MAG_TILT=1`; it reports heading aiding, not 3D magnetic-state estimation. AUTO/3D switching and terrain-based in-flight realignment remain unconnected. See [the magnetic integration contract](../../docs/spec/verification-requirements.md#px4-module-magnetic-aiding). Heading variance approximates yaw variance with the local attitude-error z component for the tested low-tilt flight. Sensor failure checks cover flag withdrawal and recovery on the ground, not continued flight through sensor failures.
+This is a single-sensor SITL POC with stationary startup and simulated sensor noise. It has no receiver-delay compensation, output predictor, redundant sensors, or wind, terrain and magnetic-bias states. Magnetic fusion retains a three-component observation with `ESKF_MAG_TILT=1`; it reports heading aiding, not 3D magnetic-state estimation. AUTO/3D switching and terrain-based in-flight realignment remain unconnected. See [the magnetic integration contract](../../docs/spec/verification-requirements.md#px4-module-magnetic-aiding). Heading variance approximates yaw variance with the local attitude-error z component for the tested low-tilt flight. Sensor failure checks cover flag withdrawal and recovery on the ground, not continued flight through sensor failures.
 
 ### Geographic magnetic reference
 
@@ -156,7 +156,41 @@ in that mode. Parameters use `FESKF_` because this board excludes EKF2.
 There is no learned-field branch or automatic declination saving.
 See [the reference contract](../../docs/spec/verification-requirements.md#px4-module-geographic-magnetic-reference).
 
-The wrapper is outside the portable numerical core and its existing Lean/ESBMC claims. Magnetic integration is linked in the requirement/traceability map with its formal evidence still pending; no proof of PX4, concurrency, total stack use or hardware flight is asserted. Native tests and closed-loop SITL are separate empirical evidence.
+### Height aiding
+
+`HeightAiding` manages GNSS and barometer together, with GNSS as preferred height
+reference. Each source has a separate altitude-offset estimate outside the INS;
+the reference's offset is frozen and the secondary offset can learn relative drift.
+The main correction uses the prior offset and includes its variance.
+
+| Fixed deployment setting | Value |
+| --- | --- |
+| Barometer noise / height gates | 3.5 m standard deviation / 5 sigma |
+| GNSS height noise | `max(epv, 0.75 m)`, capped at 10 m while barometer is active |
+| Barometer warmup / reset LPF | More than 20 samples / alpha 0.1 |
+| Missing-data stop | Barometer 400 ms; GNSS 1 s |
+| Unsuccessful fusion timeout | Strictly more than 5 s |
+
+A stopped reference falls back to the remaining active source without resetting
+navigation. Qualified GNSS re-entry reclaims the reference with a real height
+reset; barometer re-entry aligns its offset. Persistent rejection stops the bad
+source while another works. Only a fresh reference measurement can reset height
+when all height progress has timed out. A barometer fault caused by persistent
+rejection requires source/calibration change or module restart to clear.
+
+Height resets transport the sensor offsets and publish matching local/global/status
+reset counters and deltas. Down-velocity resets have their own counter; they do not
+increment horizontal-velocity reset counters. Source sessions, successful fusion,
+reset progress and the 5 s height-validity window are separate.
+
+The reference policy is checked against the pinned [height controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/height_control.cpp),
+[GNSS height controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gnss_height_control.cpp)
+and [barometer controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/barometer/baro_height_control.cpp), using public parameter defaults.
+It retains immediate sample-time fusion and a fixed GNSS preference; dynamic-pressure
+and ground-effect corrections, bad-acceleration recovery exceptions and delayed
+fusion are separate work. See [the height contract](../../docs/spec/verification-requirements.md#r-height-fusion-px4-gnssbarometer-height-management).
+
+The wrapper is outside the portable numerical core and its existing Lean/ESBMC claims. Magnetic and height integration are linked in the requirement/traceability map with its formal evidence still pending; no proof of PX4, concurrency, total stack use or hardware flight is asserted. Native tests and closed-loop SITL are separate empirical evidence.
 
 The host patch selects the estimator at boot, starts the lockstep logger from IMU updates during alignment, logs odometry variances and adds SIH's direct `lat_lon_alt` dependency. The reduced board can print missing optional DDS, GPS-driver, camera and VTOL command/parameter messages from the shared startup script.
 
@@ -255,6 +289,38 @@ The pinned host build, all eight package tests, repository Cppcheck profiles
 (unix32/unix64) and formatting checks passed. This change adds no Lean/ESBMC
 proof or evidence of long-distance/in-flight disturbance behavior.
 
+## Height integration validation: 2026-11-12
+
+The final pinned-host build passed normal arming, the flight trajectory, landing,
+automatic disarming and all 20 ground fault/recovery scenarios. The six added
+scenarios exercise barometer outage/re-entry, GNSS-to-barometer fallback, loss of
+both height sources and recovery. Local/global/status height reset counters agree;
+global altitude deltas have the opposite sign to local Down deltas.
+
+| Check | Result |
+| --- | --- |
+| Height, magnetic and GNSS regression suites, float/double | 5 Eigen + 5 PX4 matrix passed |
+| Height ASan + UBSan, leak detection enabled | 2 backend suites passed |
+| Package installation/export | 8 passed; 65 installed files verified |
+| Cppcheck unix32/unix64; formatting | Passed |
+| Final independent ULog acceptance / ground scenarios | 18/18; 20/20 passed |
+| Position / velocity RMSE against SIH truth | 0.165 m / 0.262 m/s |
+| Attitude RMSE / maximum error | 1.654° / 3.662° |
+| Valid estimates / numerical faults / airborne failsafes / dropouts | 100% / 0 / 0 / 0 |
+
+Final evidence is in `output/px4-height-sitl-02/`, including the source manifest,
+binary hash, ULog and reports. Native tests additionally cover bias drift, rejected
+sources, calibration changes, timeout boundaries, simultaneous resets, Down-only
+velocity recovery and numerical rollback. They do not establish in-flight outage
+recovery on real hardware. This change adds no Lean/ESBMC proof.
+
+The earlier `output/px4-height-sitl-01/` passed all 20 ground scenarios but only
+17/18 flight checks: SIH stopped at -0.547 m true height, outside the fixed ±0.5 m
+landing limit. Truth crossed the ground plane and continued descending for 0.74 s;
+this is consistent with SIH's ground contact requiring both negative altitude and
+downward net force, without a position clamp. The failure remains recorded. The
+final run stopped at -0.0026 m; neither simulator nor acceptance threshold changed.
+
 ## GNSS integration scope
 
 Behavior is checked against the pinned
@@ -265,8 +331,8 @@ parameter changes do not configure this module. Quality recovery, reset feedback
 and message conventions are specified in
 [PX4 GNSS integration](../../docs/spec/verification-requirements.md#px4-gnss-integration).
 
-Barometer also aids height, so the single-source GNSS height lifecycle is not
-enabled. Height/bias/reference coordination, emergency yaw, receiver selection,
-lever arms, delayed fusion and new runtime-policy integration remain separate
-work. GNSS sample-time handling is still immediate and differs from EKF2's
-buffered publication-time path. This is not complete EKF2 parity.
+The single-source GNSS height lifecycle remains disabled; `HeightAiding` now
+coordinates the GNSS/barometer height sources. Emergency yaw, receiver selection,
+lever arms, delayed fusion and IMU/bias protection wiring remain separate work.
+GNSS sample-time handling is still immediate and differs from EKF2's buffered
+publication-time path. This is not complete EKF2 parity.

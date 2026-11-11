@@ -3859,6 +3859,46 @@
       }
     },
     {
+      "id": "R-HEIGHT-FUSION",
+      "title": "PX4 two-source height lifecycle, reference/bias handling and reset publication; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-HEIGHT-FUSION: PX4 GNSS/barometer height management"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "integrations/px4/module/HeightAiding.hpp",
+            "symbol": "class HeightAiding"
+          },
+          {
+            "file": "integrations/px4/module/HeightBias.hpp",
+            "symbol": "struct HeightBias"
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::fuse_height()"
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::record_vertical_velocity_reset("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::fuse_gps()"
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::publish("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "R-GNSS-QUALITY",
       "title": "GNSS quality checks and health qualification; Lean and ESBMC evidence pending",
       "references": {

@@ -3772,7 +3772,7 @@
     },
     {
       "id": "R-GNSS-VERTICAL-RECOVERY",
-      "title": "Bounded GNSS vertical innovations during IMU faults; Lean and ESBMC evidence pending",
+      "title": "Bounded vertical innovations during IMU faults, including PX4 module wiring; Lean and ESBMC evidence pending",
       "references": {
         "spec": [
           {
@@ -3817,6 +3817,14 @@
           {
             "file": "examples/replay_ins.cpp",
             "symbol": "void replay("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::fuse_gps("
+          },
+          {
+            "file": "integrations/px4/module/HeightAiding.hpp",
+            "symbol": "void HeightAiding<Linalg>::process("
           }
         ],
         "esbmc": []
@@ -3997,6 +4005,10 @@
           {
             "file": "integrations/px4/module/FormalEskf.cpp",
             "symbol": "void FormalEskf::publish("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "symbol": "struct VerticalAccelerationTimes"
           }
         ],
         "esbmc": []

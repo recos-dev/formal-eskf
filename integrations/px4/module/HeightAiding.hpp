@@ -6,6 +6,8 @@
 #include <cmath>
 #include <cstdint>
 
+#include <formal_eskf/runtime/gnss_fusion.hpp>
+#include <formal_eskf/runtime/gnss_measurement.hpp>
 #include <formal_eskf/runtime/gnss_reset.hpp>
 #include <formal_eskf/runtime/position.hpp>
 #include <formal_eskf/runtime/vertical_acceleration_health.hpp>
@@ -52,10 +54,18 @@ public:
         bool qualified = true;
     };
 
+    struct Acceleration
+    {
+        bool bad = false; // Held fault, independent of last-good reset timing.
+        runtime::GnssFusion::VerticalAccelerationTimes times{};
+    };
+
     struct Session
     {
         HeightBias<value_type> bias{};
-        fusion_type fusion{};
+        fusion_type fusion{}; // Raw gate diagnostics.
+        value_type fusion_innovation{};
+        bool innovation_limited = false;
         std::uint64_t sample_time{}, data_time{}, progress_time{}, fused_time{};
         std::uint32_t device_id{};
         std::uint8_t calibration_count{};
@@ -92,7 +102,8 @@ public:
     /** One increasing estimator tick: barometer before GNSS; future samples wait. */
     [[nodiscard]] Result update(std::uint64_t now_us, Sample const & barometer, Sample const & gnss,
                                 bool vertical_velocity_aiding, state_type & state, covariance_type & covariance,
-                                configuration::Ins::BiasUpdate const & bias_update = {}) noexcept;
+                                configuration::Ins::BiasUpdate const & bias_update = {},
+                                Acceleration const & acceleration = {false, {0U, 0U}}) noexcept;
 
     /** Inspect one sensor session; source must be barometer or gnss. */
     [[nodiscard]] Session const & session(Source source) const noexcept { return m_sessions[index(source)]; }
@@ -104,16 +115,19 @@ public:
         {
             return {};
         }
-        return {true, -aid.fusion.innovation(0U), aid.fusion.innovation_variance(0U)};
+        return {true, -aid.fusion_innovation, aid.fusion.innovation_variance(0U)};
     }
     [[nodiscard]] Source reference() const noexcept { return m_reference; }
     [[nodiscard]] std::uint64_t progress_time() const noexcept { return m_last_height_progress; }
     [[nodiscard]] std::uint8_t reset_counter() const noexcept { return m_reset_counter; }
     [[nodiscard]] value_type reset_delta() const noexcept { return m_reset_delta; }
-    [[nodiscard]] bool reset_required(std::uint64_t now_us) const noexcept
+    [[nodiscard]] bool reset_required(std::uint64_t now_us,
+                                      runtime::GnssFusion::VerticalAccelerationTimes const & acceleration = {
+                                          0U, 0U}) const noexcept
     {
         auto const progress = m_last_height_progress == 0U ? m_started : m_last_height_progress;
-        return progress != 0U && now_us > progress && now_us - progress > fusion_timeout_us;
+        return acceleration.reset_required(now_us) ||
+               (progress != 0U && now_us > progress && now_us - progress > fusion_timeout_us);
     }
     [[nodiscard]] bool valid(std::uint64_t now_us) const noexcept
     {
@@ -133,7 +147,7 @@ private:
     void stop(Source source, StopReason reason) noexcept;
     void process(Source source, std::uint64_t now_us, Sample const & sample, bool vertical_velocity_aiding,
                  state_type & state, covariance_type & covariance, Result & result,
-                 configuration::Ins::BiasUpdate const & bias_update) noexcept;
+                 configuration::Ins::BiasUpdate const & bias_update, Acceleration const & acceleration) noexcept;
     void reset_height(Source source, std::uint64_t now_us, value_type altitude, value_type variance, state_type & state,
                       covariance_type & covariance, Result & result) noexcept;
 
@@ -185,7 +199,8 @@ void HeightAiding<Linalg>::reset_height(Source source, std::uint64_t now_us, val
 template <typename Linalg>
 void HeightAiding<Linalg>::process(Source source, std::uint64_t now_us, Sample const & sample,
                                    bool vertical_velocity_aiding, state_type & state, covariance_type & covariance,
-                                   Result & result, configuration::Ins::BiasUpdate const & bias_update) noexcept
+                                   Result & result, configuration::Ins::BiasUpdate const & bias_update,
+                                   Acceleration const & acceleration) noexcept
 {
     auto & aid = m_sessions[index(source)];
     bool const barometer = source == Source::barometer;
@@ -285,9 +300,14 @@ void HeightAiding<Linalg>::process(Source source, std::uint64_t now_us, Sample c
         return;
     }
     aid.fusion_reset = false;
-    aid.fusion =
-        runtime::fuse_vertical_position(state, covariance, observation, observation_variance,
-                                        static_cast<value_type>(1e-6), gate_sigma, state, covariance, bias_update);
+    // Both qualified sources observe scalar NED Down. The historical GNSS-named
+    // runtime entry point contains no receiver policy or altitude conversion.
+    auto const measurement =
+        runtime::fuse_gnss_height(state, covariance, observation, observation_variance, static_cast<value_type>(1e-6),
+                                  gate_sigma, acceleration.bad, state, covariance, bias_update);
+    aid.fusion = measurement.fusion;
+    aid.fusion_innovation = measurement.fusion_innovation(0U);
+    aid.innovation_limited = measurement.innovation_limited;
     result.status = aid.fusion.status;
     if (!succeeded(result.status))
     {
@@ -307,7 +327,7 @@ void HeightAiding<Linalg>::process(Source source, std::uint64_t now_us, Sample c
     {
         ++result.rejected;
     }
-    if (m_reference == source && reset_required(now_us))
+    if (m_reference == source && reset_required(now_us, acceleration.times))
     {
         value_type const reset_altitude = barometer ? m_barometer_lpf - aid.bias.value : sample.altitude;
         reset_height(source, now_us, reset_altitude, variance, state, covariance, result);
@@ -329,18 +349,26 @@ void HeightAiding<Linalg>::process(Source source, std::uint64_t now_us, Sample c
     else if (now_us - aid.progress_time > fusion_timeout_us)
     {
         stop(source, StopReason::fusion_timeout);
-        aid.fault = barometer && !reset_required(now_us);
+        aid.fault = barometer && !reset_required(now_us, acceleration.times);
     }
 }
 
 template <typename Linalg>
-typename HeightAiding<Linalg>::Result
-HeightAiding<Linalg>::update(std::uint64_t now_us, Sample const & barometer, Sample const & gnss,
-                             bool vertical_velocity_aiding, state_type & state, covariance_type & covariance,
-                             configuration::Ins::BiasUpdate const & bias_update) noexcept
+typename HeightAiding<Linalg>::Result HeightAiding<Linalg>::update(std::uint64_t now_us, Sample const & barometer,
+                                                                   Sample const & gnss, bool vertical_velocity_aiding,
+                                                                   state_type & state, covariance_type & covariance,
+                                                                   configuration::Ins::BiasUpdate const & bias_update,
+                                                                   Acceleration const & acceleration) noexcept
 {
     Result result;
     if (m_started == 0U || now_us < m_started || now_us <= m_tick)
+    {
+        result.status = Status::out_of_range;
+        return result;
+    }
+    if (acceleration.times.update_time_us > now_us ||
+        acceleration.times.last_good_time_us > acceleration.times.update_time_us ||
+        (acceleration.bad && acceleration.times.update_time_us == 0U))
     {
         result.status = Status::out_of_range;
         return result;
@@ -368,7 +396,7 @@ HeightAiding<Linalg>::update(std::uint64_t now_us, Sample const & barometer, Sam
             aid.bias.predict(dt);
         }
         candidate.process(source, now_us, source == Source::barometer ? barometer : gnss, vertical_velocity_aiding,
-                          next_state, next_covariance, result, bias_update);
+                          next_state, next_covariance, result, bias_update, acceleration);
         if (!succeeded(result.status))
         {
             return Result{result.status};

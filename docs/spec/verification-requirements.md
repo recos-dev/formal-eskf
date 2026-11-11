@@ -1229,7 +1229,7 @@ fusion. A fault never grants source permission or requests a reset.
 | Observation | Additional condition to release a rejected gate |
 |---|---|
 | 3D GNSS velocity | Bad vertical acceleration, Down ratio > 1, both N/E ratios strictly < 1, receiver speed accuracy strictly below its configured maximum |
-| GNSS Down position | Bad vertical acceleration and rejected height gate |
+| Down position (GNSS; also qualified barometer in the module) | Bad vertical acceleration and rejected height gate |
 
 Only the vertical innovation is constrained to `[-gate_sigma * sqrt(S_D),
 +gate_sigma * sqrt(S_D)]`. Preserve its sign, horizontal residuals, H, V and
@@ -1276,6 +1276,18 @@ Joseph correction and latest-prior diagnostics differ from PX4's scalar update
 schedule; replay cadence/batching and missing-data safeguards also differ.
 Native backend and replay tests are evidence for these contracts, not flight
 accuracy or full EKF2 equivalence. Lean/ESBMC evidence remains pending.
+
+The PX4 module connects the same checked velocity/height entry points.
+Velocity consumes the preceding detector verdict and receiver-reported speed
+accuracy; quality/lifecycle failure never grants fusion or reset. A numerically
+valid quality-rejected sample from a still-active velocity source updates only
+the gate/health diagnostics, not state/P or progress. Invalid metadata clears
+that cache. Both GNSS and barometer convert their qualified altitude/offset
+observations to scalar NED Down before using the existing bounded-height path.
+That historical GNSS-named entry point contains no receiver policy. No horizontal
+position exception is added. Raw test ratios remain visible even after a limited
+fusion; health consumes the selected innovation with the core-to-monitor sign
+conversion. Last-good timing separately drives `R-HEIGHT-FUSION` recovery.
 
 ### R-ACCELEROMETER-MAGNITUDE: filtered gravity-band diagnostic
 
@@ -1616,13 +1628,14 @@ specified in `R-REPLAY-BIAS`, and the detector in `R-VERTICAL-ACCELERATION`.
   High dynamics or that fault inhibits accel bias only; gyro learning remains
   enabled. These heuristics do not prove physical health or observability.
 - Pass the same six permissions to all GNSS position/velocity, barometer/GNSS
-  height and magnetic corrections at that horizon. Reuse the existing constrained
-  gain and Joseph update; do not suppress an entire observation merely because
+  height, gravity and magnetic corrections at that horizon. Reuse the existing
+  constrained gain and Joseph update; do not suppress an entire observation merely because
   bias learning is inhibited. Checked navigation/heading resets preserve biases.
 - Evaluate vertical health after the current GNSS velocity attempt and before
   current height attempts. Use current active source sessions and latest valid
-  raw innovations, including rejected observations, negating core residuals.
-  A real velocity reset supplies zero innovation; a height reset excludes its
+  selected innovations, including rejected observations, negating core residuals.
+  A full velocity reset supplies zero innovation; a Down-only velocity reset
+  retains that attempt's selected diagnostics. A height reset excludes its
   pre-reset diagnostics until the next attempt, without erasing raw gate evidence.
   GNSS height and velocity share one reference; barometer supplies another.
 - The pinned 250 Hz module profile averages the two IMU periods using 0.99/0.01
@@ -1642,9 +1655,9 @@ specified in `R-REPLAY-BIAS`, and the detector in `R-VERTICAL-ACCELERATION`.
   in module status. Disabled learning is neither invalid bias nor a sensor fault.
 
 Process-noise selection is specified separately in `R-IMU-PROCESS-NOISE`.
-Bias-value limiting, gravity correction and new height-reset exceptions remain
-outside this module profile. Native backend/correction tests and SITL
-are empirical evidence; Lean/ESBMC and physical disturbance validation remain pending.
+Bias-value limiting, gravity correction and height-reset exceptions are specified
+in their respective requirements and wired into this module. Native backend/
+correction tests and SITL are empirical evidence; Lean/ESBMC and physical disturbance validation remain pending.
 
 ### R-IMU-PROCESS-NOISE: fault-dependent sampled IMU variance
 
@@ -1948,8 +1961,9 @@ Replay integration:
 The replay fault now feeds accel bias-learning permissions and the sampled
 noise selection in `R-IMU-PROCESS-NOISE`, plus the GNSS fusion exceptions in
 `R-GNSS-VERTICAL-RECOVERY`. Its last-good time separately feeds the 500 ms
-reset criterion in `R-GNSS-FUSION`. PX4 adapter wiring remains pending. Native replay
-tests exercise rejection, input ordering, actual bias preservation/recovery and
+reset criterion in `R-GNSS-FUSION`, shared by the module height coordinator.
+Native replay tests exercise rejection, input ordering, actual bias preservation/
+recovery and
 metadata interruptions;
 this is not a formal proof or flight-accuracy result.
 
@@ -2116,16 +2130,23 @@ covariance preconditions; this helper does not prove or recheck positive semidef
 - After the current height attempt, a source whose progress is >5 s old stops
   if it cannot reset. A failed barometer is fault-latched when another height
   source still has recent progress; ordinary good samples do not clear that latch.
-  If **all** height progress is >5 s old, only the current reference with a fresh,
-  qualified sample may reset height: GNSS uses raw altitude; barometer uses its
-  filtered altitude minus offset. An outage without data cannot authorize a reset.
+  A reset is required if all height progress is >5 s old OR available health has
+  no last-good acceleration or that last-good time is strictly >500 ms old.
+  This predicate is shared with `GnssFusion::VerticalAccelerationTimes`; it is
+  independent of the 3 s held fault. Height consumes current pre-height health;
+  velocity consumes preceding health. Successful bounded fusion may refresh
+  progress but cannot cancel the independent acceleration reset. Unavailable
+  health alone cannot request reset. Future/inconsistent health times are rejected.
+  Only the current reference with a fresh, qualified sample may reset height:
+  GNSS uses raw altitude; barometer uses its filtered altitude minus offset. An outage without data cannot authorize a reset.
 - A real height reset preserves origin coordinates, decorrelates Down position
   using the existing checked reset primitive and transports every sensor offset
   by the applied Down delta. Barometer also resets only Down velocity to zero,
   variance 10 (m/s)², when no velocity-aiding session is active. With active GNSS
-  velocity, the module instead uses the shared preceding height timeout for its
-  checked Down-only reset after the normal velocity attempt. Horizontal values
-  and reset counters are unaffected by either Down-only operation.
+  velocity, the module uses preceding health and shared height progress for its
+  checked Down-only reset after the normal velocity attempt. A Down-only reset
+  retains that attempt's diagnostics; a full velocity reset clears its innovation.
+  Horizontal values and reset counters are unaffected by either Down-only operation.
 - Commit the height tick's state/P, history and counters only if all numerical
   operations succeed. Rejection can update diagnostics/lifecycle but cannot act
   as successful correction. Preserve raw gate evidence after a timeout reset;
@@ -2134,9 +2155,10 @@ covariance preconditions; this helper does not prove or recheck positive semidef
   count. Accumulate multiple reset deltas within a tick. Height validity lasts
   at most 5 s after actual height fusion/reset, separately from session activity.
 
-This profile covers GNSS and barometer with a fixed GNSS preference. IMU-fault
-reset/innovation exceptions, ground effect, dynamic-pressure correction, lever
-arms, delayed fusion, output prediction, range/vision height and configurable
+This profile covers GNSS and barometer with a fixed GNSS preference, including
+the bounded IMU-fault innovation exception and independent reset timing.
+Ground effect, dynamic-pressure correction, lever arms, delayed fusion, output
+prediction, range/vision height and configurable
 reference selection are not part of it. Native/backend tests and closed-loop
 SITL are empirical evidence; Lean/ESBMC proofs of this policy, scalar offsets,
 module wiring and numerical bounds remain pending. The bias estimates are not

@@ -106,6 +106,74 @@ template <typename Linalg> void run(Context & test)
         test.expect(result.rejected == 1 && f.state.b_a(0) == Scalar{-1}, "bias limits",
                     "rejected height does not invoke limiting");
     }
+    for (bool barometer : {false, true})
+    {
+        F f;
+        f.start(test);
+        if (barometer)
+        {
+            for (unsigned tick = 0; tick < 51; ++tick)
+            {
+                test.expect(f.tick(true, false).status == Status::success, "setup", "barometer fallback");
+            }
+        }
+        auto const source = barometer ? Source::barometer : Source::gnss;
+        test.expect(f.aiding.reference() == source, "setup", "selected height reference");
+        auto const now = f.now + 20000U;
+        typename Aiding::Sample sample{now, barometer ? 1U : 2U, 0,
+                                       (barometer ? f.baro_altitude : f.gnss_altitude) + Scalar{100}, 1};
+        typename Aiding::Acceleration held{true, {now, now}};
+        auto ordinary = f;
+        auto const rejected =
+            ordinary.aiding.update(now, barometer ? sample : typename Aiding::Sample{},
+                                   barometer ? typename Aiding::Sample{} : sample, true, ordinary.state, ordinary.P);
+        auto const limited =
+            f.aiding.update(now, barometer ? sample : typename Aiding::Sample{},
+                            barometer ? typename Aiding::Sample{} : sample, true, f.state, f.P, {}, held);
+        auto const & aid = f.aiding.session(source);
+        auto const innovation = f.aiding.vertical_innovation(source);
+        test.expect(rejected.rejected == 1 && limited.fused == 1 && limited.height_resets == 0 &&
+                        aid.innovation_limited && aid.fusion.test_ratio(0) > Scalar{1} &&
+                        std::abs(aid.fusion_innovation) < std::abs(aid.fusion.innovation(0)) && innovation.active &&
+                        innovation.innovation == -aid.fusion_innovation,
+                    "acceleration fault", "both height sources bound rejected residuals and retain raw diagnostics");
+        test.expect(!f.aiding.reset_required(now, {now, now - 500000U}) &&
+                        f.aiding.reset_required(now, {now, now - 500001U}) && f.aiding.reset_required(now, {now, 0U}) &&
+                        !f.aiding.reset_required(now),
+                    "reset time", "strict 500 ms last-good boundary is independent of recent fusion and held fault");
+        sample.time_us += 20000U;
+        held.times = {sample.time_us, sample.time_us - 500001U};
+        auto unqualified = f;
+        auto invalid_sample = sample;
+        invalid_sample.qualified = false;
+        auto const blocked = unqualified.aiding.update(
+            sample.time_us, barometer ? invalid_sample : typename Aiding::Sample{},
+            barometer ? typename Aiding::Sample{} : invalid_sample, false, unqualified.state, unqualified.P, {}, held);
+        test.expect(blocked.fused == 0 && blocked.height_resets == 0 && blocked.velocity_resets == 0 &&
+                        unqualified.state.p_n(2) == f.state.p_n(2),
+                    "permission", "bad acceleration never grants quality permission or reset without a source");
+        auto invalid = f;
+        auto future = held;
+        future.times.update_time_us = sample.time_us + 1U;
+        auto const failed = invalid.aiding.update(sample.time_us, {}, {}, true, invalid.state, invalid.P, {}, future);
+        test.expect(failed.status == Status::out_of_range && invalid.state.p_n(2) == f.state.p_n(2) &&
+                        invalid.aiding.reset_counter() == f.aiding.reset_counter(),
+                    "time", "future health does not mutate the height transaction");
+        f.state.v_n.set(2, Scalar{2});
+        auto const reset_counter = f.aiding.reset_counter();
+        auto const reset =
+            f.aiding.update(sample.time_us, barometer ? sample : typename Aiding::Sample{},
+                            barometer ? typename Aiding::Sample{} : sample, false, f.state, f.P, {}, held);
+        test.expect(reset.fused == 1 && reset.height_resets == 1 &&
+                        f.aiding.reset_counter() == static_cast<std::uint8_t>(reset_counter + 1U) &&
+                        !f.aiding.vertical_innovation(source).active && reset.velocity_resets == unsigned(barometer),
+                    "recovery", "successful bounded fusion does not postpone independent reference-height reset");
+        if (barometer)
+        {
+            test.expect(f.state.v_n(2) == Scalar{0} && f.P(5, 5) == Scalar{10}, "recovery",
+                        "barometer reference resets Down velocity only when velocity aiding is absent");
+        }
+    }
     {
         F f;
         test.expect(f.aiding.initialize(f.now, 100000) == Status::domain_error && !f.aiding.valid(f.now), "startup",

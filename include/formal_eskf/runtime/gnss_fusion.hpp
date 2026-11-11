@@ -66,14 +66,21 @@ public:
         bool start_without_reset = false;
     };
 
+    static constexpr std::uint64_t acceleration_reset_delay_us = 500'000U;
+
     /** Zero update time means unavailable; zero last-good with a known update means never healthy. */
     struct VerticalAccelerationTimes
     {
         std::uint64_t update_time_us{};
         std::uint64_t last_good_time_us{};
-    };
 
-    static constexpr std::uint64_t acceleration_reset_delay_us = 500'000U;
+        /** Caller validates timestamp ordering; unavailable health cannot request a reset. */
+        [[nodiscard]] constexpr bool reset_required(std::uint64_t now_us) const noexcept
+        {
+            return update_time_us != 0U && update_time_us <= now_us && last_good_time_us <= update_time_us &&
+                   (last_good_time_us == 0U || now_us - last_good_time_us > acceleration_reset_delay_us);
+        }
+    };
 
     struct Conditions
     {
@@ -216,8 +223,7 @@ inline bool GnssFusion::expired(GroupState const & group, std::uint64_t duration
 
 inline GnssFusion::StopReason GnssFusion::height_reset_reason(VerticalAccelerationTimes const & health) const noexcept
 {
-    if (health.update_time_us != 0U &&
-        (health.last_good_time_us == 0U || m_update_time_us - health.last_good_time_us > acceleration_reset_delay_us))
+    if (health.reset_required(m_update_time_us))
     {
         return StopReason::bad_vertical_acceleration;
     }

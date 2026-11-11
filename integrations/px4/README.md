@@ -175,7 +175,8 @@ A stopped reference falls back to the remaining active source without resetting
 navigation. Qualified GNSS re-entry reclaims the reference with a real height
 reset; barometer re-entry aligns its offset. Persistent rejection stops the bad
 source while another works. Only a fresh reference measurement can reset height
-when all height progress has timed out. A barometer fault caused by persistent
+when shared height progress times out or the independent acceleration criterion
+below requests recovery. A barometer fault caused by persistent
 rejection requires source/calibration change or module restart to clear.
 
 Height resets transport the sensor offsets and publish matching local/global/status
@@ -187,8 +188,20 @@ The reference policy is checked against the pinned [height controller](https://g
 [GNSS height controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gnss_height_control.cpp)
 and [barometer controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/barometer/baro_height_control.cpp), using public parameter defaults.
 It retains immediate sample-time fusion and a fixed GNSS preference; dynamic-pressure
-and ground-effect corrections, bad-acceleration recovery exceptions and delayed
-fusion are separate work. See [the height contract](../../docs/spec/verification-requirements.md#r-height-fusion-px4-gnssbarometer-height-management).
+and ground-effect corrections and delayed fusion are separate work. See [the height contract](../../docs/spec/verification-requirements.md#r-height-fusion-px4-gnssbarometer-height-management).
+
+The existing vertical-acceleration recovery policy is now connected. A held IMU
+fault can permit a bounded Down innovation from qualified GNSS velocity or either
+height source; velocity additionally requires passing horizontal innovations and
+receiver speed accuracy strictly below its limit. Raw gate ratios remain visible;
+health uses the selected residual. This never bypasses source quality/lifecycle.
+
+The independent reset criterion uses last-good acceleration, not the held fault:
+known health with no good sample or strictly more than 500 ms since the last good
+sample can request recovery even after successful bounded fusion. Velocity uses
+preceding health; height uses the current pre-height evaluation. Only fresh,
+qualified observations authorize real resets, with the existing counter/delta
+notifications. The separate 5 s shared-height timeout remains in force.
 
 ### IMU health and bias learning
 
@@ -222,7 +235,7 @@ Startup clipping, gyro clipping and undefined clipping bits remain rejected.
 Rejected/missing IMU data resets health continuity; synthetic gap holds retain
 configured noise without inventing clipping metadata. This is the pinned PX4
 noise-selection rule, not reconstruction of lost acceleration or complete EKF2
-timing equivalence. Bad-acceleration reset exceptions remain separate work. See
+timing equivalence. See
 [the noise contract](../../docs/spec/verification-requirements.md#r-imu-process-noise-fault-dependent-sampled-imu-variance)
 and [the health/bias contract](../../docs/spec/verification-requirements.md#r-px4-imu-bias-module-health-and-bias-learning-inhibition).
 
@@ -478,6 +491,28 @@ on GNSS recovery. The 250 Hz input emitted 8 ms observations in these runs;
 had 100% valid estimates and no numerical faults, airborne failsafes or dropouts.
 Independent runs/ground outages are not a paired accuracy-improvement experiment
 or physical acceleration-fault validation. Lean/ESBMC adapter evidence is pending.
+
+## Vertical recovery integration validation: 2026-11-12
+
+F-03.1 connects the existing bounded-innovation path and extracts the existing
+last-good reset predicate for use by both GNSS lifecycle and module height
+coordination. Core equations and reset primitives are unchanged. Tests cover
+both height sources, strict 500 ms timing, held-fault versus reset independence,
+quality rejection, invalid health time, raw/selected diagnostics and real reset
+counters, including successful limited fusion followed by a required reset.
+
+Eight native and eight ASan/UBSan suites passed (both backends, float/double,
+leak detection enabled). All 43 selected replay-related checks passed; two
+initially missing native test executables were built and rerun separately.
+Pinned PX4 compilation, 8 package tests, 71 installed-file checks, formatting
+and unix32/unix64 Cppcheck passed. No Lean/ESBMC proof was added.
+
+The final `output/px4-vertical-recovery-sitl-01/` passed all 18 independent flight
+checks and all 20 ground fault/recovery scenarios. Position/velocity/attitude
+RMSE were 0.163 m / 0.257 m/s / 1.659°; valid estimates were 100%, with no
+numerical faults, airborne failsafes or log dropouts. These are integration
+regressions, not physical in-flight acceleration-fault experiments; bounded
+fault branches and reset boundaries are exercised by native component tests.
 
 ## GNSS integration scope
 

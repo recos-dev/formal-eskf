@@ -183,7 +183,8 @@ template <typename Linalg>
 }
 
 /**
- * GNSS NED Down position, not altitude or terrain range. With a current vertical
+ * NED Down position from a qualified height source, not altitude or terrain range.
+ * The adapter owns source policy and datum conversion. With a current vertical
  * acceleration fault, limit a rejected residual to +/- gate * sqrt(S) and fuse.
  * Preserve raw diagnostics, H, V, bias permissions and checked correction's
  * atomic output/whole-prior alias contracts. No source permission or reset here.

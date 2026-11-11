@@ -453,22 +453,50 @@ void FormalEskf::fuse_gps()
     {
         m_gps_velocity_innovation = {};
     }
-    if (m_gnss_sample.time_us == 0 || !gps_good())
+    if (m_gnss_sample.time_us == 0)
     {
         return;
     }
-    float north{}, east{};
-    m_projection.project(m_gps.latitude_deg, m_gps.longitude_deg, north, east);
-    const auto xy = backend_type::vector_type<2>::from_row_major({double(north), double(east)});
+    if (!m_gps_metadata_valid || !formal_eskf::succeeded(m_gnss_quality_result.status))
+    {
+        m_gps_velocity_innovation = {};
+        return;
+    }
     const auto velocity = vector3(m_gps.vel_n_m_s, m_gps.vel_e_m_s, m_gps.vel_d_m_s);
-    // v1.16.2 defaults: 0.5 m position, 0.3 m/s velocity; Down variance is 2.25x.
-    const double position_variance = square(std::min(std::max(double(m_gps.eph), 0.5), 10.));
-    const auto Rxy = backend_type::matrix_type<2, 2>::identity() * position_variance;
+    // v1.16.2 defaults: 0.3 m/s velocity; Down variance is 2.25x.
     const double velocity_variance = square(std::max(double(m_gps.s_variance_m_s), 0.3));
     const auto velocity_variances = vector3(velocity_variance, velocity_variance, 2.25 * velocity_variance);
     auto Rv = matrix3_type::identity() * velocity_variance;
     Rv.set(2, 2, velocity_variances(2));
     auto const & session = m_gnss_fusion.state();
+    auto const & health = m_vertical_health.state();
+    GnssVelocityConditions<double> const velocity_conditions{health.bad_vertical_acceleration,
+                                                             double(m_gps.s_variance_m_s),
+                                                             m_gnss_quality_parameters.maximum_speed_accuracy};
+    if (!gps_good())
+    {
+        // A still-active source may update health evidence without receiving fusion permission.
+        if (session.velocity.active)
+        {
+            auto const evidence = check_gnss_velocity(m_state, m_covariance, velocity, Rv, minimum_quaternion_norm, 5.,
+                                                      velocity_conditions);
+            if (!check(evidence.status))
+            {
+                return;
+            }
+            m_gps_velocity_innovation = {evidence.diagnostics_valid, -evidence.fusion_innovation(2),
+                                         evidence.innovation_variance(2)};
+            m_vel_ratio = evidence.diagnostics_valid
+                              ? std::max({evidence.test_ratio(0), evidence.test_ratio(1), evidence.test_ratio(2)})
+                              : double(INFINITY);
+        }
+        return;
+    }
+    float north{}, east{};
+    m_projection.project(m_gps.latitude_deg, m_gps.longitude_deg, north, east);
+    const auto xy = backend_type::vector_type<2>::from_row_major({double(north), double(east)});
+    const double position_variance = square(std::min(std::max(double(m_gps.eph), 0.5), 10.));
+    const auto Rxy = backend_type::matrix_type<2, 2>::identity() * position_variance;
     // Snapshot the coupled reset decision before either horizontal group advances.
     if (session.velocity.reset_allowed)
     {
@@ -490,15 +518,17 @@ void FormalEskf::fuse_gps()
     }
     else if (session.velocity.fusion_allowed)
     {
-        auto const result = fuse_velocity(m_state, m_covariance, velocity, Rv, minimum_quaternion_norm, 5., m_state,
-                                          m_covariance, m_bias_learning_result.bias_update);
-        if (!record_gps_fusion(Group::velocity, result, m_vel_ratio))
+        auto const result =
+            fuse_gnss_velocity(m_state, m_covariance, velocity, Rv, minimum_quaternion_norm, 5., velocity_conditions,
+                               m_state, m_covariance, m_bias_learning_result.bias_update);
+        if (!record_gps_fusion(Group::velocity, result.fusion, m_vel_ratio))
         {
             return;
         }
-        m_gps_velocity_innovation = {result.diagnostics_valid, -result.innovation(2), result.innovation_variance(2)};
+        m_gps_velocity_innovation = {result.fusion.diagnostics_valid, -result.fusion_innovation(2),
+                                     result.fusion.innovation_variance(2)};
         // Use preceding height progress, after normal velocity correction and before height control.
-        if (m_height_aiding.reset_required(m_time))
+        if (m_height_aiding.reset_required(m_time, {health.last_update_time_us, health.last_good_time_us}))
         {
             double delta{};
             if (!check(try_reset_gnss_vertical_velocity(m_state, m_covariance, velocity(2), velocity_variances(2),
@@ -508,7 +538,7 @@ void FormalEskf::fuse_gps()
             }
             record_vertical_velocity_reset(delta);
             ++m_odometry_reset_counter;
-            m_gps_velocity_innovation = {true, 0., velocity_variances(2)};
+            // A Down-only reset preserves this attempt's selected velocity diagnostics.
         }
     }
     if (session.horizontal_position.reset_allowed)
@@ -687,8 +717,11 @@ void FormalEskf::fuse_height()
                 square(std::max(double(m_gps.epv), 0.75)),
                 gps_good()};
     }
+    auto const & health = m_vertical_health.state();
+    height_type::Acceleration const acceleration{health.bad_vertical_acceleration,
+                                                 {health.last_update_time_us, health.last_good_time_us}};
     auto const result = m_height_aiding.update(m_time, barometer, gnss, m_gnss_fusion.state().velocity.active, m_state,
-                                               m_covariance, m_bias_learning_result.bias_update);
+                                               m_covariance, m_bias_learning_result.bias_update, acceleration);
     if (!check(result.status))
     {
         return;

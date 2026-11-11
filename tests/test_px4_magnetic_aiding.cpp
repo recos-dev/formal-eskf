@@ -93,6 +93,24 @@ template <typename Linalg> void run(Context & test)
     }
     {
         F f;
+        f.start(test);
+        f.state.b_a.set(0, Scalar{-1});
+        f.state.b_g.set(1, Scalar{1});
+        formal_eskf::configuration::Ins::BiasUpdate inhibited{{false, false, false}, {false, false, false}};
+        typename F::aiding_type::Sample sample{f.now + 10000U, f.source, f.sample};
+        auto result = f.aiding.update(sample.time_us, sample, f.context, f.reference_data(), f.state, f.P, inhibited);
+        test.expect(result.fused && f.state.b_a(0) == static_cast<Scalar>(-0.4) &&
+                        f.state.b_g(1) == static_cast<Scalar>(0.15),
+                    "bias limits", "successful magnetic group limits biases despite inhibited learning");
+        f.state.b_a.set(0, Scalar{-1});
+        sample.time_us += 10000U;
+        sample.field_b = f.reference * Scalar{2};
+        result = f.aiding.update(sample.time_us, sample, f.context, f.reference_data(), f.state, f.P, inhibited);
+        test.expect(result.rejected && f.state.b_a(0) == Scalar{-1}, "bias limits",
+                    "rejected magnetic observation does not invoke limiting");
+    }
+    {
+        F f;
         for (unsigned i = 0; i < 101; ++i)
         {
             auto const result = f.tick();

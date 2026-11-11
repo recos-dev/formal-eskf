@@ -10,6 +10,7 @@
 #include <formal_eskf/runtime/position.hpp>
 #include <formal_eskf/runtime/vertical_acceleration_health.hpp>
 
+#include "BiasLimits.hpp"
 #include "HeightBias.hpp"
 
 namespace formal_eskf::px4
@@ -294,6 +295,11 @@ void HeightAiding<Linalg>::process(Source source, std::uint64_t now_us, Sample c
     }
     if (aid.fusion.decision == runtime::FusionDecision::fused)
     {
+        result.status = try_limit_imu_bias(state);
+        if (!succeeded(result.status))
+        {
+            return;
+        }
         aid.fused_time = aid.progress_time = m_last_height_progress = now_us;
         ++result.fused;
     }

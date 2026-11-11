@@ -222,7 +222,7 @@ Startup clipping, gyro clipping and undefined clipping bits remain rejected.
 Rejected/missing IMU data resets health continuity; synthetic gap holds retain
 configured noise without inventing clipping metadata. This is the pinned PX4
 noise-selection rule, not reconstruction of lost acceleration or complete EKF2
-timing equivalence. Bias-value limits, gravity fusion and
+timing equivalence. Gravity fusion and
 bad-acceleration reset exceptions remain separate work. See
 [the noise contract](../../docs/spec/verification-requirements.md#r-imu-process-noise-fault-dependent-sampled-imu-variance)
 and [the health/bias contract](../../docs/spec/verification-requirements.md#r-px4-imu-bias-module-health-and-bias-learning-inhibition).
@@ -424,6 +424,20 @@ unix32/unix64 Cppcheck and the pinned PX4 build passed.
 100% valid estimates, no numerical faults, airborne failsafes or ULog dropouts.
 This is integration regression evidence; no Lean/ESBMC proof was added.
 
+## Bias-limit integration
+
+F-01.3 applies the existing per-axis limiter at initialization and after each
+successful GNSS, height or magnetic correction group, with fixed 0.4 m/s² and
+0.15 rad/s bounds. Each height source is limited before the next source runs.
+Rejected updates and resets do not clamp; covariance is unchanged by limiting.
+PX4 limits after scalar fusions, so grouped saturation trajectories can differ.
+Published bias limits use those same constants. Native and ASan/UBSan suites
+passed on both backends (6 each, float/double; leak detection enabled), together
+with the pinned PX4 build, 8 package tests, formatting and unix32/unix64 Cppcheck.
+All existing correction call sites were reviewed. This commit adds no formal
+proof or dedicated flight experiment; integration flight regression continues
+with F-02.1.
+
 ## GNSS integration scope
 
 Behavior is checked against the pinned
@@ -436,6 +450,6 @@ and message conventions are specified in
 
 The single-source GNSS height lifecycle remains disabled; `HeightAiding` now
 coordinates the GNSS/barometer height sources. Emergency yaw, receiver selection,
-lever arms, delayed fusion and bias-limit wiring remain separate work.
+lever arms and delayed fusion remain separate work.
 GNSS sample-time handling is still immediate and differs from EKF2's buffered
 publication-time path. This is not complete EKF2 parity.

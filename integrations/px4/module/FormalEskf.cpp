@@ -266,6 +266,10 @@ void FormalEskf::initialize(vehicle_imu_s const & sample, imu_type const & imu)
         return;
     }
     m_state.b_g = m_gyro_sum / double(m_init_samples);
+    if (!check(formal_eskf::px4::try_limit_imu_bias(m_state)))
+    {
+        return;
+    }
     m_state.v_n = vector3(m_gps.vel_n_m_s, m_gps.vel_e_m_s, m_gps.vel_d_m_s);
     const double diagonal[15] = {1., 1., 2.25, 0.09, 0.09, 0.09, 0.01, 0.01, 0.04, 0.04, 0.04, 0.04, 1e-4, 1e-4, 1e-4};
     for (size_t i = 0; i < 15; ++i)
@@ -926,8 +930,8 @@ void FormalEskf::publish_status(uint64_t now)
     bias.accel_device_id = m_last_imu.accel_device_id;
     bias.gyro_device_id = m_last_imu.gyro_device_id;
     bias.accel_bias_valid = bias.gyro_bias_valid = healthy;
-    bias.accel_bias_limit = 3.;
-    bias.gyro_bias_limit = 0.5;
+    bias.accel_bias_limit = formal_eskf::px4::imu_bias_limits.accelerometer;
+    bias.gyro_bias_limit = formal_eskf::px4::imu_bias_limits.gyroscope;
     for (size_t i = 0; i < 3; ++i)
     {
         bias.accel_bias[i] = m_state.b_a(i);

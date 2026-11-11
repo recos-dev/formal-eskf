@@ -10,6 +10,8 @@
 #include <formal_eskf/runtime/magnetometer_fusion.hpp>
 #include <formal_eskf/runtime/magnetometer_reset.hpp>
 
+#include "BiasLimits.hpp"
+
 namespace formal_eskf::px4
 {
 
@@ -225,6 +227,18 @@ MagneticAiding<Linalg>::update(std::uint64_t now_us, Sample const & sample, Cont
         result.status = m_observation.fusion.status;
         result.fused = m_observation.fusion.decision == runtime::FusionDecision::fused;
         result.rejected = m_observation.fusion.decision == runtime::FusionDecision::rejected;
+        if (!succeeded(result.status))
+        {
+            return result;
+        }
+        if (result.fused)
+        {
+            result.status = try_limit_imu_bias(state);
+            if (!succeeded(result.status))
+            {
+                return result;
+            }
+        }
     }
     if (lifecycle().reset_allowed)
     {

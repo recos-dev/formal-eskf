@@ -84,6 +84,28 @@ template <typename Linalg> void run(Context & test)
         test.expect(result.rejected != 0 && f.aiding.vertical_innovation(Source::gnss).active, "health",
                     "rejected height retains evidence while its source is active");
     }
+    for (bool barometer : {false, true})
+    {
+        F f;
+        f.start(test);
+        f.state.b_a.set(0, Scalar{-1});
+        f.state.b_g.set(1, Scalar{1});
+        formal_eskf::configuration::Ins::BiasUpdate inhibited{{false, false, false}, {false, false, false}};
+        typename Aiding::Sample sample{f.now + 20000U, barometer ? 1U : 2U, 0,
+                                       barometer ? f.baro_altitude : f.gnss_altitude, 1};
+        auto result = f.aiding.update(sample.time_us, barometer ? sample : typename Aiding::Sample{},
+                                      barometer ? typename Aiding::Sample{} : sample, true, f.state, f.P, inhibited);
+        test.expect(result.fused == 1 && f.state.b_a(0) == static_cast<Scalar>(-0.4) &&
+                        f.state.b_g(1) == static_cast<Scalar>(0.15),
+                    "bias limits", "each height source limits successful corrections even with learning inhibited");
+        f.state.b_a.set(0, Scalar{-1});
+        sample.time_us += 20000U;
+        sample.altitude += 1000;
+        result = f.aiding.update(sample.time_us, barometer ? sample : typename Aiding::Sample{},
+                                 barometer ? typename Aiding::Sample{} : sample, true, f.state, f.P, inhibited);
+        test.expect(result.rejected == 1 && f.state.b_a(0) == Scalar{-1}, "bias limits",
+                    "rejected height does not invoke limiting");
+    }
     {
         F f;
         test.expect(f.aiding.initialize(f.now, 100000) == Status::domain_error && !f.aiding.valid(f.now), "startup",

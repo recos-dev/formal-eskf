@@ -3672,7 +3672,7 @@
     },
     {
       "id": "R-BIAS-LIMITS",
-      "title": "Per-axis INS bias-value limits; Lean and ESBMC evidence pending",
+      "title": "INS per-axis bias limits with replay and PX4 module wiring; Lean and ESBMC evidence pending",
       "references": {
         "spec": [
           {
@@ -3697,6 +3697,22 @@
           {
             "file": "examples/replay_ins.cpp",
             "symbol": "void limit_bias("
+          },
+          {
+            "file": "integrations/px4/module/BiasLimits.hpp",
+            "symbol": "Status try_limit_imu_bias("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.hpp",
+            "symbol": "bool record_gps_fusion("
+          },
+          {
+            "file": "integrations/px4/module/HeightAiding.hpp",
+            "symbol": "void HeightAiding<Linalg>::process("
+          },
+          {
+            "file": "integrations/px4/module/MagneticAiding.hpp",
+            "symbol": "MagneticAiding<Linalg>::update("
           }
         ],
         "esbmc": []

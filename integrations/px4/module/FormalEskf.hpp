@@ -34,6 +34,7 @@
 #include <formal_eskf/runtime/position.hpp>
 #include <formal_eskf/runtime/velocity.hpp>
 
+#include "BiasLimits.hpp"
 #include "HeightAiding.hpp"
 #include "ImuPrediction.hpp"
 #include "MagneticAiding.hpp"
@@ -41,6 +42,7 @@
 
 // Single writer: all filter state is owned by this work item. The core has no
 // PX4 dependencies except its explicitly selected matrix backend.
+
 class FormalEskf final : public ModuleBase<FormalEskf>, public px4::ScheduledWorkItem
 {
 public:
@@ -104,6 +106,10 @@ private:
         }
         else if (result.decision == formal_eskf::runtime::FusionDecision::fused)
         {
+            if (!check(formal_eskf::px4::try_limit_imu_bias(m_state)))
+            {
+                return false;
+            }
             ++m_gps_updates;
         }
         return true;

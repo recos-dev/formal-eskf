@@ -1793,11 +1793,20 @@ and gyro bias to `[-limits.gyroscope, +limits.gyroscope]` (rad/s).
 
 Behavioral reference: PX4 v1.16.2
 [bias correction](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/ekf_helper.cpp#L757).
-PX4 limits after each scalar fusion; replay limits after each existing measurement
+PX4 limits after each scalar fusion; replay and module limit after each existing measurement
 group. The axis-bound rule agrees, but sequential saturation trajectories need
 not agree. Clamping does not prove posterior covariance consistency or physical
 bias accuracy. Native boundary, failure, correction and replay tests cover this
-feature; Lean/ESBMC evidence and deployment-adapter wiring remain pending.
+feature; Lean/ESBMC evidence remains pending.
+
+The module uses `px4::try_limit_imu_bias` with fixed bounds 0.4 m/s² and
+0.15 rad/s; published sensor-bias limits use the same constants. It limits startup biases and each successful GNSS velocity/horizontal
+position, GNSS/barometer height and magnetic correction group before the next
+operation. Rejections and resets do not invoke limiting. Each height source is
+handled separately, rather than waiting until the entire height update returns.
+Native adapter tests exercise accepted and rejected sources with inhibited
+learning; the existing limiter tests cover boundaries, numerical failures and
+inward recovery. Gravity wiring remains the separate F-02.1 integration task.
 
 ### R-VERTICAL-ACCELERATION: apparent falling and clipping detection
 

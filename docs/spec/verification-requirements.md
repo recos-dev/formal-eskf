@@ -1608,17 +1608,19 @@ specified in `R-REPLAY-BIAS`, and the detector in `R-VERTICAL-ACCELERATION`.
   Missing/rejected IMU data resets health history and clears learning permission;
   held prediction rates never update peaks or health. Real measured peaks survive
   gaps. Source/calibration discontinuities retain the restart-required policy.
-- Retain rejection of clipped IMU samples: no prediction or correction occurs on
-  those samples. Consequently deployed clipping-count fault detection is **not**
-  covered by this change, even though the reusable detector supports it. Accepted
-  samples can still detect multi-reference apparent falling. Continuing prediction
-  with clipped samples and adjusted uncertainty requires the later noise change.
+- After initialization, valid accelerometer-clipping flags no longer reject the
+  IMU interval: `R-IMU-PROCESS-NOISE` selects its uncertainty before prediction.
+  The same flags inhibit the corresponding accel-bias axes and reach the current
+  health evaluation, so accepted clipped intervals retain detector continuity.
+  Gyro clipping, undefined accel-clipping bits and clipping during initialization
+  remain rejected; no prediction/correction occurs on those samples.
 - Publish the vertical detector's held fault through `fs_bad_acc_vertical`, not
   the generic numerical-failure latch. Expose learning masks and health availability
   in module status. Disabled learning is neither invalid bias nor a sensor fault.
 
-No process-noise adjustment, bias-value limiting, gravity correction or new
-height-reset exception is introduced. Native backend/correction tests and SITL
+Process-noise selection is specified separately in `R-IMU-PROCESS-NOISE`.
+Bias-value limiting, gravity correction and new height-reset exceptions remain
+outside this module profile. Native backend/correction tests and SITL
 are empirical evidence; Lean/ESBMC and physical disturbance validation remain pending.
 
 ### R-IMU-PROCESS-NOISE: fault-dependent sampled IMU variance
@@ -1670,10 +1672,30 @@ ticks. Summary records the fault standard deviation, per-axis override counts
 and unavailable predictions (including gap holds). Override counts describe
 selection, even if configured and replacement variances happen to be equal.
 
-Native tests cover all fault/clipping choices, restoration, invalid inputs and
-aliases, selected bias thresholds, actual rotated covariance prediction, and
-replay ordering/metadata behavior. Lean/ESBMC evidence and deployment-adapter
-wiring remain pending. No physical accuracy or noise-calibration claim is made.
+The PX4 module uses `px4::try_predict_imu` for actual accepted IMU intervals.
+It copies configured parameters, selects noise with fixed `4.9^2` fault variance,
+then calls atomic INS prediction in place. It does not modify configured noise,
+gyro variance or either bias driving intensity. Selection/prediction failure
+preserves state/P and feeds the existing numerical-fault latch. Bias driving
+noise selection remains a separate module task; replay already applies it.
+
+The module first checks timestamps, periods, finite increments and continuity.
+It accepts only the three defined accel-clipping bits, only after initialization;
+gyro clipping remains rejected. Before prediction, both noise selection and bias
+permissions consume the preceding health verdict plus current clipping. After
+the GNSS velocity attempt, current clipping reaches the health detector before
+height fusion. A newly detected held fault therefore affects the next prediction.
+Clearing clipping restores configured noise unless the held fault remains set.
+Synthetic gap holds retain configured noise and do not consume either adjacent
+sample's clipping or update health/peaks. The existing health-history reset on
+gaps is unchanged. This fallback and gyro rejection are explicit module limits,
+not assertions of EKF2 equivalence. Clipping flags do not reconstruct lost motion.
+
+Native tests cover all selector choices, aliases, actual rotated covariance,
+module clipping admission/prediction, restoration, unchanged gyro/bias noise,
+failure rollback and detector/bias-policy sequencing. Replay retains its existing
+metadata behavior. Lean/ESBMC evidence and physical clipping/calibration validation
+remain pending; normal-flight SITL does not establish clipped-flight accuracy.
 
 ### R-BIAS-PROCESS-NOISE: variance-dependent bias driving noise
 

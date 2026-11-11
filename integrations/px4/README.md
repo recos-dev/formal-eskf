@@ -206,12 +206,22 @@ hold feeds the next IMU tick's bias policy. Module status prints the permission
 masks, high-dynamics result and health availability. No fake-aiding modes are
 inferred from loss of GNSS.
 
-The module still rejects clipped IMU samples and resets health continuity over
-rejected/missing IMU data. Clipping-count fault detection during continued
-prediction is therefore not demonstrated by this deployment profile. Supporting
-that path requires uncertainty handling in the later noise change. Process-noise
-selection, bias limits, gravity fusion and bad-acceleration reset exceptions remain
-separate work. See [the integration contract](../../docs/spec/verification-requirements.md#r-px4-imu-bias-module-health-and-bias-learning-inhibition).
+After initialization the module continues prediction with accelerometer-clipped
+samples. Before prediction, the production `ImuPrediction.hpp` path selects
+`4.9^2 m²/s⁴` sampled accel variance per clipped body axis, or on all axes when
+the preceding vertical-health verdict is bad. It starts from configured noise
+each time, preserving gyro variance and both bias driving intensities. Current
+clipping also inhibits the corresponding accel-bias learning and reaches the
+health detector after GNSS velocity, before height fusion.
+
+Startup clipping, gyro clipping and undefined clipping bits remain rejected.
+Rejected/missing IMU data resets health continuity; synthetic gap holds retain
+configured noise without inventing clipping metadata. This is the pinned PX4
+noise-selection rule, not reconstruction of lost acceleration or complete EKF2
+timing equivalence. Bias driving-noise selection/limits, gravity fusion and
+bad-acceleration reset exceptions remain separate work. See
+[the noise contract](../../docs/spec/verification-requirements.md#r-imu-process-noise-fault-dependent-sampled-imu-variance)
+and [the health/bias contract](../../docs/spec/verification-requirements.md#r-px4-imu-bias-module-health-and-bias-learning-inhibition).
 
 The wrapper is outside the portable numerical core and its existing Lean/ESBMC claims. Magnetic, height and IMU/bias integration are linked in the requirement/traceability map with its formal evidence still pending; no proof of PX4, concurrency, total stack use or hardware flight is asserted. Native tests and closed-loop SITL are separate empirical evidence.
 
@@ -370,6 +380,33 @@ corrections with inhibited accel bias, and reset-safe health diagnostics. This
 normal-flight run does not validate physical high-dynamic/clipping disturbances
 or demonstrate an accuracy improvement. No Lean/ESBMC proof was added.
 
+## IMU noise and clipping validation: 2026-11-12
+
+F-01.1 connects the existing noise selector to the module's production prediction
+path. Native tests use that same path with Eigen and PX4 matrix, float/double:
+per-axis clipping, preceding vertical faults, rotated `dt²` covariance, retained
+measured motion, restoration, unchanged gyro/bias noise and failure rollback.
+Admission tests retain startup/gyro-clipping rejection; component sequences
+exercise clipping counters and bias inhibition. These tests do not execute the
+entire uORB scheduler under all possible event sequences.
+
+| Check | Result |
+| --- | --- |
+| Module IMU prediction, noise selector, vertical health and replay bias | 4 Eigen + 4 PX4 matrix suites passed, float/double |
+| Same suites under ASan + UBSan | 8 passed, leak detection enabled on the host |
+| Pinned PX4 build; package installation/export | Passed; 8 package tests, 67 installed files verified |
+| Cppcheck unix32/unix64; formatting | Passed |
+| Independent ULog flight checks / ground fault scenarios | 18/18; 20/20 passed |
+| Position / velocity / attitude RMSE against SIH truth | 0.164 m / 0.260 m/s / 1.696° |
+| Valid estimates / numerical faults / airborne failsafes / log dropouts | 100% / 0 / 0 / 0 |
+
+Flight evidence is in `output/px4-imu-noise-sitl-02/`, including installed source
+hashes and binary identity. This flight is a regression check, not a physical
+clipping experiment or an accuracy-improvement claim. Sandbox attempts could
+not open SITL's local UDP socket or complete LeakSanitizer; the successful runs
+used the host environment with leak detection retained. No Lean/ESBMC proof
+was added; those gaps remain explicit in the traceability map.
+
 ## GNSS integration scope
 
 Behavior is checked against the pinned
@@ -382,6 +419,6 @@ and message conventions are specified in
 
 The single-source GNSS height lifecycle remains disabled; `HeightAiding` now
 coordinates the GNSS/barometer height sources. Emergency yaw, receiver selection,
-lever arms, delayed fusion, IMU-noise selection and bias-limit wiring remain separate work.
+lever arms, delayed fusion and bias driving-noise/limit wiring remain separate work.
 GNSS sample-time handling is still immediate and differs from EKF2's buffered
 publication-time path. This is not complete EKF2 parity.

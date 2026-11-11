@@ -319,7 +319,8 @@ void FormalEskf::Run()
         const double dt = double(sample.delta_angle_dt) * 1e-6;
         const double accel_dt = double(sample.delta_velocity_dt) * 1e-6;
         if (sample.timestamp_sample <= m_time || dt < 1e-6 || dt > 0.05 || accel_dt < 1e-6 || accel_dt > 0.05 ||
-            sample.delta_angle_clipping || sample.delta_velocity_clipping)
+            !formal_eskf::px4::imu_clipping_acceptable(sample.delta_velocity_clipping, sample.delta_angle_clipping,
+                                                       m_initialized))
         {
             ++m_rejections;
             // Rejected/missing IMU data cannot preserve a learning authorization or health verdict.
@@ -375,8 +376,9 @@ void FormalEskf::Run()
                                                            m_parameters, m_state, m_covariance));
                         }
                         if (!m_fault && update_imu_bias(sample, imu) &&
-                            check(formal_eskf::try_predict(m_state, m_covariance, imu, dt, m_parameters, m_state,
-                                                           m_covariance)))
+                            check(formal_eskf::px4::try_predict_imu(
+                                m_state, m_covariance, imu, dt, m_parameters, sample.delta_velocity_clipping,
+                                m_vertical_health.state().bad_vertical_acceleration)))
                         {
                             ++m_predictions;
                             auto const acceleration_n =

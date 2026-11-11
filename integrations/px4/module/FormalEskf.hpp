@@ -35,6 +35,7 @@
 #include <formal_eskf/runtime/velocity.hpp>
 
 #include "HeightAiding.hpp"
+#include "ImuPrediction.hpp"
 #include "MagneticAiding.hpp"
 #include "MagneticModel.hpp"
 

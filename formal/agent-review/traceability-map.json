@@ -3600,7 +3600,7 @@
     },
     {
       "id": "R-IMU-PROCESS-NOISE",
-      "title": "Fault-dependent sampled IMU variance and replay selection; Lean and ESBMC evidence pending",
+      "title": "Fault-dependent sampled IMU variance with replay and PX4 module selection; Lean and ESBMC evidence pending",
       "references": {
         "spec": [
           {
@@ -3617,6 +3617,18 @@
           {
             "file": "include/formal_eskf/runtime/imu_process_noise.hpp",
             "symbol": "[[nodiscard]] Status try_select_imu_process_noise("
+          },
+          {
+            "file": "integrations/px4/module/ImuPrediction.hpp",
+            "symbol": "bool imu_clipping_acceptable("
+          },
+          {
+            "file": "integrations/px4/module/ImuPrediction.hpp",
+            "symbol": "Status try_predict_imu("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::Run()"
           },
           {
             "file": "examples/replay_ins.cpp",

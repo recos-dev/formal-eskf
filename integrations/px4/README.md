@@ -190,7 +190,30 @@ It retains immediate sample-time fusion and a fixed GNSS preference; dynamic-pre
 and ground-effect corrections, bad-acceleration recovery exceptions and delayed
 fusion are separate work. See [the height contract](../../docs/spec/verification-requirements.md#r-height-fusion-px4-gnssbarometer-height-management).
 
-The wrapper is outside the portable numerical core and its existing Lean/ESBMC claims. Magnetic and height integration are linked in the requirement/traceability map with its formal evidence still pending; no proof of PX4, concurrency, total stack use or hardware flight is asserted. Native tests and closed-loop SITL are separate empirical evidence.
+### IMU health and bias learning
+
+The module and replay share `runtime::ImuBiasInhibition`. Before prediction, it
+checks bias-corrected decaying peaks with fixed 25 m/s² / 3 rad/s limits and a
+0.5 s decay constant. Accel and gyro use their own integration durations. High
+dynamics or the preceding vertical-acceleration fault freezes accel-bias updates;
+gyro learning remains enabled. All current GNSS, height and magnetic corrections
+receive the same permissions and retain their ordinary state corrections.
+
+Vertical health uses current GNSS velocity and preceding height innovations from
+active sources, after GNSS velocity and before height fusion. Rejected measurements
+remain evidence; pre-reset innovations do not. The detector's three-second fault
+hold feeds the next IMU tick's bias policy. Module status prints the permission
+masks, high-dynamics result and health availability. No fake-aiding modes are
+inferred from loss of GNSS.
+
+The module still rejects clipped IMU samples and resets health continuity over
+rejected/missing IMU data. Clipping-count fault detection during continued
+prediction is therefore not demonstrated by this deployment profile. Supporting
+that path requires uncertainty handling in the later noise change. Process-noise
+selection, bias limits, gravity fusion and bad-acceleration reset exceptions remain
+separate work. See [the integration contract](../../docs/spec/verification-requirements.md#r-px4-imu-bias-module-health-and-bias-learning-inhibition).
+
+The wrapper is outside the portable numerical core and its existing Lean/ESBMC claims. Magnetic, height and IMU/bias integration are linked in the requirement/traceability map with its formal evidence still pending; no proof of PX4, concurrency, total stack use or hardware flight is asserted. Native tests and closed-loop SITL are separate empirical evidence.
 
 The host patch selects the estimator at boot, starts the lockstep logger from IMU updates during alignment, logs odometry variances and adds SIH's direct `lat_lon_alt` dependency. The reduced board can print missing optional DDS, GPS-driver, camera and VTOL command/parameter messages from the shared startup script.
 
@@ -321,6 +344,32 @@ this is consistent with SIH's ground contact requiring both negative altitude an
 downward net force, without a position clamp. The failure remains recorded. The
 final run stopped at -0.0026 m; neither simulator nor acceptance threshold changed.
 
+## IMU/bias integration validation: 2026-11-12
+
+The final pinned-host build passed normal arming, trajectory, landing and automatic
+disarming. All 20 existing ground sensor failure/recovery scenarios passed; their
+status snapshots reported accel/gyro learning masks 7/7, no high dynamics and an
+available vertical-health verdict without a fault.
+
+| Check | Result |
+| --- | --- |
+| Bias policy, vertical health and height/magnetic adapter suites | 4 Eigen + 4 PX4 matrix passed, float/double |
+| Same suites under ASan + UBSan, leak detection enabled | 8 passed |
+| Existing replay bias scenarios | 8 passed |
+| Package installation/export | 8 passed; 66 installed files verified |
+| Cppcheck unix32/unix64; formatting | Passed |
+| Independent ULog checks / ground scenarios | 18/18; 20/20 passed |
+| Position / velocity RMSE against SIH truth | 0.163 m / 0.260 m/s |
+| Attitude RMSE / maximum error | 1.710° / 3.697° |
+| Valid estimates / numerical faults / airborne failsafes / dropouts | 100% / 0 / 0 / 0 |
+
+Evidence is in `output/px4-imu-bias-sitl-01/`, with the source manifest and binary
+hash. Native tests exercise independent integration periods, peak decay/failure
+rollback, fault-driven inhibition, three-second recovery, real height/magnetic
+corrections with inhibited accel bias, and reset-safe health diagnostics. This
+normal-flight run does not validate physical high-dynamic/clipping disturbances
+or demonstrate an accuracy improvement. No Lean/ESBMC proof was added.
+
 ## GNSS integration scope
 
 Behavior is checked against the pinned
@@ -333,6 +382,6 @@ and message conventions are specified in
 
 The single-source GNSS height lifecycle remains disabled; `HeightAiding` now
 coordinates the GNSS/barometer height sources. Emergency yaw, receiver selection,
-lever arms, delayed fusion and IMU/bias protection wiring remain separate work.
+lever arms, delayed fusion, IMU-noise selection and bias-limit wiring remain separate work.
 GNSS sample-time handling is still immediate and differs from EKF2's buffered
 publication-time path. This is not complete EKF2 parity.

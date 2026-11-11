@@ -30,6 +30,7 @@
 #include <formal_eskf/linalg/backend/px4_matrix.hpp>
 #include <formal_eskf/runtime/gnss_fusion.hpp>
 #include <formal_eskf/runtime/gnss_reset.hpp>
+#include <formal_eskf/runtime/imu_bias_inhibition.hpp>
 #include <formal_eskf/runtime/position.hpp>
 #include <formal_eskf/runtime/velocity.hpp>
 
@@ -60,6 +61,8 @@ private:
     using imu_type = types_type::imu_sample_type;
     using status_type = formal_eskf::Status;
     using height_type = formal_eskf::px4::HeightAiding<backend_type>;
+    using bias_learning_type = formal_eskf::runtime::ImuBiasInhibition<backend_type>;
+    using vertical_health_type = formal_eskf::runtime::VerticalAccelerationHealth<backend_type>;
     using magnetic_type = formal_eskf::px4::MagneticAiding<backend_type>;
     using magnetic_model_type = formal_eskf::px4::MagneticModel<backend_type>;
 
@@ -69,6 +72,8 @@ private:
     void fuse_mag();
     void fuse_height();
     void record_vertical_velocity_reset(double delta);
+    bool update_imu_bias(vehicle_imu_s const & sample, imu_type const & imu);
+    bool update_imu_health(vehicle_imu_s const & sample);
     void publish(imu_type const & imu);
     void publish_status(uint64_t now);
     void update_gps_quality();
@@ -128,6 +133,12 @@ private:
     imu_type m_previous_imu{};
     vector3_type m_accel_sum{}, m_gyro_sum{}, m_mag_sum{};
     height_type m_height_aiding{};
+    bias_learning_type m_bias_learning{{25., 3., 0.5, true, true}};
+    bias_learning_type::Result m_bias_learning_result{};
+    vertical_health_type m_vertical_health{};
+    vertical_health_type::Innovation m_gps_velocity_innovation{};
+    static constexpr double nominal_imu_interval = 0.004; // Pinned vehicle_imu integration cadence, 250 Hz.
+    double m_average_imu_interval = nominal_imu_interval;
     magnetic_type m_magnetic_aiding{};
     magnetic_model_type m_magnetic_model{};
     magnetic_model_type::Settings m_magnetic_settings{};

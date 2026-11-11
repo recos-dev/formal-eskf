@@ -60,6 +60,32 @@ template <typename Linalg> void run(Context & test)
     auto near = [](Scalar const & a, Scalar const & b) { return std::abs(a - b) < static_cast<Scalar>(1e-3); };
     {
         F f;
+        f.start(test);
+        f.P = Aiding::covariance_type::identity();
+        f.P.set(2, 9, static_cast<Scalar>(0.2));
+        f.P.set(9, 2, static_cast<Scalar>(0.2));
+        f.P.set(2, 12, static_cast<Scalar>(0.2));
+        f.P.set(12, 2, static_cast<Scalar>(0.2));
+        auto open = f;
+        typename Aiding::Sample gps{f.now + 20000U, 2, 0, 501, 1};
+        formal_eskf::configuration::Ins::BiasUpdate inhibited{{false, false, false}, {true, true, true}};
+        auto result = f.aiding.update(gps.time_us, {}, gps, true, f.state, f.P, inhibited);
+        auto comparison = open.aiding.update(gps.time_us, {}, gps, true, open.state, open.P);
+        test.expect(result.fused == 1 && comparison.fused == 1 && f.state.b_a(0) == Scalar{0} &&
+                        open.state.b_a(0) != Scalar{0} && f.state.b_g(0) != Scalar{0} && f.P(9, 9) == Scalar{1},
+                    "bias permissions",
+                    "height forwards inhibited accel gain without disabling gyro learning or fusion");
+        auto innovation = f.aiding.vertical_innovation(Source::gnss);
+        test.expect(innovation.active && innovation.innovation > Scalar{0} && innovation.variance > Scalar{0}, "health",
+                    "height converts residual to prediction-minus-observation");
+        gps.time_us += 20000U;
+        gps.altitude = 1500;
+        result = f.aiding.update(gps.time_us, {}, gps, true, f.state, f.P, inhibited);
+        test.expect(result.rejected != 0 && f.aiding.vertical_innovation(Source::gnss).active, "health",
+                    "rejected height retains evidence while its source is active");
+    }
+    {
+        F f;
         test.expect(f.aiding.initialize(f.now, 100000) == Status::domain_error && !f.aiding.valid(f.now), "startup",
                     "invalid external origin does not create height progress");
         test.expect(f.aiding.initialize(f.now, 500) == Status::success, "startup", "initialize metadata only");
@@ -183,6 +209,12 @@ template <typename Linalg> void run(Context & test)
         test.expect(result.height_resets == 1 && near(f.state.p_n(2), -1000) && near(f.P(2, 2), 1) &&
                         f.aiding.valid(f.now),
                     "global timeout", "all-source rejection resets to fresh reference after 5 s");
+        test.expect(f.aiding.session(Source::gnss).fusion.diagnostics_valid &&
+                        !f.aiding.vertical_innovation(Source::gnss).active,
+                    "health", "reset retains raw diagnostics but excludes their pre-reset innovation from health");
+        f.gnss_altitude += 100;
+        test.expect(f.tick().status == Status::success && f.aiding.vertical_innovation(Source::gnss).active, "health",
+                    "the next height attempt supplies fresh evidence even when rejected");
     }
     {
         F f;

@@ -1520,7 +1520,8 @@ The policy does not alter nominal state, covariance, prediction, process noise o
 
 ### R-REPLAY-BIAS: replay bias-learning inhibition
 
-`ReplayBiasLearning` evaluates the prior biases and unit attitude once before
+`ReplayBiasLearning` aliases the shared `runtime::ImuBiasInhibition`. It evaluates
+the prior biases and unit attitude once before
 prediction, then supplies the same six `Ins::BiasUpdate` permissions to every
 GNSS, gravity and magnetic correction at that horizon. It uses decaying peaks,
 not `ImuBiasLearning`'s separate continuous-good timers. Learning inhibition
@@ -1574,6 +1575,51 @@ replay uses its own IMU horizons and precision. Its variance-dependent bias nois
 selection, fault-dependent IMU noise and bias-value limits are specified below.
 GNSS overrides/resets and fake-aiding modes remain pending. Native tests support this integration;
 Lean/ESBMC evidence remains pending.
+
+### R-PX4-IMU-BIAS: module health and bias-learning inhibition
+
+The PX4 module uses the shared `runtime::ImuBiasInhibition` decaying-peak policy
+specified in `R-REPLAY-BIAS`, and the detector in `R-VERTICAL-ACCELERATION`.
+`ImuBiasLearning`'s separate continuous-good recovery timer is not used here.
+
+- Before actual IMU prediction, evaluate once with the prior unit attitude/biases.
+  Use separate angular/velocity integration durations for their respective peak
+  decay. Fixed settings are 25 m/s², 3 rad/s and tau 0.5 s, both bias estimators
+  enabled. The single-period overload retains replay's existing behavior.
+  Invalid durations/data disable permissions and preserve peak history.
+- Fresh land-detector `at_rest` is the only rest override. This module has no
+  fake-position or fake-height modes; GNSS age does not fabricate these modes.
+  Consume the preceding available vertical-health fault, not a future verdict.
+  High dynamics or that fault inhibits accel bias only; gyro learning remains
+  enabled. These heuristics do not prove physical health or observability.
+- Pass the same six permissions to all GNSS position/velocity, barometer/GNSS
+  height and magnetic corrections at that horizon. Reuse the existing constrained
+  gain and Joseph update; do not suppress an entire observation merely because
+  bias learning is inhibited. Checked navigation/heading resets preserve biases.
+- Evaluate vertical health after the current GNSS velocity attempt and before
+  current height attempts. Use current active source sessions and latest valid
+  raw innovations, including rejected observations, negating core residuals.
+  A real velocity reset supplies zero innovation; a height reset excludes its
+  pre-reset diagnostics until the next attempt, without erasing raw gate evidence.
+  GNSS height and velocity share one reference; barometer supplies another.
+- The pinned 250 Hz module profile averages the two IMU periods using 0.99/0.01
+  weights and a 2–8 ms input clamp, starting at 4 ms. This is the module cadence,
+  not a claim of identical EKF2 clipping/fault timelines at its downsampled cadence.
+  Missing/rejected IMU data resets health history and clears learning permission;
+  held prediction rates never update peaks or health. Real measured peaks survive
+  gaps. Source/calibration discontinuities retain the restart-required policy.
+- Retain rejection of clipped IMU samples: no prediction or correction occurs on
+  those samples. Consequently deployed clipping-count fault detection is **not**
+  covered by this change, even though the reusable detector supports it. Accepted
+  samples can still detect multi-reference apparent falling. Continuing prediction
+  with clipped samples and adjusted uncertainty requires the later noise change.
+- Publish the vertical detector's held fault through `fs_bad_acc_vertical`, not
+  the generic numerical-failure latch. Expose learning masks and health availability
+  in module status. Disabled learning is neither invalid bias nor a sensor fault.
+
+No process-noise adjustment, bias-value limiting, gravity correction or new
+height-reset exception is introduced. Native backend/correction tests and SITL
+are empirical evidence; Lean/ESBMC and physical disturbance validation remain pending.
 
 ### R-IMU-PROCESS-NOISE: fault-dependent sampled IMU variance
 

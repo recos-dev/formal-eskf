@@ -8,6 +8,7 @@
 
 #include <formal_eskf/runtime/gnss_reset.hpp>
 #include <formal_eskf/runtime/position.hpp>
+#include <formal_eskf/runtime/vertical_acceleration_health.hpp>
 
 #include "HeightBias.hpp"
 
@@ -58,7 +59,8 @@ public:
         std::uint32_t device_id{};
         std::uint8_t calibration_count{};
         bool active = false;
-        bool fault = false; // Barometer rejection latch; source/calibration change clears it.
+        bool fusion_reset = false; // Raw diagnostics remain visible, but cannot drive health after a reset.
+        bool fault = false;        // Barometer rejection latch; source/calibration change clears it.
         StopReason stop_reason = StopReason::none;
     };
 
@@ -88,11 +90,21 @@ public:
 
     /** One increasing estimator tick: barometer before GNSS; future samples wait. */
     [[nodiscard]] Result update(std::uint64_t now_us, Sample const & barometer, Sample const & gnss,
-                                bool vertical_velocity_aiding, state_type & state,
-                                covariance_type & covariance) noexcept;
+                                bool vertical_velocity_aiding, state_type & state, covariance_type & covariance,
+                                configuration::Ins::BiasUpdate const & bias_update = {}) noexcept;
 
     /** Inspect one sensor session; source must be barometer or gnss. */
     [[nodiscard]] Session const & session(Source source) const noexcept { return m_sessions[index(source)]; }
+    [[nodiscard]] typename runtime::VerticalAccelerationHealth<Linalg>::Innovation
+    vertical_innovation(Source source) const noexcept
+    {
+        auto const & aid = session(source);
+        if (!aid.active || aid.fusion_reset || !aid.fusion.diagnostics_valid)
+        {
+            return {};
+        }
+        return {true, -aid.fusion.innovation(0U), aid.fusion.innovation_variance(0U)};
+    }
     [[nodiscard]] Source reference() const noexcept { return m_reference; }
     [[nodiscard]] std::uint64_t progress_time() const noexcept { return m_last_height_progress; }
     [[nodiscard]] std::uint8_t reset_counter() const noexcept { return m_reset_counter; }
@@ -119,7 +131,8 @@ private:
     }
     void stop(Source source, StopReason reason) noexcept;
     void process(Source source, std::uint64_t now_us, Sample const & sample, bool vertical_velocity_aiding,
-                 state_type & state, covariance_type & covariance, Result & result) noexcept;
+                 state_type & state, covariance_type & covariance, Result & result,
+                 configuration::Ins::BiasUpdate const & bias_update) noexcept;
     void reset_height(Source source, std::uint64_t now_us, value_type altitude, value_type variance, state_type & state,
                       covariance_type & covariance, Result & result) noexcept;
 
@@ -165,12 +178,13 @@ void HeightAiding<Linalg>::reset_height(Source source, std::uint64_t now_us, val
     m_last_height_progress = now_us;
     auto & aid = m_sessions[index(source)];
     aid.progress_time = now_us;
+    aid.fusion_reset = true;
 }
 
 template <typename Linalg>
 void HeightAiding<Linalg>::process(Source source, std::uint64_t now_us, Sample const & sample,
                                    bool vertical_velocity_aiding, state_type & state, covariance_type & covariance,
-                                   Result & result) noexcept
+                                   Result & result, configuration::Ins::BiasUpdate const & bias_update) noexcept
 {
     auto & aid = m_sessions[index(source)];
     bool const barometer = source == Source::barometer;
@@ -269,8 +283,10 @@ void HeightAiding<Linalg>::process(Source source, std::uint64_t now_us, Sample c
         aid.progress_time = now_us; // Startup grace, distinct from a successful correction.
         return;
     }
-    aid.fusion = runtime::fuse_vertical_position(state, covariance, observation, observation_variance,
-                                                 static_cast<value_type>(1e-6), gate_sigma, state, covariance);
+    aid.fusion_reset = false;
+    aid.fusion =
+        runtime::fuse_vertical_position(state, covariance, observation, observation_variance,
+                                        static_cast<value_type>(1e-6), gate_sigma, state, covariance, bias_update);
     result.status = aid.fusion.status;
     if (!succeeded(result.status))
     {
@@ -314,7 +330,8 @@ void HeightAiding<Linalg>::process(Source source, std::uint64_t now_us, Sample c
 template <typename Linalg>
 typename HeightAiding<Linalg>::Result
 HeightAiding<Linalg>::update(std::uint64_t now_us, Sample const & barometer, Sample const & gnss,
-                             bool vertical_velocity_aiding, state_type & state, covariance_type & covariance) noexcept
+                             bool vertical_velocity_aiding, state_type & state, covariance_type & covariance,
+                             configuration::Ins::BiasUpdate const & bias_update) noexcept
 {
     Result result;
     if (m_started == 0U || now_us < m_started || now_us <= m_tick)
@@ -345,7 +362,7 @@ HeightAiding<Linalg>::update(std::uint64_t now_us, Sample const & barometer, Sam
             aid.bias.predict(dt);
         }
         candidate.process(source, now_us, source == Source::barometer ? barometer : gnss, vertical_velocity_aiding,
-                          next_state, next_covariance, result);
+                          next_state, next_covariance, result, bias_update);
         if (!succeeded(result.status))
         {
             return Result{result.status};

@@ -73,6 +73,26 @@ template <typename Linalg> void run(Context & test)
     constexpr auto tolerance = static_cast<Scalar>(1e-4);
     {
         F f;
+        f.start(test);
+        f.P = F::aiding_type::covariance_type::identity();
+        f.P.set(8, 9, static_cast<Scalar>(0.2));
+        f.P.set(9, 8, static_cast<Scalar>(0.2));
+        f.P.set(8, 12, static_cast<Scalar>(0.2));
+        f.P.set(12, 8, static_cast<Scalar>(0.2));
+        auto open = f;
+        auto field = f.reference;
+        field.set(1, Scalar{1});
+        typename F::aiding_type::Sample sample{f.now + 10000U, f.source, field};
+        formal_eskf::configuration::Ins::BiasUpdate inhibited{{false, false, false}, {true, true, true}};
+        auto result = f.aiding.update(sample.time_us, sample, f.context, f.reference_data(), f.state, f.P, inhibited);
+        auto comparison =
+            open.aiding.update(sample.time_us, sample, open.context, open.reference_data(), open.state, open.P);
+        test.expect(result.fused && comparison.fused && f.state.b_a(0) == Scalar{0} && open.state.b_a(0) != Scalar{0} &&
+                        f.state.b_g(0) != Scalar{0} && f.P(9, 9) == Scalar{1},
+                    "bias permissions", "magnetic correction forwards accel inhibition while gyro can learn");
+    }
+    {
+        F f;
         for (unsigned i = 0; i < 101; ++i)
         {
             auto const result = f.tick();

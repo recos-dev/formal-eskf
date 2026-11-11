@@ -99,7 +99,8 @@ public:
 
     /** Every real estimator tick; a zero timestamp denotes no new observation. */
     [[nodiscard]] Result update(std::uint64_t now_us, Sample const & sample, Context const & context,
-                                Reference const & reference, state_type & state, covariance_type & covariance) noexcept;
+                                Reference const & reference, state_type & state, covariance_type & covariance,
+                                configuration::Ins::BiasUpdate const & bias_update = {}) noexcept;
 
 private:
     runtime::MagneticHeading<Linalg> m_heading{};
@@ -117,7 +118,8 @@ private:
 template <typename Linalg>
 typename MagneticAiding<Linalg>::Result
 MagneticAiding<Linalg>::update(std::uint64_t now_us, Sample const & sample, Context const & context,
-                               Reference const & reference, state_type & state, covariance_type & covariance) noexcept
+                               Reference const & reference, state_type & state, covariance_type & covariance,
+                               configuration::Ins::BiasUpdate const & bias_update) noexcept
 {
     Result result;
     auto const previous = lifecycle();
@@ -214,7 +216,7 @@ MagneticAiding<Linalg>::update(std::uint64_t now_us, Sample const & sample, Cont
         auto const V = Linalg::template matrix_type<3U, 3U>::identity() * noise_variance;
         m_observation = runtime::fuse_magnetometer(state, covariance, sample.field_b, reference.observation_n,
                                                    reference.health_n, V, field_parameters, false, minimum_norm,
-                                                   gate_sigma, state, covariance, {}, checks);
+                                                   gate_sigma, state, covariance, bias_update, checks);
         result.status = m_lifecycle.record_fusion(event.time_us, m_observation.fusion.decision);
         if (!succeeded(result.status))
         {

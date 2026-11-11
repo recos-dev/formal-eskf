@@ -3524,7 +3524,11 @@
         "cpp": [
           {
             "file": "examples/replay_bias.hpp",
-            "symbol": "class ReplayBiasLearning"
+            "symbol": "using ReplayBiasLearning"
+          },
+          {
+            "file": "include/formal_eskf/runtime/imu_bias_inhibition.hpp",
+            "symbol": "class ImuBiasInhibition"
           },
           {
             "file": "examples/replay_ins.cpp",
@@ -3541,6 +3545,54 @@
           {
             "file": "examples/replay_px4.py",
             "symbol": "def imu_flags("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
+      "id": "R-PX4-IMU-BIAS",
+      "title": "PX4 module IMU dynamics, vertical health and bias-permission wiring; Lean and ESBMC evidence pending",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-PX4-IMU-BIAS: module health and bias-learning inhibition"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/imu_bias_inhibition.hpp",
+            "symbol": "class ImuBiasInhibition"
+          },
+          {
+            "file": "include/formal_eskf/runtime/vertical_acceleration_health.hpp",
+            "symbol": "class VerticalAccelerationHealth"
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "bool FormalEskf::update_imu_bias("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "bool FormalEskf::update_imu_health("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::fuse_gps()"
+          },
+          {
+            "file": "integrations/px4/module/HeightAiding.hpp",
+            "symbol": "vertical_innovation(Source source)"
+          },
+          {
+            "file": "integrations/px4/module/HeightAiding.hpp",
+            "symbol": "HeightAiding<Linalg>::update("
+          },
+          {
+            "file": "integrations/px4/module/MagneticAiding.hpp",
+            "symbol": "MagneticAiding<Linalg>::update("
           }
         ],
         "esbmc": []

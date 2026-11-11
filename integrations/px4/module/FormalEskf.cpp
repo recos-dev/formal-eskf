@@ -284,8 +284,12 @@ void FormalEskf::initialize(vehicle_imu_s const & sample, imu_type const & imu)
     m_last_imu = sample;
     m_previous_imu = imu;
     m_initialized = true;
+    if (!update_imu_bias(sample, imu))
+    {
+        return;
+    }
     fuse_gps();
-    if (!m_fault)
+    if (!m_fault && update_imu_health(sample))
     {
         fuse_height();
     }
@@ -318,6 +322,10 @@ void FormalEskf::Run()
             sample.delta_angle_clipping || sample.delta_velocity_clipping)
         {
             ++m_rejections;
+            // Rejected/missing IMU data cannot preserve a learning authorization or health verdict.
+            m_bias_learning_result = {};
+            m_vertical_health.reset();
+            m_average_imu_interval = nominal_imu_interval;
         }
         else
         {
@@ -360,12 +368,15 @@ void FormalEskf::Run()
                         if (gap > 200)
                         {
                             ++m_gaps;
+                            m_vertical_health.reset();
+                            m_average_imu_interval = nominal_imu_interval;
                             m_magnetic_aiding.reset_acceleration();
                             check(formal_eskf::try_predict(m_state, m_covariance, m_previous_imu, double(gap) * 1e-6,
                                                            m_parameters, m_state, m_covariance));
                         }
-                        if (!m_fault && check(formal_eskf::try_predict(m_state, m_covariance, imu, dt, m_parameters,
-                                                                       m_state, m_covariance)))
+                        if (!m_fault && update_imu_bias(sample, imu) &&
+                            check(formal_eskf::try_predict(m_state, m_covariance, imu, dt, m_parameters, m_state,
+                                                           m_covariance)))
                         {
                             ++m_predictions;
                             auto const acceleration_n =
@@ -374,7 +385,7 @@ void FormalEskf::Run()
                             {
                                 fuse_gps();
                             }
-                            if (!m_fault)
+                            if (!m_fault && update_imu_health(sample))
                             {
                                 fuse_height();
                             }
@@ -419,6 +430,10 @@ void FormalEskf::fuse_gps()
     {
         m_gnss_quality.restart_health();
     }
+    if (!m_gnss_fusion.state().velocity.active)
+    {
+        m_gps_velocity_innovation = {};
+    }
     if (m_gnss_sample.time_us == 0 || !gps_good())
     {
         return;
@@ -452,15 +467,17 @@ void FormalEskf::fuse_gps()
         record_vertical_velocity_reset(delta(2));
         ++m_odometry_reset_counter;
         m_vel_ratio = 0.;
+        m_gps_velocity_innovation = {true, 0., velocity_variances(2)};
     }
     else if (session.velocity.fusion_allowed)
     {
-        auto const result =
-            fuse_velocity(m_state, m_covariance, velocity, Rv, minimum_quaternion_norm, 5., m_state, m_covariance);
+        auto const result = fuse_velocity(m_state, m_covariance, velocity, Rv, minimum_quaternion_norm, 5., m_state,
+                                          m_covariance, m_bias_learning_result.bias_update);
         if (!record_gps_fusion(Group::velocity, result, m_vel_ratio))
         {
             return;
         }
+        m_gps_velocity_innovation = {result.diagnostics_valid, -result.innovation(2), result.innovation_variance(2)};
         // Use preceding height progress, after normal velocity correction and before height control.
         if (m_height_aiding.reset_required(m_time))
         {
@@ -472,6 +489,7 @@ void FormalEskf::fuse_gps()
             }
             record_vertical_velocity_reset(delta);
             ++m_odometry_reset_counter;
+            m_gps_velocity_innovation = {true, 0., velocity_variances(2)};
         }
     }
     if (session.horizontal_position.reset_allowed)
@@ -494,7 +512,7 @@ void FormalEskf::fuse_gps()
     else if (session.horizontal_position.fusion_allowed)
     {
         auto const result = fuse_horizontal_position(m_state, m_covariance, xy, Rxy, minimum_quaternion_norm, 5.,
-                                                     m_state, m_covariance);
+                                                     m_state, m_covariance, m_bias_learning_result.bias_update);
         if (!record_gps_fusion(Group::horizontal_position, result, m_pos_ratio))
         {
             return;
@@ -593,7 +611,8 @@ void FormalEskf::fuse_mag()
     }
     magnetic_type::Reference const reference{m_magnetic_model.observation_n(), m_magnetic_model.health_n(),
                                              m_magnetic_model.available()};
-    auto const result = m_magnetic_aiding.update(m_time, sample, context, reference, m_state, m_covariance);
+    auto const result = m_magnetic_aiding.update(m_time, sample, context, reference, m_state, m_covariance,
+                                                 m_bias_learning_result.bias_update);
     if (!check(result.status))
     {
         return;
@@ -631,8 +650,8 @@ void FormalEskf::fuse_height()
                 square(std::max(double(m_gps.epv), 0.75)),
                 gps_good()};
     }
-    auto const result =
-        m_height_aiding.update(m_time, barometer, gnss, m_gnss_fusion.state().velocity.active, m_state, m_covariance);
+    auto const result = m_height_aiding.update(m_time, barometer, gnss, m_gnss_fusion.state().velocity.active, m_state,
+                                               m_covariance, m_bias_learning_result.bias_update);
     if (!check(result.status))
     {
         return;
@@ -649,6 +668,41 @@ void FormalEskf::fuse_height()
     m_gps_updates += gps.fused_time == m_time;
     m_height_ratio = baro.fusion.diagnostics_valid ? baro.fusion.test_ratio(0) : double(INFINITY);
     m_gps_height_ratio = gps.fusion.diagnostics_valid ? gps.fusion.test_ratio(0) : double(INFINITY);
+}
+
+bool FormalEskf::update_imu_bias(vehicle_imu_s const & sample, imu_type const & imu)
+{
+    const double angular_interval = double(sample.delta_angle_dt) * 1e-6;
+    const double force_interval = double(sample.delta_velocity_dt) * 1e-6;
+    m_average_imu_interval =
+        0.99 * m_average_imu_interval + 0.01 * std::clamp(0.5 * (angular_interval + force_interval),
+                                                          0.5 * nominal_imu_interval, 2. * nominal_imu_interval);
+    bias_learning_type::Conditions conditions;
+    conditions.at_rest = recent(m_land.timestamp, 2000000) && m_land.at_rest;
+    conditions.accelerometer_clipping = sample.delta_velocity_clipping;
+    conditions.bad_vertical_acceleration = m_vertical_health.state().bad_vertical_acceleration;
+    // This module has no fake-position/height modes. A GNSS outage is not a fake-aiding mode.
+    m_bias_learning_result = m_bias_learning.update(angular_interval, force_interval, m_state, imu, conditions);
+    return check(m_bias_learning_result.status);
+}
+
+bool FormalEskf::update_imu_health(vehicle_imu_s const & sample)
+{
+    vertical_health_type::Observations observations;
+    observations.barometer_height = m_height_aiding.vertical_innovation(height_type::Source::barometer);
+    observations.gnss_height = m_height_aiding.vertical_innovation(height_type::Source::gnss);
+    observations.gnss_velocity_down = m_gps_velocity_innovation;
+    observations.gnss_velocity_down.active &= m_gnss_fusion.state().velocity.active;
+    vertical_health_type::Sample health_sample;
+    health_sample.time_us = m_time;
+    health_sample.average_interval_s = m_average_imu_interval;
+    health_sample.clipping_available = true;
+    for (size_t axis = 0; axis < 3; ++axis)
+    {
+        health_sample.clipped[axis] = (sample.delta_velocity_clipping & (1U << axis)) != 0;
+    }
+    // Current GNSS velocity, preceding height attempts: evaluate before current height correction.
+    return check(m_vertical_health.update(health_sample, observations));
 }
 
 void FormalEskf::publish(imu_type const & imu)
@@ -812,7 +866,7 @@ void FormalEskf::publish_status(uint64_t now)
     status.reset_count_vel_ne = m_velocity_reset_counter;
     status.reset_count_vel_d = m_vertical_velocity_reset_counter;
     status.reset_count_pod_d = m_height_aiding.reset_counter();
-    status.filter_fault_flags = m_fault ? (1 << 16) : 0;
+    status.filter_fault_flags = (m_fault || m_vertical_health.state().bad_vertical_acceleration) ? (1U << 16) : 0U;
     status.hdg_test_ratio = m_mag_ratio;
     status.vel_test_ratio = m_vel_ratio;
     status.pos_test_ratio = m_pos_ratio;
@@ -854,7 +908,7 @@ void FormalEskf::publish_status(uint64_t now)
     flags.cs_baro_fault = m_height_aiding.session(height_type::Source::barometer).fault;
     flags.cs_in_air = !m_land.landed;
     flags.cs_inertial_dead_reckoning = !(healthy && (gps_position_valid(1000000) || gps_velocity_valid(1000000)));
-    flags.fs_bad_acc_vertical = m_fault;
+    flags.fs_bad_acc_vertical = m_vertical_health.state().bad_vertical_acceleration;
     flags.reject_hor_pos = m_pos_ratio > 1.;
     flags.reject_hor_vel = flags.reject_ver_vel = m_vel_ratio > 1.;
     flags.reject_ver_pos = status.hgt_test_ratio > 1.f;
@@ -930,6 +984,16 @@ int FormalEskf::print_status()
              unsigned(m_height_aiding.reference()), unsigned(baro.active), unsigned(gps.active), unsigned(baro.fault),
              unsigned(m_height_aiding.reset_counter()), unsigned(m_vertical_velocity_reset_counter));
     PX4_INFO("height bias: baro=%.3f gnss=%.3f m", baro.bias.value, gps.bias.value);
+    unsigned accel_mask{}, gyro_mask{};
+    for (size_t axis = 0; axis < 3; ++axis)
+    {
+        accel_mask |= unsigned(m_bias_learning_result.bias_update.accelerometer[axis]) << axis;
+        gyro_mask |= unsigned(m_bias_learning_result.bias_update.gyroscope[axis]) << axis;
+    }
+    PX4_INFO("bias learning: accel=%u gyro=%u high_dynamics=%u", accel_mask, gyro_mask,
+             unsigned(m_bias_learning_result.high_dynamics));
+    PX4_INFO("vertical IMU health: available=%u bad=%u", unsigned(m_vertical_health.state().last_update_time_us != 0),
+             unsigned(m_vertical_health.state().bad_vertical_acceleration));
     perf_print_counter(m_cycle_perf);
     return 0;
 }

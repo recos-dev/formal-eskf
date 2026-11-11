@@ -12,6 +12,7 @@
 #include <string_view>
 
 #include "../examples/replay_bias.hpp"
+#include <formal_eskf/runtime/vertical_acceleration_health.hpp>
 #include "test_backend.hpp"
 #include "test_support.hpp"
 
@@ -35,6 +36,44 @@ template <typename Linalg> void test_policy(TestContext & test)
     formal_eskf::ImuSample<Linalg> imu;
     imu.specific_force_b = Vector::from_row_major({Scalar{0}, Scalar{0}, Scalar{-10}});
     Policy policy(parameters);
+    {
+        Policy separate_periods(parameters);
+        auto spike = imu;
+        spike.specific_force_b.set(2U, Scalar{-50});
+        spike.angular_rate_b.set(0U, Scalar{6});
+        (void)separate_periods.update(Scalar{0.125}, Scalar{0.25}, state, spike, {});
+        auto result = separate_periods.update(Scalar{0.125}, Scalar{0.25}, state, imu, {});
+        test.expect(result.specific_force_peak == Scalar{25} && result.angular_rate_peak == Scalar{4.5} &&
+                        result.high_dynamics,
+                    profile, "each sensor envelope uses its own integration period");
+        auto invalid = separate_periods.update(Scalar{0.125}, Scalar{0}, state, imu, {});
+        test.expect(invalid.status == Status::domain_error && invalid.bias_update.accelerometer == none, profile,
+                    "invalid accel period cannot authorize learning");
+        result = separate_periods.update(Scalar{0.125}, Scalar{0.25}, state, imu, {});
+        test.expect(result.specific_force_peak == Scalar{12.5} && result.angular_rate_peak == Scalar{3.375}, profile,
+                    "failed evaluation preserves both independent envelopes");
+    }
+    {
+        using Health = formal_eskf::runtime::VerticalAccelerationHealth<Linalg>;
+        Health health;
+        typename Health::Observations observations;
+        observations.barometer_height = {true, Scalar{4}, Scalar{1}};
+        observations.gnss_velocity_down = {true, Scalar{2}, Scalar{1}};
+        test.expect(health.update({1000000U, static_cast<Scalar>(0.01), true, {}}, observations) == Status::success &&
+                        health.state().bad_vertical_acceleration,
+                    profile, "independent falling references set fault");
+        typename Policy::Conditions conditions;
+        conditions.bad_vertical_acceleration = health.state().bad_vertical_acceleration;
+        auto result = policy.update(static_cast<Scalar>(0.01), state, imu, conditions);
+        test.expect(result.bias_update.accelerometer == none && result.bias_update.gyroscope == all, profile,
+                    "preceding height health inhibits accel learning only");
+        test.expect(health.update({3999999U, static_cast<Scalar>(0.01), true, {}}, {}) == Status::success &&
+                        health.state().bad_vertical_acceleration,
+                    profile, "fault holds before three seconds");
+        test.expect(health.update({4000000U, static_cast<Scalar>(0.01), true, {}}, {}) == Status::success &&
+                        !health.state().bad_vertical_acceleration,
+                    profile, "fault clears at three-second boundary");
+    }
     auto result = policy.update(Scalar{0.125}, state, imu, {});
     test.expect(result.status == Status::success && result.bias_update.accelerometer == all &&
                     result.bias_update.gyroscope == all,

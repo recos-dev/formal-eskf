@@ -19,7 +19,7 @@
 #include <matrix/Vector.hpp>
 
 #include <formal_eskf/linalg/backend/cholesky.hpp>
-#include <formal_eskf/linalg/linalg.hpp>
+#include <formal_eskf/status.hpp>
 #include <formal_eskf/scalar/backend/standard.hpp>
 
 namespace formal_eskf::linalg
@@ -43,11 +43,6 @@ public:
     using value_type = Scalar;
     using scalar_math_type = scalar::StandardMath<value_type>;
 
-    template <std::size_t Rows, std::size_t Columns>
-    using matrix_type = Matrix<Px4MatrixBackend<Scalar>, Rows, Columns>;
-
-    template <std::size_t Size> using vector_type = Vector<Px4MatrixBackend<Scalar>, Size>;
-
     template <std::size_t Rows, std::size_t Columns> using storage_type = ::matrix::Matrix<value_type, Rows, Columns>;
 
     template <std::size_t Rows, std::size_t Columns>
@@ -60,10 +55,6 @@ public:
     template <std::size_t Rows, std::size_t Columns>
     [[nodiscard]] static value_type & coefficient(storage_type<Rows, Columns> & matrix, std::size_t row,
                                                   std::size_t column) noexcept;
-
-    template <std::size_t Rows, std::size_t Columns>
-    static void set_coefficient(storage_type<Rows, Columns> & matrix, std::size_t row, std::size_t column,
-                                value_type value) noexcept;
 
     template <std::size_t Rows, std::size_t Columns>
     static void add(storage_type<Rows, Columns> const & left, storage_type<Rows, Columns> const & right,
@@ -130,14 +121,6 @@ Px4MatrixBackend<Scalar>::coefficient(storage_type<Rows, Columns> & matrix, std:
                                       std::size_t column) noexcept
 {
     return matrix(row, column);
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-void Px4MatrixBackend<Scalar>::set_coefficient(storage_type<Rows, Columns> & matrix, std::size_t row,
-                                               std::size_t column, value_type value) noexcept
-{
-    matrix(row, column) = value;
 }
 
 template <typename Scalar>

@@ -13,6 +13,8 @@
 #include <string_view>
 #include <type_traits>
 
+#include <formal_eskf/linalg/linalg.hpp>
+
 #include "test_backend.hpp"
 #include <formal_eskf/so3/so3.hpp>
 
@@ -147,7 +149,7 @@ void test_exp_and_log(TestContext & test, std::string_view profile, typename Lin
     using quaternion_type = formal_eskf::so3::UnitQuaternion<Linalg>;
     using scalar_math_type = typename Linalg::scalar_math_type;
     using value_type = typename Linalg::value_type;
-    using vector3_type = typename Linalg::template vector_type<3U>;
+    using vector3_type = formal_eskf::linalg::Vector<Linalg, 3U>;
 
     vector3_type const zero = vector3_type::zero();
     quaternion_type zero_exp;
@@ -227,9 +229,9 @@ template <typename Linalg>
 void test_exp_rotation_matrix(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
     using quaternion_type = formal_eskf::so3::UnitQuaternion<Linalg>;
-    using matrix3_type = typename Linalg::template matrix_type<3U, 3U>;
+    using matrix3_type = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
     using value_type = typename Linalg::value_type;
-    using vector3_type = typename Linalg::template vector_type<3U>;
+    using vector3_type = formal_eskf::linalg::Vector<Linalg, 3U>;
 
     value_type const rotation_values[3] = {static_cast<value_type>(0.2), static_cast<value_type>(-0.3),
                                            static_cast<value_type>(0.4)};
@@ -253,7 +255,7 @@ void test_exp_failure_atomicity(TestContext & test, std::string_view profile, ty
 {
     using quaternion_type = formal_eskf::so3::UnitQuaternion<Linalg>;
     using value_type = typename Linalg::value_type;
-    using vector3_type = typename Linalg::template vector_type<3U>;
+    using vector3_type = formal_eskf::linalg::Vector<Linalg, 3U>;
 
     quaternion_type unchanged;
     quaternion_type const expected = unchanged;
@@ -282,7 +284,7 @@ void test_rotation_action(TestContext & test, std::string_view profile, typename
 {
     using quaternion_type = formal_eskf::so3::UnitQuaternion<Linalg>;
     using value_type = typename Linalg::value_type;
-    using vector3_type = typename Linalg::template vector_type<3U>;
+    using vector3_type = formal_eskf::linalg::Vector<Linalg, 3U>;
 
     value_type const half_sqrt_two = static_cast<value_type>(0.70710678118654752440);
     quaternion_type qz;
@@ -309,7 +311,7 @@ template <typename Linalg>
 void test_reference_rotation_matrix(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
     using quaternion_type = formal_eskf::so3::UnitQuaternion<Linalg>;
-    using matrix3_type = typename Linalg::template matrix_type<3U, 3U>;
+    using matrix3_type = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
     using value_type = typename Linalg::value_type;
 
     quaternion_type quaternion;
@@ -332,7 +334,7 @@ template <typename Linalg>
 void test_hat(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
     using value_type = typename Linalg::value_type;
-    using vector3_type = typename Linalg::template vector_type<3U>;
+    using vector3_type = formal_eskf::linalg::Vector<Linalg, 3U>;
 
     constexpr value_type left_values[3] = {1, 2, 3};
     constexpr value_type right_values[3] = {-4, 5, -6};

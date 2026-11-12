@@ -138,11 +138,6 @@ public:
     using value_type = Number;
     using scalar_math_type = Math;
 
-    template <std::size_t Rows, std::size_t Columns>
-    using matrix_type = linalg::Matrix<FixedArrayLinalg, Rows, Columns>;
-
-    template <std::size_t Size> using vector_type = matrix_type<Size, 1U>;
-
     template <std::size_t Rows, std::size_t Columns> struct storage_type
     {
         ScalarArray<value_type, Rows * Columns> values;
@@ -168,13 +163,6 @@ public:
                                                   std::size_t column) noexcept
     {
         return matrix.values[row * Columns + column];
-    }
-
-    template <std::size_t Rows, std::size_t Columns>
-    static void set_coefficient(storage_type<Rows, Columns> & matrix, std::size_t row, std::size_t column,
-                                value_type value) noexcept
-    {
-        matrix.values[row * Columns + column] = value;
     }
 
     template <std::size_t Rows, std::size_t Columns>
@@ -291,9 +279,9 @@ using ArrayLinalg = FixedArrayLinalg<float>;
 using Linalg = ArrayLinalg;
 using Quaternion = so3::UnitQuaternion<Linalg>;
 using Scalar = Linalg::value_type;
-using Vector3 = Linalg::vector_type<3U>;
-using Vector4 = Linalg::vector_type<4U>;
-using Matrix3 = Linalg::matrix_type<3U, 3U>;
+using Vector3 = formal_eskf::linalg::Vector<Linalg, 3U>;
+using Vector4 = formal_eskf::linalg::Vector<Linalg, 4U>;
+using Matrix3 = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
 
 inline void assume_scalar(Scalar value) { __ESBMC_assume(value >= Scalar{-1} && value <= Scalar{1}); }
 

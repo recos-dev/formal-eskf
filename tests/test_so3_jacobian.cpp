@@ -16,6 +16,8 @@
 
 #include <formal_eskf/so3/right_jacobian.hpp>
 #include <formal_eskf/so3/rotation_vector.hpp>
+#include <formal_eskf/linalg/linalg.hpp>
+
 #include "test_backend.hpp"
 
 #include "test_support.hpp"
@@ -63,8 +65,8 @@ template <typename Linalg>
 void test_jacobian_values(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
     using value_type = typename Linalg::value_type;
-    using vector3_type = typename Linalg::template vector_type<3U>;
-    using matrix3_type = typename Linalg::template matrix_type<3U, 3U>;
+    using vector3_type = formal_eskf::linalg::Vector<Linalg, 3U>;
+    using matrix3_type = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
     constexpr value_type limit = value_type{0.0625};
     value_type const pi = formal_eskf::scalar::pi<typename Linalg::scalar_math_type>();
     std::array<value_type, 13U> const angles{value_type{0},
@@ -87,14 +89,14 @@ void test_jacobian_values(TestContext & test, std::string_view profile, typename
             vector3_type phi;
             if (direction < 3U)
             {
-                phi.set(direction, angle);
+                phi(direction) = angle;
             }
             else
             {
                 // Unit mixed axis [2, -3, 6]/7, with all cross terms nonzero.
-                phi.set(0U, angle * (value_type{2} / value_type{7}));
-                phi.set(1U, angle * (value_type{-3} / value_type{7}));
-                phi.set(2U, angle * (value_type{6} / value_type{7}));
+                phi(0U) = angle * (value_type{2} / value_type{7});
+                phi(1U) = angle * (value_type{-3} / value_type{7});
+                phi(2U) = angle * (value_type{6} / value_type{7});
             }
             matrix3_type jacobian;
             Status const status = formal_eskf::so3::try_right_jacobian(phi, jacobian);
@@ -126,14 +128,14 @@ void test_jacobian_values(TestContext & test, std::string_view profile, typename
     test.expect(formal_eskf::so3::try_right_jacobian(phi, jacobian) == Status::success &&
                     formal_eskf::linalg::max_abs(jacobian - matrix3_type::identity()) == value_type{0},
                 profile, "zero Jacobian is exactly identity without division by zero");
-    phi.set(0U, value_type{0.75});
+    phi(0U) = value_type{0.75};
     test.expect(formal_eskf::so3::try_right_jacobian(phi, jacobian) == Status::success &&
                     jacobian(1U, 1U) < value_type{0.9375},
                 profile, "closed form is not silently replaced by I-hat(phi)/2");
 
     // Very large but representable squared norms must not form theta^3 or
     // multiply an unscaled hat(phi)^2 by a tiny coefficient.
-    phi.set(0U, static_cast<value_type>(1.0e10));
+    phi(0U) = static_cast<value_type>(1.0e10);
     test.expect(formal_eskf::so3::try_right_jacobian(phi, jacobian) == Status::success &&
                     formal_eskf::linalg::all_finite(jacobian) && near(jacobian(0U, 0U), value_type{1}, tolerance),
                 profile, "large finite angle uses a bounded unit-axis expression");
@@ -143,17 +145,17 @@ template <typename Linalg> void test_reset_differential(TestContext & test, std:
 {
     using value_type = typename Linalg::value_type;
     using quaternion_type = formal_eskf::so3::UnitQuaternion<Linalg>;
-    using vector3_type = typename Linalg::template vector_type<3U>;
-    using matrix3_type = typename Linalg::template matrix_type<3U, 3U>;
+    using vector3_type = formal_eskf::linalg::Vector<Linalg, 3U>;
+    using matrix3_type = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
     constexpr value_type minimum_norm = static_cast<value_type>(1.0e-6);
     value_type const step =
         std::is_same_v<value_type, float> ? static_cast<value_type>(0.005) : static_cast<value_type>(1.0e-5);
     value_type const tolerance =
         std::is_same_v<value_type, float> ? static_cast<value_type>(5.0e-5) : static_cast<value_type>(3.0e-10);
     vector3_type phi;
-    phi.set(0U, value_type{0.25});
-    phi.set(1U, value_type{-0.375});
-    phi.set(2U, value_type{0.5});
+    phi(0U) = value_type{0.25};
+    phi(1U) = value_type{-0.375};
+    phi(2U) = value_type{0.5};
     quaternion_type nominal;
     matrix3_type jacobian;
     bool correct = formal_eskf::so3::try_exp(phi, minimum_norm, nominal) == Status::success &&
@@ -162,8 +164,8 @@ template <typename Linalg> void test_reset_differential(TestContext & test, std:
     {
         auto plus = phi;
         auto minus = phi;
-        plus.set(column, plus(column) + step);
-        minus.set(column, minus(column) - step);
+        plus(column) = plus(column) + step;
+        minus(column) = minus(column) - step;
         quaternion_type q_plus;
         quaternion_type q_minus;
         vector3_type log_plus;
@@ -184,8 +186,8 @@ template <typename Linalg> void test_reset_differential(TestContext & test, std:
 template <typename Linalg> void test_jacobian_failures(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
-    using vector3_type = typename Linalg::template vector_type<3U>;
-    using matrix3_type = typename Linalg::template matrix_type<3U, 3U>;
+    using vector3_type = formal_eskf::linalg::Vector<Linalg, 3U>;
+    using matrix3_type = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
     auto const sentinel = matrix3_type::identity() * value_type{2};
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
@@ -194,7 +196,7 @@ template <typename Linalg> void test_jacobian_failures(TestContext & test, std::
               -std::numeric_limits<value_type>::infinity()})
         {
             vector3_type phi;
-            phi.set(axis, invalid);
+            phi(axis) = invalid;
             auto output = sentinel;
             Status const status = formal_eskf::so3::try_right_jacobian(phi, output);
             test.expect(status == Status::non_finite_input &&
@@ -202,7 +204,7 @@ template <typename Linalg> void test_jacobian_failures(TestContext & test, std::
                         profile, "non-finite input preserves output");
         }
         vector3_type phi;
-        phi.set(axis, std::numeric_limits<value_type>::max());
+        phi(axis) = std::numeric_limits<value_type>::max();
         auto output = sentinel;
         Status const status = formal_eskf::so3::try_right_jacobian(phi, output);
         test.expect(status == Status::non_finite_result &&

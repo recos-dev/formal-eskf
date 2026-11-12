@@ -75,7 +75,7 @@ void verify_log_arithmetic(Scalar q0, Scalar q0_squared, Scalar squared, Scalar 
     __ESBMC_assert(same(formal_eskf::so3::detail::log_closed_form_scale(norm, angle), Scalar{2} * angle / norm),
                    "SO3-LOG: exact ordered regular scale expression on all IEEE arguments");
     auto const before = qv;
-    auto const candidate = formal_eskf::so3::detail::log_candidate<Linalg>(qv, scale);
+    auto const candidate = qv * scale;
     for (std::size_t i = 0U; i < 3U; ++i)
     {
         __ESBMC_assert(same(candidate(i), qv(i) * scale),

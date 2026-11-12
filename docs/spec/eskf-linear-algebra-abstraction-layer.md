@@ -17,9 +17,10 @@ EskfCore<Linalg>
 
 ESKF equations use shared operations above the backend. The names above are schematic, not a required `EskfCore` class or an exhaustive backend list; backend selection is independent of the INS/AHRS configuration. The actual ownership and source layout are in the [architecture specification](eskf-software-architecture-and-verification-boundaries.md#current-implementation-and-ownership).
 
-## Backend primitives
+## Required operations
 
-These operations need an abstract backend because their implementation differs between Eigen and a verifier-friendly fixed-array implementation.
+The shared interface exposes these operations. Backend-dependent primitives
+are listed separately in the minimal backend surface below.
 
 ### 1. Fixed-size types
 
@@ -33,9 +34,11 @@ Only compile-time-fixed dimensions are needed.
 
 The C++ value types are `linalg::Matrix<Backend, Rows, Columns>` and
 `linalg::Vector<Backend, Size>`. `Vector` is an alias for an owning `Size x 1`
-matrix, with identical storage and operators. Existing backend `matrix_type`
-and `vector_type` aliases remain compatible. Bind short mathematical type names
-at configuration boundaries; do not introduce another traits or dispatch layer.
+matrix, with identical storage and operators. These are the sole public type
+entry points; backends supply storage and primitive operations, not additional
+`matrix_type` or `vector_type` aliases. Bind short mathematical type names at
+configuration boundaries; do not introduce another traits or dispatch layer.
+Include the frontend header and the selected backend header explicitly.
 
 ### 2. Construction
 
@@ -48,8 +51,10 @@ from_coefficients<R,C>(...)
 ### 3. Coefficient and block access
 
 ~~~text
-get(A, row, column)
-set(A, row, column, value)
+A(row, column)
+A(row, column) = value
+v(index)
+v(index) = value
 get_block<BR,BC>(A, row, column)
 set_block<BR,BC>(A, row, column, B)
 get_segment<N>(v, offset)
@@ -61,8 +66,10 @@ Block and segment operations are included initially because the current ESKF con
 Vector indexing and segments use the corresponding matrix indexing and block
 operations. Extraction returns an owning value, not a view. Block/segment bounds
 are checked at compile time without relying on potentially overflowing index
-addition. Both mutable coefficient access and the explicit `set()` interface
-remain supported; `set()` retains the backend's explicit write operation.
+addition. Coefficient reads and writes use `operator()`; there is no separate
+`set()` or backend `set_coefficient()` interface. Shared free operations use
+internal `MatrixAccess` to reach backend storage without making it part of the
+public matrix API.
 
 ### 4. Basic arithmetic
 
@@ -165,9 +172,8 @@ The `Mx16` forms are INS nominal-state observation Jacobians. A model that uses 
 The required minimum is:
 
 ~~~text
-types
-zero / identity / coefficient construction
-coefficient / block / segment access
+storage and scalar types
+zero initialization / coefficient access
 add / subtract / negate / scale / divide
 matrix-matrix multiply
 matrix-vector multiply
@@ -176,4 +182,6 @@ transpose
 SPD solve
 ~~~
 
-Everything else should be shared code above this surface.
+Identity, row-major construction, blocks and segments are shared operations
+implemented through these primitives. Everything else should be shared code
+above this surface.

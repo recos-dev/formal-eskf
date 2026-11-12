@@ -28,7 +28,7 @@ struct EntryCalls
 };
 template <std::size_t K> struct DotCalls
 {
-    inline static Backend::vector_type<K> left{}, right{};
+    inline static formal_eskf::linalg::Vector<Backend, K> left{}, right{};
     inline static Scalar result{};
     inline static unsigned count{};
 };
@@ -81,11 +81,11 @@ Scalar product_entry(Backend::storage_type<R, K> const & left, Backend::storage_
     ++Call::count;
     return static_cast<Backend::storage_type<R, C> const *>(Call::entries)->values[row * C + column];
 #else
-    Backend::vector_type<K> row_values, column_values;
+    formal_eskf::linalg::Vector<Backend, K> row_values, column_values;
     for (std::size_t k = 0U; k < K; ++k)
     {
-        row_values.set(k, Backend::coefficient(left, row, k));
-        column_values.set(k, Backend::coefficient(right, k, column));
+        row_values(k) = Backend::coefficient(left, row, k);
+        column_values(k) = Backend::coefficient(right, k, column);
     }
     return formal_eskf::linalg::dot(row_values, column_values);
 #endif

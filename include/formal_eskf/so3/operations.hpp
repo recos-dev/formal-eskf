@@ -13,7 +13,7 @@
  * Backend-independent SO(3) and unit-quaternion operations.
  */
 
-#include <formal_eskf/linalg/linalg.hpp>
+#include <formal_eskf/linalg/operations.hpp>
 #include <formal_eskf/scalar/math.hpp>
 #include <formal_eskf/so3/unit_quaternion.hpp>
 

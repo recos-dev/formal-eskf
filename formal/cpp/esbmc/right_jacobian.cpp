@@ -23,7 +23,7 @@
 namespace jacobian_proof
 {
 using namespace contract_proof;
-using Matrix3 = Linalg::matrix_type<3U, 3U>;
+using Matrix3 = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
 
 // The same actual three-vector reduction is proved in maps.cpp. Its return
 // is arbitrary here: no positivity, finiteness or successful branch is assumed.

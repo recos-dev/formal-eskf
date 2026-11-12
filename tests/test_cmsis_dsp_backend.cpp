@@ -15,6 +15,7 @@
 #include <utility>
 
 #include <formal_eskf/linalg/backend/cmsis_dsp.hpp>
+#include <formal_eskf/linalg/linalg.hpp>
 
 #include "test_support.hpp"
 
@@ -50,8 +51,8 @@ template <typename Linalg, std::size_t Rows, std::size_t Inner, std::size_t Colu
 void test_shape(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
-    using left_type = typename Linalg::template matrix_type<Rows, Inner>;
-    using right_type = typename Linalg::template matrix_type<Inner, Columns>;
+    using left_type = formal_eskf::linalg::Matrix<Linalg, Rows, Inner>;
+    using right_type = formal_eskf::linalg::Matrix<Linalg, Inner, Columns>;
     using storage_type = typename Linalg::template storage_type<Rows, Inner>;
     static_assert(alignof(storage_type) >= 16U);
     static_assert(storage_type::padding_size * sizeof(value_type) >= 12U);
@@ -122,7 +123,7 @@ void test_shape(TestContext & test, std::string_view profile)
 template <typename Linalg, std::size_t Size> void test_vector_tail(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
-    typename Linalg::template vector_type<Size> vector;
+    formal_eskf::linalg::Vector<Linalg, Size> vector;
     value_type expected{0};
     for (std::size_t index = 0U; index < Size; ++index)
     {
@@ -141,7 +142,7 @@ template <typename Linalg, std::size_t Size> void test_vector_tail(TestContext &
 
 template <typename Linalg> void test_ownership(TestContext & test, std::string_view profile)
 {
-    using matrix_type = typename Linalg::template matrix_type<3U, 3U>;
+    using matrix_type = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
     auto source = matrix_type::from_row_major({1, 2, 3, 4, 5, 6, 7, 8, 9});
     auto const copied = source;
     matrix_type assigned;
@@ -165,7 +166,7 @@ template <typename Linalg> void test_ownership(TestContext & test, std::string_v
 template <typename Linalg> void test_precision_and_division(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
-    using vector_type = typename Linalg::template vector_type<1U>;
+    using vector_type = formal_eskf::linalg::Vector<Linalg, 1U>;
     value_type const delta = value_type{8} * std::numeric_limits<value_type>::epsilon();
     auto const one = vector_type::from_row_major({1});
     auto const increment = vector_type::from_row_major({delta});

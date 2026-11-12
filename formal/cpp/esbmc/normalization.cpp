@@ -49,20 +49,17 @@ template <> inline contract_proof::Scalar norm(contract_proof::Vector4 const & i
     NormContract::received = input;
     return NormContract::result;
 }
-namespace detail
-{
 template <>
-inline contract_proof::Vector4 normalization_candidate(contract_proof::Vector4 const & input,
-                                                       contract_proof::Scalar divisor) noexcept
+inline Matrix<contract_proof::Linalg, 4U, 1U>
+Matrix<contract_proof::Linalg, 4U, 1U>::operator/(value_type divisor) const noexcept
 {
     using normalization_proof::CandidateContract;
     __ESBMC_assert(CandidateContract::calls == 0U, "normalization contract: one division request");
     ++CandidateContract::calls;
-    CandidateContract::received = input;
+    CandidateContract::received = *this;
     CandidateContract::divisor = divisor;
     return CandidateContract::result;
 }
-} // namespace detail
 } // namespace formal_eskf::linalg
 #elif FORMAL_ESKF_PROOF_NORMALIZATION_BOUNDARY == 2
 namespace formal_eskf::linalg
@@ -105,7 +102,7 @@ void verify_division_producer(Vector4 input, Scalar norm)
 {
     __ESBMC_assert(FORMAL_ESKF_PROOF_NORMALIZATION_BOUNDARY == 0, "Runner error: division producer must be actual");
     auto const before = input;
-    auto const actual = formal_eskf::linalg::detail::normalization_candidate(input, norm);
+    auto const actual = input / norm;
     for (std::size_t i = 0U; i < 4U; ++i)
     {
         __ESBMC_assert(same(actual(i), before(i) / norm),

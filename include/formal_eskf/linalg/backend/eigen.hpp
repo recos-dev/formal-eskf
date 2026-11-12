@@ -19,7 +19,7 @@
 #include <Eigen/Cholesky>
 #include <Eigen/Core>
 
-#include <formal_eskf/linalg/linalg.hpp>
+#include <formal_eskf/status.hpp>
 #include <formal_eskf/scalar/backend/standard.hpp>
 
 namespace formal_eskf::linalg
@@ -40,10 +40,6 @@ public:
     using value_type = Scalar;
     using scalar_math_type = scalar::StandardMath<value_type>;
 
-    template <std::size_t Rows, std::size_t Columns> using matrix_type = Matrix<EigenBackend<Scalar>, Rows, Columns>;
-
-    template <std::size_t Size> using vector_type = Vector<EigenBackend<Scalar>, Size>;
-
     template <std::size_t Rows, std::size_t Columns>
     using storage_type = Eigen::Matrix<value_type, static_cast<int>(Rows), static_cast<int>(Columns)>;
 
@@ -57,10 +53,6 @@ public:
     template <std::size_t Rows, std::size_t Columns>
     [[nodiscard]] static value_type & coefficient(storage_type<Rows, Columns> & matrix, std::size_t row,
                                                   std::size_t column) noexcept;
-
-    template <std::size_t Rows, std::size_t Columns>
-    static void set_coefficient(storage_type<Rows, Columns> & matrix, std::size_t row, std::size_t column,
-                                value_type value) noexcept;
 
     template <std::size_t Rows, std::size_t Columns>
     static void add(storage_type<Rows, Columns> const & left, storage_type<Rows, Columns> const & right,
@@ -126,14 +118,6 @@ typename EigenBackend<Scalar>::value_type &
 EigenBackend<Scalar>::coefficient(storage_type<Rows, Columns> & matrix, std::size_t row, std::size_t column) noexcept
 {
     return matrix(static_cast<Eigen::Index>(row), static_cast<Eigen::Index>(column));
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-void EigenBackend<Scalar>::set_coefficient(storage_type<Rows, Columns> & matrix, std::size_t row, std::size_t column,
-                                           value_type value) noexcept
-{
-    matrix(static_cast<Eigen::Index>(row), static_cast<Eigen::Index>(column)) = value;
 }
 
 template <typename Scalar>

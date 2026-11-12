@@ -106,7 +106,7 @@ template <typename Linalg>
     auto candidate = (axis * linalg::transpose(axis)) * outer_scale - hat(axis) * skew_scale;
     for (std::size_t index = 0U; index < 3U; ++index)
     {
-        candidate.set(index, index, candidate(index, index) + identity_scale);
+        candidate(index, index) = candidate(index, index) + identity_scale;
     }
     if (!linalg::all_finite(candidate))
     {

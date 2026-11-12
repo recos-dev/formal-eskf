@@ -72,9 +72,6 @@ class Backend
                                                          Math>
 {
 public:
-    template <std::size_t Rows, std::size_t Columns>
-    using matrix_type = formal_eskf::linalg::Matrix<Backend, Rows, Columns>;
-    template <std::size_t Size> using vector_type = matrix_type<Size, 1U>;
     template <std::size_t Size, std::size_t Columns>
     static Status solve_spd(storage_type<Size, Size> const & system, storage_type<Size, Columns> const & rhs,
                             storage_type<Size, Columns> & output) noexcept

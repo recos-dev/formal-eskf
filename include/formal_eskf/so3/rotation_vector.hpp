@@ -15,7 +15,7 @@
 
 #include <limits>
 
-#include <formal_eskf/linalg/linalg.hpp>
+#include <formal_eskf/linalg/operations.hpp>
 #include <formal_eskf/scalar/math.hpp>
 #include <formal_eskf/so3/unit_quaternion.hpp>
 
@@ -51,13 +51,6 @@ template <typename Scalar>
 template <typename Scalar> [[nodiscard]] Scalar log_closed_form_scale(Scalar qv_norm, Scalar half_angle) noexcept
 {
     return Scalar{2} * half_angle / qv_norm;
-}
-
-template <typename Linalg>
-[[nodiscard]] linalg::Vector<Linalg, 3U> log_candidate(linalg::Vector<Linalg, 3U> const & qv,
-                                                       typename Linalg::value_type scale) noexcept
-{
-    return qv * scale;
 }
 
 } /* end namespace detail */
@@ -167,9 +160,9 @@ template <typename Linalg>
     auto const principal = detail::principal_quaternion_coefficients(quaternion);
     value_type const q0 = principal.q0;
     vector3_type qv;
-    qv.set(0U, principal.q1);
-    qv.set(1U, principal.q2);
-    qv.set(2U, principal.q3);
+    qv(0U) = principal.q1;
+    qv(1U) = principal.q2;
+    qv(2U) = principal.q3;
 
     value_type const qv_squared_norm = linalg::squared_norm(qv);
     if (!scalar::is_finite<scalar_math_type>(qv_squared_norm))
@@ -182,9 +175,9 @@ template <typename Linalg>
     }
     if (qv_squared_norm == value_type{0})
     {
-        output.set(0U, value_type{0});
-        output.set(1U, value_type{0});
-        output.set(2U, value_type{0});
+        output(0U) = value_type{0};
+        output(1U) = value_type{0};
+        output(2U) = value_type{0};
         return Status::success;
     }
 
@@ -222,15 +215,15 @@ template <typename Linalg>
         return Status::non_finite_result;
     }
 
-    vector3_type const candidate = detail::log_candidate(qv, scale);
+    vector3_type const candidate = qv * scale;
     if (!linalg::all_finite(candidate))
     {
         return Status::non_finite_result;
     }
 
-    output.set(0U, candidate(0U));
-    output.set(1U, candidate(1U));
-    output.set(2U, candidate(2U));
+    output(0U) = candidate(0U);
+    output(1U) = candidate(1U);
+    output(2U) = candidate(2U);
     return Status::success;
 }
 

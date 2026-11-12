@@ -28,8 +28,8 @@ using Scalar = float;
 #endif
 using Linalg = formal_eskf::verification::FixedArrayLinalg<Scalar>;
 using Quaternion = formal_eskf::so3::UnitQuaternion<Linalg>;
-using Matrix = Linalg::matrix_type<3U, 3U>;
-using Vector = Linalg::vector_type<3U>;
+using Matrix = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
+using Vector = formal_eskf::linalg::Vector<Linalg, 3U>;
 
 // Preserve IEEE value and zero sign; NaN payloads are outside ESBMC's model.
 bool same_scalar(Scalar a, Scalar b)

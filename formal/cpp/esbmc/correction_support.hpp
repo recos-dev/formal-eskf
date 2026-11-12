@@ -100,12 +100,12 @@ static_assert(state_size == 3U || state_size == 15U);
 // The square prior sandwich additionally uses inner size 15; actual correction
 // caller profiles are restricted to measurement sizes 1/2/3 by their guard.
 static_assert(measurement_size >= 1U && (measurement_size <= 3U || measurement_size == state_size));
-using Covariance = Backend::matrix_type<state_size, state_size>;
-using Noise = Backend::matrix_type<measurement_size, measurement_size>;
-using Jacobian = Backend::matrix_type<measurement_size, state_size>;
-using Gain = Backend::matrix_type<state_size, measurement_size>;
-using Residual = Backend::vector_type<measurement_size>;
-using Correction = Backend::vector_type<state_size>;
+using Covariance = formal_eskf::linalg::Matrix<Backend, state_size, state_size>;
+using Noise = formal_eskf::linalg::Matrix<Backend, measurement_size, measurement_size>;
+using Jacobian = formal_eskf::linalg::Matrix<Backend, measurement_size, state_size>;
+using Gain = formal_eskf::linalg::Matrix<Backend, state_size, measurement_size>;
+using Residual = formal_eskf::linalg::Vector<Backend, measurement_size>;
+using Correction = formal_eskf::linalg::Vector<Backend, state_size>;
 
 template <typename M> bool nonnegative_diagonal(M const & matrix)
 {

@@ -44,6 +44,7 @@ public:
     static constexpr std::size_t column_count = Columns;
 
     Matrix() noexcept { Linalg::template set_zero<Rows, Columns>(m_storage); }
+    // Keep move guarantees independent of the backend storage declarations.
     Matrix(Matrix const & other) = default;
     Matrix(Matrix && other) noexcept = default;
     Matrix & operator=(Matrix const & other) = default;
@@ -72,15 +73,6 @@ public:
     /** Access a vector coefficient.  This overload is available only when Columns is one. */
     [[nodiscard]] value_type operator()(std::size_t index) const noexcept;
     [[nodiscard]] value_type & operator()(std::size_t index) noexcept;
-
-    /** Replace one coefficient without exposing a backend storage reference. */
-    void set(std::size_t row, std::size_t column, value_type value) noexcept
-    {
-        Linalg::template set_coefficient<Rows, Columns>(m_storage, row, column, value);
-    }
-
-    /** Replace one vector coefficient.  This overload is available only when Columns is one. */
-    void set(std::size_t index, value_type value) noexcept;
 
     [[nodiscard]] Matrix operator+(Matrix const & other) const noexcept;
     [[nodiscard]] Matrix operator-(Matrix const & other) const noexcept;
@@ -124,6 +116,7 @@ template <typename Linalg, std::size_t Size> using Vector = Matrix<Linalg, Size,
 namespace detail
 {
 
+// Shared operations access backend storage here without exposing it on Matrix.
 class MatrixAccess
 {
 public:
@@ -183,13 +176,6 @@ Matrix<Linalg, Rows, Columns>::operator()(std::size_t index) noexcept
 {
     static_assert(Columns == 1U);
     return (*this)(index, 0U);
-}
-
-template <typename Linalg, std::size_t Rows, std::size_t Columns>
-void Matrix<Linalg, Rows, Columns>::set(std::size_t index, value_type value) noexcept
-{
-    static_assert(Columns == 1U);
-    set(index, 0U, value);
 }
 
 template <typename Linalg, std::size_t Rows, std::size_t Columns>

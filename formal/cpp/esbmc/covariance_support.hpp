@@ -124,7 +124,7 @@ struct CovarianceAccessContract
 {
     inline static CovarianceCells<contract_proof::Scalar> const * left = nullptr;
     inline static CovarianceCells<contract_proof::Scalar> const * right = nullptr;
-    inline static contract_proof::Linalg::vector_type<15U> row_values{}, column_values{};
+    inline static formal_eskf::linalg::Vector<contract_proof::Linalg, 15U> row_values{}, column_values{};
     inline static std::size_t row = 0U, column = 0U, calls = 0U;
 };
 #endif
@@ -181,7 +181,7 @@ struct CovarianceEntryContract
 #if FORMAL_ESKF_PROOF_DOT_CONTRACT
 struct CovarianceDotContract
 {
-    inline static contract_proof::Linalg::vector_type<15U> left{}, right{};
+    inline static formal_eskf::linalg::Vector<contract_proof::Linalg, 15U> left{}, right{};
     inline static contract_proof::Scalar result{};
     inline static unsigned calls = 0U;
 };
@@ -193,8 +193,8 @@ struct CovarianceDotContract
 namespace formal_eskf::linalg
 {
 template <>
-inline contract_proof::Scalar dot(contract_proof::Linalg::vector_type<15U> const & left,
-                                  contract_proof::Linalg::vector_type<15U> const & right) noexcept
+inline contract_proof::Scalar dot(formal_eskf::linalg::Vector<contract_proof::Linalg, 15U> const & left,
+                                  formal_eskf::linalg::Vector<contract_proof::Linalg, 15U> const & right) noexcept
 {
     using verification::CovarianceDotContract;
     __ESBMC_assert(CovarianceDotContract::calls == 0U, "E-RESET dot contract: exactly one ordered dot product");
@@ -224,11 +224,11 @@ inline contract_proof::Scalar covariance_product_entry(CovarianceCells<contract_
     ++CovarianceEntryContract::calls;
     return (*CovarianceEntryContract::result)[row * 15U + column];
 #else
-    contract_proof::Linalg::vector_type<15U> row_vector, column_vector;
+    formal_eskf::linalg::Vector<contract_proof::Linalg, 15U> row_vector, column_vector;
     for (std::size_t k = 0U; k < 15U; ++k)
     {
-        row_vector.set(k, left[row * 15U + k]);
-        column_vector.set(k, right[k * 15U + column]);
+        row_vector(k) = left[row * 15U + k];
+        column_vector(k) = right[k * 15U + column];
     }
     return linalg::dot(row_vector, column_vector);
 #endif

@@ -432,8 +432,8 @@
             "symbol": "try_normalize"
           },
           {
-            "file": "include/formal_eskf/linalg/operations.hpp",
-            "symbol": "normalization_candidate"
+            "file": "include/formal_eskf/linalg/matrix.hpp",
+            "symbol": "operator/(value_type scalar)"
           }
         ],
         "esbmc": [
@@ -990,8 +990,8 @@
             "symbol": "log_closed_form_scale"
           },
           {
-            "file": "include/formal_eskf/so3/rotation_vector.hpp",
-            "symbol": "log_candidate"
+            "file": "include/formal_eskf/linalg/matrix.hpp",
+            "symbol": "operator*(value_type scalar)"
           }
         ],
         "esbmc": [

@@ -72,7 +72,7 @@ template <typename Left, typename Right> [[nodiscard]] auto reference_product(Le
     static_assert(Left::column_count == Right::row_count);
     using linalg_type = typename Left::linalg_type;
     using value_type = typename Left::value_type;
-    typename linalg_type::template matrix_type<Left::row_count, Right::column_count> result;
+    formal_eskf::linalg::Matrix<linalg_type, Left::row_count, Right::column_count> result;
     for (std::size_t row = 0U; row < Left::row_count; ++row)
     {
         for (std::size_t column = 0U; column < Right::column_count; ++column)
@@ -92,8 +92,8 @@ template <typename Linalg, std::size_t Size, std::size_t RightColumns>
 void test_dimensions(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
-    using system_type = typename Linalg::template matrix_type<Size, Size>;
-    using rhs_type = typename Linalg::template matrix_type<Size, RightColumns>;
+    using system_type = formal_eskf::linalg::Matrix<Linalg, Size, Size>;
+    using rhs_type = formal_eskf::linalg::Matrix<Linalg, Size, RightColumns>;
     system_type system;
     rhs_type expected;
     for (std::size_t row = 0U; row < Size; ++row)
@@ -183,7 +183,7 @@ void expect_failure(TestContext & test, std::string_view profile, Matrix const &
 template <typename Linalg> void test_aliases(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
-    using matrix_type = typename Linalg::template matrix_type<2U, 2U>;
+    using matrix_type = formal_eskf::linalg::Matrix<Linalg, 2U, 2U>;
     constexpr value_type system_values[4] = {4, 1, 1, 3};
     constexpr value_type expected_values[4] = {1, -2, 3, 4};
     matrix_type const system = matrix_type::from_row_major(system_values);
@@ -222,7 +222,7 @@ template <typename Linalg> void test_aliases(TestContext & test, std::string_vie
 template <typename Linalg> void test_failures(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
-    using matrix_type = typename Linalg::template matrix_type<2U, 2U>;
+    using matrix_type = formal_eskf::linalg::Matrix<Linalg, 2U, 2U>;
     matrix_type const identity = matrix_type::identity();
     matrix_type const zero;
     expect_failure(test, profile, zero, identity, Status::not_positive_definite);
@@ -280,7 +280,7 @@ template <typename Linalg> void test_failures(TestContext & test, std::string_vi
 template <typename Linalg> void test_scaling(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
-    using matrix_type = typename Linalg::template matrix_type<2U, 2U>;
+    using matrix_type = formal_eskf::linalg::Matrix<Linalg, 2U, 2U>;
     matrix_type const identity = matrix_type::identity();
     constexpr value_type system_values[4] = {4, 1, 1, 3};
     constexpr value_type expected_values[4] = {1, -2, 3, 4};
@@ -327,8 +327,8 @@ template <typename Linalg> void test_scaling(TestContext & test, std::string_vie
 template <typename Linalg> void test_scalar_precision(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
-    using matrix_type = typename Linalg::template matrix_type<3U, 3U>;
-    using rhs_type = typename Linalg::template matrix_type<3U, 2U>;
+    using matrix_type = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
+    using rhs_type = formal_eskf::linalg::Matrix<Linalg, 3U, 2U>;
     // Coupled, strictly diagonally dominant SPD system. The non-dyadic
     // off-diagonal entries expose binary64 factorization narrowed to float.
     value_type const a = value_type{1} / value_type{3};
@@ -347,7 +347,7 @@ template <typename Linalg> void test_scalar_precision(TestContext & test, std::s
 template <typename Linalg> void test_factor_overflow(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
-    using matrix_type = typename Linalg::template matrix_type<3U, 3U>;
+    using matrix_type = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
     matrix_type system = matrix_type::identity();
     system(0U, 0U) = std::numeric_limits<value_type>::min();
     system(0U, 2U) = std::numeric_limits<value_type>::max();
@@ -363,7 +363,7 @@ template <typename Linalg> void test_factor_overflow(TestContext & test, std::st
 template <typename Linalg> void test_partial_workspace(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
-    using matrix_type = typename Linalg::template matrix_type<2U, 2U>;
+    using matrix_type = formal_eskf::linalg::Matrix<Linalg, 2U, 2U>;
     using formal_eskf::linalg::detail::MatrixAccess;
     value_type const largest = std::numeric_limits<value_type>::max();
     matrix_type system = matrix_type::identity();

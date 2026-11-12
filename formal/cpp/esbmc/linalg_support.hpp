@@ -50,7 +50,7 @@ constexpr std::size_t rows = FORMAL_ESKF_PROOF_ROWS;
 constexpr std::size_t columns = FORMAL_ESKF_PROOF_PRODUCT_COLUMNS;
 constexpr std::size_t count = rows * columns;
 constexpr unsigned storage_part = FORMAL_ESKF_PROOF_STORAGE_PART;
-using Matrix = Backend::matrix_type<rows, columns>;
+using Matrix = formal_eskf::linalg::Matrix<Backend, rows, columns>;
 
 // No producer summaries, observer cutpoints or numerical-domain restriction.
 // These are the two actual existing fixed-array backend instantiations; their

@@ -13,6 +13,8 @@
 #include <string_view>
 #include <type_traits>
 
+#include <formal_eskf/linalg/linalg.hpp>
+
 #include "test_backend.hpp"
 
 #include "test_support.hpp"
@@ -43,15 +45,14 @@ template <typename Linalg>
 void test_construction_and_access(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
     using value_type = typename Linalg::value_type;
-    using matrix23_type = typename Linalg::template matrix_type<2U, 3U>;
-    using matrix22_type = typename Linalg::template matrix_type<2U, 2U>;
-    using matrix34_type = typename Linalg::template matrix_type<3U, 4U>;
+    using matrix23_type = formal_eskf::linalg::Matrix<Linalg, 2U, 3U>;
+    using matrix22_type = formal_eskf::linalg::Matrix<Linalg, 2U, 2U>;
+    using matrix34_type = formal_eskf::linalg::Matrix<Linalg, 3U, 4U>;
     using vector4_type = formal_eskf::linalg::Vector<Linalg, 4U>;
     using vector3_type = formal_eskf::linalg::Vector<Linalg, 3U>;
     using vector2_type = formal_eskf::linalg::Vector<Linalg, 2U>;
 
     static_assert(std::is_same_v<vector4_type, formal_eskf::linalg::Matrix<Linalg, 4U, 1U>>);
-    static_assert(std::is_same_v<vector4_type, typename Linalg::template vector_type<4U>>);
     static_assert(std::is_same_v<decltype(formal_eskf::linalg::cross(vector3_type{}, vector3_type{})), vector3_type>);
 
     constexpr value_type coefficients[6] = {1, 2, 3, 4, 5, 6};
@@ -92,10 +93,10 @@ template <typename Linalg>
 void test_arithmetic_and_products(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
     using value_type = typename Linalg::value_type;
-    using matrix23_type = typename Linalg::template matrix_type<2U, 3U>;
-    using matrix32_type = typename Linalg::template matrix_type<3U, 2U>;
-    using matrix22_type = typename Linalg::template matrix_type<2U, 2U>;
-    using vector3_type = typename Linalg::template vector_type<3U>;
+    using matrix23_type = formal_eskf::linalg::Matrix<Linalg, 2U, 3U>;
+    using matrix32_type = formal_eskf::linalg::Matrix<Linalg, 3U, 2U>;
+    using matrix22_type = formal_eskf::linalg::Matrix<Linalg, 2U, 2U>;
+    using vector3_type = formal_eskf::linalg::Vector<Linalg, 3U>;
 
     constexpr value_type left_values[6] = {1, 2, 3, 4, 5, 6};
     constexpr value_type right_values[6] = {7, 8, 9, 10, 11, 12};
@@ -139,7 +140,7 @@ void test_arithmetic_and_products(TestContext & test, std::string_view profile, 
 template <typename Linalg> void test_extreme_division(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
-    using matrix_type = typename Linalg::template matrix_type<2U, 3U>;
+    using matrix_type = formal_eskf::linalg::Matrix<Linalg, 2U, 3U>;
     // The quotient is finite even though forming 1 / divisor would overflow.
     value_type const divisor = std::numeric_limits<value_type>::min() / value_type{8};
     auto const input = matrix_type::from_row_major({divisor, -divisor, 0, 2 * divisor, -2 * divisor, 0});
@@ -153,9 +154,9 @@ template <typename Linalg>
 void test_derived_operations(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
     using value_type = typename Linalg::value_type;
-    using matrix22_type = typename Linalg::template matrix_type<2U, 2U>;
-    using matrix12_type = typename Linalg::template matrix_type<1U, 2U>;
-    using vector2_type = typename Linalg::template vector_type<2U>;
+    using matrix22_type = formal_eskf::linalg::Matrix<Linalg, 2U, 2U>;
+    using matrix12_type = formal_eskf::linalg::Matrix<Linalg, 1U, 2U>;
+    using vector2_type = formal_eskf::linalg::Vector<Linalg, 2U>;
 
     constexpr value_type matrix_values[4] = {1, 4, 2, 3};
     matrix22_type const matrix = matrix22_type::from_row_major(matrix_values);
@@ -190,7 +191,7 @@ void test_derived_operations(TestContext & test, std::string_view profile, typen
 template <typename Linalg> void test_finite_checks(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
-    using matrix22_type = typename Linalg::template matrix_type<2U, 2U>;
+    using matrix22_type = formal_eskf::linalg::Matrix<Linalg, 2U, 2U>;
 
     matrix22_type matrix = matrix22_type::identity();
     test.expect(all_finite(matrix), profile, "finite matrix inspection");
@@ -204,8 +205,8 @@ template <typename Linalg>
 void test_spd_solves(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
     using value_type = typename Linalg::value_type;
-    using matrix22_type = typename Linalg::template matrix_type<2U, 2U>;
-    using matrix32_type = typename Linalg::template matrix_type<3U, 2U>;
+    using matrix22_type = formal_eskf::linalg::Matrix<Linalg, 2U, 2U>;
+    using matrix32_type = formal_eskf::linalg::Matrix<Linalg, 3U, 2U>;
 
     constexpr value_type system_values[4] = {4, 1, 1, 3};
     constexpr value_type rhs_values[4] = {1, 2, 3, 4};
@@ -246,8 +247,8 @@ template <typename Linalg>
 void test_eskf_dimensions(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
     using value_type = typename Linalg::value_type;
-    using matrix15_type = typename Linalg::template matrix_type<15U, 15U>;
-    using vector15_type = typename Linalg::template vector_type<15U>;
+    using matrix15_type = formal_eskf::linalg::Matrix<Linalg, 15U, 15U>;
+    using vector15_type = formal_eskf::linalg::Vector<Linalg, 15U>;
 
     matrix15_type const system = matrix15_type::identity();
     vector15_type right_hand_side;

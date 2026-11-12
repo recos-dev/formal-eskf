@@ -13,7 +13,7 @@
  * Scalar-first unit-quaternion value type.
  */
 
-#include <formal_eskf/linalg/linalg.hpp>
+#include <formal_eskf/linalg/operations.hpp>
 #include <formal_eskf/scalar/math.hpp>
 #include <formal_eskf/status.hpp>
 
@@ -87,12 +87,7 @@ template <typename Linalg>
 Status UnitQuaternion<Linalg>::try_from_coefficients(value_type q0, value_type q1, value_type q2, value_type q3,
                                                      value_type minimum_norm, UnitQuaternion & output) noexcept
 {
-    vector4_type coefficients;
-    coefficients.set(0U, q0);
-    coefficients.set(1U, q1);
-    coefficients.set(2U, q2);
-    coefficients.set(3U, q3);
-    return try_from_coefficients(coefficients, minimum_norm, output);
+    return try_from_coefficients(vector4_type::from_row_major({q0, q1, q2, q3}), minimum_norm, output);
 }
 
 template <typename Linalg>
@@ -131,10 +126,10 @@ template <typename Linalg>
 typename UnitQuaternion<Linalg>::vector4_type UnitQuaternion<Linalg>::coefficients() const noexcept
 {
     vector4_type result;
-    result.set(0U, m_q0);
-    result.set(1U, m_q1);
-    result.set(2U, m_q2);
-    result.set(3U, m_q3);
+    result(0U) = m_q0;
+    result(1U) = m_q1;
+    result(2U) = m_q2;
+    result(3U) = m_q3;
     return result;
 }
 

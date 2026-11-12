@@ -117,8 +117,8 @@ struct OpaqueMath : formal_eskf::scalar::StandardMath<Scalar>
 using Linalg =
     formal_eskf::verification::FixedArrayLinalg<Scalar, formal_eskf::verification::NoNormObserver<Scalar>, OpaqueMath>;
 using Quaternion = formal_eskf::so3::UnitQuaternion<Linalg>;
-using Vector3 = Linalg::vector_type<3U>;
-using Vector4 = Linalg::vector_type<4U>;
+using Vector3 = formal_eskf::linalg::Vector<Linalg, 3U>;
+using Vector4 = formal_eskf::linalg::Vector<Linalg, 4U>;
 
 // The actual vector constructor is proved in normalization.cpp. This summary
 // assumes only failure atomicity and input purity; it does NOT assume success,

@@ -22,7 +22,7 @@
 #include <dsp/basic_math_functions.h>
 #include <dsp/matrix_functions.h>
 
-#include <formal_eskf/linalg/linalg.hpp>
+#include <formal_eskf/status.hpp>
 #include <formal_eskf/scalar/backend/standard.hpp>
 
 namespace formal_eskf::linalg
@@ -88,10 +88,6 @@ public:
     using value_type = Scalar;
     using scalar_math_type = scalar::StandardMath<value_type>;
 
-    template <std::size_t Rows, std::size_t Columns> using matrix_type = Matrix<CmsisDspBackend<Scalar>, Rows, Columns>;
-
-    template <std::size_t Size> using vector_type = Vector<CmsisDspBackend<Scalar>, Size>;
-
     template <std::size_t Rows, std::size_t Columns> struct alignas(16) storage_type
     {
         static_assert(Rows > 0U && Rows <= std::numeric_limits<std::uint16_t>::max());
@@ -117,10 +113,6 @@ public:
     template <std::size_t Rows, std::size_t Columns>
     [[nodiscard]] static value_type & coefficient(storage_type<Rows, Columns> & matrix, std::size_t row,
                                                   std::size_t column) noexcept;
-
-    template <std::size_t Rows, std::size_t Columns>
-    static void set_coefficient(storage_type<Rows, Columns> & matrix, std::size_t row, std::size_t column,
-                                value_type value) noexcept;
 
     template <std::size_t Rows, std::size_t Columns>
     static void add(storage_type<Rows, Columns> const & left, storage_type<Rows, Columns> const & right,
@@ -196,14 +188,6 @@ typename CmsisDspBackend<Scalar>::value_type &
 CmsisDspBackend<Scalar>::coefficient(storage_type<Rows, Columns> & matrix, std::size_t row, std::size_t column) noexcept
 {
     return matrix.values[row * Columns + column];
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-void CmsisDspBackend<Scalar>::set_coefficient(storage_type<Rows, Columns> & matrix, std::size_t row, std::size_t column,
-                                              value_type value) noexcept
-{
-    coefficient(matrix, row, column) = value;
 }
 
 template <typename Scalar>

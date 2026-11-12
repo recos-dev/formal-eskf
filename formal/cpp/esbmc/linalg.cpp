@@ -84,23 +84,23 @@ void verify_linalg_access(Matrix input, std::size_t row, std::size_t column, Sca
                    "F-LINALG: mutable and const access select the requested raw coefficient");
     assert_stored_values(input, before);
     assert_stored_values(copy, before);
-    input.set(row, column, replacement);
+    input(row, column) = replacement;
     flatten(input, observed);
     for (std::size_t i = 0U; i < count; ++i)
         __ESBMC_assert(same(observed[i], i == row * columns + column ? replacement : before[i]),
-                       "F-LINALG: setter changes only the requested coefficient");
+                       "F-LINALG: coefficient assignment changes only the requested coefficient");
     input(row, column) = -replacement;
     if constexpr (columns == 1U)
     {
         __ESBMC_assert(same(input(row), -replacement) && same(copy(row), before[row]),
                        "F-LINALG: vector access agrees with column-zero access");
-        input.set(row, replacement);
-        input(row) = -replacement;
+        input(row) = replacement;
     }
     flatten(input, observed);
     for (std::size_t i = 0U; i < count; ++i)
-        __ESBMC_assert(same(observed[i], i == row * columns + column ? -replacement : before[i]),
-                       "F-LINALG: mutable reference writes only the selected cell");
+        __ESBMC_assert(
+            same(observed[i], i == row * columns + column ? (columns == 1U ? replacement : -replacement) : before[i]),
+            "F-LINALG: mutable reference writes only the selected cell");
     flatten(copy, observed);
     for (std::size_t i = 0U; i < count; ++i)
         __ESBMC_assert(same(observed[i], before[i]), "F-LINALG: copied matrices do not share storage");
@@ -165,7 +165,7 @@ constexpr std::size_t start_row = FORMAL_ESKF_PROOF_START_ROW;
 constexpr std::size_t start_column = FORMAL_ESKF_PROOF_START_COLUMN;
 constexpr std::size_t block_rows = FORMAL_ESKF_PROOF_BLOCK_ROWS;
 constexpr std::size_t block_columns = FORMAL_ESKF_PROOF_BLOCK_COLUMNS;
-using Block = Backend::matrix_type<block_rows, block_columns>;
+using Block = formal_eskf::linalg::Matrix<Backend, block_rows, block_columns>;
 
 void verify_linalg_block(Matrix input, Block replacement)
 {
@@ -305,7 +305,7 @@ void verify_linalg_symmetry(Matrix input, Scalar tolerance)
 #endif
 }
 
-using Vector3 = Backend::vector_type<3U>;
+using Vector3 = formal_eskf::linalg::Vector<Backend, 3U>;
 void verify_linalg_vector(Vector3 left, Vector3 right, Scalar root)
 {
     __ESBMC_assert(actual, "Runner error: linalg vector requires actual operations");
@@ -346,7 +346,8 @@ void verify_linalg_vector(Vector3 left, Vector3 right, Scalar root)
 
 // The missing small product shapes for contract_proof::Linalg. Large products
 // and solve_proof::Backend use their already proved entry/dot decompositions.
-void verify_linalg_product(Matrix left, Backend::matrix_type<columns, FORMAL_ESKF_PROOF_OTHER_COLUMNS> right)
+void verify_linalg_product(Matrix left,
+                           formal_eskf::linalg::Matrix<Backend, columns, FORMAL_ESKF_PROOF_OTHER_COLUMNS> right)
 {
     __ESBMC_assert(actual, "Runner error: linalg product requires actual operations");
     if constexpr (!actual)

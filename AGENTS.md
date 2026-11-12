@@ -25,7 +25,8 @@ Verify paper symbols and equations against the actual reference before citing or
 - Use fixed-size types and bounded operations. Keep dynamic allocation, exceptions, RTTI and OS facilities outside the shared core.
 - Use the existing abstractions; backend types and platform effects must not enter shared-core interfaces or equations.
 - Preserve specified behavior, defaults and failure/aliasing contracts unless a change is explicitly in scope.
-- Follow [STYLE.md](STYLE.md) and `.clang-format` for C++. Use uppercase script variables and split scripts into readable functions. Avoid unnecessary wrappers, helpers and new scripts.
+- Follow [STYLE.md](STYLE.md), the [C++ design baseline and subset](docs/spec/cpp-portability-and-constraints.md#design-baseline) and `.clang-format`. Use ArduPilot's actual same-layer practice as the estimator-design reference while retaining C++20; lack of an upstream prohibition does not justify additional generic machinery. Apply these rules within the task scope; do not start an unsolicited rewrite of existing code.
+- Use uppercase script variables and split scripts into readable functions. Avoid unnecessary wrappers, helpers and new scripts.
 - Keep platform integration and replay conveniences outside the core. Do not vendor external platform code without approval.
 
 ## Verification

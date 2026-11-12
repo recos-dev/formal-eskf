@@ -819,7 +819,7 @@
         "cpp": [
           {
             "file": "include/formal_eskf/so3/operations.hpp",
-            "symbol": "hat(typename Linalg"
+            "symbol": "hat(linalg::Vector"
           },
           {
             "file": "include/formal_eskf/linalg/operations.hpp",

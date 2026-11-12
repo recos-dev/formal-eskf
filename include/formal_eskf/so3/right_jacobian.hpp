@@ -38,7 +38,7 @@ namespace formal_eskf::so3
  * @see https://arxiv.org/abs/1711.02508
  */
 template <typename Linalg>
-[[nodiscard]] Status try_right_jacobian(linalg::Matrix<Linalg, 3U, 1U> const & phi,
+[[nodiscard]] Status try_right_jacobian(linalg::Vector<Linalg, 3U> const & phi,
                                         linalg::Matrix<Linalg, 3U, 3U> & output) noexcept
 {
     using value_type = typename Linalg::value_type;
@@ -103,7 +103,7 @@ template <typename Linalg>
         skew_scale = (value_type{2} * half_angle.sine * half_angle.sine) / theta;
     }
 
-    auto candidate = (axis * linalg::transpose(axis)) * outer_scale - hat<Linalg>(axis) * skew_scale;
+    auto candidate = (axis * linalg::transpose(axis)) * outer_scale - hat(axis) * skew_scale;
     for (std::size_t index = 0U; index < 3U; ++index)
     {
         candidate.set(index, index, candidate(index, index) + identity_scale);

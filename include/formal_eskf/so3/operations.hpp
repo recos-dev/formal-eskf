@@ -74,10 +74,9 @@ template <typename Linalg>
  * @see https://arxiv.org/abs/1711.02508
  */
 template <typename Linalg>
-[[nodiscard]] typename Linalg::template matrix_type<3U, 3U>
-to_rotation_matrix(UnitQuaternion<Linalg> const & quaternion) noexcept
+[[nodiscard]] linalg::Matrix<Linalg, 3U, 3U> to_rotation_matrix(UnitQuaternion<Linalg> const & quaternion) noexcept
 {
-    using matrix3_type = typename Linalg::template matrix_type<3U, 3U>;
+    using matrix3_type = linalg::Matrix<Linalg, 3U, 3U>;
     using value_type = typename Linalg::value_type;
 
     value_type const q0 = quaternion.q0();
@@ -110,26 +109,24 @@ to_rotation_matrix(UnitQuaternion<Linalg> const & quaternion) noexcept
 }
 
 template <typename Linalg>
-[[nodiscard]] typename Linalg::template vector_type<3U>
-rotate(UnitQuaternion<Linalg> const & quaternion, typename Linalg::template vector_type<3U> const & vector) noexcept
+[[nodiscard]] linalg::Vector<Linalg, 3U> rotate(UnitQuaternion<Linalg> const & quaternion,
+                                                linalg::Vector<Linalg, 3U> const & vector) noexcept
 {
     return to_rotation_matrix(quaternion) * vector;
 }
 
 template <typename Linalg>
-[[nodiscard]] typename Linalg::template vector_type<3U>
-inverse_rotate(UnitQuaternion<Linalg> const & quaternion,
-               typename Linalg::template vector_type<3U> const & vector) noexcept
+[[nodiscard]] linalg::Vector<Linalg, 3U> inverse_rotate(UnitQuaternion<Linalg> const & quaternion,
+                                                        linalg::Vector<Linalg, 3U> const & vector) noexcept
 {
     return linalg::transpose(to_rotation_matrix(quaternion)) * vector;
 }
 
 /** Cross-product matrix from Sola equations (20) and (21). */
 template <typename Linalg>
-[[nodiscard]] typename Linalg::template matrix_type<3U, 3U>
-hat(typename Linalg::template vector_type<3U> const & vector) noexcept
+[[nodiscard]] linalg::Matrix<Linalg, 3U, 3U> hat(linalg::Vector<Linalg, 3U> const & vector) noexcept
 {
-    using matrix3_type = typename Linalg::template matrix_type<3U, 3U>;
+    using matrix3_type = linalg::Matrix<Linalg, 3U, 3U>;
     using value_type = typename Linalg::value_type;
 
     matrix3_type result;

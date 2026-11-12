@@ -54,8 +54,8 @@ template <typename Scalar> [[nodiscard]] Scalar log_closed_form_scale(Scalar qv_
 }
 
 template <typename Linalg>
-[[nodiscard]] typename Linalg::template vector_type<3U>
-log_candidate(typename Linalg::template vector_type<3U> const & qv, typename Linalg::value_type scale) noexcept
+[[nodiscard]] linalg::Vector<Linalg, 3U> log_candidate(linalg::Vector<Linalg, 3U> const & qv,
+                                                       typename Linalg::value_type scale) noexcept
 {
     return qv * scale;
 }
@@ -75,7 +75,7 @@ log_candidate(typename Linalg::template vector_type<3U> const & qv, typename Lin
  * @see https://arxiv.org/abs/1711.02508
  */
 template <typename Linalg>
-[[nodiscard]] Status try_exp(typename Linalg::template vector_type<3U> const & rotation_vector,
+[[nodiscard]] Status try_exp(linalg::Vector<Linalg, 3U> const & rotation_vector,
                              typename Linalg::value_type minimum_quaternion_norm,
                              UnitQuaternion<Linalg> & output) noexcept
 {
@@ -143,7 +143,7 @@ template <typename Linalg>
  * Compute the principal rotation vector of a unit quaternion.
  *
  * Implements the capitalized quaternion Log in Joan Sola, "Quaternion
- * kinematics for the error-state Kalman filter", equations (103)--(106).  The
+ * kinematics for the error-state Kalman filter", equations (103)--(106).
  * A q0 >= 0 representative is selected first, giving q and -q the same result
  * away from q0 == 0 and a norm no greater than pi.  At q0 == 0, the two
  * opposite axis signs are both valid principal results for the pi rotation.
@@ -153,12 +153,11 @@ template <typename Linalg>
  * @see https://arxiv.org/abs/1711.02508
  */
 template <typename Linalg>
-[[nodiscard]] Status try_log(UnitQuaternion<Linalg> const & quaternion,
-                             typename Linalg::template vector_type<3U> & output) noexcept
+[[nodiscard]] Status try_log(UnitQuaternion<Linalg> const & quaternion, linalg::Vector<Linalg, 3U> & output) noexcept
 {
     using scalar_math_type = typename Linalg::scalar_math_type;
     using value_type = typename Linalg::value_type;
-    using vector3_type = typename Linalg::template vector_type<3U>;
+    using vector3_type = linalg::Vector<Linalg, 3U>;
 
     if (!linalg::all_finite(quaternion.coefficients()))
     {
@@ -223,7 +222,7 @@ template <typename Linalg>
         return Status::non_finite_result;
     }
 
-    vector3_type const candidate = detail::log_candidate<Linalg>(qv, scale);
+    vector3_type const candidate = detail::log_candidate(qv, scale);
     if (!linalg::all_finite(candidate))
     {
         return Status::non_finite_result;

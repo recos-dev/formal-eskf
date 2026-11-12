@@ -41,14 +41,9 @@ public:
     using linalg_type = Linalg;
     using scalar_math_type = typename Linalg::scalar_math_type;
     using value_type = typename Linalg::value_type;
-    using vector4_type = typename Linalg::template vector_type<4U>;
+    using vector4_type = linalg::Vector<Linalg, 4U>;
 
     constexpr UnitQuaternion() noexcept = default;
-    UnitQuaternion(UnitQuaternion const & other) = default;
-    UnitQuaternion(UnitQuaternion && other) noexcept = default;
-    UnitQuaternion & operator=(UnitQuaternion const & other) = default;
-    UnitQuaternion & operator=(UnitQuaternion && other) noexcept = default;
-    ~UnitQuaternion() = default;
 
     [[nodiscard]] static constexpr UnitQuaternion identity() noexcept { return UnitQuaternion(); }
 
@@ -65,16 +60,19 @@ public:
 
     [[nodiscard]] vector4_type coefficients() const noexcept;
 
-    [[nodiscard]] constexpr UnitQuaternion operator-() const noexcept;
+    [[nodiscard]] constexpr UnitQuaternion operator-() const noexcept
+    {
+        return UnitQuaternion(-m_q0, -m_q1, -m_q2, -m_q3);
+    }
     [[nodiscard]] constexpr UnitQuaternion operator*(UnitQuaternion const & other) const noexcept;
-    [[nodiscard]] constexpr UnitQuaternion inverse() const noexcept;
+    [[nodiscard]] constexpr UnitQuaternion inverse() const noexcept
+    {
+        return UnitQuaternion(m_q0, -m_q1, -m_q2, -m_q3);
+    }
 
 private:
-    struct Unchecked
-    {
-    };
-
-    constexpr UnitQuaternion(value_type q0, value_type q1, value_type q2, value_type q3, Unchecked) noexcept
+    // Only member operations may construct directly from coefficients.
+    constexpr UnitQuaternion(value_type q0, value_type q1, value_type q2, value_type q3) noexcept
         : m_q0(q0), m_q1(q1), m_q2(q2), m_q3(q3)
     {
     }
@@ -83,7 +81,7 @@ private:
     value_type m_q1{0};
     value_type m_q2{0};
     value_type m_q3{0};
-};
+}; /* end class UnitQuaternion */
 
 template <typename Linalg>
 Status UnitQuaternion<Linalg>::try_from_coefficients(value_type q0, value_type q1, value_type q2, value_type q3,
@@ -140,23 +138,13 @@ typename UnitQuaternion<Linalg>::vector4_type UnitQuaternion<Linalg>::coefficien
     return result;
 }
 
-template <typename Linalg> constexpr UnitQuaternion<Linalg> UnitQuaternion<Linalg>::operator-() const noexcept
-{
-    return UnitQuaternion(-m_q0, -m_q1, -m_q2, -m_q3, Unchecked{});
-}
-
 template <typename Linalg>
 constexpr UnitQuaternion<Linalg> UnitQuaternion<Linalg>::operator*(UnitQuaternion const & other) const noexcept
 {
     return UnitQuaternion(m_q0 * other.m_q0 - m_q1 * other.m_q1 - m_q2 * other.m_q2 - m_q3 * other.m_q3,
                           m_q0 * other.m_q1 + m_q1 * other.m_q0 + m_q2 * other.m_q3 - m_q3 * other.m_q2,
                           m_q0 * other.m_q2 - m_q1 * other.m_q3 + m_q2 * other.m_q0 + m_q3 * other.m_q1,
-                          m_q0 * other.m_q3 + m_q1 * other.m_q2 - m_q2 * other.m_q1 + m_q3 * other.m_q0, Unchecked{});
-}
-
-template <typename Linalg> constexpr UnitQuaternion<Linalg> UnitQuaternion<Linalg>::inverse() const noexcept
-{
-    return UnitQuaternion(m_q0, -m_q1, -m_q2, -m_q3, Unchecked{});
+                          m_q0 * other.m_q3 + m_q1 * other.m_q2 - m_q2 * other.m_q1 + m_q3 * other.m_q0);
 }
 
 } /* end namespace formal_eskf::so3 */

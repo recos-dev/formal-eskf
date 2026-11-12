@@ -11,6 +11,7 @@
 #include <iostream>
 #include <limits>
 #include <string_view>
+#include <type_traits>
 
 #include "test_backend.hpp"
 #include <formal_eskf/so3/so3.hpp>
@@ -45,7 +46,18 @@ void test_construction(TestContext & test, std::string_view profile, typename Li
     using quaternion_type = formal_eskf::so3::UnitQuaternion<Linalg>;
     using value_type = typename Linalg::value_type;
 
-    quaternion_type const identity;
+    static_assert(std::is_trivially_copyable_v<quaternion_type>);
+    static_assert(std::is_standard_layout_v<quaternion_type>);
+    static_assert(sizeof(quaternion_type) == 4U * sizeof(value_type));
+    static_assert(std::is_nothrow_copy_constructible_v<quaternion_type>);
+    static_assert(std::is_nothrow_copy_assignable_v<quaternion_type>);
+    static_assert(std::is_nothrow_move_constructible_v<quaternion_type>);
+    static_assert(std::is_nothrow_move_assignable_v<quaternion_type>);
+    static_assert(!std::is_constructible_v<quaternion_type, value_type, value_type, value_type, value_type>);
+
+    constexpr quaternion_type identity;
+    static_assert(identity.q0() == value_type{1} && (-identity).q0() == value_type{-1});
+    static_assert(identity.inverse().q0() == value_type{1} && (identity * identity).q0() == value_type{1});
     test.expect(identity.q0() == value_type{1} && identity.q1() == value_type{0} && identity.q2() == value_type{0} &&
                     identity.q3() == value_type{0},
                 profile, "default construction produces identity");
@@ -326,7 +338,7 @@ void test_hat(TestContext & test, std::string_view profile, typename Linalg::val
     constexpr value_type right_values[3] = {-4, 5, -6};
     vector3_type const left = vector3_type::from_row_major(left_values);
     vector3_type const right = vector3_type::from_row_major(right_values);
-    auto const skew = formal_eskf::so3::hat<Linalg>(left);
+    auto const skew = formal_eskf::so3::hat(left);
 
     test.expect(matrix_near(skew * right, formal_eskf::linalg::cross(left, right), tolerance), profile,
                 "hat(a)*b equals cross(a,b)");

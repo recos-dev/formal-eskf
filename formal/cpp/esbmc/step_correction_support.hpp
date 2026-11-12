@@ -55,9 +55,9 @@ using Configuration =
 using State = Configuration::NominalState<Backend>;
 using Error = Configuration::ErrorState<Backend>;
 using Quaternion = formal_eskf::so3::UnitQuaternion<Backend>;
-using Vector3 = Backend::vector_type<3U>;
-using Vector4 = Backend::vector_type<4U>;
-using Matrix3 = Backend::matrix_type<3U, 3U>;
+using Vector3 = formal_eskf::linalg::Vector<Backend, 3U>;
+using Vector4 = formal_eskf::linalg::Vector<Backend, 4U>;
+using Matrix3 = formal_eskf::linalg::Matrix<Backend, 3U, 3U>;
 
 inline bool same_state(State const & a, State const & b)
 {

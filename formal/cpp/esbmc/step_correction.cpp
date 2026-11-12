@@ -16,10 +16,11 @@ namespace step_correction_proof
 // from the older contract_proof::Linalg injection/reset instantiations.
 struct Results
 {
+    correction_proof::Gain gain;
     Correction delta;
     Covariance joseph, reset;
     State injected;
-    Status correction_status, injection_status, reset_status;
+    Status gain_status, correction_status, injection_status, reset_status;
 };
 struct Calls
 {
@@ -34,13 +35,14 @@ struct Calls
     inline static State const * state_before = nullptr;
     inline static Covariance const * covariance_before = nullptr;
     inline static Scalar minimum{};
-    inline static unsigned correction{}, injection{}, reset{};
+    inline static unsigned gain{}, correction{}, injection{}, reset{};
 };
 void unpublished()
 {
-    __ESBMC_assert(same_state(*Calls::state_target, *Calls::state_before) &&
-                       same_matrix(*Calls::covariance_target, *Calls::covariance_before),
-                   "E-STEP-CORRECT: neither caller output is published before all three stages succeed");
+    __ESBMC_assert(
+        same_state(*Calls::state_target, *Calls::state_before) &&
+            same_matrix(*Calls::covariance_target, *Calls::covariance_before),
+        "E-STEP-CORRECT: neither caller output is published before gain, Joseph, injection and reset succeed");
 }
 } // namespace step_correction_proof
 
@@ -48,28 +50,45 @@ void unpublished()
 namespace formal_eskf::detail
 {
 template <>
-inline Status try_compute_correction<step_correction_proof::Backend, step_correction_proof::state_size,
-                                     step_correction_proof::measurement_size>(
+inline Status try_compute_correction_gain<step_correction_proof::Backend, step_correction_proof::state_size,
+                                          step_correction_proof::measurement_size>(
     step_correction_proof::Covariance const & P, step_correction_proof::Residual const & r,
     step_correction_proof::Jacobian const & H, step_correction_proof::Noise const & V,
-    step_correction_proof::Scalar minimum, step_correction_proof::Correction & delta,
-    step_correction_proof::Covariance & output,
-    std::array<bool, step_correction_proof::state_size> const * enabled_rows,
-    std::nullptr_t const & /* gain_constraint */) noexcept
+    step_correction_proof::Scalar minimum, correction_proof::Gain & output) noexcept
 {
     using namespace step_correction_proof;
-    for (std::size_t row = 0U; row < state_size; ++row)
-    {
-        __ESBMC_assert(enabled_rows == nullptr || (*enabled_rows)[row],
-                       "E-STEP-CORRECT: existing summary covers unrestricted gain only");
-    }
-    __ESBMC_assert(Calls::correction++ == 0U && Calls::injection == 0U && Calls::reset == 0U,
-                   "E-STEP-CORRECT: linear correction executes first and once");
+    __ESBMC_assert(Calls::gain++ == 0U && Calls::correction == 0U && Calls::injection == 0U && Calls::reset == 0U,
+                   "E-STEP-CORRECT: gain executes first and once");
     __ESBMC_assert(same_matrix(P, *Calls::covariance) && same_matrix(r, *Calls::residual) &&
                        same_matrix(H, *Calls::H) && same_matrix(V, *Calls::V) && same(minimum, Calls::minimum),
-                   "E-STEP-CORRECT: correction receives all original measurement/prior inputs");
+                   "E-STEP-CORRECT: gain receives all original measurement/prior inputs");
+    __ESBMC_assert(static_cast<void const *>(&output) != &P &&
+                       static_cast<void const *>(&output) != Calls::covariance_target &&
+                       static_cast<void const *>(&output) != &H && static_cast<void const *>(&output) != &V &&
+                       static_cast<void const *>(&output) != &r,
+                   "E-STEP-CORRECT: gain uses separate scratch");
+    unpublished();
+    output = Calls::results->gain;
+    return Calls::results->gain_status;
+}
+
+template <>
+inline Status try_apply_correction_gain<step_correction_proof::Backend, step_correction_proof::state_size,
+                                        step_correction_proof::measurement_size>(
+    step_correction_proof::Covariance const & P, step_correction_proof::Residual const & r,
+    step_correction_proof::Jacobian const & H, step_correction_proof::Noise const & V, correction_proof::Gain const & K,
+    step_correction_proof::Correction & delta, step_correction_proof::Covariance & output) noexcept
+{
+    using namespace step_correction_proof;
+    __ESBMC_assert(Calls::gain == 1U && Calls::results->gain_status == Status::success && Calls::correction++ == 0U &&
+                       Calls::injection == 0U && Calls::reset == 0U,
+                   "E-STEP-CORRECT: error/Joseph update occurs once after successful gain");
+    __ESBMC_assert(same_matrix(P, *Calls::covariance) && same_matrix(r, *Calls::residual) &&
+                       same_matrix(H, *Calls::H) && same_matrix(V, *Calls::V) && same_matrix(K, Calls::results->gain),
+                   "E-STEP-CORRECT: default permissions preserve the gain and original measurement/prior inputs");
     __ESBMC_assert(&output != &P && &output != Calls::covariance_target && static_cast<void const *>(&delta) != &r &&
-                       static_cast<void const *>(&delta) != &output,
+                       static_cast<void const *>(&delta) != &output && static_cast<void const *>(&output) != &K &&
+                       static_cast<void const *>(&delta) != &K,
                    "E-STEP-CORRECT: linear results use separate scratch objects");
     unpublished();
     delta = Calls::results->delta;
@@ -129,7 +148,7 @@ void verify_correction_step(State state, Covariance covariance, Residual residua
                                 boundaries_clear && measurement_size <= 3U && FORMAL_ESKF_PROOF_STEP_ALIAS >= 0 &&
                                 FORMAL_ESKF_PROOF_STEP_ALIAS < 4;
     __ESBMC_assert(configured,
-                   "Runner error: correction step requires only three component summaries and a valid alias");
+                   "Runner error: correction step requires only four component summaries and a valid alias");
     if constexpr (!configured)
         return;
     constexpr bool state_alias = (FORMAL_ESKF_PROOF_STEP_ALIAS & 1) != 0;
@@ -162,18 +181,20 @@ void verify_correction_step(State state, Covariance covariance, Residual residua
     Calls::covariance_target = &target_covariance;
     Calls::state_before = &before_state;
     Calls::covariance_before = &before_covariance;
-    Calls::correction = Calls::injection = Calls::reset = 0U;
+    Calls::gain = Calls::correction = Calls::injection = Calls::reset = 0U;
     auto const status =
         formal_eskf::try_correct(state, covariance, residual, H, V, minimum, target_state, target_covariance);
-    Status const expected = results.correction_status != Status::success  ? results.correction_status
-                            : results.injection_status != Status::success ? results.injection_status
-                                                                          : results.reset_status;
+    bool const gain_ok = results.gain_status == Status::success;
+    bool const correction_ok = gain_ok && results.correction_status == Status::success;
+    bool const injection_ok = correction_ok && results.injection_status == Status::success;
+    Status const expected = !gain_ok         ? results.gain_status
+                            : !correction_ok ? results.correction_status
+                            : !injection_ok  ? results.injection_status
+                                             : results.reset_status;
     __ESBMC_assert(status == expected, "E-STEP-CORRECT: exact first failure or success");
-    __ESBMC_assert(
-        Calls::correction == 1U && Calls::injection == (results.correction_status == Status::success ? 1U : 0U) &&
-            Calls::reset ==
-                (results.correction_status == Status::success && results.injection_status == Status::success ? 1U : 0U),
-        "E-STEP-CORRECT: no skipped, repeated or post-failure stage");
+    __ESBMC_assert(Calls::gain == 1U && Calls::correction == (gain_ok ? 1U : 0U) &&
+                       Calls::injection == (correction_ok ? 1U : 0U) && Calls::reset == (injection_ok ? 1U : 0U),
+                   "E-STEP-CORRECT: no skipped, repeated or post-failure stage");
     __ESBMC_assert(status == Status::success
                        ? same_state(target_state, results.injected) && same_matrix(target_covariance, results.reset)
                        : same_state(target_state, before_state) && same_matrix(target_covariance, before_covariance),

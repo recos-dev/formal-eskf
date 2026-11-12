@@ -73,8 +73,9 @@ template <typename A, typename B> bool transpose_matches(A const & actual, B con
     return valid;
 }
 template <std::size_t Size>
-Backend::matrix_type<Size, Size> addition(Backend::matrix_type<Size, Size> const & left,
-                                          Backend::matrix_type<Size, Size> const & right)
+formal_eskf::linalg::Matrix<Backend, Size, Size>
+addition(formal_eskf::linalg::Matrix<Backend, Size, Size> const & left,
+         formal_eskf::linalg::Matrix<Backend, Size, Size> const & right)
 {
     auto const & data = *Calls::results;
     unsigned const call = Calls::adds++;
@@ -104,7 +105,8 @@ Backend::matrix_type<Size, Size> addition(Backend::matrix_type<Size, Size> const
 }
 // Do not name this finite: ESBMC recognizes that libc name as an intrinsic,
 // even in a namespace, and would bypass the observer body.
-template <std::size_t Rows, std::size_t Columns> bool check_finite(Backend::matrix_type<Rows, Columns> const & input)
+template <std::size_t Rows, std::size_t Columns>
+bool check_finite(formal_eskf::linalg::Matrix<Backend, Rows, Columns> const & input)
 {
     auto const & data = *Calls::results;
     unsigned const call = Calls::finites++;
@@ -141,8 +143,9 @@ template <std::size_t Rows, std::size_t Columns> bool check_finite(Backend::matr
     return false;
 }
 template <std::size_t Rows, std::size_t Inner, std::size_t Columns>
-Backend::matrix_type<Rows, Columns> product(Backend::matrix_type<Rows, Inner> const & left,
-                                            Backend::matrix_type<Inner, Columns> const & right)
+formal_eskf::linalg::Matrix<Backend, Rows, Columns>
+product(formal_eskf::linalg::Matrix<Backend, Rows, Inner> const & left,
+        formal_eskf::linalg::Matrix<Backend, Inner, Columns> const & right)
 {
     auto const & data = *Calls::results;
     unsigned const call = Calls::products++;
@@ -190,7 +193,8 @@ Backend::matrix_type<Rows, Columns> product(Backend::matrix_type<Rows, Inner> co
     __ESBMC_assert(false, "E-CORRECT: only the four required ordered matrix products execute");
     return {};
 }
-template <std::size_t Size> bool symmetry(Backend::matrix_type<Size, Size> const & input, Scalar tolerance)
+template <std::size_t Size>
+bool symmetry(formal_eskf::linalg::Matrix<Backend, Size, Size> const & input, Scalar tolerance)
 {
     __ESBMC_assert(same(tolerance, Scalar{0}) && Calls::products == 0U,
                    "E-CORRECT: exact input symmetry is validated before arithmetic");
@@ -218,7 +222,8 @@ template <std::size_t Size> bool symmetry(Backend::matrix_type<Size, Size> const
     return false;
 }
 template <std::size_t Size>
-Status finish(Backend::matrix_type<Size, Size> & candidate, Backend::matrix_type<Size, Size> & output)
+Status finish(formal_eskf::linalg::Matrix<Backend, Size, Size> & candidate,
+              formal_eskf::linalg::Matrix<Backend, Size, Size> & output)
 {
     unpublished();
     __ESBMC_assert(&candidate == &output && static_cast<void const *>(&output) != Calls::covariance_output,
@@ -252,8 +257,8 @@ Status finish(Backend::matrix_type<Size, Size> & candidate, Backend::matrix_type
     return Status::domain_error;
 }
 template <std::size_t Inner>
-Covariance sandwich(Backend::matrix_type<state_size, Inner> const & transform,
-                    Backend::matrix_type<Inner, Inner> const & covariance)
+Covariance sandwich(formal_eskf::linalg::Matrix<Backend, state_size, Inner> const & transform,
+                    formal_eskf::linalg::Matrix<Backend, Inner, Inner> const & covariance)
 {
     __ESBMC_assert(Calls::products == 4U, "E-CORRECT: Joseph follows delta and I-KH construction");
     unsigned const call = Calls::sandwiches++;
@@ -502,7 +507,7 @@ void verify_correction_unpack(Correction delta, Error error)
 }
 
 void verify_correction(Covariance prior, Residual residual, Jacobian H, Noise V, Scalar minimum,
-                       Correction correction_output, Covariance covariance_output, Results results,
+                       Correction correction_output, Covariance covariance_output, Gain gain, Results results,
                        std::size_t observed_row, std::size_t observed_column)
 {
     constexpr bool configured = FORMAL_ESKF_PROOF_CORRECTION_CONTRACT == 1 && !FORMAL_ESKF_PROOF_ARITHMETIC_CONTRACT &&
@@ -552,8 +557,16 @@ void verify_correction(Covariance prior, Residual residual, Jacobian H, Noise V,
                             : !correction_reached ? results.solve_status
                             : !joseph_reached     ? Status::non_finite_result
                                                   : results.covariance_status;
-    Status const actual = formal_eskf::detail::try_compute_correction(prior, residual, H, V, minimum, correction_output,
-                                                                      covariance_output);
+    auto const gain_before = gain;
+    Status const gain_status = formal_eskf::detail::try_compute_correction_gain(prior, residual, H, V, minimum, gain);
+    __ESBMC_assert(gain_status == Status::success ? matches(gain, results.gain) : matches(gain, gain_before),
+                   "E-CORRECT: gain publishes the solve result only on success");
+    Status actual = gain_status;
+    if (gain_status == Status::success)
+    {
+        actual = formal_eskf::detail::try_apply_correction_gain(prior, residual, H, V, gain, correction_output,
+                                                                covariance_output);
+    }
     __ESBMC_assert(actual == expected, "E-CORRECT: exact validation, arithmetic-failure and callee-status precedence");
     __ESBMC_assert(Calls::validations == 1U && Calls::symmetries == 0U &&
                        Calls::adds == (innovation_reached ? 1U : 0U) + (joseph_reached ? 1U : 0U) &&

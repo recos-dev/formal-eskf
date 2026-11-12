@@ -2193,7 +2193,11 @@
           },
           {
             "file": "include/formal_eskf/eskf/correction.hpp",
-            "symbol": "Status try_correct("
+            "symbol": "try_correct(configuration::Ahrs::NominalState"
+          },
+          {
+            "file": "include/formal_eskf/eskf/correction.hpp",
+            "symbol": "try_correct(configuration::Ins::NominalState"
           }
         ],
         "esbmc": [
@@ -2727,7 +2731,11 @@
           },
           {
             "file": "include/formal_eskf/eskf/correction.hpp",
-            "symbol": "Status try_compute_correction("
+            "symbol": "Status try_compute_correction_gain("
+          },
+          {
+            "file": "include/formal_eskf/eskf/correction.hpp",
+            "symbol": "Status try_apply_correction_gain("
           },
           {
             "file": "include/formal_eskf/eskf/correction.hpp",
@@ -2735,7 +2743,11 @@
           },
           {
             "file": "include/formal_eskf/eskf/correction.hpp",
-            "symbol": "try_correct_state_and_covariance("
+            "symbol": "try_correct(configuration::Ahrs::NominalState"
+          },
+          {
+            "file": "include/formal_eskf/eskf/correction.hpp",
+            "symbol": "try_correct(configuration::Ins::NominalState"
           },
           {
             "file": "include/formal_eskf/eskf/covariance.hpp",
@@ -2872,15 +2884,19 @@
           },
           {
             "file": "include/formal_eskf/eskf/magnetometer.hpp",
-            "symbol": "struct MagneticTiltProjection"
+            "symbol": "Status try_project_magnetic_gain("
           },
           {
             "file": "include/formal_eskf/eskf/magnetometer.hpp",
-            "symbol": "Status try_correct_magnetometer_state_and_covariance("
+            "symbol": "try_correct_magnetometer("
           },
           {
             "file": "include/formal_eskf/eskf/correction.hpp",
-            "symbol": "Status try_compute_correction("
+            "symbol": "Status try_apply_correction_gain("
+          },
+          {
+            "file": "include/formal_eskf/eskf/correction.hpp",
+            "symbol": "Status try_compute_correction_gain("
           }
         ],
         "esbmc": []
@@ -3284,7 +3300,15 @@
           },
           {
             "file": "include/formal_eskf/eskf/correction.hpp",
-            "symbol": "Status try_compute_correction("
+            "symbol": "void constrain_bias_gain("
+          },
+          {
+            "file": "include/formal_eskf/eskf/correction.hpp",
+            "symbol": "Status try_compute_correction_gain("
+          },
+          {
+            "file": "include/formal_eskf/eskf/correction.hpp",
+            "symbol": "Status try_apply_correction_gain("
           },
           {
             "file": "include/formal_eskf/eskf/correction.hpp",

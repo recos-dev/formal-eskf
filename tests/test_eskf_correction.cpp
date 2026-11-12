@@ -63,7 +63,8 @@ template <typename Linalg, typename Configuration, std::size_t MeasurementSize> 
 {
     using types = formal_eskf::EskfTypes<Linalg, Configuration>;
     using value_type = typename Linalg::value_type;
-    using correction_type = formal_eskf::linalg::Matrix<Linalg, types::error_state_dimension, 1U>;
+    using correction_type = formal_eskf::linalg::Vector<Linalg, types::error_state_dimension>;
+    using gain_type = formal_eskf::linalg::Matrix<Linalg, types::error_state_dimension, MeasurementSize>;
     using state_type = typename types::nominal_state_type;
     using covariance_type = typename types::error_covariance_type;
     static constexpr bool is_ins = std::is_same_v<Configuration, formal_eskf::configuration::Ins>;
@@ -88,10 +89,10 @@ template <typename Linalg, typename Configuration, std::size_t MeasurementSize> 
             for (std::size_t axis = 0U; axis < 3U; ++axis)
             {
                 value_type const n = static_cast<value_type>(axis + 1U);
-                state.p_n.set(axis, n);
-                state.v_n.set(axis, -n);
-                state.b_a.set(axis, n / value_type{8});
-                state.b_g.set(axis, -n / value_type{16});
+                state.p_n(axis) = n;
+                state.v_n(axis) = -n;
+                state.b_a(axis) = n / value_type{8};
+                state.b_g(axis) = -n / value_type{16};
             }
         }
         // P = I + u*u^T; V = I/4 + w*w^T. Both are dense SPD matrices.
@@ -101,24 +102,23 @@ template <typename Linalg, typename Configuration, std::size_t MeasurementSize> 
             {
                 value_type const u = static_cast<value_type>(row + 1U) / value_type{32};
                 value_type const v = static_cast<value_type>(column + 1U) / value_type{32};
-                P.set(row, column, u * v + (row == column ? value_type{1} : value_type{0}));
+                P(row, column) = u * v + (row == column ? value_type{1} : value_type{0});
             }
         }
         for (std::size_t row = 0U; row < MeasurementSize; ++row)
         {
-            r.set(row, static_cast<value_type>(row + 1U) / value_type{128});
+            r(row) = static_cast<value_type>(row + 1U) / value_type{128};
             for (std::size_t column = 0U; column < size; ++column)
             {
                 auto const pattern = static_cast<int>((row * 3U + column * 5U) % 7U) - 3;
-                H.set(row, column,
-                      static_cast<value_type>(pattern) / value_type{16} +
-                          (column == attitude_offset + row % 3U ? value_type{1} : value_type{0}));
+                H(row, column) = static_cast<value_type>(pattern) / value_type{16} +
+                                 (column == attitude_offset + row % 3U ? value_type{1} : value_type{0});
             }
             for (std::size_t column = 0U; column < MeasurementSize; ++column)
             {
                 value_type const u = static_cast<value_type>(row + 1U) / value_type{16};
                 value_type const v = static_cast<value_type>(column + 1U) / value_type{16};
-                V.set(row, column, u * v + (row == column ? value_type{0.25} : value_type{0}));
+                V(row, column) = u * v + (row == column ? value_type{0.25} : value_type{0});
             }
         }
     }
@@ -383,8 +383,14 @@ void check_success(TestContext & test, std::string_view profile, Fixture const &
                 "valid correction fixture and oracle");
     typename Fixture::correction_type delta;
     typename Fixture::covariance_type joseph;
-    Status const linear_status = formal_eskf::detail::try_compute_correction(fixture.P, fixture.r, fixture.H, fixture.V,
-                                                                             Fixture::minimum_norm, delta, joseph);
+    typename Fixture::gain_type K;
+    Status linear_status = formal_eskf::detail::try_compute_correction_gain(fixture.P, fixture.r, fixture.H, fixture.V,
+                                                                            Fixture::minimum_norm, K);
+    if (linear_status == Status::success)
+    {
+        linear_status = formal_eskf::detail::try_apply_correction_gain(fixture.P, fixture.r, fixture.H, fixture.V, K,
+                                                                       delta, joseph);
+    }
     bool linear_matches = linear_status == Status::success;
     for (std::size_t row = 0U; row < Fixture::size; ++row)
     {
@@ -402,10 +408,17 @@ void check_success(TestContext & test, std::string_view profile, Fixture const &
     test.expect(linear_matches, profile, "pre-injection error and full Joseph covariance match independent oracle");
     auto const saved_delta = delta;
     auto const saved_joseph = joseph;
-    Status const rejected = formal_eskf::detail::try_compute_correction(fixture.P, fixture.r, fixture.H, fixture.V,
-                                                                        typename Fixture::value_type{0}, delta, joseph);
-    test.expect(rejected == Status::domain_error && same_bits(delta, saved_delta) && same_bits(joseph, saved_joseph),
-                profile, "pre-injection failure preserves both scratch outputs");
+    auto const saved_gain = K;
+    Status rejected = formal_eskf::detail::try_compute_correction_gain(fixture.P, fixture.r, fixture.H, fixture.V,
+                                                                       typename Fixture::value_type{0}, K);
+    if (rejected == Status::success)
+    {
+        rejected = formal_eskf::detail::try_apply_correction_gain(fixture.P, fixture.r, fixture.H, fixture.V, K, delta,
+                                                                  joseph);
+    }
+    test.expect(rejected == Status::domain_error && same_bits(K, saved_gain) && same_bits(delta, saved_delta) &&
+                    same_bits(joseph, saved_joseph),
+                profile, "invalid inputs preserve gain, correction and covariance scratch outputs");
     for (unsigned aliases = 0U; aliases < 4U; ++aliases)
     {
         auto input = fixture;
@@ -443,7 +456,7 @@ void test_correction_success(TestContext & test, std::string_view profile, typen
     zero_jacobian.H = {};
     check_success(test, profile, zero_jacobian, tolerance);
     auto large_unobserved_prior = zero_jacobian;
-    large_unobserved_prior.P.set(0U, 0U, std::numeric_limits<value_type>::max());
+    large_unobserved_prior.P(0U, 0U) = std::numeric_limits<value_type>::max();
     check_success(test, profile, large_unobserved_prior, tolerance); // Symmetry cleanup must not overflow P + P^T.
     auto zero_prior = fixture;
     zero_prior.P = {};
@@ -451,8 +464,8 @@ void test_correction_success(TestContext & test, std::string_view profile, typen
     auto semidefinite_prior = fixture;
     for (std::size_t index = 0U; index < fixture_type::size; ++index)
     {
-        semidefinite_prior.P.set(0U, index, value_type{0});
-        semidefinite_prior.P.set(index, 0U, value_type{0});
+        semidefinite_prior.P(0U, index) = value_type{0};
+        semidefinite_prior.P(index, 0U) = value_type{0};
     }
     check_success(test, profile, semidefinite_prior, tolerance);
     auto negative_quaternion = fixture;
@@ -469,8 +482,8 @@ void test_repeated_scalar_correction(TestContext & test, std::string_view profil
     fixture_type fixture;
     fixture.P = fixture_type::covariance_type::identity();
     fixture.H = {};
-    fixture.H.set(0U, fixture_type::attitude_offset, value_type{1});
-    fixture.V.set(0U, 0U, value_type{0.25});
+    fixture.H(0U, fixture_type::attitude_offset) = value_type{1};
+    fixture.V(0U, 0U) = value_type{0.25};
     fixture.r = {};
     auto const prior_state = fixture.state;
     // With zero residual the reset is identity. Repeated scalar updates have
@@ -525,11 +538,11 @@ void test_joseph_cancellation(TestContext & test, std::string_view profile)
     fixture_type fixture;
     fixture.P = fixture_type::covariance_type::identity();
     fixture.H = {};
-    fixture.H.set(0U, fixture_type::attitude_offset, value_type{1});
+    fixture.H(0U, fixture_type::attitude_offset) = value_type{1};
     fixture.r = {};
     value_type const epsilon = std::numeric_limits<value_type>::epsilon();
     value_type const variance = epsilon / value_type{4};
-    fixture.V.set(0U, 0U, variance);
+    fixture.V(0U, 0U) = variance;
     // S rounds to 1 and K to 1. The simplified (I-KH)P would lose the
     // remaining variance entirely; Joseph retains it through K V K^T.
     Status const status = try_correct(fixture.state, fixture.P, fixture.r, fixture.H, fixture.V,
@@ -569,7 +582,7 @@ void test_correction_failures(TestContext & test, std::string_view profile)
                 for (auto const invalid : {nan, infinity, -infinity})
                 {
                     auto bad = fixture;
-                    (bad.*member).set(row, column, invalid);
+                    (bad.*member)(row, column) = invalid;
                     fail(bad, Status::non_finite_input, "every non-finite P/r/H/V coefficient is rejected atomically");
                 }
             }
@@ -580,26 +593,26 @@ void test_correction_failures(TestContext & test, std::string_view profile)
     non_finite_entries(&fixture_type::H);
     non_finite_entries(&fixture_type::V);
     auto bad = fixture;
-    bad.P.set(0U, 1U, std::nextafter(bad.P(0U, 1U), infinity));
+    bad.P(0U, 1U) = std::nextafter(bad.P(0U, 1U), infinity);
     fail(bad, Status::domain_error, "one-ULP asymmetric prior is rejected, not silently symmetrized");
     bad = fixture;
-    bad.V.set(0U, 1U, std::nextafter(bad.V(0U, 1U), infinity));
+    bad.V(0U, 1U) = std::nextafter(bad.V(0U, 1U), infinity);
     fail(bad, Status::domain_error, "one-ULP asymmetric measurement covariance is rejected");
     bad = fixture;
-    bad.P.set(0U, 0U, value_type{-1});
+    bad.P(0U, 0U) = value_type{-1};
     fail(bad, Status::domain_error, "negative prior variance is rejected");
     for (auto const invalid : {value_type{0}, value_type{-1}})
     {
         bad = fixture;
-        bad.V.set(0U, 0U, invalid);
+        bad.V(0U, 0U) = invalid;
         fail(bad, Status::domain_error, "nonpositive measurement variance is rejected");
     }
     // Deliberately violate V's SPD precondition to exercise innovation LLT failure.
     // Passing the diagonal checks alone does not certify a valid covariance.
     bad = fixture;
     bad.H = {};
-    bad.V.set(0U, 1U, value_type{2});
-    bad.V.set(1U, 0U, value_type{2});
+    bad.V(0U, 1U) = value_type{2};
+    bad.V(1U, 0U) = value_type{2};
     fail(bad, Status::not_positive_definite, "indefinite innovation propagates LLT failure atomically");
 
     // All remaining matrix inputs satisfy P PSD and V SPD; failures are numerical.
@@ -608,26 +621,26 @@ void test_correction_failures(TestContext & test, std::string_view profile)
     fixture.V = decltype(fixture.V)::identity();
     fixture.r = {};
     bad = fixture;
-    bad.P.set(0U, 0U, maximum);
-    bad.H.set(0U, 0U, value_type{2});
+    bad.P(0U, 0U) = maximum;
+    bad.H(0U, 0U) = value_type{2};
     fail(bad, Status::non_finite_result, "P H^T overflow preserves outputs");
     bad = fixture;
-    bad.P.set(0U, 0U, maximum / value_type{2});
-    bad.H.set(0U, 0U, value_type{1.5});
+    bad.P(0U, 0U) = maximum / value_type{2};
+    bad.H(0U, 0U) = value_type{1.5};
     fail(bad, Status::non_finite_result, "H P H^T overflow preserves outputs");
     bad = fixture;
-    bad.P.set(0U, 0U, maximum);
-    bad.H.set(0U, 0U, value_type{1});
-    bad.V.set(0U, 0U, maximum);
+    bad.P(0U, 0U) = maximum;
+    bad.H(0U, 0U) = value_type{1};
+    bad.V(0U, 0U) = maximum;
     fail(bad, Status::non_finite_result, "innovation addition overflow preserves outputs");
     bad = fixture;
-    bad.H.set(0U, fixture_type::attitude_offset, value_type{0.25});
-    bad.V.set(0U, 0U, value_type{0.0625});
-    bad.r.set(0U, maximum); // K = 2, so delta_x itself overflows.
+    bad.H(0U, fixture_type::attitude_offset) = value_type{0.25};
+    bad.V(0U, 0U) = value_type{0.0625};
+    bad.r(0U) = maximum; // K = 2, so delta_x itself overflows.
     fail(bad, Status::non_finite_result, "gain-residual overflow preserves outputs");
     bad = fixture;
-    bad.H.set(0U, fixture_type::attitude_offset, value_type{1});
-    bad.r.set(0U, maximum); // Finite delta_x, but Exp's squared norm overflows.
+    bad.H(0U, fixture_type::attitude_offset) = value_type{1};
+    bad.r(0U) = maximum; // Finite delta_x, but Exp's squared norm overflows.
     fail(bad, Status::non_finite_result, "late injection failure does not commit the Joseph covariance");
 
     bad = fixture;
@@ -636,12 +649,12 @@ void test_correction_failures(TestContext & test, std::string_view profile)
     // The xy block is rank-one PSD. Correction observes only z, leaving this
     // block intact until reset. Jr(pi/2 * e_z) concentrates its variance into x
     // beyond the scalar range (the first-order reset overflows too).
-    bad.P.set(offset, offset, large_variance);
-    bad.P.set(offset, offset + 1U, large_variance);
-    bad.P.set(offset + 1U, offset, large_variance);
-    bad.P.set(offset + 1U, offset + 1U, large_variance);
-    bad.H.set(0U, offset + 2U, value_type{1});
-    bad.r.set(0U, static_cast<value_type>(std::acos(-1.0L)));
+    bad.P(offset, offset) = large_variance;
+    bad.P(offset, offset + 1U) = large_variance;
+    bad.P(offset + 1U, offset) = large_variance;
+    bad.P(offset + 1U, offset + 1U) = large_variance;
+    bad.H(0U, offset + 2U) = value_type{1};
+    bad.r(0U) = static_cast<value_type>(std::acos(-1.0L));
     fail(bad, Status::non_finite_result, "reset overflow rolls back the already-computed nominal injection");
 
     if constexpr (fixture_type::is_ins)
@@ -654,13 +667,13 @@ void test_correction_failures(TestContext & test, std::string_view profile)
             for (std::size_t axis = 0U; axis < 3U; ++axis)
             {
                 bad = fixture;
-                (bad.state.*members[group]).set(axis, nan);
+                (bad.state.*members[group])(axis) = nan;
                 fail(bad, Status::non_finite_input, "non-finite INS nominal fields preserve outputs");
                 bad = fixture;
-                (bad.state.*members[group]).set(axis, maximum);
-                bad.H.set(0U, offsets[group] + axis, value_type{0.25});
-                bad.V.set(0U, 0U, value_type{0.0625});
-                bad.r.set(0U, maximum / value_type{4});
+                (bad.state.*members[group])(axis) = maximum;
+                bad.H(0U, offsets[group] + axis) = value_type{0.25};
+                bad.V(0U, 0U) = value_type{0.0625};
+                bad.r(0U) = maximum / value_type{4};
                 fail(bad, Status::non_finite_result, "late additive INS injection overflow preserves both outputs");
             }
         }
@@ -763,22 +776,22 @@ template <typename Linalg> void test_bias_update_failures(TestContext & test, st
         }
     };
     auto bad = fixture;
-    bad.H.set(0U, 9U, std::numeric_limits<value_type>::quiet_NaN());
+    bad.H(0U, 9U) = std::numeric_limits<value_type>::quiet_NaN();
     fail(bad, Status::non_finite_input); // Disabled row must not conceal invalid inputs.
     bad = fixture;
     bad.H = {};
-    bad.V.set(0U, 1U, value_type{2});
-    bad.V.set(1U, 0U, value_type{2});
+    bad.V(0U, 1U) = value_type{2};
+    bad.V(1U, 0U) = value_type{2};
     fail(bad, Status::not_positive_definite);
     bad = fixture;
-    bad.state.b_a.set(0U, std::numeric_limits<value_type>::infinity());
+    bad.state.b_a(0U) = std::numeric_limits<value_type>::infinity();
     fail(bad, Status::non_finite_input); // Even an inhibited nominal bias must be valid.
     bad = fixture;
     bad.P = fixture_type::covariance_type::identity();
     bad.H = {};
-    bad.H.set(0U, 6U, value_type{1});
+    bad.H(0U, 6U) = value_type{1};
     bad.V = decltype(bad.V)::identity();
-    bad.r.set(0U, std::numeric_limits<value_type>::max());
+    bad.r(0U) = std::numeric_limits<value_type>::max();
     fail(bad, Status::non_finite_result); // Late injection failure cannot publish Joseph covariance.
 }
 

@@ -91,13 +91,13 @@ template <typename Linalg, typename Configuration> struct MagnetometerFixture
     {
         if constexpr (size == 3U)
         {
-            error.delta_theta_b.set(column, amount);
+            error.delta_theta_b(column) = amount;
         }
         else
         {
             std::array<vector_type *, 5U> blocks{&error.delta_p_n, &error.delta_v_n, &error.delta_theta_b,
                                                  &error.delta_b_a, &error.delta_b_g};
-            blocks[column / 3U]->set(column % 3U, amount);
+            (*blocks[column / 3U])(column % 3U) = amount;
         }
     }
 };
@@ -189,7 +189,7 @@ void test_magnetometer_analytic(TestContext & test, std::string_view profile, ty
                         "zero-residual covariance matches the selected magnetic gain policy");
         }
     }
-    fixture.m_b.set(2U, value_type{0.125});
+    fixture.m_b(2U) = value_type{0.125};
     test.expect(try_correct_magnetometer(fixture.state, fixture.P, fixture.m_b, fixture.m_n, fixture.V,
                                          Fixture::minimum_norm, output, P_output) == Status::success,
                 profile, "nonzero magnetic residual succeeds");
@@ -239,7 +239,7 @@ void test_magnetometer_analytic(TestContext & test, std::string_view profile, ty
                         "protected Joseph update preserves tilt variance instead of shrinking it post hoc");
         }
     }
-    fixture.m_b.set(1U, value_type{0.125});
+    fixture.m_b(1U) = value_type{0.125};
     test.expect(fixture.correct(output, P_output) == Status::success &&
                     near(output.q_nb.q0(), static_cast<value_type>(std::cos(angle / 2)), tolerance) &&
                     near(output.q_nb.q3(), static_cast<value_type>(-std::sin(angle / 2)), tolerance) &&
@@ -271,8 +271,8 @@ void test_magnetometer_delegation(TestContext & test, std::string_view profile, 
             fixture.P(row, column) += static_cast<value_type>((row + 1U) * (column + 1U)) / value_type{256};
         }
     }
-    fixture.V.set(0U, 1U, value_type{0.25});
-    fixture.V.set(1U, 0U, value_type{0.25});
+    fixture.V(0U, 1U) = value_type{0.25};
+    fixture.V(1U, 0U) = value_type{0.25};
     formal_eskf::linalg::Matrix<Linalg, 3U, Fixture::size> H;
     H.template set_block<0U, Fixture::attitude_offset>(Fixture::matrix3_type::from_row_major(
         {value_type{0}, value_type{-2}, value_type{-3}, value_type{2}, value_type{0}, value_type{-1}, value_type{3},
@@ -401,10 +401,10 @@ void test_magnetometer_failures(TestContext & test, std::string_view profile)
         for (std::size_t axis = 0U; axis < 3U; ++axis)
         {
             auto bad = fixture;
-            bad.m_b.set(axis, invalid);
+            bad.m_b(axis) = invalid;
             fail(bad, Fixture::minimum_norm, Status::non_finite_input, "invalid measured field rolls back");
             bad = fixture;
-            bad.m_n.set(axis, invalid);
+            bad.m_n(axis) = invalid;
             fail(bad, Fixture::minimum_norm, Status::non_finite_input, "invalid reference field rolls back");
         }
     }
@@ -415,31 +415,31 @@ void test_magnetometer_failures(TestContext & test, std::string_view profile)
     bad.m_n = Fixture::vector_type::zero();
     fail(bad, Fixture::minimum_norm, Status::domain_error, "zero reference field rolls back");
     bad = fixture;
-    bad.m_n.set(0U, -std::numeric_limits<value_type>::max());
-    bad.m_b.set(0U, std::numeric_limits<value_type>::max());
+    bad.m_n(0U) = -std::numeric_limits<value_type>::max();
+    bad.m_b(0U) = std::numeric_limits<value_type>::max();
     fail(bad, Fixture::minimum_norm, Status::non_finite_result, "finite residual overflow rolls back");
     test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
                     value_type{2}, value_type{0}, value_type{1}, value_type{0}, Fixture::minimum_norm,
                     bad.state.q_nb) == Status::success,
                 profile, "overflow-test quaternion is valid");
-    bad.m_n.set(2U, std::numeric_limits<value_type>::max());
+    bad.m_n(2U) = std::numeric_limits<value_type>::max();
     fail(bad, Fixture::minimum_norm, Status::non_finite_result, "finite rotation overflow rolls back");
     bad = fixture;
-    bad.V.set(0U, 1U, value_type{0.25});
+    bad.V(0U, 1U) = value_type{0.25};
     fail(bad, Fixture::minimum_norm, Status::domain_error, "asymmetric V rolls back");
     bad = fixture;
-    bad.V.set(0U, 0U, value_type{0});
+    bad.V(0U, 0U) = value_type{0};
     fail(bad, Fixture::minimum_norm, Status::domain_error, "nonpositive measurement variance rolls back");
     bad = fixture;
-    bad.P.set(0U, 0U, std::numeric_limits<value_type>::quiet_NaN());
+    bad.P(0U, 0U) = std::numeric_limits<value_type>::quiet_NaN();
     fail(bad, Fixture::minimum_norm, Status::non_finite_input, "non-finite prior covariance rolls back");
     bad = fixture;
-    bad.P.set(0U, 1U, value_type{0.25});
+    bad.P(0U, 1U) = value_type{0.25};
     fail(bad, Fixture::minimum_norm, Status::domain_error, "asymmetric prior covariance rolls back");
     bad = fixture;
     bad.m_n = Fixture::vector_type::from_row_major({value_type{2}, value_type{0}, value_type{0}});
-    bad.P.set(Fixture::attitude_offset + 1U, Fixture::attitude_offset + 2U, value_type{4});
-    bad.P.set(Fixture::attitude_offset + 2U, Fixture::attitude_offset + 1U, value_type{4});
+    bad.P(Fixture::attitude_offset + 1U, Fixture::attitude_offset + 2U) = value_type{4};
+    bad.P(Fixture::attitude_offset + 2U, Fixture::attitude_offset + 1U) = value_type{4};
     // Invalid prior violates the PSD precondition and makes S indefinite.
     fail(bad, Fixture::minimum_norm, Status::not_positive_definite, "failed innovation Cholesky propagates");
     fail(fixture, value_type{0}, Status::domain_error, "invalid quaternion norm bound rolls back");
@@ -449,7 +449,7 @@ void test_magnetometer_failures(TestContext & test, std::string_view profile)
     if constexpr (Fixture::size == 15U)
     {
         bad = fixture;
-        bad.state.b_g.set(1U, std::numeric_limits<value_type>::infinity());
+        bad.state.b_g(1U) = std::numeric_limits<value_type>::infinity();
         fail(bad, Fixture::minimum_norm, Status::non_finite_input, "downstream INS validation rolls back");
     }
 
@@ -458,14 +458,15 @@ void test_magnetometer_failures(TestContext & test, std::string_view profile)
     // a valid rank-one projector. Its internal scratch gain must not be changed.
     auto const down = Fixture::vector_type::from_row_major(
         {value_type{4} / value_type{5}, value_type{3} / value_type{5}, value_type{0}});
-    formal_eskf::detail::MagneticTiltProjection<Linalg, Fixture::attitude_offset> const projection{
-        down * formal_eskf::linalg::transpose(down)};
+    auto const projector = down * formal_eskf::linalg::transpose(down);
     formal_eskf::linalg::Matrix<Linalg, Fixture::size, 3U> gain;
-    gain.set(Fixture::attitude_offset, 0U, std::numeric_limits<value_type>::max());
-    gain.set(Fixture::attitude_offset + 1U, 0U, std::numeric_limits<value_type>::max());
+    gain(Fixture::attitude_offset, 0U) = std::numeric_limits<value_type>::max();
+    gain(Fixture::attitude_offset + 1U, 0U) = std::numeric_limits<value_type>::max();
     auto const gain_before = gain;
-    test.expect(projection.apply(gain) == Status::non_finite_result && same_bits(gain, gain_before), profile,
-                "finite projection overflow is reported without publishing a partial gain block");
+    test.expect(formal_eskf::detail::try_project_magnetic_gain<Fixture::attitude_offset>(projector, gain) ==
+                        Status::non_finite_result &&
+                    same_bits(gain, gain_before),
+                profile, "finite projection overflow is reported without publishing a partial gain block");
 #endif
 }
 
@@ -627,8 +628,8 @@ void projected_correction_oracle(Fixture const & fixture,
                     value += K[row][j] * static_cast<long double>(fixture.V(j, k)) * K[column][k];
                 }
             }
-            covariance.set(row, column, static_cast<value_type>(value));
-            covariance.set(column, row, static_cast<value_type>(value));
+            covariance(row, column) = static_cast<value_type>(value);
+            covariance(column, row) = static_cast<value_type>(value);
         }
     }
 }

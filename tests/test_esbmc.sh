@@ -1096,10 +1096,10 @@ check_step_correction_contract_guards()
         fi
         COUNT=$((COUNT + 1))
     done <<'CASES'
-step_correction|verify_correction_step|-D FORMAL_ESKF_PROOF_STEP_CONTRACT=0|Runner error: correction step requires only three component summaries and a valid alias
-step_correction|verify_correction_step|-D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 -D FORMAL_ESKF_PROOF_STEP_FRAME=1|Runner error: correction step requires only three component summaries and a valid alias
-step_correction|verify_correction_step|-D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 -D FORMAL_ESKF_PROOF_STEP_ALIAS=4|Runner error: correction step requires only three component summaries and a valid alias
-step_correction|verify_correction_step|-D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 -D FORMAL_ESKF_PROOF_ARITHMETIC_CONTRACT=1|Runner error: correction step requires only three component summaries and a valid alias
+step_correction|verify_correction_step|-D FORMAL_ESKF_PROOF_STEP_CONTRACT=0|Runner error: correction step requires only four component summaries and a valid alias
+step_correction|verify_correction_step|-D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 -D FORMAL_ESKF_PROOF_STEP_FRAME=1|Runner error: correction step requires only four component summaries and a valid alias
+step_correction|verify_correction_step|-D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 -D FORMAL_ESKF_PROOF_STEP_ALIAS=4|Runner error: correction step requires only four component summaries and a valid alias
+step_correction|verify_correction_step|-D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 -D FORMAL_ESKF_PROOF_ARITHMETIC_CONTRACT=1|Runner error: correction step requires only four component summaries and a valid alias
 step_correction_frames|verify_correction_injection_frame|-D FORMAL_ESKF_PROOF_STEP_FRAME=0|Runner error: correction injection frame requires actual component and quaternion code
 step_correction_frames|verify_correction_injection_frame|-D FORMAL_ESKF_PROOF_STEP_FRAME=1 -D FORMAL_ESKF_PROOF_STEP_CONTRACT=1|Runner error: correction injection frame requires actual component and quaternion code
 step_correction_frames|verify_correction_reset_frame|-D FORMAL_ESKF_PROOF_STEP_FRAME=1|Runner error: correction reset frame requires only the same-type sandwich summary
@@ -1126,7 +1126,7 @@ check_step_correction_regressions()
             fail "correction step IEEE/full-in-place fixture failed: binary64=${BINARY64}"
         fi
     done
-    printf 'ESBMC correction step regressions: pass (three symbolic statuses, signed zero, last-cell NaN and in-place outputs; both scalars)\n'
+    printf 'ESBMC correction step regressions: pass (four symbolic statuses, signed zero, last-cell NaN and in-place outputs; both scalars)\n'
 )
 
 check_solve_contract_guards()

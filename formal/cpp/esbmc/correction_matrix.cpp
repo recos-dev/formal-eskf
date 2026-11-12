@@ -23,10 +23,10 @@ namespace correction_proof
 constexpr std::size_t rows = FORMAL_ESKF_PROOF_ROWS;
 constexpr std::size_t inner = FORMAL_ESKF_PROOF_INNER;
 constexpr std::size_t columns = FORMAL_ESKF_PROOF_PRODUCT_COLUMNS;
-using Left = Backend::matrix_type<rows, inner>;
-using Right = Backend::matrix_type<inner, columns>;
-using Product = Backend::matrix_type<rows, columns>;
-using Square = Backend::matrix_type<rows, rows>;
+using Left = formal_eskf::linalg::Matrix<Backend, rows, inner>;
+using Right = formal_eskf::linalg::Matrix<Backend, inner, columns>;
+using Product = formal_eskf::linalg::Matrix<Backend, rows, columns>;
+using Square = formal_eskf::linalg::Matrix<Backend, rows, rows>;
 using covariance_oracle::flatten;
 struct FiniteCall
 {
@@ -158,7 +158,7 @@ void verify_correction_entry(Left left, Right right, std::size_t row, std::size_
                    "E-CORRECT entry: complete input frames");
 }
 
-using DotVector = Backend::vector_type<inner>;
+using DotVector = formal_eskf::linalg::Vector<Backend, inner>;
 void verify_correction_dot(DotVector left, DotVector right)
 {
     constexpr bool configured = !FORMAL_ESKF_PROOF_CORRECTION_CONTRACT && !FORMAL_ESKF_PROOF_ARITHMETIC_CONTRACT &&

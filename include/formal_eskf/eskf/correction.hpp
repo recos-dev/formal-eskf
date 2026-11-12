@@ -13,9 +13,7 @@
  * Shared fixed-size measurement correction for AHRS and INS.
  */
 
-#include <array>
 #include <cstddef>
-#include <type_traits>
 
 #include <formal_eskf/eskf/injection.hpp>
 
@@ -25,28 +23,37 @@ namespace formal_eskf
 namespace detail
 {
 
-[[nodiscard]] inline std::array<bool, configuration::Ins::error_state_dimension>
-correction_bias_rows(configuration::Ins::BiasUpdate const & bias_update) noexcept
+/** Apply INS bias permissions after the solve, before error and Joseph updates. */
+template <typename Linalg, std::size_t MeasurementSize>
+void constrain_bias_gain(configuration::Ins::BiasUpdate const & bias_update,
+                         linalg::Matrix<Linalg, 15U, MeasurementSize> & K) noexcept
 {
-    std::array<bool, configuration::Ins::error_state_dimension> enabled_rows{};
-    enabled_rows.fill(true);
+    using value_type = typename Linalg::value_type;
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
-        enabled_rows[9U + axis] = bias_update.accelerometer[axis];
-        enabled_rows[12U + axis] = bias_update.gyroscope[axis];
+        for (std::size_t column = 0U; column < MeasurementSize; ++column)
+        {
+            if (!bias_update.accelerometer[axis])
+            {
+                K(9U + axis, column) = value_type{0};
+            }
+            if (!bias_update.gyroscope[axis])
+            {
+                K(12U + axis, column) = value_type{0};
+            }
+        }
     }
-    return enabled_rows;
 }
 
 template <typename Linalg>
-void unpack_correction(linalg::Matrix<Linalg, 3U, 1U> const & delta_x,
+void unpack_correction(linalg::Vector<Linalg, 3U> const & delta_x,
                        configuration::Ahrs::ErrorState<Linalg> & error) noexcept
 {
     error.delta_theta_b = delta_x;
 }
 
 template <typename Linalg>
-void unpack_correction(linalg::Matrix<Linalg, 15U, 1U> const & delta_x,
+void unpack_correction(linalg::Vector<Linalg, 15U> const & delta_x,
                        configuration::Ins::ErrorState<Linalg> & error) noexcept
 {
     error.delta_p_n = delta_x.template segment<0U, 3U>();
@@ -59,7 +66,7 @@ void unpack_correction(linalg::Matrix<Linalg, 15U, 1U> const & delta_x,
 /** Input checks only; PSD/PD remain caller preconditions. */
 template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
 [[nodiscard]] Status validate_correction_inputs(linalg::Matrix<Linalg, Size, Size> const & covariance,
-                                                linalg::Matrix<Linalg, MeasurementSize, 1U> const & r,
+                                                linalg::Vector<Linalg, MeasurementSize> const & r,
                                                 linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
                                                 linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
                                                 typename Linalg::value_type minimum_quaternion_norm) noexcept
@@ -98,26 +105,18 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
 }
 
 /**
- * Checked linearized correction before nominal injection and coordinate reset.
- * Outputs are internal scratch objects, disjoint from all inputs and each other.
- * Publish the error vector and Joseph covariance only after every check succeeds.
- * The norm bound is validated here to preserve the public API's validation order.
- * enabled_rows is borrowed for this call; nullptr leaves every gain row enabled.
- * An optional internal gain constraint runs after row permissions and before
- * both updates. The default nullptr type compiles out this additional stage.
+ * Validate correction inputs and compute the unconstrained gain.
+ * The residual and norm bound are checked here to preserve validation order.
+ * gain_output is internal scratch, disjoint from inputs; publish only on success.
  */
-template <typename Linalg, std::size_t Size, std::size_t MeasurementSize, typename GainConstraint = std::nullptr_t>
-[[nodiscard]] Status try_compute_correction(linalg::Matrix<Linalg, Size, Size> const & covariance,
-                                            linalg::Matrix<Linalg, MeasurementSize, 1U> const & r,
-                                            linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
-                                            linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
-                                            typename Linalg::value_type minimum_quaternion_norm,
-                                            linalg::Matrix<Linalg, Size, 1U> & correction_output,
-                                            linalg::Matrix<Linalg, Size, Size> & covariance_output,
-                                            std::array<bool, Size> const * enabled_rows = nullptr,
-                                            GainConstraint const & gain_constraint = {}) noexcept
+template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
+[[nodiscard]] Status try_compute_correction_gain(linalg::Matrix<Linalg, Size, Size> const & covariance,
+                                                 linalg::Vector<Linalg, MeasurementSize> const & r,
+                                                 linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
+                                                 linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
+                                                 typename Linalg::value_type minimum_quaternion_norm,
+                                                 linalg::Matrix<Linalg, Size, MeasurementSize> & gain_output) noexcept
 {
-    using covariance_type = linalg::Matrix<Linalg, Size, Size>;
     Status const input_status = validate_correction_inputs(covariance, r, H, V, minimum_quaternion_norm);
     if (!succeeded(input_status))
     {
@@ -146,30 +145,26 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize, typena
         return solve_status;
     }
 
-    // Constrain K before both the error and Joseph update; leave P and H intact.
-    if (enabled_rows != nullptr)
-    {
-        for (std::size_t row = 0U; row < Size; ++row)
-        {
-            if (!(*enabled_rows)[row])
-            {
-                for (std::size_t column = 0U; column < MeasurementSize; ++column)
-                {
-                    K.set(row, column, typename Linalg::value_type{0});
-                }
-            }
-        }
-    }
+    gain_output = K;
+    return Status::success;
+}
 
-    if constexpr (!std::is_same_v<GainConstraint, std::nullptr_t>)
-    {
-        Status const constraint_status = gain_constraint.apply(K);
-        if (!succeeded(constraint_status))
-        {
-            return constraint_status;
-        }
-    }
-
+/**
+ * Use the same final gain for the error vector and Joseph covariance.
+ * Inputs have passed correction validation; K includes all requested constraints.
+ * Outputs are separate internal scratch objects, disjoint from inputs.
+ * Publish both only after every arithmetic check succeeds.
+ */
+template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
+[[nodiscard]] Status try_apply_correction_gain(linalg::Matrix<Linalg, Size, Size> const & covariance,
+                                               linalg::Vector<Linalg, MeasurementSize> const & r,
+                                               linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
+                                               linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
+                                               linalg::Matrix<Linalg, Size, MeasurementSize> const & K,
+                                               linalg::Vector<Linalg, Size> & correction_output,
+                                               linalg::Matrix<Linalg, Size, Size> & covariance_output) noexcept
+{
+    using covariance_type = linalg::Matrix<Linalg, Size, Size>;
     // Sola (275): the prior error mean is zero after the previous reset.
     auto const delta_x = K * r;
     auto const A = covariance_type::identity() - K * H;
@@ -191,33 +186,6 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize, typena
     correction_output = delta_x;
     covariance_output = P_corrected;
     return Status::success;
-}
-
-template <typename Error, typename Linalg, typename State, std::size_t Size, std::size_t MeasurementSize,
-          typename GainConstraint = std::nullptr_t>
-[[nodiscard]] Status try_correct_state_and_covariance(
-    State const & state, linalg::Matrix<Linalg, Size, Size> const & covariance,
-    linalg::Matrix<Linalg, MeasurementSize, 1U> const & r, linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
-    linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
-    typename Linalg::value_type minimum_quaternion_norm, State & state_output,
-    linalg::Matrix<Linalg, Size, Size> & covariance_output, std::array<bool, Size> const * enabled_rows = nullptr,
-    GainConstraint const & gain_constraint = {}) noexcept
-{
-    linalg::Matrix<Linalg, Size, 1U> delta_x;
-    linalg::Matrix<Linalg, Size, Size> P_corrected;
-    Status const correction_status = try_compute_correction(covariance, r, H, V, minimum_quaternion_norm, delta_x,
-                                                            P_corrected, enabled_rows, gain_constraint);
-    if (!succeeded(correction_status))
-    {
-        return correction_status;
-    }
-    Error error;
-    unpack_correction(delta_x, error);
-    Error reset_error;
-    // This operation validates the nominal state and commits both caller
-    // outputs only after injection and covariance reset have succeeded.
-    return try_inject_and_reset(state, P_corrected, error, minimum_quaternion_norm, state_output, covariance_output,
-                                reset_error);
 }
 
 } /* end namespace detail */
@@ -251,17 +219,32 @@ template <typename Error, typename Linalg, typename State, std::size_t Size, std
  * @see https://arxiv.org/abs/1711.02508
  */
 template <typename Linalg, std::size_t MeasurementSize>
-[[nodiscard]] Status try_correct(configuration::Ahrs::NominalState<Linalg> const & state,
-                                 linalg::Matrix<Linalg, 3U, 3U> const & covariance,
-                                 linalg::Matrix<Linalg, MeasurementSize, 1U> const & r,
-                                 linalg::Matrix<Linalg, MeasurementSize, 3U> const & H,
-                                 linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
-                                 typename Linalg::value_type minimum_quaternion_norm,
-                                 configuration::Ahrs::NominalState<Linalg> & state_output,
-                                 linalg::Matrix<Linalg, 3U, 3U> & covariance_output) noexcept
+[[nodiscard]] Status
+try_correct(configuration::Ahrs::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 3U, 3U> const & covariance,
+            linalg::Vector<Linalg, MeasurementSize> const & r, linalg::Matrix<Linalg, MeasurementSize, 3U> const & H,
+            linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
+            typename Linalg::value_type minimum_quaternion_norm,
+            configuration::Ahrs::NominalState<Linalg> & state_output,
+            linalg::Matrix<Linalg, 3U, 3U> & covariance_output) noexcept
 {
-    return detail::try_correct_state_and_covariance<configuration::Ahrs::ErrorState<Linalg>>(
-        state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output);
+    linalg::Matrix<Linalg, 3U, MeasurementSize> K;
+    Status const gain_status = detail::try_compute_correction_gain(covariance, r, H, V, minimum_quaternion_norm, K);
+    if (!succeeded(gain_status))
+    {
+        return gain_status;
+    }
+
+    linalg::Vector<Linalg, 3U> delta_x;
+    linalg::Matrix<Linalg, 3U, 3U> P_corrected;
+    Status const correction_status = detail::try_apply_correction_gain(covariance, r, H, V, K, delta_x, P_corrected);
+    if (!succeeded(correction_status))
+    {
+        return correction_status;
+    }
+    configuration::Ahrs::ErrorState<Linalg> error, reset_error;
+    detail::unpack_correction(delta_x, error);
+    return try_inject_and_reset(state, P_corrected, error, minimum_quaternion_norm, state_output, covariance_output,
+                                reset_error);
 }
 
 /**
@@ -275,19 +258,34 @@ template <typename Linalg, std::size_t MeasurementSize>
  * This does not freeze prediction's bias random walk or decide IMU health.
  */
 template <typename Linalg, std::size_t MeasurementSize>
-[[nodiscard]] Status try_correct(configuration::Ins::NominalState<Linalg> const & state,
-                                 linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-                                 linalg::Matrix<Linalg, MeasurementSize, 1U> const & r,
-                                 linalg::Matrix<Linalg, MeasurementSize, 15U> const & H,
-                                 linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
-                                 typename Linalg::value_type minimum_quaternion_norm,
-                                 configuration::Ins::NominalState<Linalg> & state_output,
-                                 linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                                 configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+[[nodiscard]] Status
+try_correct(configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
+            linalg::Vector<Linalg, MeasurementSize> const & r, linalg::Matrix<Linalg, MeasurementSize, 15U> const & H,
+            linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
+            typename Linalg::value_type minimum_quaternion_norm,
+            configuration::Ins::NominalState<Linalg> & state_output,
+            linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
+            configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
 {
-    auto const enabled_rows = detail::correction_bias_rows(bias_update);
-    return detail::try_correct_state_and_covariance<configuration::Ins::ErrorState<Linalg>>(
-        state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output, &enabled_rows);
+    linalg::Matrix<Linalg, 15U, MeasurementSize> K;
+    Status const gain_status = detail::try_compute_correction_gain(covariance, r, H, V, minimum_quaternion_norm, K);
+    if (!succeeded(gain_status))
+    {
+        return gain_status;
+    }
+    detail::constrain_bias_gain(bias_update, K);
+
+    linalg::Vector<Linalg, 15U> delta_x;
+    linalg::Matrix<Linalg, 15U, 15U> P_corrected;
+    Status const correction_status = detail::try_apply_correction_gain(covariance, r, H, V, K, delta_x, P_corrected);
+    if (!succeeded(correction_status))
+    {
+        return correction_status;
+    }
+    configuration::Ins::ErrorState<Linalg> error, reset_error;
+    detail::unpack_correction(delta_x, error);
+    return try_inject_and_reset(state, P_corrected, error, minimum_quaternion_norm, state_output, covariance_output,
+                                reset_error);
 }
 
 } /* end namespace formal_eskf */

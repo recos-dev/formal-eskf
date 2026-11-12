@@ -10,7 +10,7 @@
 
 namespace correction_proof
 {
-using Transform = Backend::matrix_type<state_size, measurement_size>;
+using Transform = formal_eskf::linalg::Matrix<Backend, state_size, measurement_size>;
 struct SandwichCalls
 {
     inline static Transform const * transform = nullptr;
@@ -20,8 +20,8 @@ struct SandwichCalls
     inline static unsigned count{};
 };
 template <std::size_t Columns>
-Backend::matrix_type<state_size, Columns>
-sandwich_product(Transform const & left, Backend::matrix_type<measurement_size, Columns> const & right)
+formal_eskf::linalg::Matrix<Backend, state_size, Columns>
+sandwich_product(Transform const & left, formal_eskf::linalg::Matrix<Backend, measurement_size, Columns> const & right)
 {
     unsigned const call = SandwichCalls::count++;
     if constexpr (Columns == measurement_size)

@@ -17,7 +17,7 @@
 namespace transition_proof
 {
 using namespace contract_proof;
-using Matrix = Linalg::matrix_type<3U, 3U>;
+using Matrix = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
 
 struct ExpContract
 {

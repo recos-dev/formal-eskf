@@ -305,7 +305,7 @@ using Linalg = formal_eskf::verification::FixedArrayLinalg<Scalar, NormObserver,
 using Linalg = formal_eskf::verification::FixedArrayLinalg<Scalar, NormObserver>;
 #endif
 using Math = Linalg::scalar_math_type;
-using Vector = Linalg::vector_type<3U>;
+using Vector = formal_eskf::linalg::Vector<Linalg, 3U>;
 using Quaternion = formal_eskf::so3::UnitQuaternion<Linalg>;
 using Ins = formal_eskf::EskfTypes<Linalg, formal_eskf::configuration::Ins>;
 using Ahrs = formal_eskf::EskfTypes<Linalg, formal_eskf::configuration::Ahrs>;
@@ -314,7 +314,7 @@ using formal_eskf::Status;
 
 // Specification-side finite predicate: input domains and callee assumptions
 // must not be defined by the production predicate they are meant to check.
-template <std::size_t Size> bool finite_vector(Linalg::vector_type<Size> const & value)
+template <std::size_t Size> bool finite_vector(formal_eskf::linalg::Vector<Linalg, Size> const & value)
 {
     for (std::size_t i = 0U; i < Size; ++i)
     {
@@ -491,19 +491,19 @@ void verify_sqrt_special_values(Scalar input)
     }
 }
 
-void verify_storage_copy(Linalg::vector_type<15U> source)
+void verify_storage_copy(formal_eskf::linalg::Vector<Linalg, 15U> source)
 {
     auto const original = source;
     auto copy = source;
-    Linalg::vector_type<15U> assigned;
+    formal_eskf::linalg::Vector<Linalg, 15U> assigned;
     assigned = source;
     for (std::size_t i = 0U; i < 15U; ++i)
     {
         __ESBMC_assert(preserved_scalar(copy(i), original(i)) && preserved_scalar(assigned(i), original(i)),
                        "E-STATE: proof storage copy construction and assignment preserve every IEEE value");
     }
-    copy.set(0U, Scalar{42});
-    assigned.set(14U, Scalar{-42});
+    copy(0U) = Scalar{42};
+    assigned(14U) = Scalar{-42};
     for (std::size_t i = 0U; i < 15U; ++i)
     {
         __ESBMC_assert(preserved_scalar(source(i), original(i)),
@@ -519,7 +519,8 @@ bool preserved_scalar(Scalar a, Scalar b)
 }
 
 template <std::size_t Size>
-bool preserved_vector(Linalg::vector_type<Size> const & a, Linalg::vector_type<Size> const & b)
+bool preserved_vector(formal_eskf::linalg::Vector<Linalg, Size> const & a,
+                      formal_eskf::linalg::Vector<Linalg, Size> const & b)
 {
     bool same = true;
     for (std::size_t i = 0U; i < Size; ++i)
@@ -691,8 +692,8 @@ void verify_ahrs_attitude_contract(Quaternion q, Vector rate, Scalar dt, Quatern
     imu.angular_rate_b = rate;
     for (std::size_t i = 0U; i < 3U; ++i)
     {
-        imu.specific_force_b.set(i, ScalarBoundary::fresh());
-        parameters.process_noise.angular_rate_variance.set(i, ScalarBoundary::fresh());
+        imu.specific_force_b(i) = ScalarBoundary::fresh();
+        parameters.process_noise.angular_rate_variance(i) = ScalarBoundary::fresh();
     }
     auto const imu_before = imu;
     auto const parameters_before = parameters;
@@ -758,7 +759,7 @@ void verify_state_defaults()
 }
 
 // No finite restriction: also check signed zero and NaN classification.
-void verify_state_unpack(Linalg::vector_type<15U> delta_x, Ins::error_state_type error,
+void verify_state_unpack(formal_eskf::linalg::Vector<Linalg, 15U> delta_x, Ins::error_state_type error,
                          Ahrs::error_state_type ahrs_error)
 {
     auto const before = delta_x;
@@ -862,7 +863,7 @@ void verify_ins_non_finite_input(Scalar invalid, unsigned field, bool alias, Sca
     assume_prediction_parameters(dt, parameters);
     Vector * fields[] = {&state.p_n,          &state.v_n,           &state.b_a, &state.b_g, &imu.specific_force_b,
                          &imu.angular_rate_b, &parameters.gravity_n};
-    fields[field / 3U]->set(field % 3U, invalid);
+    (*fields[field / 3U])(field % 3U) = invalid;
     auto const before = alias ? state : output;
     auto const state_before = state;
     auto const imu_before = imu;
@@ -1033,29 +1034,29 @@ void verify_ins_translation_execution()
     auto const construction = Quaternion::try_from_coefficients(Scalar{0.5}, Scalar{0.5}, Scalar{0.5}, Scalar{0.5},
                                                                 Scalar{0.125}, state.q_nb);
     __ESBMC_assert(construction == Status::success, "E-PRED: translation execution fixture is admissible");
-    state.p_n.set(0U, Scalar{0.25});
-    state.p_n.set(1U, Scalar{0.5});
-    state.p_n.set(2U, Scalar{1});
-    state.v_n.set(0U, Scalar{-0.5});
-    state.v_n.set(1U, Scalar{0.25});
-    state.v_n.set(2U, Scalar{0.5});
-    state.b_a.set(0U, Scalar{-0.25});
-    state.b_a.set(1U, Scalar{0.25});
-    state.b_a.set(2U, Scalar{0.5});
-    state.b_g.set(0U, Scalar{0.25});
-    state.b_g.set(1U, Scalar{-0.5});
-    state.b_g.set(2U, Scalar{0.5});
+    state.p_n(0U) = Scalar{0.25};
+    state.p_n(1U) = Scalar{0.5};
+    state.p_n(2U) = Scalar{1};
+    state.v_n(0U) = Scalar{-0.5};
+    state.v_n(1U) = Scalar{0.25};
+    state.v_n(2U) = Scalar{0.5};
+    state.b_a(0U) = Scalar{-0.25};
+    state.b_a(1U) = Scalar{0.25};
+    state.b_a(2U) = Scalar{0.5};
+    state.b_g(0U) = Scalar{0.25};
+    state.b_g(1U) = Scalar{-0.5};
+    state.b_g(2U) = Scalar{0.5};
     Imu imu;
-    imu.specific_force_b.set(0U, Scalar{0.5});
-    imu.specific_force_b.set(1U, Scalar{-0.5});
-    imu.specific_force_b.set(2U, Scalar{1});
-    imu.angular_rate_b.set(0U, Scalar{0.75});
-    imu.angular_rate_b.set(1U, Scalar{-0.5});
-    imu.angular_rate_b.set(2U, Scalar{0.5});
+    imu.specific_force_b(0U) = Scalar{0.5};
+    imu.specific_force_b(1U) = Scalar{-0.5};
+    imu.specific_force_b(2U) = Scalar{1};
+    imu.angular_rate_b(0U) = Scalar{0.75};
+    imu.angular_rate_b(1U) = Scalar{-0.5};
+    imu.angular_rate_b(2U) = Scalar{0.5};
     auto parameters = valid_parameters<Ins::parameter_type>();
-    parameters.gravity_n.set(0U, Scalar{0.125});
-    parameters.gravity_n.set(1U, Scalar{0.25});
-    parameters.gravity_n.set(2U, Scalar{1});
+    parameters.gravity_n(0U) = Scalar{0.125};
+    parameters.gravity_n(1U) = Scalar{0.25};
+    parameters.gravity_n(2U) = Scalar{1};
     auto const status = formal_eskf::try_predict_nominal(state, imu, Scalar{0.5}, parameters, state);
     __ESBMC_assert(status == Status::success && state.p_n(0U) == Scalar{0.078125} && state.p_n(1U) == Scalar{0.75} &&
                        state.p_n(2U) == Scalar{1.28125} && state.v_n(0U) == Scalar{-0.1875} &&
@@ -1114,8 +1115,8 @@ void verify_prediction_boundary_success()
     auto pa = valid_parameters<Ahrs::parameter_type>();
     pi.dt_min = pi.dt_max = pa.dt_min = pa.dt_max = Scalar{0.125};
     pi.minimum_quaternion_norm = pa.minimum_quaternion_norm = Scalar{1};
-    pi.gravity_n.set(2U, Scalar{1});
-    imu.specific_force_b.set(2U, Scalar{-1});
+    pi.gravity_n(2U) = Scalar{1};
+    imu.specific_force_b(2U) = Scalar{-1};
     auto const before_i = ins;
     auto const before_a = ahrs;
     auto const si = formal_eskf::try_predict_nominal(ins, imu, Scalar{0.125}, pi, oi);
@@ -1154,8 +1155,8 @@ void verify_ins_gyro_bias(Vector bias, Scalar dt)
     Imu imu;
     for (std::size_t i = 0U; i < 3U; ++i)
     {
-        state.b_g.set(i, bias(i));
-        imu.angular_rate_b.set(i, bias(i));
+        state.b_g(i) = bias(i);
+        imu.angular_rate_b(i) = bias(i);
     }
     auto const parameters = valid_parameters<Ins::parameter_type>();
     auto const before = state;
@@ -1263,7 +1264,7 @@ void verify_attitude_exp_general(Quaternion const q, Vector const sample, Scalar
     Vector theta;
     for (std::size_t j = 0U; j < 3U; ++j)
     {
-        theta.set(j, sample(j) * dt);
+        theta(j) = sample(j) * dt;
     }
     Scalars<4U> expected;
     expected[0] = q.q0() * increment.q0() - q.q1() * increment.q1() - q.q2() * increment.q2() - q.q3() * increment.q3();
@@ -1436,7 +1437,7 @@ void verify_attitude_exp()
     Scalar const rate_x = Scalar{0.5};
 #endif
     Vector rate;
-    rate.set(0U, rate_x);
+    rate(0U) = rate_x;
     Quaternion q;
     auto const construction =
         Quaternion::try_from_coefficients(Scalar{0.5}, Scalar{0.5}, Scalar{0.5}, Scalar{0.5}, Scalar{0.125}, q);
@@ -1471,9 +1472,9 @@ void verify_attitude_euler_execution()
                                                                 Scalar{0.125}, state.q_nb);
     __ESBMC_assert(construction == Status::success, "E-PRED: Euler execution fixture is admissible");
     Imu imu;
-    imu.angular_rate_b.set(0U, Scalar{0.5});
-    imu.angular_rate_b.set(1U, Scalar{1});
-    imu.angular_rate_b.set(2U, Scalar{-0.5});
+    imu.angular_rate_b(0U) = Scalar{0.5};
+    imu.angular_rate_b(1U) = Scalar{1};
+    imu.angular_rate_b(2U) = Scalar{-0.5};
     auto const parameters = valid_parameters<Ahrs::parameter_type>();
     auto const status = formal_eskf::try_predict_nominal(state, imu, Scalar{0.5}, parameters, state);
     Scalar const norm = std::sqrt(Scalar{1.09375});
@@ -1500,29 +1501,29 @@ void verify_prediction_overflow(bool alias, Ins::nominal_state_type output)
     switch (scenario)
     {
     case 0U:
-        imu.specific_force_b.set(0U, maximum);
-        state.b_a.set(0U, -maximum);
+        imu.specific_force_b(0U) = maximum;
+        state.b_a(0U) = -maximum;
         break;
     case 1U:
-        imu.angular_rate_b.set(0U, maximum);
-        state.b_g.set(0U, -maximum);
+        imu.angular_rate_b(0U) = maximum;
+        state.b_g(0U) = -maximum;
         break;
     case 2U:
-        imu.angular_rate_b.set(0U, maximum);
+        imu.angular_rate_b(0U) = maximum;
         dt = Scalar{2};
         parameters.dt_max = dt;
         break;
     case 3U:
-        imu.specific_force_b.set(0U, maximum);
-        parameters.gravity_n.set(0U, maximum);
+        imu.specific_force_b(0U) = maximum;
+        parameters.gravity_n(0U) = maximum;
         break;
     case 4U:
-        state.p_n.set(0U, maximum);
-        state.v_n.set(0U, maximum);
+        state.p_n(0U) = maximum;
+        state.v_n(0U) = maximum;
         break;
     case 5U:
-        state.v_n.set(0U, maximum);
-        imu.specific_force_b.set(0U, maximum);
+        state.v_n(0U) = maximum;
+        imu.specific_force_b(0U) = maximum;
         break;
     }
     auto const before = alias ? state : output;

@@ -37,7 +37,8 @@ using State = Configuration::NominalState<Linalg>;
 using Error = Configuration::ErrorState<Linalg>;
 using Parameters = Configuration::Parameters<Linalg>;
 using Imu = formal_eskf::ImuSample<Linalg>;
-using Matrix = Linalg::matrix_type<Configuration::error_state_dimension, Configuration::error_state_dimension>;
+using Matrix =
+    formal_eskf::linalg::Matrix<Linalg, Configuration::error_state_dimension, Configuration::error_state_dimension>;
 
 bool same_state(State const & a, State const & b)
 {
@@ -182,17 +183,21 @@ inline Status try_predict_nominal<contract_proof::Linalg>(step_proof::State cons
 }
 
 template <>
-inline Status try_predict_covariance<contract_proof::Linalg>(step_proof::State const & state,
-                                                             step_proof::Matrix const & covariance,
-                                                             step_proof::Imu const & imu, contract_proof::Scalar dt,
-                                                             step_proof::Parameters const & parameters,
-                                                             step_proof::Matrix & output) noexcept
+inline Status try_predict_covariance<contract_proof::Linalg>(
+#if FORMAL_ESKF_PROOF_INS
+    step_proof::State const & state,
+#endif
+    step_proof::Matrix const & covariance, step_proof::Imu const & imu, contract_proof::Scalar dt,
+    step_proof::Parameters const & parameters, step_proof::Matrix & output) noexcept
 {
     using namespace step_proof;
     covariance_request(covariance, output);
-    __ESBMC_assert(same_state(state, *Calls::state) && same_imu(imu, *Calls::imu) &&
-                       same_parameters(parameters, *Calls::parameters) && same(dt, Calls::scalar),
-                   "E-STEP: covariance prediction receives OLD state and the same IMU, parameters and dt");
+#if FORMAL_ESKF_PROOF_INS
+    __ESBMC_assert(same_state(state, *Calls::state), "E-STEP: INS covariance prediction receives OLD state");
+#endif
+    __ESBMC_assert(same_imu(imu, *Calls::imu) && same_parameters(parameters, *Calls::parameters) &&
+                       same(dt, Calls::scalar),
+                   "E-STEP: covariance prediction receives the same IMU, parameters and dt");
     output = Calls::results->covariance;
     return Calls::results->covariance_status;
 }

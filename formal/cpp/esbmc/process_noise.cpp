@@ -36,11 +36,11 @@ using Math = std::conditional_t<FORMAL_ESKF_PROOF_OPAQUE_MATH, contract_proof::O
                                 formal_eskf::scalar::StandardMath<Scalar>>;
 using Linalg =
     formal_eskf::verification::FixedArrayLinalg<Scalar, formal_eskf::verification::NoNormObserver<Scalar>, Math>;
-using Vector3 = Linalg::vector_type<3U>;
+using Vector3 = formal_eskf::linalg::Vector<Linalg, 3U>;
 using AhrsNoise = formal_eskf::configuration::Ahrs::ProcessNoise<Linalg>;
 using InsNoise = formal_eskf::configuration::Ins::ProcessNoise<Linalg>;
-using AhrsCovariance = Linalg::matrix_type<3U, 3U>;
-using InsCovariance = Linalg::matrix_type<12U, 12U>;
+using AhrsCovariance = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
+using InsCovariance = formal_eskf::linalg::Matrix<Linalg, 12U, 12U>;
 using formal_eskf::Status;
 
 struct CommitContract

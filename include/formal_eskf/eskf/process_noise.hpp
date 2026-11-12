@@ -24,7 +24,7 @@ namespace detail
 {
 
 template <typename Linalg>
-[[nodiscard]] Status validate_noise_variances(linalg::Matrix<Linalg, 3U, 1U> const & variances) noexcept
+[[nodiscard]] Status validate_noise_variances(linalg::Vector<Linalg, 3U> const & variances) noexcept
 {
     if (!linalg::all_finite(variances))
     {
@@ -80,7 +80,7 @@ template <typename Linalg>
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
         // Evaluate left to right; avoid overflowing dt*dt for zero noise.
-        candidate.set(axis, axis, (noise.angular_rate_variance(axis) * dt) * dt);
+        candidate(axis, axis) = (noise.angular_rate_variance(axis) * dt) * dt;
     }
     if (!linalg::all_finite(candidate))
     {
@@ -117,7 +117,7 @@ template <typename Linalg>
     {
         return step_status;
     }
-    using vector3_type = typename Linalg::template vector_type<3U>;
+    using vector3_type = linalg::Vector<Linalg, 3U>;
     vector3_type const * variance_groups[] = {&noise.specific_force_variance, &noise.angular_rate_variance,
                                               &noise.accelerometer_bias_random_walk_variance_density,
                                               &noise.gyroscope_bias_random_walk_variance_density};
@@ -133,10 +133,10 @@ template <typename Linalg>
     linalg::Matrix<Linalg, 12U, 12U> candidate;
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
-        candidate.set(axis, axis, (noise.specific_force_variance(axis) * dt) * dt);
-        candidate.set(3U + axis, 3U + axis, (noise.angular_rate_variance(axis) * dt) * dt);
-        candidate.set(6U + axis, 6U + axis, noise.accelerometer_bias_random_walk_variance_density(axis) * dt);
-        candidate.set(9U + axis, 9U + axis, noise.gyroscope_bias_random_walk_variance_density(axis) * dt);
+        candidate(axis, axis) = (noise.specific_force_variance(axis) * dt) * dt;
+        candidate(3U + axis, 3U + axis) = (noise.angular_rate_variance(axis) * dt) * dt;
+        candidate(6U + axis, 6U + axis) = noise.accelerometer_bias_random_walk_variance_density(axis) * dt;
+        candidate(9U + axis, 9U + axis) = noise.gyroscope_bias_random_walk_variance_density(axis) * dt;
     }
     if (!linalg::all_finite(candidate))
     {

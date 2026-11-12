@@ -73,11 +73,12 @@ template <typename Linalg>
     {
         return Status::domain_error;
     }
-    if (!linalg::all_finite(q_nb.coefficients()))
+    auto const coefficients = q_nb.coefficients();
+    if (!linalg::all_finite(coefficients))
     {
         return Status::non_finite_input;
     }
-    value_type const norm_squared = linalg::squared_norm(q_nb.coefficients());
+    value_type const norm_squared = linalg::squared_norm(coefficients);
     if (!scalar::is_finite<scalar_math_type>(norm_squared))
     {
         return Status::non_finite_result;
@@ -91,7 +92,7 @@ template <typename Linalg>
 
 template <typename Linalg>
 [[nodiscard]] Status try_predict_attitude(so3::UnitQuaternion<Linalg> const & q_nb,
-                                          typename Linalg::template vector_type<3U> const & angular_rate_b,
+                                          linalg::Vector<Linalg, 3U> const & angular_rate_b,
                                           typename Linalg::value_type dt, typename Linalg::value_type minimum_norm,
                                           so3::UnitQuaternion<Linalg> & output) noexcept
 {
@@ -108,7 +109,6 @@ template <typename Linalg>
 
 #if ESKF_QUAT_APPROX
     using value_type = typename Linalg::value_type;
-    using vector4_type = typename Linalg::template vector_type<4U>;
 
     // Normalized Euler: normalize(q + 0.5 * q * [0, omega] * dt).
     // Form q * [1, rotation_vector/2] directly, without normalizing the
@@ -122,11 +122,11 @@ template <typename Linalg>
     value_type const y = half_angle(1U);
     value_type const z = half_angle(2U);
 
-    vector4_type candidate;
-    candidate.set(0U, q0 - q1 * x - q2 * y - q3 * z);
-    candidate.set(1U, q1 + q0 * x + q2 * z - q3 * y);
-    candidate.set(2U, q2 + q0 * y + q3 * x - q1 * z);
-    candidate.set(3U, q3 + q0 * z + q1 * y - q2 * x);
+    linalg::Vector<Linalg, 4U> candidate;
+    candidate(0U) = q0 - q1 * x - q2 * y - q3 * z;
+    candidate(1U) = q1 + q0 * x + q2 * z - q3 * y;
+    candidate(2U) = q2 + q0 * y + q3 * x - q1 * z;
+    candidate(3U) = q3 + q0 * z + q1 * y - q2 * x;
     if (!linalg::all_finite(candidate))
     {
         return Status::non_finite_result;

@@ -30,8 +30,8 @@ template <typename Linalg, std::size_t Size>
         {
             auto const mean = typename Linalg::value_type{0.5} * candidate(row, column) +
                               typename Linalg::value_type{0.5} * candidate(column, row);
-            candidate.set(row, column, mean);
-            candidate.set(column, row, mean);
+            candidate(row, column) = mean;
+            candidate(column, row) = mean;
         }
     }
     output = candidate;

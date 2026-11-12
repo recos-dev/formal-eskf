@@ -24,7 +24,7 @@ namespace detail
 {
 
 template <typename Linalg>
-[[nodiscard]] Status try_attitude_error_transition(linalg::Matrix<Linalg, 3U, 1U> const & angular_rate_b,
+[[nodiscard]] Status try_attitude_error_transition(linalg::Vector<Linalg, 3U> const & angular_rate_b,
                                                    typename Linalg::value_type dt,
                                                    typename Linalg::value_type minimum_norm,
                                                    linalg::Matrix<Linalg, 3U, 3U> & output) noexcept
@@ -65,8 +65,7 @@ template <typename Linalg>
  * alias covariance. AHRS absolute attitude and specific force are not used.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_predict_covariance(configuration::Ahrs::NominalState<Linalg> const &,
-                                            linalg::Matrix<Linalg, 3U, 3U> const & covariance,
+[[nodiscard]] Status try_predict_covariance(linalg::Matrix<Linalg, 3U, 3U> const & covariance,
                                             ImuSample<Linalg> const & imu, typename Linalg::value_type dt,
                                             configuration::Ahrs::Parameters<Linalg> const & parameters,
                                             linalg::Matrix<Linalg, 3U, 3U> & output) noexcept
@@ -154,9 +153,8 @@ template <typename Linalg>
     {
         return quaternion_status;
     }
-    if (!linalg::all_finite(covariance) || !linalg::all_finite(state.q_nb.coefficients()) ||
-        !linalg::all_finite(state.b_a) || !linalg::all_finite(state.b_g) || !linalg::all_finite(imu.specific_force_b) ||
-        !linalg::all_finite(imu.angular_rate_b))
+    if (!linalg::all_finite(covariance) || !linalg::all_finite(state.b_a) || !linalg::all_finite(state.b_g) ||
+        !linalg::all_finite(imu.specific_force_b) || !linalg::all_finite(imu.angular_rate_b))
     {
         return Status::non_finite_input;
     }
@@ -206,36 +204,6 @@ template <typename Linalg>
     return detail::try_finish_covariance(candidate, output);
 }
 
-namespace detail
-{
-
-template <typename Linalg, typename State, typename Parameters, std::size_t Size>
-[[nodiscard]] Status try_predict_state_and_covariance(State const & state,
-                                                      linalg::Matrix<Linalg, Size, Size> const & covariance,
-                                                      ImuSample<Linalg> const & imu, typename Linalg::value_type dt,
-                                                      Parameters const & parameters, State & state_output,
-                                                      linalg::Matrix<Linalg, Size, Size> & covariance_output) noexcept
-{
-    auto state_candidate = state;
-    Status const nominal_status = try_predict_nominal(state, imu, dt, parameters, state_candidate);
-    if (!succeeded(nominal_status))
-    {
-        return nominal_status;
-    }
-    linalg::Matrix<Linalg, Size, Size> covariance_candidate;
-    Status const covariance_status =
-        try_predict_covariance(state, covariance, imu, dt, parameters, covariance_candidate);
-    if (!succeeded(covariance_status))
-    {
-        return covariance_status;
-    }
-    state_output = state_candidate;
-    covariance_output = covariance_candidate;
-    return Status::success;
-}
-
-} /* end namespace detail */
-
 /**
  * Predict nominal state and covariance from the same old state. Both outputs
  * commit only on success and may alias their respective inputs. Preconditions
@@ -249,8 +217,21 @@ template <typename Linalg>
                                  configuration::Ahrs::NominalState<Linalg> & state_output,
                                  linalg::Matrix<Linalg, 3U, 3U> & covariance_output) noexcept
 {
-    return detail::try_predict_state_and_covariance(state, covariance, imu, dt, parameters, state_output,
-                                                    covariance_output);
+    auto state_candidate = state;
+    Status const nominal_status = try_predict_nominal(state, imu, dt, parameters, state_candidate);
+    if (!succeeded(nominal_status))
+    {
+        return nominal_status;
+    }
+    linalg::Matrix<Linalg, 3U, 3U> covariance_candidate;
+    Status const covariance_status = try_predict_covariance(covariance, imu, dt, parameters, covariance_candidate);
+    if (!succeeded(covariance_status))
+    {
+        return covariance_status;
+    }
+    state_output = state_candidate;
+    covariance_output = covariance_candidate;
+    return Status::success;
 }
 
 /** INS overload of the atomic nominal/covariance prediction step. */
@@ -262,8 +243,22 @@ template <typename Linalg>
                                  configuration::Ins::NominalState<Linalg> & state_output,
                                  linalg::Matrix<Linalg, 15U, 15U> & covariance_output) noexcept
 {
-    return detail::try_predict_state_and_covariance(state, covariance, imu, dt, parameters, state_output,
-                                                    covariance_output);
+    auto state_candidate = state;
+    Status const nominal_status = try_predict_nominal(state, imu, dt, parameters, state_candidate);
+    if (!succeeded(nominal_status))
+    {
+        return nominal_status;
+    }
+    linalg::Matrix<Linalg, 15U, 15U> covariance_candidate;
+    Status const covariance_status =
+        try_predict_covariance(state, covariance, imu, dt, parameters, covariance_candidate);
+    if (!succeeded(covariance_status))
+    {
+        return covariance_status;
+    }
+    state_output = state_candidate;
+    covariance_output = covariance_candidate;
+    return Status::success;
 }
 
 } /* end namespace formal_eskf */

@@ -33,9 +33,9 @@ using Noise = Configuration::ProcessNoise<Linalg>;
 using Imu = formal_eskf::ImuSample<Linalg>;
 constexpr std::size_t size = FORMAL_ESKF_PROOF_INS ? 15U : 3U;
 constexpr std::size_t noise_size = FORMAL_ESKF_PROOF_INS ? 12U : 3U;
-using Matrix = Linalg::matrix_type<size, size>;
-using Matrix3 = Linalg::matrix_type<3U, 3U>;
-using NoiseMatrix = Linalg::matrix_type<noise_size, noise_size>;
+using Matrix = formal_eskf::linalg::Matrix<Linalg, size, size>;
+using Matrix3 = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
+using NoiseMatrix = formal_eskf::linalg::Matrix<Linalg, noise_size, noise_size>;
 
 bool same_noise(Noise const & a, Noise const & b)
 {
@@ -369,7 +369,11 @@ void verify_predict_covariance(State state, Matrix covariance, Imu imu, Scalar d
     auto & target = output;
 #endif
     auto const before = target;
+#if FORMAL_ESKF_PROOF_INS
     auto const status = formal_eskf::try_predict_covariance(state, covariance, imu, dt, parameters, target);
+#else
+    auto const status = formal_eskf::try_predict_covariance(covariance, imu, dt, parameters, target);
+#endif
 
     Status expected = parameter_status(dt, parameters_before);
     unsigned quaternion_calls = 0U, finite_calls = 0U, noise_calls = 0U, transition_calls = 0U, rotation_calls = 0U,
@@ -386,8 +390,8 @@ void verify_predict_covariance(State state, Matrix covariance, Imu imu, Scalar d
         finite_calls = 1U;
         bool finite = results.covariance_finite && finite_vector(imu_before.angular_rate_b);
 #if FORMAL_ESKF_PROOF_INS
-        finite = finite_vector(state_before.q_nb.coefficients()) && finite_vector(state_before.b_a) &&
-                 finite_vector(state_before.b_g) && finite_vector(imu_before.specific_force_b) && finite;
+        finite = finite_vector(state_before.b_a) && finite_vector(state_before.b_g) &&
+                 finite_vector(imu_before.specific_force_b) && finite;
 #endif
         if (!finite)
             expected = Status::non_finite_input;

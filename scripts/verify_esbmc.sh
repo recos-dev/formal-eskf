@@ -325,17 +325,17 @@ run_prediction_suite()
                     verify "${FUNCTION_NAME}" --proof-unwind "${PREDICTION_UNWIND}" "${PROFILE_ARGUMENTS[@]}"
                 fi
             done
-            # Z3 prunes the concrete boundary fixture without Bitwuzla's
+            # Z3 prunes the concrete boundary/overflow/translation fixtures without Bitwuzla's
             # symex memory exhaustion. The obligations are unchanged.
             verify verify_prediction_boundary_success --proof-unwind "${PREDICTION_UNWIND}" "${PROFILE_ARGUMENTS[@]}" --z3
             BASE_PROFILE="${PROFILE}"
             for COEFFICIENT in 0 1 2 3 4 5; do
                 PROFILE="${BASE_PROFILE}-overflow${COEFFICIENT}"
                 verify verify_prediction_overflow --proof-unwind "${PREDICTION_UNWIND}" "${PROFILE_ARGUMENTS[@]}" \
-                    -D "FORMAL_ESKF_PROOF_SCENARIO=${COEFFICIENT}"
+                    -D "FORMAL_ESKF_PROOF_SCENARIO=${COEFFICIENT}" --z3
             done
             PROFILE="${BASE_PROFILE}"
-            verify verify_ins_translation_execution --proof-unwind "${PREDICTION_UNWIND}" "${PROFILE_ARGUMENTS[@]}"
+            verify verify_ins_translation_execution --proof-unwind "${PREDICTION_UNWIND}" "${PROFILE_ARGUMENTS[@]}" --z3
             if [[ "${APPROX}" == 1 ]]; then
                 verify verify_attitude_euler_execution --proof-unwind "${PREDICTION_UNWIND}" "${PROFILE_ARGUMENTS[@]}"
             else

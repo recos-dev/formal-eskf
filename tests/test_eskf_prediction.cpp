@@ -13,7 +13,7 @@
 #include <string_view>
 #include <type_traits>
 
-#include <formal_eskf/eskf/eskf.hpp>
+#include <formal_eskf/eskf/prediction.hpp>
 #include "test_backend.hpp"
 
 #include "test_support.hpp"
@@ -30,7 +30,7 @@ template <typename Linalg>
 [[nodiscard]] auto vector3(typename Linalg::value_type x, typename Linalg::value_type y, typename Linalg::value_type z)
 {
     typename Linalg::value_type const values[3] = {x, y, z};
-    return Linalg::template vector_type<3U>::from_row_major(values);
+    return formal_eskf::linalg::Vector<Linalg, 3U>::from_row_major(values);
 }
 
 template <typename Vector>
@@ -277,7 +277,7 @@ void test_prediction_validation(TestContext & test, std::string_view profile)
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
         auto imu = fixture.imu;
-        imu.angular_rate_b.set(axis, nan);
+        imu.angular_rate_b(axis) = nan;
         expect_failure(initial, imu, fixture.parameters, Status::non_finite_input);
     }
     auto imu = fixture.imu;
@@ -289,30 +289,30 @@ void test_prediction_validation(TestContext & test, std::string_view profile)
         for (std::size_t axis = 0U; axis < 3U; ++axis)
         {
             imu = fixture.imu;
-            imu.specific_force_b.set(axis, infinity);
+            imu.specific_force_b(axis) = infinity;
             expect_failure(initial, imu, fixture.parameters, Status::non_finite_input);
             parameters = fixture.parameters;
-            parameters.gravity_n.set(axis, nan);
+            parameters.gravity_n(axis) = nan;
             expect_failure(initial, fixture.imu, parameters, Status::non_finite_input);
 
             auto bad_state = initial;
-            bad_state.p_n.set(axis, nan);
+            bad_state.p_n(axis) = nan;
             expect_failure(bad_state, fixture.imu, fixture.parameters, Status::non_finite_input);
             bad_state = initial;
-            bad_state.v_n.set(axis, infinity);
+            bad_state.v_n(axis) = infinity;
             expect_failure(bad_state, fixture.imu, fixture.parameters, Status::non_finite_input);
             bad_state = initial;
-            bad_state.b_a.set(axis, nan);
+            bad_state.b_a(axis) = nan;
             expect_failure(bad_state, fixture.imu, fixture.parameters, Status::non_finite_input);
             bad_state = initial;
-            bad_state.b_g.set(axis, nan);
+            bad_state.b_g(axis) = nan;
             expect_failure(bad_state, fixture.imu, fixture.parameters, Status::non_finite_input);
         }
 
         // Fail after successfully computing the candidate attitude.
         auto overflow_state = initial;
-        overflow_state.p_n.set(0U, std::numeric_limits<value_type>::max());
-        overflow_state.v_n.set(0U, std::numeric_limits<value_type>::max());
+        overflow_state.p_n(0U) = std::numeric_limits<value_type>::max();
+        overflow_state.v_n(0U) = std::numeric_limits<value_type>::max();
         imu = fixture.imu;
         imu.angular_rate_b = vector3<Linalg>(0, 0, 1);
         auto const saved = overflow_state;
@@ -322,8 +322,8 @@ void test_prediction_validation(TestContext & test, std::string_view profile)
                     "late translation overflow rolls back attitude, position, velocity, and biases");
 
         auto bias_overflow = initial;
-        bias_overflow.b_g.set(0U, -std::numeric_limits<value_type>::max());
-        imu.angular_rate_b.set(0U, std::numeric_limits<value_type>::max());
+        bias_overflow.b_g(0U) = -std::numeric_limits<value_type>::max();
+        imu.angular_rate_b(0U) = std::numeric_limits<value_type>::max();
         expect_failure(bias_overflow, imu, fixture.parameters, Status::non_finite_result);
     }
     else

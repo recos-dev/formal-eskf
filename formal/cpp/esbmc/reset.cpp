@@ -29,8 +29,8 @@ static_assert(FORMAL_ESKF_PROOF_INS == 0 || FORMAL_ESKF_PROOF_INS == 1);
 static_assert(FORMAL_ESKF_PROOF_ALIAS == 0 || FORMAL_ESKF_PROOF_ALIAS == 1);
 constexpr std::size_t size = FORMAL_ESKF_PROOF_INS ? 15U : 3U;
 constexpr std::size_t attitude_offset = FORMAL_ESKF_PROOF_INS ? 6U : 0U;
-using Matrix = Linalg::matrix_type<size, size>;
-using Matrix3 = Linalg::matrix_type<3U, 3U>;
+using Matrix = formal_eskf::linalg::Matrix<Linalg, size, size>;
+using Matrix3 = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
 #if FORMAL_ESKF_PROOF_INS
 using Error = formal_eskf::configuration::Ins::ErrorState<Linalg>;
 #else
@@ -219,7 +219,7 @@ void verify_reset_storage(Matrix source, Matrix output, std::size_t row, std::si
     auto const & const_source = source;
     __ESBMC_assert(same(source(row, column), before[index]) && same(const_source(row, column), before[index]),
                    "E-RESET storage: actual mutable and const access uses row-major coordinates");
-    source.set(row, column, replacement);
+    source(row, column) = replacement;
     flatten(source, after);
     bool frame = true;
     for (std::size_t i = 0U; i < size * size; ++i)
@@ -425,7 +425,7 @@ void verify_covariance_product(Matrix left, Matrix right, Matrix entries)
             {
                 sum += a[row * size + k] * b[k * size + column];
             }
-            expected.set(row, column, sum);
+            expected(row, column) = sum;
         }
     }
     auto const actual = left * right;
@@ -445,7 +445,8 @@ void verify_covariance_product(Matrix left, Matrix right, Matrix entries)
 // All valid symbolic coordinates, with no restriction on the IEEE operands.
 // This proves the actual inner loop once rather than one proof per output cell.
 void verify_covariance_entry(Matrix left, Matrix right, std::size_t row, std::size_t column, Scalar dot,
-                             Linalg::vector_type<15U> row_values, Linalg::vector_type<15U> column_values)
+                             formal_eskf::linalg::Vector<Linalg, 15U> row_values,
+                             formal_eskf::linalg::Vector<Linalg, 15U> column_values)
 {
     constexpr bool configured = FORMAL_ESKF_PROOF_INS && !FORMAL_ESKF_PROOF_PRODUCT_ENTRY_CONTRACT &&
                                 FORMAL_ESKF_PROOF_DOT_CONTRACT && FORMAL_ESKF_PROOF_ACCESS_CONTRACT;
@@ -490,7 +491,8 @@ void verify_covariance_entry(Matrix left, Matrix right, std::size_t row, std::si
 #endif
 }
 
-void verify_covariance_dot(Linalg::vector_type<15U> left, Linalg::vector_type<15U> right)
+void verify_covariance_dot(formal_eskf::linalg::Vector<Linalg, 15U> left,
+                           formal_eskf::linalg::Vector<Linalg, 15U> right)
 {
     __ESBMC_assert(!FORMAL_ESKF_PROOF_DOT_CONTRACT, "Runner error: covariance dot producer must be actual");
     if constexpr (FORMAL_ESKF_PROOF_DOT_CONTRACT)

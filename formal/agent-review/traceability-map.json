@@ -1857,7 +1857,11 @@
         "cpp": [
           {
             "file": "include/formal_eskf/eskf/covariance_prediction.hpp",
-            "symbol": "Status try_predict_covariance"
+            "symbol": "Status try_predict_covariance(linalg::Matrix"
+          },
+          {
+            "file": "include/formal_eskf/eskf/covariance_prediction.hpp",
+            "symbol": "Status try_predict_covariance(configuration::Ins::NominalState"
           },
           {
             "file": "include/formal_eskf/eskf/covariance_prediction.hpp",
@@ -2165,11 +2169,11 @@
         "cpp": [
           {
             "file": "include/formal_eskf/eskf/covariance_prediction.hpp",
-            "symbol": "Status try_predict("
+            "symbol": "Status try_predict(configuration::Ahrs::NominalState"
           },
           {
             "file": "include/formal_eskf/eskf/covariance_prediction.hpp",
-            "symbol": "Status try_predict_state_and_covariance"
+            "symbol": "Status try_predict(configuration::Ins::NominalState"
           },
           {
             "file": "include/formal_eskf/eskf/injection.hpp",

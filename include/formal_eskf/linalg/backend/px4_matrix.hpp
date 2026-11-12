@@ -45,31 +45,51 @@ public:
 
     template <std::size_t Rows, std::size_t Columns> using storage_type = ::matrix::Matrix<value_type, Rows, Columns>;
 
-    template <std::size_t Rows, std::size_t Columns>
-    static void set_zero(storage_type<Rows, Columns> & matrix) noexcept;
+    template <std::size_t Rows, std::size_t Columns> static void set_zero(storage_type<Rows, Columns> & matrix) noexcept
+    {
+        matrix.setZero();
+    }
 
     template <std::size_t Rows, std::size_t Columns>
     [[nodiscard]] static value_type const & coefficient(storage_type<Rows, Columns> const & matrix, std::size_t row,
-                                                        std::size_t column) noexcept;
+                                                        std::size_t column) noexcept
+    {
+        return matrix(row, column);
+    }
 
     template <std::size_t Rows, std::size_t Columns>
     [[nodiscard]] static value_type & coefficient(storage_type<Rows, Columns> & matrix, std::size_t row,
-                                                  std::size_t column) noexcept;
+                                                  std::size_t column) noexcept
+    {
+        return matrix(row, column);
+    }
 
     template <std::size_t Rows, std::size_t Columns>
     static void add(storage_type<Rows, Columns> const & left, storage_type<Rows, Columns> const & right,
-                    storage_type<Rows, Columns> & result) noexcept;
+                    storage_type<Rows, Columns> & result) noexcept
+    {
+        result = left + right;
+    }
 
     template <std::size_t Rows, std::size_t Columns>
     static void subtract(storage_type<Rows, Columns> const & left, storage_type<Rows, Columns> const & right,
-                         storage_type<Rows, Columns> & result) noexcept;
+                         storage_type<Rows, Columns> & result) noexcept
+    {
+        result = left - right;
+    }
 
     template <std::size_t Rows, std::size_t Columns>
-    static void negate(storage_type<Rows, Columns> const & matrix, storage_type<Rows, Columns> & result) noexcept;
+    static void negate(storage_type<Rows, Columns> const & matrix, storage_type<Rows, Columns> & result) noexcept
+    {
+        result = -matrix;
+    }
 
     template <std::size_t Rows, std::size_t Columns>
     static void scale(storage_type<Rows, Columns> const & matrix, value_type scalar,
-                      storage_type<Rows, Columns> & result) noexcept;
+                      storage_type<Rows, Columns> & result) noexcept
+    {
+        result = matrix * scalar;
+    }
 
     template <std::size_t Rows, std::size_t Columns>
     static void divide(storage_type<Rows, Columns> const & matrix, value_type scalar,
@@ -77,84 +97,45 @@ public:
 
     template <std::size_t Rows, std::size_t Inner, std::size_t Columns>
     static void multiply(storage_type<Rows, Inner> const & left, storage_type<Inner, Columns> const & right,
-                         storage_type<Rows, Columns> & result) noexcept;
+                         storage_type<Rows, Columns> & result) noexcept
+    {
+        result = left * right;
+    }
 
     template <std::size_t Rows, std::size_t Columns>
-    static void transpose(storage_type<Rows, Columns> const & matrix, storage_type<Columns, Rows> & result) noexcept;
+    static void transpose(storage_type<Rows, Columns> const & matrix, storage_type<Columns, Rows> & result) noexcept
+    {
+        result = matrix.transpose();
+    }
 
     template <std::size_t Size>
     [[nodiscard]] static value_type dot(storage_type<Size, 1U> const & left,
-                                        storage_type<Size, 1U> const & right) noexcept;
+                                        storage_type<Size, 1U> const & right) noexcept
+    {
+        return ::matrix::Vector<value_type, Size>(left).dot(right);
+    }
 
     template <std::size_t Size>
-    [[nodiscard]] static value_type squared_norm(storage_type<Size, 1U> const & vector) noexcept;
+    [[nodiscard]] static value_type squared_norm(storage_type<Size, 1U> const & vector) noexcept
+    {
+        return ::matrix::Vector<value_type, Size>(vector).norm_squared();
+    }
 
-    template <std::size_t Size> [[nodiscard]] static value_type norm(storage_type<Size, 1U> const & vector) noexcept;
+    template <std::size_t Size> [[nodiscard]] static value_type norm(storage_type<Size, 1U> const & vector) noexcept
+    {
+        return ::matrix::Vector<value_type, Size>(vector).norm();
+    }
 
     template <std::size_t Size, std::size_t RightColumns>
     [[nodiscard]] static Status solve_spd(storage_type<Size, Size> const & system,
                                           storage_type<Size, RightColumns> const & right_hand_side,
-                                          storage_type<Size, RightColumns> & solution) noexcept;
+                                          storage_type<Size, RightColumns> & solution) noexcept
+    {
+        return Cholesky<Px4MatrixBackend<Scalar>>::template solve<Size, RightColumns>(system, right_hand_side,
+                                                                                      solution);
+    }
 
 }; /* end class Px4MatrixBackend */
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-void Px4MatrixBackend<Scalar>::set_zero(storage_type<Rows, Columns> & matrix) noexcept
-{
-    matrix.setZero();
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-typename Px4MatrixBackend<Scalar>::value_type const &
-Px4MatrixBackend<Scalar>::coefficient(storage_type<Rows, Columns> const & matrix, std::size_t row,
-                                      std::size_t column) noexcept
-{
-    return matrix(row, column);
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-typename Px4MatrixBackend<Scalar>::value_type &
-Px4MatrixBackend<Scalar>::coefficient(storage_type<Rows, Columns> & matrix, std::size_t row,
-                                      std::size_t column) noexcept
-{
-    return matrix(row, column);
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-void Px4MatrixBackend<Scalar>::add(storage_type<Rows, Columns> const & left, storage_type<Rows, Columns> const & right,
-                                   storage_type<Rows, Columns> & result) noexcept
-{
-    result = left + right;
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-void Px4MatrixBackend<Scalar>::subtract(storage_type<Rows, Columns> const & left,
-                                        storage_type<Rows, Columns> const & right,
-                                        storage_type<Rows, Columns> & result) noexcept
-{
-    result = left - right;
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-void Px4MatrixBackend<Scalar>::negate(storage_type<Rows, Columns> const & matrix,
-                                      storage_type<Rows, Columns> & result) noexcept
-{
-    result = -matrix;
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-void Px4MatrixBackend<Scalar>::scale(storage_type<Rows, Columns> const & matrix, value_type scalar,
-                                     storage_type<Rows, Columns> & result) noexcept
-{
-    result = matrix * scalar;
-}
 
 template <typename Scalar>
 template <std::size_t Rows, std::size_t Columns>
@@ -170,56 +151,6 @@ void Px4MatrixBackend<Scalar>::divide(storage_type<Rows, Columns> const & matrix
             result(row, column) = matrix(row, column) / scalar;
         }
     }
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Inner, std::size_t Columns>
-void Px4MatrixBackend<Scalar>::multiply(storage_type<Rows, Inner> const & left,
-                                        storage_type<Inner, Columns> const & right,
-                                        storage_type<Rows, Columns> & result) noexcept
-{
-    result = left * right;
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-void Px4MatrixBackend<Scalar>::transpose(storage_type<Rows, Columns> const & matrix,
-                                         storage_type<Columns, Rows> & result) noexcept
-{
-    result = matrix.transpose();
-}
-
-template <typename Scalar>
-template <std::size_t Size>
-typename Px4MatrixBackend<Scalar>::value_type
-Px4MatrixBackend<Scalar>::dot(storage_type<Size, 1U> const & left, storage_type<Size, 1U> const & right) noexcept
-{
-    return ::matrix::Vector<value_type, Size>(left).dot(right);
-}
-
-template <typename Scalar>
-template <std::size_t Size>
-typename Px4MatrixBackend<Scalar>::value_type
-Px4MatrixBackend<Scalar>::squared_norm(storage_type<Size, 1U> const & vector) noexcept
-{
-    return ::matrix::Vector<value_type, Size>(vector).norm_squared();
-}
-
-template <typename Scalar>
-template <std::size_t Size>
-typename Px4MatrixBackend<Scalar>::value_type
-Px4MatrixBackend<Scalar>::norm(storage_type<Size, 1U> const & vector) noexcept
-{
-    return ::matrix::Vector<value_type, Size>(vector).norm();
-}
-
-template <typename Scalar>
-template <std::size_t Size, std::size_t RightColumns>
-Status Px4MatrixBackend<Scalar>::solve_spd(storage_type<Size, Size> const & system,
-                                           storage_type<Size, RightColumns> const & right_hand_side,
-                                           storage_type<Size, RightColumns> & solution) noexcept
-{
-    return Cholesky<Px4MatrixBackend<Scalar>>::template solve<Size, RightColumns>(system, right_hand_side, solution);
 }
 
 } /* end namespace formal_eskf::linalg */

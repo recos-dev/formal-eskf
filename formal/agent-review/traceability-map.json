@@ -2279,7 +2279,7 @@
           },
           {
             "file": "docs/spec/eskf-linear-algebra-abstraction-layer.md",
-            "symbol": "## Backend primitives"
+            "symbol": "## Required operations"
           },
           {
             "file": "docs/spec/eskf-linear-algebra-abstraction-layer.md",
@@ -2593,7 +2593,7 @@
           },
           {
             "file": "include/formal_eskf/linalg/backend/px4_matrix.hpp",
-            "symbol": "Status Px4MatrixBackend<Scalar>::solve_spd("
+            "symbol": "static Status solve_spd("
           },
           {
             "file": "include/formal_eskf/linalg/backend/cholesky.hpp",

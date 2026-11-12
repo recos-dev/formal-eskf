@@ -103,31 +103,53 @@ public:
         std::array<value_type, Rows * Columns + padding_size> values{};
     };
 
-    template <std::size_t Rows, std::size_t Columns>
-    static void set_zero(storage_type<Rows, Columns> & matrix) noexcept;
+    template <std::size_t Rows, std::size_t Columns> static void set_zero(storage_type<Rows, Columns> & matrix) noexcept
+    {
+        matrix.values.fill(value_type{0});
+    }
 
     template <std::size_t Rows, std::size_t Columns>
     [[nodiscard]] static value_type const & coefficient(storage_type<Rows, Columns> const & matrix, std::size_t row,
-                                                        std::size_t column) noexcept;
+                                                        std::size_t column) noexcept
+    {
+        return matrix.values[row * Columns + column];
+    }
 
     template <std::size_t Rows, std::size_t Columns>
     [[nodiscard]] static value_type & coefficient(storage_type<Rows, Columns> & matrix, std::size_t row,
-                                                  std::size_t column) noexcept;
+                                                  std::size_t column) noexcept
+    {
+        return matrix.values[row * Columns + column];
+    }
 
     template <std::size_t Rows, std::size_t Columns>
     static void add(storage_type<Rows, Columns> const & left, storage_type<Rows, Columns> const & right,
-                    storage_type<Rows, Columns> & result) noexcept;
+                    storage_type<Rows, Columns> & result) noexcept
+    {
+        api_type::add(left.values.data(), right.values.data(), result.values.data(),
+                      static_cast<std::uint32_t>(Rows * Columns));
+    }
 
     template <std::size_t Rows, std::size_t Columns>
     static void subtract(storage_type<Rows, Columns> const & left, storage_type<Rows, Columns> const & right,
-                         storage_type<Rows, Columns> & result) noexcept;
+                         storage_type<Rows, Columns> & result) noexcept
+    {
+        api_type::subtract(left.values.data(), right.values.data(), result.values.data(),
+                           static_cast<std::uint32_t>(Rows * Columns));
+    }
 
     template <std::size_t Rows, std::size_t Columns>
-    static void negate(storage_type<Rows, Columns> const & matrix, storage_type<Rows, Columns> & result) noexcept;
+    static void negate(storage_type<Rows, Columns> const & matrix, storage_type<Rows, Columns> & result) noexcept
+    {
+        api_type::negate(matrix.values.data(), result.values.data(), static_cast<std::uint32_t>(Rows * Columns));
+    }
 
     template <std::size_t Rows, std::size_t Columns>
     static void scale(storage_type<Rows, Columns> const & matrix, value_type scalar,
-                      storage_type<Rows, Columns> & result) noexcept;
+                      storage_type<Rows, Columns> & result) noexcept
+    {
+        api_type::scale(matrix.values.data(), scalar, result.values.data(), static_cast<std::uint32_t>(Rows * Columns));
+    }
 
     template <std::size_t Rows, std::size_t Columns>
     static void divide(storage_type<Rows, Columns> const & matrix, value_type scalar,
@@ -142,12 +164,23 @@ public:
 
     template <std::size_t Size>
     [[nodiscard]] static value_type dot(storage_type<Size, 1U> const & left,
-                                        storage_type<Size, 1U> const & right) noexcept;
+                                        storage_type<Size, 1U> const & right) noexcept
+    {
+        value_type result{0};
+        api_type::dot(left.values.data(), right.values.data(), static_cast<std::uint32_t>(Size), &result);
+        return result;
+    }
 
     template <std::size_t Size>
-    [[nodiscard]] static value_type squared_norm(storage_type<Size, 1U> const & vector) noexcept;
+    [[nodiscard]] static value_type squared_norm(storage_type<Size, 1U> const & vector) noexcept
+    {
+        return dot(vector, vector);
+    }
 
-    template <std::size_t Size> [[nodiscard]] static value_type norm(storage_type<Size, 1U> const & vector) noexcept;
+    template <std::size_t Size> [[nodiscard]] static value_type norm(storage_type<Size, 1U> const & vector) noexcept
+    {
+        return scalar_math_type::sqrt(squared_norm(vector));
+    }
 
     template <std::size_t Size, std::size_t RightColumns>
     [[nodiscard]] static Status solve_spd(storage_type<Size, Size> const & system,
@@ -156,74 +189,25 @@ public:
 
 private:
     template <std::size_t Rows, std::size_t Columns>
-    [[nodiscard]] static descriptor_type descriptor(storage_type<Rows, Columns> & matrix) noexcept;
+    [[nodiscard]] static descriptor_type descriptor(storage_type<Rows, Columns> & matrix) noexcept
+    {
+        return {static_cast<std::uint16_t>(Rows), static_cast<std::uint16_t>(Columns), matrix.values.data()};
+    }
 
     template <std::size_t Rows, std::size_t Columns>
-    [[nodiscard]] static descriptor_type descriptor(storage_type<Rows, Columns> const & matrix) noexcept;
+    [[nodiscard]] static descriptor_type descriptor(storage_type<Rows, Columns> const & matrix) noexcept
+    {
+        // CMSIS input descriptors have shallow constness: pData is Scalar* even
+        // for read-only inputs. Only pass this view to the read-only source
+        // parameters of multiply, transpose, Cholesky and triangular solves.
+        return {static_cast<std::uint16_t>(Rows), static_cast<std::uint16_t>(Columns),
+                const_cast<value_type *>(matrix.values.data())};
+    }
 
     template <std::size_t Rows, std::size_t Columns>
     [[nodiscard]] static bool finite(storage_type<Rows, Columns> const & matrix) noexcept;
 
 }; /* end class CmsisDspBackend */
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-void CmsisDspBackend<Scalar>::set_zero(storage_type<Rows, Columns> & matrix) noexcept
-{
-    matrix.values.fill(value_type{0});
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-typename CmsisDspBackend<Scalar>::value_type const &
-CmsisDspBackend<Scalar>::coefficient(storage_type<Rows, Columns> const & matrix, std::size_t row,
-                                     std::size_t column) noexcept
-{
-    return matrix.values[row * Columns + column];
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-typename CmsisDspBackend<Scalar>::value_type &
-CmsisDspBackend<Scalar>::coefficient(storage_type<Rows, Columns> & matrix, std::size_t row, std::size_t column) noexcept
-{
-    return matrix.values[row * Columns + column];
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-void CmsisDspBackend<Scalar>::add(storage_type<Rows, Columns> const & left, storage_type<Rows, Columns> const & right,
-                                  storage_type<Rows, Columns> & result) noexcept
-{
-    api_type::add(left.values.data(), right.values.data(), result.values.data(),
-                  static_cast<std::uint32_t>(Rows * Columns));
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-void CmsisDspBackend<Scalar>::subtract(storage_type<Rows, Columns> const & left,
-                                       storage_type<Rows, Columns> const & right,
-                                       storage_type<Rows, Columns> & result) noexcept
-{
-    api_type::subtract(left.values.data(), right.values.data(), result.values.data(),
-                       static_cast<std::uint32_t>(Rows * Columns));
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-void CmsisDspBackend<Scalar>::negate(storage_type<Rows, Columns> const & matrix,
-                                     storage_type<Rows, Columns> & result) noexcept
-{
-    api_type::negate(matrix.values.data(), result.values.data(), static_cast<std::uint32_t>(Rows * Columns));
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-void CmsisDspBackend<Scalar>::scale(storage_type<Rows, Columns> const & matrix, value_type scalar,
-                                    storage_type<Rows, Columns> & result) noexcept
-{
-    api_type::scale(matrix.values.data(), scalar, result.values.data(), static_cast<std::uint32_t>(Rows * Columns));
-}
 
 template <typename Scalar>
 template <std::size_t Rows, std::size_t Columns>
@@ -260,32 +244,6 @@ void CmsisDspBackend<Scalar>::transpose(storage_type<Rows, Columns> const & matr
     auto result_descriptor = descriptor(result);
     // Matching dimensions and separate output are supplied by the shared layer.
     (void)api_type::transpose(&input_descriptor, &result_descriptor);
-}
-
-template <typename Scalar>
-template <std::size_t Size>
-typename CmsisDspBackend<Scalar>::value_type CmsisDspBackend<Scalar>::dot(storage_type<Size, 1U> const & left,
-                                                                          storage_type<Size, 1U> const & right) noexcept
-{
-    value_type result{0};
-    api_type::dot(left.values.data(), right.values.data(), static_cast<std::uint32_t>(Size), &result);
-    return result;
-}
-
-template <typename Scalar>
-template <std::size_t Size>
-typename CmsisDspBackend<Scalar>::value_type
-CmsisDspBackend<Scalar>::squared_norm(storage_type<Size, 1U> const & vector) noexcept
-{
-    return dot(vector, vector);
-}
-
-template <typename Scalar>
-template <std::size_t Size>
-typename CmsisDspBackend<Scalar>::value_type
-CmsisDspBackend<Scalar>::norm(storage_type<Size, 1U> const & vector) noexcept
-{
-    return scalar_math_type::sqrt(squared_norm(vector));
 }
 
 template <typename Scalar>
@@ -345,26 +303,6 @@ Status CmsisDspBackend<Scalar>::solve_spd(storage_type<Size, Size> const & syste
     // The public wrapper provides finite-input validation, rollback and alias
     // safety by passing a separate solution candidate.
     return upper_status == ARM_MATH_SUCCESS ? Status::success : Status::not_positive_definite;
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-typename CmsisDspBackend<Scalar>::descriptor_type
-CmsisDspBackend<Scalar>::descriptor(storage_type<Rows, Columns> & matrix) noexcept
-{
-    return {static_cast<std::uint16_t>(Rows), static_cast<std::uint16_t>(Columns), matrix.values.data()};
-}
-
-template <typename Scalar>
-template <std::size_t Rows, std::size_t Columns>
-typename CmsisDspBackend<Scalar>::descriptor_type
-CmsisDspBackend<Scalar>::descriptor(storage_type<Rows, Columns> const & matrix) noexcept
-{
-    // CMSIS input descriptors have shallow constness: pData is Scalar* even
-    // for read-only inputs. Only pass this view to the read-only source
-    // parameters of multiply, transpose, Cholesky and triangular solves.
-    return {static_cast<std::uint16_t>(Rows), static_cast<std::uint16_t>(Columns),
-            const_cast<value_type *>(matrix.values.data())};
 }
 
 template <typename Scalar>

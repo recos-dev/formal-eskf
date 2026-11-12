@@ -15,6 +15,8 @@
 
 #include <cstddef>
 
+#include <formal_eskf/linalg/matrix.hpp>
+
 namespace formal_eskf
 {
 
@@ -25,7 +27,7 @@ namespace formal_eskf
  */
 template <typename Linalg> struct ImuSample
 {
-    using vector3_type = typename Linalg::template vector_type<3U>;
+    using vector3_type = linalg::Vector<Linalg, 3U>;
 
     vector3_type specific_force_b{};
     vector3_type angular_rate_b{};
@@ -54,12 +56,10 @@ template <typename Linalg, typename Configuration> struct EskfTypes
 
     using nominal_state_type = typename configuration_type::template NominalState<linalg_type>;
     using error_state_type = typename configuration_type::template ErrorState<linalg_type>;
-    using error_covariance_type =
-        typename linalg_type::template matrix_type<error_state_dimension, error_state_dimension>;
+    using error_covariance_type = linalg::Matrix<linalg_type, error_state_dimension, error_state_dimension>;
     using imu_sample_type = ImuSample<linalg_type>;
     using process_noise_type = typename configuration_type::template ProcessNoise<linalg_type>;
-    using process_noise_covariance_type =
-        typename linalg_type::template matrix_type<process_noise_dimension, process_noise_dimension>;
+    using process_noise_covariance_type = linalg::Matrix<linalg_type, process_noise_dimension, process_noise_dimension>;
     using parameter_type = typename configuration_type::template Parameters<linalg_type>;
 };
 

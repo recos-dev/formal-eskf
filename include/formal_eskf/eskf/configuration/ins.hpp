@@ -16,6 +16,7 @@
 #include <array>
 #include <cstddef>
 
+#include <formal_eskf/linalg/matrix.hpp>
 #include <formal_eskf/so3/unit_quaternion.hpp>
 
 namespace formal_eskf::configuration
@@ -45,7 +46,7 @@ struct Ins
     /** Nominal state x = [p_n, v_n, q_nb, b_a, b_g]. */
     template <typename Linalg> struct NominalState
     {
-        using vector3_type = typename Linalg::template vector_type<3U>;
+        using vector3_type = linalg::Vector<Linalg, 3U>;
         using quaternion_type = so3::UnitQuaternion<Linalg>;
 
         vector3_type p_n{}; // Navigation position, m.
@@ -58,7 +59,7 @@ struct Ins
     /** Local error state delta_x = [delta_p_n, delta_v_n, delta_theta_b, delta_b_a, delta_b_g]. */
     template <typename Linalg> struct ErrorState
     {
-        using vector3_type = typename Linalg::template vector_type<3U>;
+        using vector3_type = linalg::Vector<Linalg, 3U>;
 
         vector3_type delta_p_n{};
         vector3_type delta_v_n{};
@@ -79,7 +80,7 @@ struct Ins
      */
     template <typename Linalg> struct ProcessNoise
     {
-        using vector3_type = typename Linalg::template vector_type<3U>;
+        using vector3_type = linalg::Vector<Linalg, 3U>;
 
         vector3_type specific_force_variance{};                         // m^2/s^4, per sample.
         vector3_type angular_rate_variance{};                           // rad^2/s^2, per sample.
@@ -95,7 +96,7 @@ struct Ins
     template <typename Linalg> struct Parameters
     {
         using value_type = typename Linalg::value_type;
-        using vector3_type = typename Linalg::template vector_type<3U>;
+        using vector3_type = linalg::Vector<Linalg, 3U>;
 
         vector3_type gravity_n{};
         ProcessNoise<Linalg> process_noise{};

@@ -10,7 +10,10 @@
 #include <iostream>
 #include <string_view>
 
-#include <formal_eskf/eskf/eskf.hpp>
+#include <formal_eskf/eskf/configuration/ahrs.hpp>
+#include <formal_eskf/eskf/configuration/ins.hpp>
+#include <formal_eskf/eskf/types.hpp>
+#include <formal_eskf/linalg/operations.hpp>
 #include "test_backend.hpp"
 
 #include "test_support.hpp"
@@ -40,7 +43,7 @@ void test_nominal_state(TestContext & test, std::string_view profile, typename L
     using types = formal_eskf::EskfTypes<Linalg, formal_eskf::configuration::Ins>;
     using state_type = typename types::nominal_state_type;
     using value_type = typename Linalg::value_type;
-    using vector3_type = typename Linalg::template vector_type<3U>;
+    using vector3_type = formal_eskf::linalg::Vector<Linalg, 3U>;
 
     state_type state;
     vector3_type const zero = vector3_type::zero();
@@ -71,13 +74,15 @@ void test_error_state_and_covariance(TestContext & test, std::string_view profil
 {
     using types = formal_eskf::EskfTypes<Linalg, formal_eskf::configuration::Ins>;
     using covariance_type = typename types::error_covariance_type;
+    using noise_covariance_type = typename types::process_noise_covariance_type;
     using error_state_type = typename types::error_state_type;
-    using vector3_type = typename Linalg::template vector_type<3U>;
+    using vector3_type = formal_eskf::linalg::Vector<Linalg, 3U>;
 
     static_assert(types::nominal_state_dimension == 16U);
     static_assert(types::error_state_dimension == 15U);
     static_assert(covariance_type::row_count == 15U);
     static_assert(covariance_type::column_count == 15U);
+    static_assert(noise_covariance_type::row_count == 12U && noise_covariance_type::column_count == 12U);
 
     error_state_type const error;
     vector3_type const zero = vector3_type::zero();
@@ -99,7 +104,7 @@ void test_imu_and_configuration(TestContext & test, std::string_view profile, ty
     using imu_sample_type = typename types::imu_sample_type;
     using process_noise_type = typename types::process_noise_type;
     using value_type = typename Linalg::value_type;
-    using vector3_type = typename Linalg::template vector_type<3U>;
+    using vector3_type = formal_eskf::linalg::Vector<Linalg, 3U>;
 
     constexpr value_type specific_force_values[3] = {1, 2, 3};
     constexpr value_type angular_rate_values[3] = {4, 5, 6};
@@ -136,13 +141,15 @@ void test_ahrs_types(TestContext & test, std::string_view profile, typename Lina
     using state_type = typename types::nominal_state_type;
     using error_type = typename types::error_state_type;
     using covariance_type = typename types::error_covariance_type;
+    using noise_covariance_type = typename types::process_noise_covariance_type;
     using value_type = typename Linalg::value_type;
-    using vector3_type = typename Linalg::template vector_type<3U>;
+    using vector3_type = formal_eskf::linalg::Vector<Linalg, 3U>;
 
     static_assert(types::nominal_state_dimension == 4U);
     static_assert(types::error_state_dimension == 3U);
     static_assert(types::process_noise_dimension == 3U);
     static_assert(covariance_type::row_count == 3U && covariance_type::column_count == 3U);
+    static_assert(noise_covariance_type::row_count == 3U && noise_covariance_type::column_count == 3U);
     static_assert(!requires(state_type STATE) { STATE.p_n; });
     static_assert(!requires(state_type STATE) { STATE.v_n; });
     static_assert(!requires(state_type STATE) { STATE.b_a; });

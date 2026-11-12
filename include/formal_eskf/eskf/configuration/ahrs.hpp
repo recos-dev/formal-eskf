@@ -15,6 +15,7 @@
 
 #include <cstddef>
 
+#include <formal_eskf/linalg/matrix.hpp>
 #include <formal_eskf/so3/unit_quaternion.hpp>
 
 namespace formal_eskf::configuration
@@ -43,7 +44,7 @@ struct Ahrs
     /** Local right-multiplicative attitude error delta_x = [delta_theta_b]. */
     template <typename Linalg> struct ErrorState
     {
-        using vector3_type = typename Linalg::template vector_type<3U>;
+        using vector3_type = linalg::Vector<Linalg, 3U>;
 
         vector3_type delta_theta_b{};
     };
@@ -56,7 +57,7 @@ struct Ahrs
      */
     template <typename Linalg> struct ProcessNoise
     {
-        using vector3_type = typename Linalg::template vector_type<3U>;
+        using vector3_type = linalg::Vector<Linalg, 3U>;
 
         vector3_type angular_rate_variance{};
     };

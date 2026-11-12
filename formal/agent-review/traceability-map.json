@@ -1645,7 +1645,11 @@
           },
           {
             "file": "include/formal_eskf/eskf/injection.hpp",
-            "symbol": "Status try_inject_nominal"
+            "symbol": "Status try_inject_nominal(configuration::Ahrs::NominalState"
+          },
+          {
+            "file": "include/formal_eskf/eskf/injection.hpp",
+            "symbol": "Status try_inject_nominal(configuration::Ins::NominalState"
           }
         ],
         "esbmc": [
@@ -2031,7 +2035,11 @@
           },
           {
             "file": "include/formal_eskf/eskf/injection.hpp",
-            "symbol": "Status try_reset_covariance"
+            "symbol": "Status try_reset_covariance(configuration::Ahrs::ErrorState"
+          },
+          {
+            "file": "include/formal_eskf/eskf/injection.hpp",
+            "symbol": "Status try_reset_covariance(configuration::Ins::ErrorState"
           },
           {
             "file": "include/formal_eskf/eskf/covariance.hpp",
@@ -2177,11 +2185,11 @@
           },
           {
             "file": "include/formal_eskf/eskf/injection.hpp",
-            "symbol": "Status try_inject_and_reset"
+            "symbol": "Status try_inject_and_reset(configuration::Ahrs::NominalState"
           },
           {
             "file": "include/formal_eskf/eskf/injection.hpp",
-            "symbol": "try_inject_state_and_reset("
+            "symbol": "Status try_inject_and_reset(configuration::Ins::NominalState"
           },
           {
             "file": "include/formal_eskf/eskf/correction.hpp",

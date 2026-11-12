@@ -91,22 +91,22 @@ template <typename Linalg, typename Configuration> struct InjectionFixture
     {
         attitude_status = formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
             value_type{0.5}, value_type{0.5}, value_type{0.5}, value_type{0.5}, minimum_norm, state.q_nb);
-        error.delta_theta_b.set(0U, value_type{0.125});
-        error.delta_theta_b.set(1U, value_type{-0.0625});
-        error.delta_theta_b.set(2U, value_type{0.03125});
+        error.delta_theta_b(0U) = value_type{0.125};
+        error.delta_theta_b(1U) = value_type{-0.0625};
+        error.delta_theta_b(2U) = value_type{0.03125};
         if constexpr (is_ins)
         {
             for (std::size_t axis = 0U; axis < 3U; ++axis)
             {
                 value_type const n = static_cast<value_type>(axis + 1U);
-                state.p_n.set(axis, n);
-                state.v_n.set(axis, -n);
-                state.b_a.set(axis, n / value_type{8});
-                state.b_g.set(axis, -n / value_type{16});
-                error.delta_p_n.set(axis, n / value_type{2});
-                error.delta_v_n.set(axis, -n / value_type{4});
-                error.delta_b_a.set(axis, -n / value_type{32});
-                error.delta_b_g.set(axis, n / value_type{64});
+                state.p_n(axis) = n;
+                state.v_n(axis) = -n;
+                state.b_a(axis) = n / value_type{8};
+                state.b_g(axis) = -n / value_type{16};
+                error.delta_p_n(axis) = n / value_type{2};
+                error.delta_v_n(axis) = -n / value_type{4};
+                error.delta_b_a(axis) = -n / value_type{32};
+                error.delta_b_g(axis) = n / value_type{64};
             }
         }
         // D + u*u^T is SPD and has nonzero attitude cross-covariances.
@@ -116,7 +116,7 @@ template <typename Linalg, typename Configuration> struct InjectionFixture
             {
                 value_type const u = static_cast<value_type>(row + 1U) / value_type{32};
                 value_type const v = static_cast<value_type>(column + 1U) / value_type{32};
-                covariance.set(row, column, u * v + (row == column ? value_type{1} : value_type{0}));
+                covariance(row, column) = u * v + (row == column ? value_type{1} : value_type{0});
             }
         }
     }
@@ -160,9 +160,9 @@ void test_nominal_injection(TestContext & test, std::string_view profile, typena
     auto error = fixture.error;
     error.delta_theta_b = {};
     check_attitude(error);
-    error.delta_theta_b.set(0U, std::sqrt(std::numeric_limits<value_type>::epsilon()) / value_type{4});
+    error.delta_theta_b(0U) = std::sqrt(std::numeric_limits<value_type>::epsilon()) / value_type{4};
     check_attitude(error);
-    error.delta_theta_b.set(1U, value_type{0.75});
+    error.delta_theta_b(1U) = value_type{0.75};
     check_attitude(error); // Nominal Exp is not restricted to the reset approximation's small-angle regime.
 
     auto output = fixture.state;
@@ -268,7 +268,7 @@ void test_covariance_reset(TestContext & test, std::string_view profile, typenam
     {
         for (std::size_t column = 0U; column < size; ++column)
         {
-            output.set(row, column, std::numeric_limits<value_type>::max());
+            output(row, column) = std::numeric_limits<value_type>::max();
         }
     }
     auto const large = output;
@@ -277,7 +277,7 @@ void test_covariance_reset(TestContext & test, std::string_view profile, typenam
                 "symmetry cleanup does not overflow for a finite covariance at zero correction");
 
     auto invalid = fixture.error;
-    invalid.delta_theta_b.set(1U, std::numeric_limits<value_type>::quiet_NaN());
+    invalid.delta_theta_b(1U) = std::numeric_limits<value_type>::quiet_NaN();
     auto const saved = output;
     test.expect(try_reset_covariance(invalid, fixture.covariance, output) == Status::non_finite_input &&
                     same_bits(output, saved),
@@ -334,20 +334,28 @@ void test_injection_failures(TestContext & test, std::string_view profile)
     value_type const nan = std::numeric_limits<value_type>::quiet_NaN();
     value_type const infinity = std::numeric_limits<value_type>::infinity();
     value_type const maximum = std::numeric_limits<value_type>::max();
-    auto expect_failure = [&](fixture_type input, value_type minimum_norm, Status expected)
+    auto expect_failure = [&](fixture_type const & input, value_type minimum_norm, Status expected)
     {
-        auto output = fixture;
-        auto const saved = input;
-        Status const separate_status = try_inject_and_reset(input.state, input.covariance, input.error, minimum_norm,
-                                                            output.state, output.covariance, output.error);
-        test.expect(separate_status == expected && same_state(output.state, fixture.state) &&
-                        same_bits(output.covariance, fixture.covariance) && same_error(output.error, fixture.error),
-                    profile, "failure preserves all separate output coefficients");
-        Status const alias_status = try_inject_and_reset(input.state, input.covariance, input.error, minimum_norm,
-                                                         input.state, input.covariance, input.error);
-        test.expect(alias_status == expected && same_state(input.state, saved.state) &&
-                        same_bits(input.covariance, saved.covariance) && same_error(input.error, saved.error),
-                    profile, "failure preserves aliased inputs, including NaN bits and unconsumed error mean");
+        auto sentinel = fixture;
+        sentinel.state.q_nb = -fixture.state.q_nb;
+        sentinel.covariance = fixture.covariance * value_type{2};
+        sentinel.error.delta_theta_b = -fixture.error.delta_theta_b;
+        for (unsigned mask = 0U; mask < 8U; ++mask)
+        {
+            auto source = input;
+            auto output = sentinel;
+            auto & state = (mask & 1U) != 0U ? source.state : output.state;
+            auto & covariance = (mask & 2U) != 0U ? source.covariance : output.covariance;
+            auto & error = (mask & 4U) != 0U ? source.error : output.error;
+            Status const status = try_inject_and_reset(source.state, source.covariance, source.error, minimum_norm,
+                                                       state, covariance, error);
+            test.expect(status == expected && same_state(source.state, input.state) &&
+                            same_bits(source.covariance, input.covariance) && same_error(source.error, input.error) &&
+                            same_state(output.state, sentinel.state) &&
+                            same_bits(output.covariance, sentinel.covariance) &&
+                            same_error(output.error, sentinel.error),
+                        profile, "failure preserves all inputs and sentinel outputs for all eight alias combinations");
+        }
     };
     for (value_type const minimum_norm : {value_type{0}, value_type{-1}, value_type{1.25}})
     {
@@ -358,11 +366,11 @@ void test_injection_failures(TestContext & test, std::string_view profile)
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
         auto bad = fixture;
-        bad.error.delta_theta_b.set(axis, nan);
+        bad.error.delta_theta_b(axis) = nan;
         expect_failure(bad, fixture.minimum_norm, Status::non_finite_input);
-        bad.error.delta_theta_b.set(axis, infinity);
+        bad.error.delta_theta_b(axis) = infinity;
         expect_failure(bad, fixture.minimum_norm, Status::non_finite_input);
-        bad.error.delta_theta_b.set(axis, maximum);
+        bad.error.delta_theta_b(axis) = maximum;
         expect_failure(bad, fixture.minimum_norm, Status::non_finite_result);
     }
     for (std::size_t row = 0U; row < fixture_type::size; ++row)
@@ -370,7 +378,7 @@ void test_injection_failures(TestContext & test, std::string_view profile)
         for (std::size_t column = 0U; column < fixture_type::size; ++column)
         {
             auto bad = fixture;
-            bad.covariance.set(row, column, (row == column) ? infinity : nan);
+            bad.covariance(row, column) = (row == column) ? infinity : nan;
             expect_failure(bad, fixture.minimum_norm, Status::non_finite_input);
         }
     }
@@ -381,14 +389,14 @@ void test_injection_failures(TestContext & test, std::string_view profile)
     {
         for (std::size_t column = 0U; column < fixture_type::size; ++column)
         {
-            overflow.covariance.set(row, column, maximum);
+            overflow.covariance(row, column) = maximum;
         }
     }
     expect_failure(overflow, fixture.minimum_norm, Status::non_finite_result);
 
     // Test standalone nominal rollback independently of the atomic wrapper.
     auto bad_error = fixture.error;
-    bad_error.delta_theta_b.set(0U, maximum);
+    bad_error.delta_theta_b(0U) = maximum;
     auto output = fixture.state;
     Status const status = try_inject_nominal(output, bad_error, fixture.minimum_norm, output);
     test.expect(status == Status::non_finite_result && same_state(output, fixture.state), profile,
@@ -406,14 +414,14 @@ void test_injection_failures(TestContext & test, std::string_view profile)
             for (std::size_t axis = 0U; axis < 3U; ++axis)
             {
                 auto bad = fixture;
-                (bad.state.*state_members[group]).set(axis, nan);
+                (bad.state.*state_members[group])(axis) = nan;
                 expect_failure(bad, fixture.minimum_norm, Status::non_finite_input);
                 bad = fixture;
-                (bad.error.*error_members[group]).set(axis, infinity);
+                (bad.error.*error_members[group])(axis) = infinity;
                 expect_failure(bad, fixture.minimum_norm, Status::non_finite_input);
                 bad = fixture;
-                (bad.state.*state_members[group]).set(axis, maximum);
-                (bad.error.*error_members[group]).set(axis, maximum);
+                (bad.state.*state_members[group])(axis) = maximum;
+                (bad.error.*error_members[group])(axis) = maximum;
                 expect_failure(bad, fixture.minimum_norm, Status::non_finite_result);
                 auto const saved = bad.state;
                 Status const nominal_status = try_inject_nominal(bad.state, bad.error, fixture.minimum_norm, bad.state);

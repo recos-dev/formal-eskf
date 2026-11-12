@@ -2,9 +2,9 @@
 
 This specification defines the minimum fixed-size linear-algebra surface required by the ESKF. It separates backend-dependent primitives from shared derived operations and ESKF-specific domain logic, and records the vector and matrix dimensions required by the current algorithm.
 
-## Proposed boundary
+## Backend boundary
 
-The ESKF algorithm should depend on a compile-time backend:
+The ESKF algorithm depends on a compile-time backend:
 
 ~~~text
 EskfCore<Linalg>
@@ -15,7 +15,7 @@ EskfCore<Linalg>
     +-- VerificationLinalg<Scalar>
 ~~~
 
-The ESKF equations are written once in EskfCore. Only generic linear-algebra operations are backend-dependent. The names above are schematic; backend selection is independent of the INS/AHRS configuration.
+ESKF equations use shared operations above the backend. The names above are schematic, not a required `EskfCore` class or an exhaustive backend list; backend selection is independent of the INS/AHRS configuration. The actual ownership and source layout are in the [architecture specification](eskf-software-architecture-and-verification-boundaries.md#current-implementation-and-ownership).
 
 ## Backend primitives
 
@@ -62,7 +62,7 @@ scale(scalar, A)
 divide(A, scalar)
 ~~~
 
-These may later use restricted operator overloads such as +, -, and scalar *, but they remain part of the abstract semantic surface.
+Restricted operator overloads such as +, -, and scalar * express these same operations. The list defines the semantic surface, not a required spelling for every C++ function.
 
 ### 5. Products
 
@@ -123,7 +123,7 @@ sandwich(A, P) = A * P * transpose(A)
 right_solve_spd(B, S)          // X*S = B
 ~~~
 
-Keeping these shared prevents the backends from developing different mathematical behavior. The hat/skew rotation convention is defined by [SO(3) and Unit Quaternion](https://github.com/shengwen-tw/formal-eskf/issues/3), not by a second linalg definition.
+Keeping these shared prevents the backends from developing different mathematical behavior. The hat/skew rotation convention is defined by [SO(3) and Unit Quaternion](so3-and-unit-quaternion-abstraction-layer.md), not by a second linalg definition.
 
 ## ESKF dimensions currently required
 
@@ -150,7 +150,7 @@ The `Mx16` forms are INS nominal-state observation Jacobians. A model that uses 
 
 ## Minimal backend surface
 
-The proposed minimum is:
+The required minimum is:
 
 ~~~text
 types

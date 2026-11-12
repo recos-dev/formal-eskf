@@ -2,7 +2,7 @@
 
 A portable C++20 error-state Kalman filter (ESKF) for attitude and inertial navigation.
 
-Development of formal-eskf is specification-driven. It combines Lean 4 proofs, C++ verification with ESBMC, and agent-assisted review of verification evidence and traceability between specifications, proofs, and code.
+Development of formal-eskf is specification-driven, with explicit requirements, traceability and retained verification evidence to support future ISO certification work. Lean 4 proofs, C++ verification with ESBMC, tests and agent-assisted review provide distinct evidence within their declared scopes.
 
 ## Key Concepts
 
@@ -70,6 +70,17 @@ python3 examples/replay_kitti.py "2011_10_03/${DRIVE_ID}_extract" --plot
 ```
 
 OXTS GPS/INS estimates initialize and correct the filter; they are not independent ground truth.
+
+## Documentation
+
+| Topic | Entry point |
+|---|---|
+| Architecture and ownership | [Core, runtime and PX4 boundaries](docs/spec/eskf-software-architecture-and-verification-boundaries.md) |
+| Requirements and design specifications | [Requirement index](docs/spec/verification-requirements.md#reading-this-specification) |
+| Verification, traceability and acceptance | [Strategy](docs/spec/formal-verification-strategy.md), [review criteria and commands](docs/spec/formal-verification-traceability-and-review-criteria.md) |
+| PX4 module setup and limitations | [SITL integration](integrations/px4/README.md) |
+| Current functionality and planned work | [Functional backlog](FEATURE_TODO.md), [architecture/verification roadmap](ROADMAP.md) |
+| Contribution rules | [Coding and documentation style](STYLE.md), [C++ subset](docs/spec/cpp-portability-and-constraints.md) |
 
 ## References
 

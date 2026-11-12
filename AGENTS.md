@@ -45,6 +45,7 @@ Use `scripts/format_cpp.sh --check` for read-only formatting checks; its default
 
 ## Collaboration
 
+- Use `FEATURE_TODO.md` as the functional backlog: preserve task IDs, completed scope and agreed order when reporting next steps. Keep architecture/formal plans in `ROADMAP.md`; explain new gaps or proposed priority changes instead of silently regenerating either list.
 - Inspect the worktree first; preserve unrelated edits and staged changes. Do not interfere with other ongoing work or verification runs.
 - Keep changes scoped to the request. Separate proof, production-code, tooling and documentation changes when that helps review; do not bundle unrelated cleanup.
 - Self-review changes before handing them back. Report the result, checks performed and remaining gaps without claiming unrun checks passed.

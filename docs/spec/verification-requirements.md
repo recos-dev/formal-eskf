@@ -1,10 +1,22 @@
 ## Summary
 
-Identify verification requirements for the portable numerical core and its supporting operations, not the estimator runtime or platform integration.
+This specification records the required behavior of the numerical core, its supporting operations, portable runtime policies and explicitly scoped replay/PX4 integration paths. A requirement applies only to the layer and configurations named in its definition; a core proof does not automatically cover its runtime or adapter callers.
 
-Each ID identifies a behavior to verify, not a C++ function or a single theorem. Mathematical definitions and assumptions come from papers and design specifications. `E-PRED` and `E-STEP` are expanded into concrete requirements below; the other entries remain scope definitions.
+Each ID identifies a behavior to verify, not a C++ function or a single theorem. Mathematical definitions and assumptions come from papers and design specifications. Detailed clauses define inputs, decisions, success/failure behavior and exclusions. Entries with only a scope description still need those clauses before acceptance; registration does not supply a missing contract.
 
 Evidence mappings belong to the [traceability map](../../formal/agent-review/traceability-map.json); execution results and gaps belong to validated review reports. This list records neither proof status nor completion.
+
+## Reading this specification
+
+| Concern | Requirements |
+|---|---|
+| State, prediction, correction and covariance | [ESKF core](#eskf-core), with detailed [prediction](#e-pred-nominal-prediction-requirements) and [composition](#e-step-composed-operation-requirements) clauses |
+| Magnetic observations, health and recovery | [Magnetic aiding](#magnetic-aiding), including explicitly named replay and PX4 module profiles |
+| GNSS, height, gravity and IMU/bias policies | [Portable runtime](#portable-runtime), including explicitly named deployment profiles |
+| Rotation mathematics | [Quaternion and SO(3)](#quaternion-and-so3) |
+| Scalar and linear-algebra dependencies | [Supporting operations](#supporting-operations) |
+
+Requirement IDs remain stable when documentation is reorganized. Child clauses refine their parent requirement; they are not extra passing requirements. Follow the [review criteria](formal-verification-traceability-and-review-criteria.md) for acceptance and change-impact review. Implementation or evidence limitations recorded below constrain claims; they do not waive the required behavior.
 
 ## ESKF core
 
@@ -23,7 +35,7 @@ Evidence mappings belong to the [traceability map](../../formal/agent-review/tra
 
 ### E-PRED: nominal prediction requirements
 
-These child IDs refine the mapped `E-PRED` requirement; they are not additional passing requirements. The scope is one call to either INS or AHRS `try_predict_nominal`, not covariance propagation or repeated-step stability. The policy decisions listed at the end remain open for review.
+These child IDs refine the mapped `E-PRED` requirement; they are not additional passing requirements. The scope is one call to either INS or AHRS `try_predict_nominal`, not covariance propagation or repeated-step stability. Deployment tolerances and numerical error bounds remain separate obligations.
 
 #### Sources and interpretation
 
@@ -41,7 +53,7 @@ Solà's gravity state is not added to this project: INS takes fixed navigation-f
 
 | Configuration | Consumed values, all finite |
 |---|---|
-| AHRS | Prior `q_nb`, `imu.angular_rate_b`, `dt`, `dt_min`, `dt_max`, `minimum_quaternion_norm`. |
+| AHRS | Prior `q_nb`, `imu.angular_rate_b`, `dt`, `dt_min`, `dt_max`, `minimum_quaternion_norm`, `quaternion_squared_norm_tolerance`. |
 | INS | All AHRS values, prior `p_n`, `v_n`, `b_a`, `b_g`, `imu.specific_force_b`, and `gravity_n`. |
 
 IMU values are body-frame rates, not integrated increments. AHRS receives an already bias-calibrated angular rate; INS subtracts its estimated biases. The caller supplies consistent frames, units, gravity and a sample representative of the same step as `dt`; this API has no timestamps or frame identifiers to validate.
@@ -49,6 +61,20 @@ IMU values are body-frame rates, not integrated increments. AHRS receives an alr
 Changing unconsumed fields must not change the result or status: AHRS ignores specific force, and both configurations ignore process-noise parameters. A full prediction step must validate process noise separately.
 
 The physical rotation model requires a unit prior quaternion over the reals. A floating-point `UnitQuaternion` value or successful normalization is not proof of exact unit norm. Finite-coefficient safety checks and the mathematical rotation premise are separate obligations.
+
+Public prediction must check the prior before attitude or translation calculations; it must not rely only on the caller or the type name. After the time/normalization-parameter checks below, require:
+
+~~~text
+0 < quaternion_squared_norm_tolerance < 1
+q_nb has finite coefficients
+norm_squared = squared_norm(q_nb.coefficients())
+norm_squared is finite
+abs(norm_squared - 1) <= quaternion_squared_norm_tolerance
+~~~
+
+Validate in that order: non-finite tolerance returns `non_finite_input`; a tolerance outside `(0,1)` returns `domain_error`; non-finite prior coefficients return `non_finite_input`; overflow of the computed squared norm returns `non_finite_result`; excessive residual returns `invalid_quaternion_norm`. Equality at the residual boundary is accepted. These checks precede the remaining consumed-input checks and prediction calculations.
+
+The tolerance is a dimensionless squared-norm residual, explicitly configured for the selected scalar/backend profile; its zero default is invalid. This predicate uses that profile's floating-point arithmetic, not exact real equality. Acceptance neither proves physical frame correctness nor a bound on all later numerical errors. Validation must not normalize or otherwise modify the old quaternion. `minimum_quaternion_norm` guards normalization candidates only; it is not this tolerance. Internal attitude helpers need not repeat this public residual check.
 
 #### E-PRED-TIME: time and threshold validation
 
@@ -118,11 +144,12 @@ After the parameter checks, require these outcomes when the preceding relevant s
 | Condition | Required outcome |
 |---|---|
 | A consumed state, IMU or gravity coefficient is non-finite | `non_finite_input`. |
+| Prior squared-norm residual exceeds `quaternion_squared_norm_tolerance` | `invalid_quaternion_norm`, before prediction; no implicit repair. |
 | Finite inputs produce a non-finite bias difference, increment, quaternion candidate, computed norm, acceleration, position or velocity | `non_finite_result`; an internally generated invalid value must not be mislabeled as invalid caller input. |
 | A required quaternion normalization has a finite computed norm below `minimum_quaternion_norm` | `invalid_quaternion_norm`; equality with the threshold is not rejected for being too small. |
 | A checked scalar/quaternion dependency otherwise fails | Propagate its failure; do not continue with its output. |
 
-Never clamp `dt`, repair invalid inputs, or publish a fallback estimate as success. Apart from the parameter precedence above, simultaneous independent failures do not require one universal priority; isolated causes must retain their specified status.
+Never clamp `dt`, repair invalid inputs, or publish a fallback estimate as success. Apart from the ordered parameter and prior checks above, simultaneous independent failures do not require one universal priority; isolated causes must retain their specified status.
 
 #### E-PRED-ATOMICITY: output and alias behavior
 
@@ -132,13 +159,13 @@ The output may be the same complete nominal-state object as the prior. With othe
 
 #### Evidence boundary and review decisions
 
-Each claim must identify INS/AHRS, binary32/binary64, attitude mode, backend/scalar contracts and its input domain. Existing harness limits such as corrected rates in `[-2,2]`, `dt` in `[2^-10,1]` and threshold `1/8` are evidence restrictions, not new API limits. Fixed examples do not cover a symbolic domain. Callee summaries require matching actual-callee evidence and callers that establish their preconditions.
+Each claim must identify INS/AHRS, binary32/binary64, attitude mode, backend/scalar contracts and its input domain. Historical harness limits such as corrected rates in `[-2,2]`, `dt` in `[2^-10,1]` and threshold `1/8` are not API limits. Full-domain profiles remove these restrictions and must check all prior-tolerance values, including rejection cases. Their complete execution inventory, not older bounded-profile or pre-validation results, is required as evidence. Fixed examples do not cover a symbolic domain. Callee summaries require matching actual-callee evidence and callers that establish their preconditions, including the Exp-to-attitude and attitude-to-public-API boundaries.
 
-Before claiming complete `E-PRED` coverage, resolve these boundaries with the existing specifications:
+Keep these boundaries explicit:
 
-- Consumed-field validation specializes the scalar policy's broader wording about all sensor inputs being finite. The proposed behavior retains AHRS's independence from specific force and both nominal APIs' independence from process noise.
-- The scalar policy mentions a minimum norm for the input quaternion. Current prediction checks normalization candidates, not a separate prior-norm threshold or prior unit-norm residual. Normalized Euler can increase the candidate norm relative to the prior. Decide whether prior validity remains a caller premise or needs an additional runtime check; do not present candidate validation as an existing prior-validity check.
-- Numerical input/output residual bounds and admissible deployment ranges are not yet selected. Keep those claims open; this draft does not choose tolerances or reinterpret bounded harnesses as all-input proofs.
+- Consumed-field validation retains AHRS's independence from specific force and both nominal APIs' independence from process noise.
+- The public prior check and candidate normalization are different obligations. An accepted floating-point prior is not the exact unit-norm premise used by the real-number model.
+- Numerical output residual bounds and admissible deployment ranges are not yet proved. Tests may choose explicit input tolerances, but these are not certified deployment settings or evidence of a closed repeated-step invariant.
 
 ### E-STEP: composed-operation requirements
 
@@ -196,6 +223,22 @@ AHRS/INS magnetic correction uses compile-time `ESKF_MAG_TILT=1` by default; `0`
 - Publish state and covariance together only on success. Preserve both on any failure and support all four independent whole-state/covariance alias arrangements. `ESKF_MAG_TILT=0` must agree with the original full-field behavior and must not compile the projection path.
 
 Native tests in both macro configurations are supporting evidence only. Projection identities and the new constrained-gain C++ path require new Lean/ESBMC evidence; existing unrestricted `E-OBS`/`E-CORRECT` proofs do not discharge this requirement. E-OBS execution explicitly selects `ESKF_MAG_TILT=0`, not the new default.
+
+### E-INNOV: componentwise innovation gate
+
+This pure operation consumes a fixed-size innovation vector `r`, the diagonal of the innovation covariance `S = H P H^T + V`, and an explicit `gate_sigma > 0`. It does not compute S, validate its positive definiteness, apply correction or manage fusion lifecycle. Measurement-noise variances alone are not a substitute for `diag(S)`.
+
+- Compute `test_ratio[i] = (r[i] * r[i]) / ((gate_sigma * gate_sigma) * S[i,i])`. Reject the whole observation if **any** computed ratio is greater than one; equality is accepted. This is not a joint Mahalanobis gate. No implicit minimum sigma, clamping or gate default is applied.
+- All inputs must be finite; otherwise return `non_finite_input` before arithmetic. Nonpositive sigma or variance returns `domain_error`. Positive variances, the computed squared sigma and each denominator must be at least the scalar format's smallest positive normal value; smaller values return `zero_or_unsafe_divisor`. Isolated failure causes have these statuses; competing domain/safe-range violations have no universal precedence.
+- Non-finite squared sigma, squared innovation, denominator or ratio returns `non_finite_result`. A large denominator must not overflow into a false acceptance. Small innovations or ratios may underflow; decisions use the computed IEEE-754 ratio, not an exact-real boundary guarantee.
+- On success, publish every finite nonnegative ratio and the aggregate rejection flag, even when rejected. `success` reports valid diagnostics, not permission to fuse. The caller must require both success and no rejection before treating the gate as passed.
+- On failure, preserve the entire diagnostic output. Its vector may alias either complete input vector; otherwise inputs are unchanged. Do not exit early on an outlier and miss invalid later axes. No estimator state or covariance is modified.
+
+Native tests cover binary32/binary64 and dimensions 1, 2 and 3. Lean and ESBMC evidence for this new requirement is pending; existing correction proofs do not cover it. `R-MEASUREMENT-FUSION` composes the gate with correction; sensor-specific settings and deployment wiring remain caller/runtime work.
+
+## Magnetic aiding
+
+This section groups magnetic runtime policies and their explicitly scoped replay/PX4 callers. The numerical observation and gain-projection requirements remain `E-OBS` and `E-MAG-TILT`; sharing this section does not combine their proof claims.
 
 ### R-MAGNETIC-FIELD: instantaneous magnetic-field plausibility
 
@@ -831,18 +874,6 @@ Native tests exercise source selection, timing, frame conversion, invalid/missin
 model retention and real correction/reset integration. SITL checks the selected
 source and advancing periodic lookup count. These are not Lean/ESBMC proofs,
 calibration evidence, model-epoch validation or long-distance flight qualification.
-
-### E-INNOV: componentwise innovation gate
-
-This pure operation consumes a fixed-size innovation vector `r`, the diagonal of the innovation covariance `S = H P H^T + V`, and an explicit `gate_sigma > 0`. It does not compute S, validate its positive definiteness, apply correction or manage fusion lifecycle. Measurement-noise variances alone are not a substitute for `diag(S)`.
-
-- Compute `test_ratio[i] = (r[i] * r[i]) / ((gate_sigma * gate_sigma) * S[i,i])`. Reject the whole observation if **any** computed ratio is greater than one; equality is accepted. This is not a joint Mahalanobis gate. No implicit minimum sigma, clamping or gate default is applied.
-- All inputs must be finite; otherwise return `non_finite_input` before arithmetic. Nonpositive sigma or variance returns `domain_error`. Positive variances, the computed squared sigma and each denominator must be at least the scalar format's smallest positive normal value; smaller values return `zero_or_unsafe_divisor`. Isolated failure causes have these statuses; competing domain/safe-range violations have no universal precedence.
-- Non-finite squared sigma, squared innovation, denominator or ratio returns `non_finite_result`. A large denominator must not overflow into a false acceptance. Small innovations or ratios may underflow; decisions use the computed IEEE-754 ratio, not an exact-real boundary guarantee.
-- On success, publish every finite nonnegative ratio and the aggregate rejection flag, even when rejected. `success` reports valid diagnostics, not permission to fuse. The caller must require both success and no rejection before treating the gate as passed.
-- On failure, preserve the entire diagnostic output. Its vector may alias either complete input vector; otherwise inputs are unchanged. Do not exit early on an outlier and miss invalid later axes. No estimator state or covariance is modified.
-
-Native tests cover binary32/binary64 and dimensions 1, 2 and 3. Lean and ESBMC evidence for this new requirement is pending; existing correction proofs do not cover it. `R-MEASUREMENT-FUSION` composes the gate with correction; sensor-specific settings and deployment wiring remain caller/runtime work.
 
 ## Portable runtime
 

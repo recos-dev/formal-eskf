@@ -1,6 +1,6 @@
 ## Summary
 
-Define the mathematical behavior and conventions of the `SO(3)` and unit-quaternion operations used by the ESKF.
+This specification defines the mathematical behavior and conventions of the `SO(3)` and unit-quaternion operations used by the ESKF.
 
 ## Scope
 

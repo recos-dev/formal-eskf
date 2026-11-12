@@ -1,13 +1,14 @@
 ## Summary
 
-Define a layered formal-verification strategy for a portable ESKF core.
+Verification follows explicit requirements through mathematical models, production C++ and retained execution evidence. Each claim states which behavior, assumptions and configuration it covers. Runtime and deployment claims require evidence for their own boundaries in addition to the numerical core.
 
 The intended deployment environments include embedded Linux, FreeRTOS and NuttX. The estimator uses fixed-size linear algebra, nonlinear quaternion operations and IEEE-754 arithmetic.
 
-This specification owns the verification claim boundary. Mathematical behavior belongs to [linear algebra](https://github.com/shengwen-tw/formal-eskf/issues/2), [SO(3)](https://github.com/shengwen-tw/formal-eskf/issues/3) and [state conventions](https://github.com/shengwen-tw/formal-eskf/issues/4); numerical and language constraints belong to [scalar semantics](https://github.com/shengwen-tw/formal-eskf/issues/5) and [C++ portability](https://github.com/shengwen-tw/formal-eskf/issues/6).
+This specification owns the verification claim boundary. Mathematical behavior belongs to [linear algebra](eskf-linear-algebra-abstraction-layer.md), [SO(3)](so3-and-unit-quaternion-abstraction-layer.md) and [state conventions](eskf-state-conventions.md); numerical and language constraints belong to [scalar semantics](scalar-ieee754-and-failure-semantics.md) and [C++ portability](cpp-portability-and-constraints.md).
 
+The [requirements](verification-requirements.md) define acceptance obligations. The [traceability and review criteria](formal-verification-traceability-and-review-criteria.md) define record ownership, evidence acceptance and change-impact review. This requirement-led assurance approach supports future ISO certification work; it does not make tool success a certification claim.
 
-## Proposed verification boundary
+## Numerical-core verification boundary
 
 ~~~text
 ┌────────────────────────────────────────────────────────────┐
@@ -24,7 +25,7 @@ This specification owns the verification claim boundary. Mathematical behavior b
                     │                   │
                     ▼                   ▼
 ┌─────────────────────────────┐   ┌─────────────────────────────┐
-│ Verified Fixed-Array Backend│   │ Pluggable Matrix Backends   │
+│ Fixed-Array Proof Backend   │   │ Pluggable Matrix Backends   │
 ├─────────────────────────────┤   ├─────────────────────────────┤
 │ • Proof harnesses           │   │ • EigenBackend              │
 │ • Symbolic inputs           │   │ • Px4MatrixBackend          │
@@ -46,13 +47,13 @@ Use `Lean 4` and `ESBMC 8.4` for the current proof workflow. Neither tool become
 
 ## Formal proof claim
 
-The formal proof applies directly to the shared ESKF core instantiated with the verified fixed-array backend. Each claim is scoped by its specified properties, assumptions and verification configurations.
+Source-level formal claims cover the analyzed shared-core paths instantiated with the fixed-array proof backend, subject to the accepted evidence for their dependencies. Each claim is scoped by its specified properties, assumptions and verification configurations; the diagram does not assert that every path or backend operation has been proved.
 
-If a target instead deploys Eigen or PX4 matrix, the claim is limited to:
+If a target instead deploys an external matrix backend such as Eigen or PX4 matrix, the claim is limited to:
 
 > The shared ESKF algorithm satisfies the proved properties under the required linear-algebra and scalar-math contracts.
 
-This does not constitute formal verification of Eigen or PX4 matrix internals, the platform math library, or all executions of those dependencies. Conformance and differential tests provide supporting evidence only.
+This does not constitute formal verification of external backend internals, the platform math library, or all executions of those dependencies. Conformance and differential tests provide supporting evidence only. Runtime scheduling, sensor lifecycle and adapter publication require their own [software obligations](eskf-software-architecture-and-verification-boundaries.md#software-proof-obligations).
 
 ## Scope and completion
 

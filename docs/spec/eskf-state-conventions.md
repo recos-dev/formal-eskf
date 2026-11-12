@@ -1,6 +1,6 @@
 ## Summary
 
-Define the state layout, frames, units, and perturbation convention used by the ESKF.
+This specification defines the state layout, frames, units and perturbation convention used by the ESKF.
 
 These conventions are shared by prediction, correction, measurement models, state injection, and covariance reset.
 

@@ -1,6 +1,6 @@
 ## Summary
 
-Define the C++ language and runtime profile for the shared ESKF core within the boundary established by [Formal Verification Strategy](https://github.com/shengwen-tw/formal-eskf/issues/1). This specification owns source-language and portability constraints; [STYLE.md](../../STYLE.md) owns readability, naming and organization.
+This specification defines the C++ language and runtime profile for the shared ESKF core within the boundary established by [Formal Verification Strategy](formal-verification-strategy.md). It owns source-language and portability constraints; [STYLE.md](../../STYLE.md) owns readability, naming and organization.
 
 The language-subset rules apply to handwritten numerical-core and portable-runtime code. Backend and platform interfaces follow the boundaries below; their external implementation requirements do not expand the shared-code subset. Host tools and tests may use facilities outside the core profile, with the same readability principles.
 

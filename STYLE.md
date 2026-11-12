@@ -53,6 +53,15 @@ Check formatting without changing files:
 - Use Doxygen comments for useful API documentation. Reference the relevant equation or specification when it explains the implementation; do not duplicate entire specifications.
 - Keep essential preconditions, units/frames and failure behavior visible at the API. Put extended derivations and shared contract details in the linked specification.
 
+## Documentation
+
+- Lead with the behavior or decision, then its rationale and assumptions. State required success/failure behavior and link the applicable requirement and evidence boundary.
+- Keep requirements and contracts in `docs/spec/`. Use stable requirement IDs; describe sources, units, frames, configuration scope and exclusions where relevant. Distinguish adopted rules from proposals and existing implementation.
+- Preserve the requirement-to-design/source-to-evidence chain defined by the [review criteria](docs/spec/formal-verification-traceability-and-review-criteria.md#record-ownership). Simplifying prose must not remove acceptance conditions, assumptions or unresolved gaps.
+- Keep current functional work in `FEATURE_TODO.md` and architecture/verification plans in `ROADMAP.md`. Reference their existing IDs instead of creating another task list.
+- Keep README files focused on entry points, operation and current limitations. Put dated validation summaries separately, retaining source/configuration identity, evidence paths, failed attempts and claim limits; never present historical results as current verification.
+- Link to the authoritative definition instead of copying changing counts or full contracts. When a requirement, implementation boundary or evidence source changes, review affected links and summaries as well as the traceability mapping.
+
 ## Applying This Guide
 
 Apply these rules to new code and changes within the current task. Existing code may predate them; its presence is not permission to extend an unnecessarily complex pattern. Record out-of-scope cleanup for review rather than rewriting unrelated code. This guide does not authorize an architecture refactor, public API change or numerical behavior change by itself.

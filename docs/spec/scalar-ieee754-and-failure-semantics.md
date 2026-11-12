@@ -1,8 +1,8 @@
 ## Summary
 
-Define the scalar, IEEE 754, domain-error, and failure behavior applied to the operations in [ESKF Linear Algebra Abstraction Layer](https://github.com/shengwen-tw/formal-eskf/issues/2) and [SO(3) and Unit Quaternion Abstraction Layer](https://github.com/shengwen-tw/formal-eskf/issues/3).
+This specification defines the scalar, IEEE 754, domain-error and failure behavior applied to the operations in [ESKF Linear Algebra Abstraction Layer](eskf-linear-algebra-abstraction-layer.md) and [SO(3) and Unit Quaternion Abstraction Layer](so3-and-unit-quaternion-abstraction-layer.md).
 
-Those issues own the exact mathematical behavior. This specification only defines how finite-precision execution is bounded and how domain violations are reported. It does not select numerical tolerance values.
+Those specifications own the exact mathematical behavior. This specification defines how finite-precision execution is bounded and how domain violations are reported. It does not select numerical tolerance values.
 
 ## Scalar models
 
@@ -36,7 +36,7 @@ The default numerical profile is:
 rounding mode: round to nearest, ties to even
 fast-math transformations: disabled
 FMA contraction: disabled unless explicitly modeled
-NaN and infinity: invalid for ESKF state and sensor input
+NaN and infinity: invalid for consumed ESKF state and sensor input
 ~~~
 
 Correctness must not depend on preserving subnormal values. Required input bounds and numerical thresholds must remain safely inside the selected normal range.
@@ -46,15 +46,17 @@ Correctness must not depend on preserving subnormal values. Required input bound
 Public ESKF transitions accept only inputs satisfying their documented domains:
 
 ~~~text
-all state, covariance, sensor, and time values are finite
+all consumed state, covariance, sensor, and time values are finite
 dt_min <= dt <= dt_max
-quaternion norm >= minimum_quaternion_norm
+required quaternion normalization candidates have norm >= minimum_quaternion_norm
 every divisor magnitude >= its minimum safe magnitude
 SPD solve inputs satisfy the configured symmetry and conditioning bounds
 sensor values remain inside the configured physical ranges
 ~~~
 
 Concrete bounds belong to the selected estimator configuration and must be present before the corresponding floating-point proof is claimed.
+
+Nominal prediction (INS/AHRS) and INS covariance prediction additionally check the prior's squared-norm residual against `quaternion_squared_norm_tolerance`. It must be finite and in `(0,1)`, with `abs(squared_norm(q_nb) - 1) <= tolerance`. Zero defaults require explicit configuration. This prior validation never repairs the input; it is distinct from normalization's safe-divisor threshold. AHRS covariance does not consume prior attitude or this tolerance. See the ordered checks in [nominal prediction requirements](verification-requirements.md#e-pred-input-consumed-inputs-and-caller-premises).
 
 ## Operation failures
 

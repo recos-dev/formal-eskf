@@ -46,7 +46,7 @@ public:
     template <std::size_t Rows, std::size_t Columns>
     using matrix_type = Matrix<Px4MatrixBackend<Scalar>, Rows, Columns>;
 
-    template <std::size_t Size> using vector_type = matrix_type<Size, 1U>;
+    template <std::size_t Size> using vector_type = Vector<Px4MatrixBackend<Scalar>, Size>;
 
     template <std::size_t Rows, std::size_t Columns> using storage_type = ::matrix::Matrix<value_type, Rows, Columns>;
 

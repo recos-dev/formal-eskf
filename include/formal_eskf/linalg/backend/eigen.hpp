@@ -42,7 +42,7 @@ public:
 
     template <std::size_t Rows, std::size_t Columns> using matrix_type = Matrix<EigenBackend<Scalar>, Rows, Columns>;
 
-    template <std::size_t Size> using vector_type = matrix_type<Size, 1U>;
+    template <std::size_t Size> using vector_type = Vector<EigenBackend<Scalar>, Size>;
 
     template <std::size_t Rows, std::size_t Columns>
     using storage_type = Eigen::Matrix<value_type, static_cast<int>(Rows), static_cast<int>(Columns)>;

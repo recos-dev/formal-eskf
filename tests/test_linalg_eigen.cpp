@@ -11,6 +11,7 @@
 #include <iostream>
 #include <limits>
 #include <string_view>
+#include <type_traits>
 
 #include "test_backend.hpp"
 
@@ -45,8 +46,13 @@ void test_construction_and_access(TestContext & test, std::string_view profile, 
     using matrix23_type = typename Linalg::template matrix_type<2U, 3U>;
     using matrix22_type = typename Linalg::template matrix_type<2U, 2U>;
     using matrix34_type = typename Linalg::template matrix_type<3U, 4U>;
-    using vector4_type = typename Linalg::template vector_type<4U>;
-    using vector2_type = typename Linalg::template vector_type<2U>;
+    using vector4_type = formal_eskf::linalg::Vector<Linalg, 4U>;
+    using vector3_type = formal_eskf::linalg::Vector<Linalg, 3U>;
+    using vector2_type = formal_eskf::linalg::Vector<Linalg, 2U>;
+
+    static_assert(std::is_same_v<vector4_type, formal_eskf::linalg::Matrix<Linalg, 4U, 1U>>);
+    static_assert(std::is_same_v<vector4_type, typename Linalg::template vector_type<4U>>);
+    static_assert(std::is_same_v<decltype(formal_eskf::linalg::cross(vector3_type{}, vector3_type{})), vector3_type>);
 
     constexpr value_type coefficients[6] = {1, 2, 3, 4, 5, 6};
     matrix23_type matrix = matrix23_type::from_row_major(coefficients);

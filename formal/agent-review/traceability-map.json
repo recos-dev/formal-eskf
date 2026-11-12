@@ -823,7 +823,7 @@
           },
           {
             "file": "include/formal_eskf/linalg/operations.hpp",
-            "symbol": "cross(Matrix"
+            "symbol": "cross(Vector"
           }
         ],
         "esbmc": [
@@ -2372,6 +2372,10 @@
           {
             "file": "include/formal_eskf/linalg/matrix.hpp",
             "symbol": "template <typename Linalg, std::size_t Rows, std::size_t Columns> class Matrix"
+          },
+          {
+            "file": "include/formal_eskf/linalg/matrix.hpp",
+            "symbol": "using Vector = Matrix<Linalg, Size, 1U>"
           },
           {
             "file": "include/formal_eskf/linalg/operations.hpp",

@@ -60,15 +60,24 @@ public:
     [[nodiscard]] static Matrix from_row_major(value_type const (&coefficients)[Rows * Columns]) noexcept;
 
     /** Access a coefficient.  The caller must prove row < Rows and column < Columns. */
-    [[nodiscard]] value_type operator()(std::size_t row, std::size_t column) const noexcept;
-    [[nodiscard]] value_type & operator()(std::size_t row, std::size_t column) noexcept;
+    [[nodiscard]] value_type operator()(std::size_t row, std::size_t column) const noexcept
+    {
+        return Linalg::template coefficient<Rows, Columns>(m_storage, row, column);
+    }
+    [[nodiscard]] value_type & operator()(std::size_t row, std::size_t column) noexcept
+    {
+        return Linalg::template coefficient<Rows, Columns>(m_storage, row, column);
+    }
 
     /** Access a vector coefficient.  This overload is available only when Columns is one. */
     [[nodiscard]] value_type operator()(std::size_t index) const noexcept;
     [[nodiscard]] value_type & operator()(std::size_t index) noexcept;
 
     /** Replace one coefficient without exposing a backend storage reference. */
-    void set(std::size_t row, std::size_t column, value_type value) noexcept;
+    void set(std::size_t row, std::size_t column, value_type value) noexcept
+    {
+        Linalg::template set_coefficient<Rows, Columns>(m_storage, row, column, value);
+    }
 
     /** Replace one vector coefficient.  This overload is available only when Columns is one. */
     void set(std::size_t index, value_type value) noexcept;
@@ -108,6 +117,9 @@ private:
     friend class detail::MatrixAccess;
 
 }; /* end class Matrix */
+
+/** Owning column vector; an alias of Matrix, with the same storage and operators. */
+template <typename Linalg, std::size_t Size> using Vector = Matrix<Linalg, Size, 1U>;
 
 namespace detail
 {
@@ -159,24 +171,10 @@ Matrix<Linalg, Rows, Columns>::from_row_major(value_type const (&coefficients)[R
 
 template <typename Linalg, std::size_t Rows, std::size_t Columns>
 typename Matrix<Linalg, Rows, Columns>::value_type
-Matrix<Linalg, Rows, Columns>::operator()(std::size_t row, std::size_t column) const noexcept
-{
-    return Linalg::template coefficient<Rows, Columns>(m_storage, row, column);
-}
-
-template <typename Linalg, std::size_t Rows, std::size_t Columns>
-typename Matrix<Linalg, Rows, Columns>::value_type &
-Matrix<Linalg, Rows, Columns>::operator()(std::size_t row, std::size_t column) noexcept
-{
-    return Linalg::template coefficient<Rows, Columns>(m_storage, row, column);
-}
-
-template <typename Linalg, std::size_t Rows, std::size_t Columns>
-typename Matrix<Linalg, Rows, Columns>::value_type
 Matrix<Linalg, Rows, Columns>::operator()(std::size_t index) const noexcept
 {
     static_assert(Columns == 1U);
-    return Linalg::template coefficient<Rows, Columns>(m_storage, index, 0U);
+    return (*this)(index, 0U);
 }
 
 template <typename Linalg, std::size_t Rows, std::size_t Columns>
@@ -184,20 +182,14 @@ typename Matrix<Linalg, Rows, Columns>::value_type &
 Matrix<Linalg, Rows, Columns>::operator()(std::size_t index) noexcept
 {
     static_assert(Columns == 1U);
-    return Linalg::template coefficient<Rows, Columns>(m_storage, index, 0U);
-}
-
-template <typename Linalg, std::size_t Rows, std::size_t Columns>
-void Matrix<Linalg, Rows, Columns>::set(std::size_t row, std::size_t column, value_type value) noexcept
-{
-    Linalg::template set_coefficient<Rows, Columns>(m_storage, row, column, value);
+    return (*this)(index, 0U);
 }
 
 template <typename Linalg, std::size_t Rows, std::size_t Columns>
 void Matrix<Linalg, Rows, Columns>::set(std::size_t index, value_type value) noexcept
 {
     static_assert(Columns == 1U);
-    Linalg::template set_coefficient<Rows, Columns>(m_storage, index, 0U, value);
+    set(index, 0U, value);
 }
 
 template <typename Linalg, std::size_t Rows, std::size_t Columns>
@@ -254,8 +246,8 @@ template <typename Linalg, std::size_t Rows, std::size_t Columns>
 template <std::size_t StartRow, std::size_t StartColumn, std::size_t BlockRows, std::size_t BlockColumns>
 Matrix<Linalg, BlockRows, BlockColumns> Matrix<Linalg, Rows, Columns>::block() const noexcept
 {
-    static_assert(StartRow + BlockRows <= Rows);
-    static_assert(StartColumn + BlockColumns <= Columns);
+    static_assert(StartRow < Rows && BlockRows <= Rows - StartRow, "block rows out of bounds");
+    static_assert(StartColumn < Columns && BlockColumns <= Columns - StartColumn, "block columns out of bounds");
     Matrix<Linalg, BlockRows, BlockColumns> result;
     for (std::size_t row = 0U; row < BlockRows; ++row)
     {
@@ -271,8 +263,8 @@ template <typename Linalg, std::size_t Rows, std::size_t Columns>
 template <std::size_t StartRow, std::size_t StartColumn, std::size_t BlockRows, std::size_t BlockColumns>
 void Matrix<Linalg, Rows, Columns>::set_block(Matrix<Linalg, BlockRows, BlockColumns> const & source) noexcept
 {
-    static_assert(StartRow + BlockRows <= Rows);
-    static_assert(StartColumn + BlockColumns <= Columns);
+    static_assert(StartRow < Rows && BlockRows <= Rows - StartRow, "block rows out of bounds");
+    static_assert(StartColumn < Columns && BlockColumns <= Columns - StartColumn, "block columns out of bounds");
     for (std::size_t row = 0U; row < BlockRows; ++row)
     {
         for (std::size_t column = 0U; column < BlockColumns; ++column)
@@ -287,13 +279,7 @@ template <std::size_t Offset, std::size_t SegmentSize>
 Matrix<Linalg, SegmentSize, 1U> Matrix<Linalg, Rows, Columns>::segment() const noexcept
 {
     static_assert(Columns == 1U);
-    static_assert(Offset + SegmentSize <= Rows);
-    Matrix<Linalg, SegmentSize, 1U> result;
-    for (std::size_t index = 0U; index < SegmentSize; ++index)
-    {
-        result(index) = (*this)(Offset + index);
-    }
-    return result;
+    return block<Offset, 0U, SegmentSize, 1U>();
 }
 
 template <typename Linalg, std::size_t Rows, std::size_t Columns>
@@ -301,11 +287,7 @@ template <std::size_t Offset, std::size_t SegmentSize>
 void Matrix<Linalg, Rows, Columns>::set_segment(Matrix<Linalg, SegmentSize, 1U> const & source) noexcept
 {
     static_assert(Columns == 1U);
-    static_assert(Offset + SegmentSize <= Rows);
-    for (std::size_t index = 0U; index < SegmentSize; ++index)
-    {
-        (*this)(Offset + index) = source(index);
-    }
+    set_block<Offset, 0U>(source);
 }
 
 template <typename Linalg, std::size_t Rows, std::size_t Columns>

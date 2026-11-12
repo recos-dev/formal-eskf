@@ -31,6 +31,12 @@ Mat<R,C>
 
 Only compile-time-fixed dimensions are needed.
 
+The C++ value types are `linalg::Matrix<Backend, Rows, Columns>` and
+`linalg::Vector<Backend, Size>`. `Vector` is an alias for an owning `Size x 1`
+matrix, with identical storage and operators. Existing backend `matrix_type`
+and `vector_type` aliases remain compatible. Bind short mathematical type names
+at configuration boundaries; do not introduce another traits or dispatch layer.
+
 ### 2. Construction
 
 ~~~text
@@ -51,6 +57,12 @@ set_segment<N>(v, offset, x)
 ~~~
 
 Block and segment operations are included initially because the current ESKF constructs transition and observation matrices from fixed-size blocks.
+
+Vector indexing and segments use the corresponding matrix indexing and block
+operations. Extraction returns an owning value, not a view. Block/segment bounds
+are checked at compile time without relying on potentially overflowing index
+addition. Both mutable coefficient access and the explicit `set()` interface
+remain supported; `set()` retains the backend's explicit write operation.
 
 ### 4. Basic arithmetic
 

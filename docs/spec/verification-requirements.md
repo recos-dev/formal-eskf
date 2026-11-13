@@ -1588,7 +1588,7 @@ The policy does not alter nominal state, covariance, prediction, process noise o
 
 ### R-REPLAY-BIAS: replay bias-learning inhibition
 
-`ReplayBiasLearning` aliases the shared `runtime::ImuBiasInhibition`. It evaluates
+Replay directly uses the shared `runtime::ImuBiasInhibition`. It evaluates
 the prior biases and unit attitude once before
 prediction, then supplies the same six `Ins::BiasUpdate` permissions to every
 GNSS, gravity and magnetic correction at that horizon. It uses decaying peaks,
@@ -1596,7 +1596,8 @@ not `ImuBiasLearning`'s separate continuous-good timers. Learning inhibition
 does not control prediction noise; `R-BIAS-PROCESS-NOISE` supplies that independent
 policy. Core equations and bias-preserving resets remain unchanged.
 
-- For synchronized accel/gyro integration periods `dt > 0`, compute
+- Supply angular and force integration periods explicitly; replay passes the same
+  logged period for both. For synchronized periods `dt > 0`, compute
   `decay = 1 - clamp(dt / tau, 0, 1)` and independently update each envelope as
   `peak = max(norm(measurement - prior_bias), decay * previous_peak)`.
   Specific force retains gravity. Initial peaks are zero. High dynamics means
@@ -1653,7 +1654,7 @@ specified in `R-REPLAY-BIAS`, and the detector in `R-VERTICAL-ACCELERATION`.
 - Before actual IMU prediction, evaluate once with the prior unit attitude/biases.
   Use separate angular/velocity integration durations for their respective peak
   decay. Fixed settings are 25 m/s², 3 rad/s and tau 0.5 s, both bias estimators
-  enabled. The single-period overload retains replay's existing behavior.
+  enabled. Replay supplies equal periods through the same interface.
   Invalid durations/data disable permissions and preserve peak history.
 - Fresh land-detector `at_rest` is the only rest override. This module has no
   fake-position or fake-height modes; GNSS age does not fabricate these modes.

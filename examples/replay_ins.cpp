@@ -32,6 +32,7 @@
 #include <formal_eskf/runtime/bias_process_noise.hpp>
 #include <formal_eskf/runtime/gnss_measurement.hpp>
 #include <formal_eskf/runtime/gnss_reset.hpp>
+#include <formal_eskf/runtime/imu_bias_inhibition.hpp>
 #include <formal_eskf/runtime/imu_process_noise.hpp>
 #include <formal_eskf/runtime/magnetometer.hpp>
 #include <formal_eskf/runtime/magnetometer_fusion.hpp>
@@ -43,7 +44,6 @@
 #include <formal_eskf/runtime/velocity.hpp>
 #include <formal_eskf/runtime/vertical_acceleration_health.hpp>
 #include "replay_accelerometer.hpp"
-#include "replay_bias.hpp"
 #include "replay_conditions.hpp"
 #include "replay_gnss.hpp"
 #if defined(FORMAL_ESKF_REPLAY_PX4_MATRIX)
@@ -121,14 +121,19 @@ using Vector3 = Linalg::vector_type<3U>;
 using Imu = Types::imu_sample_type;
 using formal_eskf::Status;
 using FusionConditions = formal_eskf::example::ReplayFusionConditions<Linalg>;
-using BiasLearning = formal_eskf::example::ReplayBiasLearning<Linalg>;
+using BiasInhibition = formal_eskf::runtime::ImuBiasInhibition<Linalg>;
 using BiasLimits = formal_eskf::runtime::BiasLimits<double>;
-using ImuFlags = formal_eskf::example::ReplayImuFlags;
 using Accelerometer = formal_eskf::example::ReplayAccelerometer<Linalg, ACCEL_OBS_PERIOD_US>;
 using MagneticLifecycle = formal_eskf::runtime::MagnetometerFusion;
 using GnssQuality = formal_eskf::example::ReplayGnssQuality<Linalg>;
 using GnssLifecycle = formal_eskf::runtime::GnssFusion;
 using VerticalHealth = formal_eskf::runtime::VerticalAccelerationHealth<Linalg>;
+
+struct ImuFlags
+{
+    int at_rest = -1;
+    int accelerometer_clipping = -1;
+};
 
 struct VerticalAccelerationEvidence
 {
@@ -259,7 +264,7 @@ ImuFlags read_imu_flags(std::ifstream & stream, std::uint64_t time)
     return {static_cast<int>(row[1U]), static_cast<int>(row[2U])};
 }
 
-BiasLearning::Parameters read_bias_parameters(std::filesystem::path const & input)
+BiasInhibition::Parameters read_bias_parameters(std::filesystem::path const & input)
 {
     if (!std::filesystem::exists(input / "bias_parameters.csv"))
     {
@@ -1029,7 +1034,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     auto const settings = parameters();
     FusionConditions fusion_conditions;
     auto const bias_parameters = read_bias_parameters(input);
-    BiasLearning bias_learning(bias_parameters);
+    BiasInhibition bias_learning(bias_parameters);
     VerticalHealth vertical_health;
     VerticalAccelerationEvidence vertical_cache;
     // This replay predicts at the logged IMU cadence, not EKF2's downsampled cadence.
@@ -1306,7 +1311,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 : GnssLifecycle::VerticalAccelerationTimes{};
         // Bias inhibition precedes prediction and consumes the preceding verdict.
         // This replay has no fake-position/height modes.
-        BiasLearning::Conditions bias_conditions;
+        BiasInhibition::Conditions bias_conditions;
         bias_conditions.bad_vertical_acceleration =
             prior_health_available && vertical_health.state().bad_vertical_acceleration;
         vertical_bias_inhibited += bias_conditions.bad_vertical_acceleration ? 1U : 0U;
@@ -1314,7 +1319,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         // Legacy input compatibility, only for bias learning. Keep -1 for
         // gravity fusion and vertical health: absence is not measured health.
         bias_conditions.accelerometer_clipping = std::max(0, sample_flags.accelerometer_clipping);
-        auto const learning = bias_learning.update(static_cast<double>(period) * 1e-6, state, sample, bias_conditions);
+        auto const bias_interval = static_cast<double>(period) * 1e-6;
+        auto const learning = bias_learning.update(bias_interval, bias_interval, state, sample, bias_conditions);
         check_status(learning.status, "bias learning", next_time);
         auto const & bias_update = learning.bias_update;
         std::optional<formal_eskf::runtime::ImuNoiseConditions> noise_conditions;

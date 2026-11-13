@@ -50,8 +50,8 @@ template <typename Linalg> void test_bounds(TestContext & test)
 {
     using Scalar = typename Linalg::value_type;
     formal_eskf::configuration::Ins::NominalState<Linalg> state;
-    state.p_n.set(0U, Scalar{3});
-    state.v_n.set(2U, Scalar{-2});
+    state.p_n(0U) = Scalar{3};
+    state.v_n(2U) = Scalar{-2};
     auto const original = state;
     formal_eskf::runtime::BiasLimits<Scalar> const limits{Scalar{0.5}, Scalar{0.125}};
     for (auto sign : {Scalar{-1}, Scalar{1}})
@@ -59,11 +59,13 @@ template <typename Linalg> void test_bounds(TestContext & test)
         // Exact bound, one ULP inside and one ULP outside on different axes.
         for (auto const group : {0U, 1U})
         {
+            // Coefficient writes require the non-const matrix operator().
+            // cppcheck-suppress constVariableReference
             auto & bias = group == 0U ? state.b_a : state.b_g;
             auto const bound = sign * (group == 0U ? limits.accelerometer : limits.gyroscope);
-            bias.set(0U, bound);
-            bias.set(1U, std::nextafter(bound, Scalar{0}));
-            bias.set(2U, std::nextafter(bound, sign * std::numeric_limits<Scalar>::infinity()));
+            bias(0U) = bound;
+            bias(1U) = std::nextafter(bound, Scalar{0});
+            bias(2U) = std::nextafter(bound, sign * std::numeric_limits<Scalar>::infinity());
         }
         auto const inside_a = state.b_a(1U);
         auto const inside_g = state.b_g(1U);
@@ -80,8 +82,8 @@ template <typename Linalg> void test_bounds(TestContext & test)
     }
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
-        state.b_a.set(axis, std::numeric_limits<Scalar>::max());
-        state.b_g.set(axis, -std::numeric_limits<Scalar>::max());
+        state.b_a(axis) = std::numeric_limits<Scalar>::max();
+        state.b_g(axis) = -std::numeric_limits<Scalar>::max();
     }
     test.expect(formal_eskf::runtime::try_limit_bias<Linalg>(state, {}) == Status::success, profile,
                 "zero bounds accept and limit even largest finite inputs without overflow");
@@ -101,8 +103,8 @@ template <typename Linalg> void test_invalid(TestContext & test)
         {
             // Out-of-range valid coefficients must also survive a later invalid input.
             formal_eskf::configuration::Ins::NominalState<Linalg> state;
-            state.b_a.set(0U, Scalar{2});
-            state.b_g.set(0U, Scalar{-2});
+            state.b_a(0U) = Scalar{2};
+            state.b_g(0U) = Scalar{-2};
             formal_eskf::runtime::BiasLimits<Scalar> limits{Scalar{0.5}, Scalar{0.125}};
             if (field < 2U)
             {
@@ -114,8 +116,10 @@ template <typename Linalg> void test_invalid(TestContext & test)
                 {
                     continue; // Negative biases are valid.
                 }
+                // Coefficient writes require the non-const matrix operator().
+                // cppcheck-suppress constVariableReference
                 auto & bias = field < 5U ? state.b_a : state.b_g;
-                bias.set((field - 2U) % 3U, invalid);
+                bias((field - 2U) % 3U) = invalid;
             }
             auto const before = state;
             auto const expected = std::isfinite(invalid) ? Status::domain_error : Status::non_finite_input;
@@ -130,19 +134,19 @@ template <typename Linalg> void test_invalid(TestContext & test)
 template <typename Linalg> void test_correction(TestContext & test)
 {
     using Scalar = typename Linalg::value_type;
-    using Vector = typename Linalg::template vector_type<3U>;
-    using Covariance = typename Linalg::template matrix_type<15U, 15U>;
-    using Matrix3 = typename Linalg::template matrix_type<3U, 3U>;
+    using Vector = formal_eskf::linalg::Vector<Linalg, 3U>;
+    using Covariance = formal_eskf::linalg::Matrix<Linalg, 15U, 15U>;
+    using Matrix3 = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
     using State = formal_eskf::configuration::Ins::NominalState<Linalg>;
     formal_eskf::runtime::BiasLimits<Scalar> const limits{Scalar{0.125}, Scalar{0.0625}};
     Covariance P = Covariance::identity();
     // SPD covariance linking measured velocity to both biases, with opposing signs.
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
-        P.set(3U + axis, 9U + axis, Scalar{0.25});
-        P.set(9U + axis, 3U + axis, Scalar{0.25});
-        P.set(3U + axis, 12U + axis, Scalar{-0.25});
-        P.set(12U + axis, 3U + axis, Scalar{-0.25});
+        P(3U + axis, 9U + axis) = Scalar{0.25};
+        P(9U + axis, 3U + axis) = Scalar{0.25};
+        P(3U + axis, 12U + axis) = Scalar{-0.25};
+        P(12U + axis, 3U + axis) = Scalar{-0.25};
     }
     State state;
     auto const V = Matrix3::identity();
@@ -177,8 +181,8 @@ template <typename Linalg> void test_correction(TestContext & test)
     P = corrected_P;
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
-        P.set(3U + axis, 12U + axis, Scalar{0});
-        P.set(12U + axis, 3U + axis, Scalar{0});
+        P(3U + axis, 12U + axis) = Scalar{0};
+        P(12U + axis, 3U + axis) = Scalar{0};
     }
     auto const reverse_velocity = state.v_n - Vector::from_row_major({Scalar{0.25}, Scalar{-0.25}, Scalar{0.25}});
     test.expect(formal_eskf::try_correct_velocity(state, P, reverse_velocity, V, (Scalar{1} / Scalar{1024}), state,

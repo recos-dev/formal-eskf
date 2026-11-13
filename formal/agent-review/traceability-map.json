@@ -3583,8 +3583,16 @@
         "lean": [],
         "cpp": [
           {
-            "file": "examples/replay_bias.hpp",
-            "symbol": "using ReplayBiasLearning"
+            "file": "include/formal_eskf/runtime/imu_bias_inhibition.hpp",
+            "symbol": "ImuBiasInhibition<Linalg>::update("
+          },
+          {
+            "file": "include/formal_eskf/runtime/imu_bias_inhibition.hpp",
+            "symbol": "ImuBiasInhibition<Linalg>::decayed_peak("
+          },
+          {
+            "file": "include/formal_eskf/runtime/imu_bias_inhibition.hpp",
+            "symbol": "ImuBiasInhibition<Linalg>::learning_permissions("
           },
           {
             "file": "include/formal_eskf/runtime/imu_bias_inhibition.hpp",
@@ -3596,7 +3604,7 @@
           },
           {
             "file": "examples/replay_ins.cpp",
-            "symbol": "BiasLearning::Parameters read_bias_parameters("
+            "symbol": "BiasInhibition::Parameters read_bias_parameters("
           },
           {
             "file": "examples/replay_px4.py",

@@ -47,8 +47,8 @@ template <typename Linalg>
     }
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
-        state.b_a.set(axis, std::clamp(state.b_a(axis), -limits.accelerometer, limits.accelerometer));
-        state.b_g.set(axis, std::clamp(state.b_g(axis), -limits.gyroscope, limits.gyroscope));
+        state.b_a(axis) = std::clamp(state.b_a(axis), -limits.accelerometer, limits.accelerometer);
+        state.b_g(axis) = std::clamp(state.b_g(axis), -limits.gyroscope, limits.gyroscope);
     }
     return Status::success;
 }

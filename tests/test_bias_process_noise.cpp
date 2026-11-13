@@ -29,9 +29,9 @@ constexpr std::string_view profile = "bias process noise";
 template <typename Linalg> struct BiasProcessNoiseFixture
 {
     using value_type = typename Linalg::value_type;
-    using vector_type = typename Linalg::template vector_type<3U>;
+    using vector_type = formal_eskf::linalg::Vector<Linalg, 3U>;
     using noise_type = formal_eskf::configuration::Ins::ProcessNoise<Linalg>;
-    using covariance_type = typename Linalg::template matrix_type<15U, 15U>;
+    using covariance_type = formal_eskf::linalg::Matrix<Linalg, 15U, 15U>;
     noise_type noise{vector_type::from_row_major({value_type{1}, value_type{2}, value_type{4}}),
                      vector_type::from_row_major({value_type{0.25}, value_type{0.5}, value_type{1}}),
                      vector_type::from_row_major({value_type{0.125}, value_type{0.25}, value_type{0.5}}),
@@ -72,19 +72,17 @@ template <typename Linalg> void test_selection(TestContext & test)
         {
             bool const accel_inhibit = (mask & (1U << axis)) != 0U;
             bool const gyro_inhibit = (mask & (1U << (3U + axis))) != 0U;
-            fixture.covariance.set(9U + axis, 9U + axis,
-                                   fixture.noise.specific_force_variance(axis) *
-                                       (accel_inhibit ? Scalar{2} : Scalar{0.5}));
-            fixture.covariance.set(12U + axis, 12U + axis,
-                                   fixture.noise.angular_rate_variance(axis) *
-                                       (gyro_inhibit ? Scalar{2} : Scalar{0.5}));
+            fixture.covariance(9U + axis, 9U + axis) =
+                fixture.noise.specific_force_variance(axis) * (accel_inhibit ? Scalar{2} : Scalar{0.5});
+            fixture.covariance(12U + axis, 12U + axis) =
+                fixture.noise.angular_rate_variance(axis) * (gyro_inhibit ? Scalar{2} : Scalar{0.5});
             if (accel_inhibit)
             {
-                expected.accelerometer_bias_random_walk_variance_density.set(axis, Scalar{0});
+                expected.accelerometer_bias_random_walk_variance_density(axis) = Scalar{0};
             }
             if (gyro_inhibit)
             {
-                expected.gyroscope_bias_random_walk_variance_density.set(axis, Scalar{0});
+                expected.gyroscope_bias_random_walk_variance_density(axis) = Scalar{0};
             }
         }
         auto selected = fixture.noise;
@@ -106,8 +104,8 @@ template <typename Linalg> void test_selection(TestContext & test)
             auto const a = fixture.noise.specific_force_variance(axis);
             auto const g = fixture.noise.angular_rate_variance(axis);
             auto const target = side < 0 ? Scalar{0} : std::numeric_limits<Scalar>::infinity();
-            fixture.covariance.set(9U + axis, 9U + axis, side == 0 ? a : std::nextafter(a, target));
-            fixture.covariance.set(12U + axis, 12U + axis, side == 0 ? g : std::nextafter(g, target));
+            fixture.covariance(9U + axis, 9U + axis) = side == 0 ? a : std::nextafter(a, target);
+            fixture.covariance(12U + axis, 12U + axis) = side == 0 ? g : std::nextafter(g, target);
         }
         auto expected = fixture.noise;
         if (side >= 0)
@@ -146,7 +144,7 @@ template <typename Linalg> void test_failures(TestContext & test)
                 if (field < 2U)
                 {
                     auto const index = 9U + 3U * field + axis;
-                    fixture.covariance.set(index, index, invalid);
+                    fixture.covariance(index, index) = invalid;
                 }
                 else
                 {
@@ -154,7 +152,7 @@ template <typename Linalg> void test_failures(TestContext & test)
                         &fixture.noise.specific_force_variance, &fixture.noise.angular_rate_variance,
                         &fixture.noise.accelerometer_bias_random_walk_variance_density,
                         &fixture.noise.gyroscope_bias_random_walk_variance_density};
-                    groups[field - 2U]->set(axis, invalid);
+                    (*groups[field - 2U])(axis) = invalid;
                 }
                 auto const expected = std::isfinite(invalid) ? Status::domain_error : Status::non_finite_input;
                 test.expect(formal_eskf::runtime::try_inhibit_bias_process_noise(fixture.covariance, fixture.noise,
@@ -175,8 +173,8 @@ template <typename Linalg> void test_prediction(TestContext & test)
 {
     using Scalar = typename Linalg::value_type;
     using Ins = formal_eskf::configuration::Ins;
-    using Matrix2 = typename Linalg::template matrix_type<2U, 2U>;
-    using Vector2 = typename Linalg::template vector_type<2U>;
+    using Matrix2 = formal_eskf::linalg::Matrix<Linalg, 2U, 2U>;
+    using Vector2 = formal_eskf::linalg::Vector<Linalg, 2U>;
     BiasProcessNoiseFixture<Linalg> fixture;
     Ins::NominalState<Linalg> state;
     formal_eskf::ImuSample<Linalg> imu;
@@ -187,10 +185,10 @@ template <typename Linalg> void test_prediction(TestContext & test)
     parameters.dt_max = Scalar{1};
     // Correlated, positive-definite velocity/bias block. No other state is
     // correlated to it, so a velocity correction can release the inhibited axis.
-    fixture.covariance.set(3U, 3U, Scalar{2});
-    fixture.covariance.set(9U, 9U, Scalar{1.5});
-    fixture.covariance.set(3U, 9U, Scalar{1.5});
-    fixture.covariance.set(9U, 3U, Scalar{1.5});
+    fixture.covariance(3U, 3U) = Scalar{2};
+    fixture.covariance(9U, 9U) = Scalar{1.5};
+    fixture.covariance(3U, 9U) = Scalar{1.5};
+    fixture.covariance(9U, 3U) = Scalar{1.5};
     test.expect(formal_eskf::runtime::try_inhibit_bias_process_noise(fixture.covariance, fixture.noise,
                                                                      parameters.process_noise) == Status::success,
                 profile, "select noise before prediction");
@@ -217,9 +215,9 @@ template <typename Linalg> void test_prediction(TestContext & test)
             profile, "actual prediction retains intensity times dt, not a squared dt or double-squared variance");
     }
     // One increment may cross the threshold; the next step suppresses its noise.
-    fixture.covariance.set(9U, 9U, Scalar{0.984375});
-    fixture.covariance.set(3U, 9U, Scalar{0});
-    fixture.covariance.set(9U, 3U, Scalar{0});
+    fixture.covariance(9U, 9U) = Scalar{0.984375};
+    fixture.covariance(3U, 9U) = Scalar{0};
+    fixture.covariance(9U, 3U) = Scalar{0};
     test.expect(formal_eskf::runtime::try_inhibit_bias_process_noise(fixture.covariance, fixture.noise,
                                                                      parameters.process_noise) == Status::success &&
                     formal_eskf::try_predict_covariance(state, fixture.covariance, imu, Scalar{0.25}, parameters,

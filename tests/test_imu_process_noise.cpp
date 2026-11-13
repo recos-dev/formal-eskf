@@ -57,7 +57,7 @@ template <typename Noise> bool same_noise(Noise const & a, Noise const & b)
 template <typename Linalg> Ins::ProcessNoise<Linalg> configured_noise()
 {
     using Scalar = typename Linalg::value_type;
-    using Vector = typename Linalg::template vector_type<3U>;
+    using Vector = formal_eskf::linalg::Vector<Linalg, 3U>;
     return {Vector::from_row_major({Scalar{1}, Scalar{32}, Scalar{0}}),
             Vector::from_row_major({Scalar{0.25}, Scalar{0.5}, Scalar{1}}),
             Vector::from_row_major({Scalar{0.125}, Scalar{0.25}, Scalar{0.5}}),
@@ -80,7 +80,7 @@ template <typename Linalg> void test_selection(TestContext & test)
                 conditions.accelerometer_clipped[axis] = (mask & (1U << axis)) != 0U;
                 if (fault || conditions.accelerometer_clipped[axis])
                 {
-                    expected.specific_force_variance.set(axis, Scalar{16});
+                    expected.specific_force_variance(axis) = Scalar{16};
                 }
             }
             auto output = configured;
@@ -104,7 +104,7 @@ template <typename Linalg> void test_selection(TestContext & test)
     {
         auto output = configured;
         auto expected = configured;
-        expected.specific_force_variance.set(0U, variance);
+        expected.specific_force_variance(0U) = variance;
         test.expect(formal_eskf::runtime::try_select_imu_process_noise(configured, {false, {true, false, false}},
                                                                        variance, output) == Status::success &&
                         same_noise(output, expected),
@@ -138,7 +138,7 @@ template <typename Linalg> void test_failures(TestContext & test)
                 for (std::size_t axis = 0U; axis < 3U; ++axis)
                 {
                     noise = configured_noise<Linalg>();
-                    noise_vectors(noise)[field]->set(axis, invalid);
+                    (*noise_vectors(noise)[field])(axis) = invalid;
                     auto const original = noise;
                     output = before;
                     test.expect(formal_eskf::runtime::try_select_imu_process_noise(noise, conditions, Scalar{16},
@@ -159,8 +159,8 @@ template <typename Linalg> void test_failures(TestContext & test)
 template <typename Linalg> void test_prediction(TestContext & test)
 {
     using Scalar = typename Linalg::value_type;
-    using Vector = typename Linalg::template vector_type<3U>;
-    using Covariance = typename Linalg::template matrix_type<15U, 15U>;
+    using Vector = formal_eskf::linalg::Vector<Linalg, 3U>;
+    using Covariance = formal_eskf::linalg::Matrix<Linalg, 15U, 15U>;
     auto configured = configured_noise<Linalg>();
     configured.specific_force_variance = Vector::from_row_major({Scalar{1}, Scalar{2}, Scalar{4}});
     auto selected = configured;

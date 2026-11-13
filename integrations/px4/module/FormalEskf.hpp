@@ -29,7 +29,7 @@
 #include <formal_eskf/eskf/eskf.hpp>
 #include <formal_eskf/linalg/backend/px4_matrix.hpp>
 #include <formal_eskf/runtime/gnss_fusion.hpp>
-#include <formal_eskf/runtime/gnss_reset.hpp>
+#include <formal_eskf/runtime/navigation_reset.hpp>
 #include <formal_eskf/runtime/imu_bias_inhibition.hpp>
 #include <formal_eskf/runtime/position.hpp>
 #include <formal_eskf/runtime/velocity.hpp>

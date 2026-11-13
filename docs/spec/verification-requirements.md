@@ -881,8 +881,8 @@ calibration evidence, model-epoch validation or long-distance flight qualificati
 
 These caller-invoked INS operations replace navigation estimates; they are not
 Kalman corrections or `E-RESET`'s post-injection change of error coordinates.
-The GNSS-specific variance policy belongs to `runtime/gnss_reset.hpp`, not to
-the generic numerical correction. Inputs are already aligned to the prior's
+The navigation reset operations and GNSS horizontal-variance policy belong to
+`runtime/navigation_reset.hpp`, not to the generic numerical correction. Inputs are already aligned to the prior's
 local NED frame, body/IMU origin and time; quality, alignment and reset authority
 remain caller responsibilities. No clock, lifecycle or automatic retry is owned.
 
@@ -897,9 +897,13 @@ and [velocity reset](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534
 | Operation | Nominal state | Covariance |
 |---|---|---|
 | `try_reset_gnss_horizontal_position` | Set `p_N,p_E` to the supplied 2-vector; leave `p_D` and all other state fields unchanged | Clear rows/columns 0 and 1, then set both diagonals to `max(variance_N + variance_E, 0.01^2)` in m^2 |
-| `try_reset_gnss_vertical_position` | Set only `p_D` to the supplied scalar; leave velocity, horizontal position, attitude and biases unchanged | Clear off-diagonal entries in row/column 2; set `P(2,2) = max(variance_D, 0.01^2)` in m^2; preserve every other entry |
-| `try_reset_gnss_vertical_velocity` | Set only `v_D` to the supplied scalar in m/s; preserve all other nominal fields | Clear off-diagonal entries in rows/columns 2 and 5; retain `P(2,2)`; set `P(5,5) = max(variance_D, 0.01^2)` in m^2/s^2; preserve every other entry |
-| `try_reset_gnss_velocity` | Set all three components of `v_n`; leave position, attitude and biases unchanged | Clear off-diagonal entries in rows/columns 0..5. Preserve position diagonals 0..2; set velocity diagonals 3..5 to `max(variance_i, 0.01^2)` in m^2/s^2 |
+| `try_reset_vertical_position` | Set only `p_D` to the supplied scalar; leave velocity, horizontal position, attitude and biases unchanged | Clear off-diagonal entries in row/column 2; set `P(2,2) = max(variance_D, 0.01^2)` in m^2; preserve every other entry |
+| `try_reset_vertical_velocity` | Set only `v_D` to the supplied scalar in m/s; preserve all other nominal fields | Clear off-diagonal entries in rows/columns 2 and 5; retain `P(2,2)`; set `P(5,5) = max(variance_D, 0.01^2)` in m^2/s^2; preserve every other entry |
+| `try_reset_velocity` | Set all three components of `v_n`; leave position, attitude and biases unchanged | Clear off-diagonal entries in rows/columns 0..5. Preserve position diagonals 0..2; set velocity diagonals 3..5 to `max(variance_i, 0.01^2)` in m^2/s^2 |
+
+Vertical position and velocity resets are source-independent numerical operations.
+The GNSS prefix is retained only for horizontal position, whose variance-sum
+policy is receiver-specific. Source permissions and acknowledgment stay in callers.
 
 The horizontal variance sum follows `resetHorizontalPositionToGnss` calling
 `resetLatLonTo`; it is not the per-axis policy of PX4's other position-reset
@@ -1253,10 +1257,11 @@ Replay checks are integration evidence, not new Lean/ESBMC proofs or accuracy cl
 
 ### R-GNSS-VERTICAL-RECOVERY: bounded vertical innovations during IMU faults
 
-`runtime/gnss_measurement.hpp` adds source-specific INS velocity and NED Down
-position fusion. Generic gates and ungated correction APIs are unchanged. The
-caller must first establish source quality/lifecycle permission, frame/time,
-unit quaternion, symmetric PSD P and SPD measurement noise, as for ordinary
+`runtime/navigation_measurement.hpp` provides GNSS velocity fusion and
+source-independent NED Down position fusion (`fuse_height`). Generic gates and
+ungated correction APIs are unchanged. The caller must first establish source
+quality/lifecycle permission, frame/time, unit quaternion, symmetric PSD P and
+SPD measurement noise, as for ordinary
 fusion. A fault never grants source permission or requests a reset.
 
 | Observation | Additional condition to release a rejected gate |
@@ -1274,15 +1279,16 @@ variance; its strict exception bound applies even when the general quality
 speed-accuracy check is disabled. Both accuracy values must be finite, accuracy
 nonnegative and maximum positive, regardless of the fault flag.
 
-`GnssMeasurementResult` retains raw innovation, S and test ratio in `fusion`, and
+`NavigationFusionResult` retains raw innovation, S and test ratio in `fusion`, and
 separately exposes `fusion_innovation` and `innovation_limited`. Raw ratio > 1
 can therefore accompany successful limited fusion. Selected innovation is valid
 only with `diagnostics_valid`; only `decision == fused` means it was applied.
-`check_gnss_velocity` returns `GnssInnovationCheck` without correction, for an
-active source's quality-rejected sample. It reports status, diagnostic validity
-and gate rejection; it cannot report successful fusion. Gate/numerical errors retain their existing
-statuses; invalid accuracy returns non_finite_input/domain_error. Rejection or
-any failure, including LLT/normalization after limiting, preserves both outputs.
+`check_gnss_velocity` returns `NavigationInnovationCheck` without correction, for an
+active source's quality-rejected sample. Its `gate` member owns status, diagnostic
+validity and effective gate rejection; it cannot report successful fusion.
+Gate/numerical errors retain their existing statuses; invalid accuracy returns
+non_finite_input/domain_error. Rejection or any failure, including
+LLT/normalization after limiting, preserves both outputs.
 Independent whole-prior state/P aliases are supported; other storage is disjoint.
 
 Replay enables velocity recovery only with a quality/lifecycle profile, using

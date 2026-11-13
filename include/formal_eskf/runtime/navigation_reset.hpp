@@ -20,10 +20,10 @@ namespace detail
 {
 
 template <typename Linalg, std::size_t Size>
-[[nodiscard]] Status validate_gnss_reset_inputs(configuration::Ins::NominalState<Linalg> const & state,
-                                                linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-                                                linalg::Matrix<Linalg, Size, 1U> const & observation,
-                                                linalg::Matrix<Linalg, Size, 1U> const & variances) noexcept
+[[nodiscard]] Status validate_navigation_reset_inputs(configuration::Ins::NominalState<Linalg> const & state,
+                                                      linalg::Matrix<Linalg, 15U, 15U> const & covariance,
+                                                      linalg::Vector<Linalg, Size> const & observation,
+                                                      linalg::Vector<Linalg, Size> const & variances) noexcept
 {
     using value_type = typename Linalg::value_type;
     if (!linalg::all_finite(state.p_n) || !linalg::all_finite(state.v_n) ||
@@ -62,10 +62,22 @@ void uncorrelate_navigation_axis(linalg::Matrix<Linalg, 15U, 15U> & covariance, 
     {
         if (index != axis)
         {
-            covariance.set(axis, index, typename Linalg::value_type{0});
-            covariance.set(index, axis, typename Linalg::value_type{0});
+            covariance(axis, index) = typename Linalg::value_type{0};
+            covariance(index, axis) = typename Linalg::value_type{0};
         }
     }
+}
+
+/** Decouple an overwritten coordinate and apply the navigation reset noise floor. */
+template <typename Linalg>
+void reset_navigation_axis(linalg::Matrix<Linalg, 15U, 15U> & covariance, std::size_t axis,
+                           typename Linalg::value_type variance) noexcept
+{
+    using value_type = typename Linalg::value_type;
+    constexpr value_type minimum_standard_deviation = static_cast<value_type>(0.01);
+    constexpr value_type minimum_variance = minimum_standard_deviation * minimum_standard_deviation;
+    uncorrelate_navigation_axis(covariance, axis);
+    covariance(axis, axis) = variance < minimum_variance ? minimum_variance : variance;
 }
 
 } /* end namespace detail */
@@ -87,14 +99,14 @@ void uncorrelate_navigation_axis(linalg::Matrix<Linalg, 15U, 15U> & covariance, 
 template <typename Linalg>
 [[nodiscard]] Status try_reset_gnss_horizontal_position(configuration::Ins::NominalState<Linalg> const & state,
                                                         linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-                                                        linalg::Matrix<Linalg, 2U, 1U> const & position,
-                                                        linalg::Matrix<Linalg, 2U, 1U> const & variances,
+                                                        linalg::Vector<Linalg, 2U> const & position,
+                                                        linalg::Vector<Linalg, 2U> const & variances,
                                                         configuration::Ins::NominalState<Linalg> & state_output,
                                                         linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                                                        linalg::Matrix<Linalg, 2U, 1U> & delta_output) noexcept
+                                                        linalg::Vector<Linalg, 2U> & delta_output) noexcept
 {
     using value_type = typename Linalg::value_type;
-    Status const status = detail::validate_gnss_reset_inputs(state, covariance, position, variances);
+    Status const status = detail::validate_navigation_reset_inputs(state, covariance, position, variances);
     if (!succeeded(status))
     {
         return status;
@@ -106,15 +118,12 @@ template <typename Linalg>
         return Status::non_finite_result;
     }
 
-    constexpr value_type minimum_standard_deviation = static_cast<value_type>(0.01);
-    constexpr value_type minimum_variance = minimum_standard_deviation * minimum_standard_deviation;
     auto candidate = state;
     auto P = covariance;
     for (std::size_t axis = 0U; axis < 2U; ++axis)
     {
-        candidate.p_n.set(axis, position(axis));
-        detail::uncorrelate_navigation_axis(P, axis);
-        P.set(axis, axis, horizontal_variance < minimum_variance ? minimum_variance : horizontal_variance);
+        candidate.p_n(axis) = position(axis);
+        detail::reset_navigation_axis(P, axis, horizontal_variance);
     }
     state_output = candidate;
     covariance_output = P;
@@ -123,7 +132,7 @@ template <typename Linalg>
 }
 
 /**
- * Replace INS vertical position with a qualified GNSS observation in local
+ * Replace INS vertical position with a qualified height observation in local
  * NED meters (positive Down), not positive-up altitude. Set P(2,2) to
  * max(variance, 0.01^2) in m^2 and clear the off-diagonal entries in row/column 2.
  * All other nominal fields and covariance entries remain unchanged, including
@@ -136,19 +145,19 @@ template <typename Linalg>
  * No height-reference initialization, bias adjustment or velocity reset occurs.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_reset_gnss_vertical_position(configuration::Ins::NominalState<Linalg> const & state,
-                                                      linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-                                                      typename Linalg::value_type position_d,
-                                                      typename Linalg::value_type variance,
-                                                      configuration::Ins::NominalState<Linalg> & state_output,
-                                                      linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                                                      typename Linalg::value_type & delta_output) noexcept
+[[nodiscard]] Status try_reset_vertical_position(configuration::Ins::NominalState<Linalg> const & state,
+                                                 linalg::Matrix<Linalg, 15U, 15U> const & covariance,
+                                                 typename Linalg::value_type position_d,
+                                                 typename Linalg::value_type variance,
+                                                 configuration::Ins::NominalState<Linalg> & state_output,
+                                                 linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
+                                                 typename Linalg::value_type & delta_output) noexcept
 {
     using value_type = typename Linalg::value_type;
-    using scalar_vector_type = linalg::Matrix<Linalg, 1U, 1U>;
+    using scalar_vector_type = linalg::Vector<Linalg, 1U>;
     Status const status =
-        detail::validate_gnss_reset_inputs(state, covariance, scalar_vector_type::from_row_major({position_d}),
-                                           scalar_vector_type::from_row_major({variance}));
+        detail::validate_navigation_reset_inputs(state, covariance, scalar_vector_type::from_row_major({position_d}),
+                                                 scalar_vector_type::from_row_major({variance}));
     if (!succeeded(status))
     {
         return status;
@@ -159,13 +168,10 @@ template <typename Linalg>
         return Status::non_finite_result;
     }
 
-    constexpr value_type minimum_standard_deviation = static_cast<value_type>(0.01);
-    constexpr value_type minimum_variance = minimum_standard_deviation * minimum_standard_deviation;
     auto candidate = state;
-    candidate.p_n.set(2U, position_d);
+    candidate.p_n(2U) = position_d;
     auto P = covariance;
-    detail::uncorrelate_navigation_axis(P, 2U);
-    P.set(2U, 2U, variance < minimum_variance ? minimum_variance : variance);
+    detail::reset_navigation_axis(P, 2U, variance);
     state_output = candidate;
     covariance_output = P;
     delta_output = delta;
@@ -173,29 +179,29 @@ template <typename Linalg>
 }
 
 /**
- * Replace only INS Down velocity with a qualified GNSS observation in m/s.
+ * Replace only INS Down velocity with a qualified navigation observation in m/s.
  * Set P(5,5) to max(variance, 0.01^2) in m^2/s^2. Decouple both Down position
  * and Down velocity (rows/columns 2 and 5), retaining P(2,2). All other nominal
  * fields and covariance entries remain unchanged. Delta is new v_D minus old.
  *
- * Input validation, aliasing and atomicity follow try_reset_gnss_vertical_position.
+ * Input validation, aliasing and atomicity follow try_reset_vertical_position.
  * Variance is already prepared; no vertical-noise scaling is added here.
  * No height or horizontal-velocity reset, clock or fusion acknowledgment occurs.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_reset_gnss_vertical_velocity(configuration::Ins::NominalState<Linalg> const & state,
-                                                      linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-                                                      typename Linalg::value_type velocity_d,
-                                                      typename Linalg::value_type variance,
-                                                      configuration::Ins::NominalState<Linalg> & state_output,
-                                                      linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                                                      typename Linalg::value_type & delta_output) noexcept
+[[nodiscard]] Status try_reset_vertical_velocity(configuration::Ins::NominalState<Linalg> const & state,
+                                                 linalg::Matrix<Linalg, 15U, 15U> const & covariance,
+                                                 typename Linalg::value_type velocity_d,
+                                                 typename Linalg::value_type variance,
+                                                 configuration::Ins::NominalState<Linalg> & state_output,
+                                                 linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
+                                                 typename Linalg::value_type & delta_output) noexcept
 {
     using value_type = typename Linalg::value_type;
-    using scalar_vector_type = linalg::Matrix<Linalg, 1U, 1U>;
+    using scalar_vector_type = linalg::Vector<Linalg, 1U>;
     Status const status =
-        detail::validate_gnss_reset_inputs(state, covariance, scalar_vector_type::from_row_major({velocity_d}),
-                                           scalar_vector_type::from_row_major({variance}));
+        detail::validate_navigation_reset_inputs(state, covariance, scalar_vector_type::from_row_major({velocity_d}),
+                                                 scalar_vector_type::from_row_major({variance}));
     if (!succeeded(status))
     {
         return status;
@@ -206,14 +212,11 @@ template <typename Linalg>
         return Status::non_finite_result;
     }
 
-    constexpr value_type minimum_standard_deviation = static_cast<value_type>(0.01);
-    constexpr value_type minimum_variance = minimum_standard_deviation * minimum_standard_deviation;
     auto candidate = state;
-    candidate.v_n.set(2U, velocity_d);
+    candidate.v_n(2U) = velocity_d;
     auto P = covariance;
     detail::uncorrelate_navigation_axis(P, 2U);
-    detail::uncorrelate_navigation_axis(P, 5U);
-    P.set(5U, 5U, variance < minimum_variance ? minimum_variance : variance);
+    detail::reset_navigation_axis(P, 5U, variance);
     state_output = candidate;
     covariance_output = P;
     delta_output = delta;
@@ -221,7 +224,7 @@ template <typename Linalg>
 }
 
 /**
- * Replace all three NED velocity components with a qualified GNSS observation
+ * Replace all three NED velocity components with a qualified navigation observation
  * in m/s. Set each velocity variance to max(variance_i, 0.01^2), in m^2/s^2.
  * Decouple all position AND velocity coordinates from each other and the rest
  * of P; preserve position values/diagonals, attitude, biases and their P block.
@@ -230,16 +233,15 @@ template <typename Linalg>
  * This is neither a height-position reset nor a gated Kalman correction.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_reset_gnss_velocity(configuration::Ins::NominalState<Linalg> const & state,
-                                             linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-                                             linalg::Matrix<Linalg, 3U, 1U> const & velocity,
-                                             linalg::Matrix<Linalg, 3U, 1U> const & variances,
-                                             configuration::Ins::NominalState<Linalg> & state_output,
-                                             linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                                             linalg::Matrix<Linalg, 3U, 1U> & delta_output) noexcept
+[[nodiscard]] Status try_reset_velocity(configuration::Ins::NominalState<Linalg> const & state,
+                                        linalg::Matrix<Linalg, 15U, 15U> const & covariance,
+                                        linalg::Vector<Linalg, 3U> const & velocity,
+                                        linalg::Vector<Linalg, 3U> const & variances,
+                                        configuration::Ins::NominalState<Linalg> & state_output,
+                                        linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
+                                        linalg::Vector<Linalg, 3U> & delta_output) noexcept
 {
-    using value_type = typename Linalg::value_type;
-    Status const status = detail::validate_gnss_reset_inputs(state, covariance, velocity, variances);
+    Status const status = detail::validate_navigation_reset_inputs(state, covariance, velocity, variances);
     if (!succeeded(status))
     {
         return status;
@@ -250,16 +252,13 @@ template <typename Linalg>
         return Status::non_finite_result;
     }
 
-    constexpr value_type minimum_standard_deviation = static_cast<value_type>(0.01);
-    constexpr value_type minimum_variance = minimum_standard_deviation * minimum_standard_deviation;
     auto candidate = state;
     candidate.v_n = velocity;
     auto P = covariance;
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
         detail::uncorrelate_navigation_axis(P, axis);
-        detail::uncorrelate_navigation_axis(P, 3U + axis);
-        P.set(3U + axis, 3U + axis, variances(axis) < minimum_variance ? minimum_variance : variances(axis));
+        detail::reset_navigation_axis(P, 3U + axis, variances(axis));
     }
     state_output = candidate;
     covariance_output = P;

@@ -7,8 +7,8 @@
 #include <cstdint>
 
 #include <formal_eskf/runtime/gnss_fusion.hpp>
-#include <formal_eskf/runtime/gnss_measurement.hpp>
-#include <formal_eskf/runtime/gnss_reset.hpp>
+#include <formal_eskf/runtime/navigation_measurement.hpp>
+#include <formal_eskf/runtime/navigation_reset.hpp>
 #include <formal_eskf/runtime/position.hpp>
 #include <formal_eskf/runtime/vertical_acceleration_health.hpp>
 
@@ -177,8 +177,8 @@ void HeightAiding<Linalg>::reset_height(Source source, std::uint64_t now_us, val
 {
     value_type delta{};
     // The existing checked primitive replaces one Down coordinate regardless of sensor origin.
-    result.status = runtime::try_reset_gnss_vertical_position(state, covariance, m_origin_altitude - altitude, variance,
-                                                              state, covariance, delta);
+    result.status = runtime::try_reset_vertical_position(state, covariance, m_origin_altitude - altitude, variance,
+                                                         state, covariance, delta);
     if (!succeeded(result.status))
     {
         return;
@@ -300,11 +300,11 @@ void HeightAiding<Linalg>::process(Source source, std::uint64_t now_us, Sample c
         return;
     }
     aid.fusion_reset = false;
-    // Both qualified sources observe scalar NED Down. The historical GNSS-named
-    // runtime entry point contains no receiver policy or altitude conversion.
+    // Both qualified sources observe scalar NED Down; source policy and
+    // altitude conversion stay here.
     auto const measurement =
-        runtime::fuse_gnss_height(state, covariance, observation, observation_variance, static_cast<value_type>(1e-6),
-                                  gate_sigma, acceleration.bad, state, covariance, bias_update);
+        runtime::fuse_height(state, covariance, observation, observation_variance, static_cast<value_type>(1e-6),
+                             gate_sigma, acceleration.bad, state, covariance, bias_update);
     aid.fusion = measurement.fusion;
     aid.fusion_innovation = measurement.fusion_innovation(0U);
     aid.innovation_limited = measurement.innovation_limited;
@@ -338,8 +338,8 @@ void HeightAiding<Linalg>::process(Source source, std::uint64_t now_us, Sample c
         aid.bias.value = (barometer ? m_barometer_lpf : sample.altitude) - (m_origin_altitude - state.p_n(2U));
         if (barometer && !vertical_velocity_aiding)
         {
-            result.status = runtime::try_reset_gnss_vertical_velocity(state, covariance, value_type{0}, value_type{10},
-                                                                      state, covariance, result.velocity_delta);
+            result.status = runtime::try_reset_vertical_velocity(state, covariance, value_type{0}, value_type{10},
+                                                                 state, covariance, result.velocity_delta);
             if (succeeded(result.status))
             {
                 ++result.velocity_resets;

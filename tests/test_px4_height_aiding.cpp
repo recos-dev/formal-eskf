@@ -62,10 +62,10 @@ template <typename Linalg> void run(Context & test)
         F f;
         f.start(test);
         f.P = Aiding::covariance_type::identity();
-        f.P.set(2, 9, static_cast<Scalar>(0.2));
-        f.P.set(9, 2, static_cast<Scalar>(0.2));
-        f.P.set(2, 12, static_cast<Scalar>(0.2));
-        f.P.set(12, 2, static_cast<Scalar>(0.2));
+        f.P(2, 9) = static_cast<Scalar>(0.2);
+        f.P(9, 2) = static_cast<Scalar>(0.2);
+        f.P(2, 12) = static_cast<Scalar>(0.2);
+        f.P(12, 2) = static_cast<Scalar>(0.2);
         auto open = f;
         typename Aiding::Sample gps{f.now + 20000U, 2, 0, 501, 1};
         formal_eskf::configuration::Ins::BiasUpdate inhibited{{false, false, false}, {true, true, true}};
@@ -88,8 +88,8 @@ template <typename Linalg> void run(Context & test)
     {
         F f;
         f.start(test);
-        f.state.b_a.set(0, Scalar{-1});
-        f.state.b_g.set(1, Scalar{1});
+        f.state.b_a(0) = Scalar{-1};
+        f.state.b_g(1) = Scalar{1};
         formal_eskf::configuration::Ins::BiasUpdate inhibited{{false, false, false}, {false, false, false}};
         typename Aiding::Sample sample{f.now + 20000U, barometer ? 1U : 2U, 0,
                                        barometer ? f.baro_altitude : f.gnss_altitude, 1};
@@ -98,7 +98,7 @@ template <typename Linalg> void run(Context & test)
         test.expect(result.fused == 1 && f.state.b_a(0) == static_cast<Scalar>(-0.4) &&
                         f.state.b_g(1) == static_cast<Scalar>(0.15),
                     "bias limits", "each height source limits successful corrections even with learning inhibited");
-        f.state.b_a.set(0, Scalar{-1});
+        f.state.b_a(0) = Scalar{-1};
         sample.time_us += 20000U;
         sample.altitude += 1000;
         result = f.aiding.update(sample.time_us, barometer ? sample : typename Aiding::Sample{},
@@ -159,7 +159,7 @@ template <typename Linalg> void run(Context & test)
         test.expect(failed.status == Status::out_of_range && invalid.state.p_n(2) == f.state.p_n(2) &&
                         invalid.aiding.reset_counter() == f.aiding.reset_counter(),
                     "time", "future health does not mutate the height transaction");
-        f.state.v_n.set(2, Scalar{2});
+        f.state.v_n(2) = Scalar{2};
         auto const reset_counter = f.aiding.reset_counter();
         auto const reset =
             f.aiding.update(sample.time_us, barometer ? sample : typename Aiding::Sample{},
@@ -312,9 +312,9 @@ template <typename Linalg> void run(Context & test)
         f.quality = false;
         f.velocity_aiding = false;
         f.tick();
-        f.state.v_n.set(0, 2);
-        f.state.v_n.set(1, 3);
-        f.state.v_n.set(2, 4);
+        f.state.v_n(0) = 2;
+        f.state.v_n(1) = 3;
+        f.state.v_n(2) = 4;
         f.baro_altitude += 1000;
         typename Aiding::Result result;
         for (unsigned i = 0; i < 251; ++i)
@@ -345,7 +345,7 @@ template <typename Linalg> void run(Context & test)
         f.quality = false;
         f.tick();
         f.baro_altitude += 1000;
-        f.state.v_n.set(2, 4);
+        f.state.v_n(2) = 4;
         for (unsigned i = 0; i < 250; ++i)
         {
             test.expect(f.tick(true, false).height_resets == 0, "combined reset", "reference timeout pending");
@@ -363,7 +363,7 @@ template <typename Linalg> void run(Context & test)
         auto const progress = f.aiding.progress_time();
         auto const bias = f.aiding.session(Source::barometer).bias.value;
         auto const prior = f.state;
-        f.P.set(0, 0, std::numeric_limits<Scalar>::quiet_NaN());
+        f.P(0, 0) = std::numeric_limits<Scalar>::quiet_NaN();
         f.baro_altitude += 1;
         test.expect(f.tick().status == Status::non_finite_input && f.aiding.progress_time() == progress &&
                         f.aiding.session(Source::barometer).bias.value == bias &&
@@ -391,7 +391,7 @@ template <typename Linalg> void run(Context & test)
         test.expect(f.aiding.update(future.time_us, {}, {}, true, f.state, f.P).status == Status::out_of_range, "time",
                     "reversed tick rejected");
         auto const old_tick_progress = f.aiding.progress_time();
-        f.P.set(2, 2, -1);
+        f.P(2, 2) = -1;
         test.expect(f.aiding.update(future.time_us + 2, {}, {}, true, f.state, f.P).status == Status::domain_error &&
                         f.aiding.progress_time() == old_tick_progress && f.P(2, 2) == Scalar{-1},
                     "failure", "bad prior preserves helper and estimator outputs");

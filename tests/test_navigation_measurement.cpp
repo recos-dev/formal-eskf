@@ -11,7 +11,7 @@
 #include <cmath>
 #include <limits>
 
-#include <formal_eskf/runtime/gnss_measurement.hpp>
+#include <formal_eskf/runtime/navigation_measurement.hpp>
 #include "test_backend.hpp"
 #include "test_support.hpp"
 
@@ -125,8 +125,8 @@ template <typename Linalg> void test_policy(Context & test)
             F fixture;
             auto output = fixture.state;
             auto output_P = fixture.P;
-            auto const result = formal_eskf::runtime::fuse_gnss_height(
-                fixture.state, fixture.P, down, T{1}, fixture.minimum_norm, T{1}, fault, output, output_P);
+            auto const result = formal_eskf::runtime::fuse_height(fixture.state, fixture.P, down, T{1},
+                                                                  fixture.minimum_norm, T{1}, fault, output, output_P);
             bool const rejected = std::abs(down) > T{2};
             bool const limited = fault && rejected;
             T const expected = limited ? (down < T{0} ? T{-2} : T{2}) : down;
@@ -195,9 +195,9 @@ template <typename Linalg> void test_correction_contract(Context & test)
                 auto & state_output = (aliases & 1U) ? fixture.state : output;
                 auto & covariance_output = (aliases & 2U) ? fixture.P : output_P;
                 auto const fused =
-                    height ? formal_eskf::runtime::fuse_gnss_height(fixture.state, fixture.P, fixture.velocity(2U),
-                                                                    T{1}, fixture.minimum_norm, fixture.gate, fault,
-                                                                    state_output, covariance_output, permissions)
+                    height ? formal_eskf::runtime::fuse_height(fixture.state, fixture.P, fixture.velocity(2U), T{1},
+                                                               fixture.minimum_norm, fixture.gate, fault, state_output,
+                                                               covariance_output, permissions)
                                  .fusion.decision
                            : fixture.fuse(state_output, covariance_output, permissions).fusion.decision;
                 test.expect(status == Status::success && fused == FusionDecision::fused &&
@@ -350,9 +350,9 @@ template <typename Linalg> void test_failures(Context & test)
                 };
                 if (height)
                 {
-                    check_failure(formal_eskf::runtime::fuse_gnss_height(
-                                      fixture.state, fixture.P, fixture.velocity(2U), fixture.V(0U, 0U),
-                                      fixture.minimum_norm, fixture.gate, true, state_output, covariance_output)
+                    check_failure(formal_eskf::runtime::fuse_height(fixture.state, fixture.P, fixture.velocity(2U),
+                                                                    fixture.V(0U, 0U), fixture.minimum_norm,
+                                                                    fixture.gate, true, state_output, covariance_output)
                                       .fusion);
                 }
                 else
@@ -366,8 +366,9 @@ template <typename Linalg> void test_failures(Context & test)
     auto const prior = fixture;
     auto const evidence = formal_eskf::runtime::check_gnss_velocity(
         fixture.state, fixture.P, fixture.velocity, fixture.V, fixture.minimum_norm, fixture.gate, fixture.conditions);
-    test.expect(evidence.diagnostics_valid && evidence.innovation_limited && evidence.status == Status::success &&
-                    !evidence.rejected && same_state(fixture.state, prior.state) && same_bits(fixture.P, prior.P),
+    test.expect(evidence.gate.diagnostics_valid && evidence.innovation_limited &&
+                    evidence.gate.status == Status::success && !evidence.gate.rejected &&
+                    same_state(fixture.state, prior.state) && same_bits(fixture.P, prior.P),
                 profile, "quality-rejected sample can update diagnostics without attempting correction");
 }
 

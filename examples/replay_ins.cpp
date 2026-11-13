@@ -31,8 +31,8 @@
 #include <formal_eskf/runtime/accelerometer_sample.hpp>
 #include <formal_eskf/runtime/bias_limits.hpp>
 #include <formal_eskf/runtime/bias_process_noise.hpp>
-#include <formal_eskf/runtime/gnss_measurement.hpp>
-#include <formal_eskf/runtime/gnss_reset.hpp>
+#include <formal_eskf/runtime/navigation_measurement.hpp>
+#include <formal_eskf/runtime/navigation_reset.hpp>
 #include <formal_eskf/runtime/imu_bias_inhibition.hpp>
 #include <formal_eskf/runtime/imu_process_noise.hpp>
 #include <formal_eskf/runtime/magnetometer.hpp>
@@ -1455,9 +1455,10 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                         QUAT_MIN_NORM, gnss->velocity_gate,
                         {bias_conditions.bad_vertical_acceleration, navigation_row[9U],
                          quality_parameters->maximum_speed_accuracy});
-                    check_status(evidence.status, "GNSS velocity diagnostics", time);
-                    vertical_cache.observations.gnss_velocity_down = {
-                        evidence.diagnostics_valid, -evidence.fusion_innovation(2U), evidence.innovation_variance(2U)};
+                    check_status(evidence.gate.status, "GNSS velocity diagnostics", time);
+                    vertical_cache.observations.gnss_velocity_down = {evidence.gate.diagnostics_valid,
+                                                                      -evidence.fusion_innovation(2U),
+                                                                      evidence.gate.innovation_variance(2U)};
                     vertical_cache.velocity_time_us = source_time;
                 }
                 else if (result.outcome == GnssQuality::Outcome::unavailable)
@@ -1545,7 +1546,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 {
                     Vector3 delta;
                     auto const reason = gnss_lifecycle.state().velocity.stop_reason;
-                    auto const status = formal_eskf::runtime::try_reset_gnss_velocity(
+                    auto const status = formal_eskf::runtime::try_reset_velocity(
                         state, covariance, velocity, vector3(noise.velocity_xy, noise.velocity_xy, noise.velocity_z),
                         state, covariance, delta);
                     record_reset(GnssLifecycle::Group::velocity, "velocity", reason, status, delta);
@@ -1556,7 +1557,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 else if (!quality_parameters || gnss_lifecycle.state().velocity.fusion_allowed)
                 {
                     ++velocity_attempts;
-                    formal_eskf::runtime::GnssMeasurementResult<Linalg, 3U> measurement;
+                    formal_eskf::runtime::NavigationFusionResult<Linalg, 3U> measurement;
                     if (quality_parameters)
                     {
                         measurement = formal_eskf::runtime::fuse_gnss_velocity(
@@ -1602,7 +1603,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 {
                     auto const reason = gnss_lifecycle.state().vertical_velocity_reset_reason;
                     double delta{};
-                    auto const status = formal_eskf::runtime::try_reset_gnss_vertical_velocity(
+                    auto const status = formal_eskf::runtime::try_reset_vertical_velocity(
                         state, covariance, velocity(2U), noise.velocity_z, state, covariance, delta);
                     check_status(gnss_lifecycle.record_vertical_velocity_reset(source_time, status == Status::success),
                                  "GNSS vertical velocity reset feedback", time);
@@ -1666,7 +1667,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 if (!quality_parameters || gnss_lifecycle.state().vertical_position.fusion_allowed)
                 {
                     ++position_z_attempts;
-                    auto const measurement = formal_eskf::runtime::fuse_gnss_height(
+                    auto const measurement = formal_eskf::runtime::fuse_height(
                         state, covariance, navigation_row[3U], noise.position_z, QUAT_MIN_NORM, gnss->position_gate,
                         vertical_available && vertical_health.state().bad_vertical_acceleration, state, covariance,
                         bias_update);
@@ -1704,7 +1705,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 {
                     double delta{};
                     auto const reason = gnss_lifecycle.state().vertical_position.stop_reason;
-                    auto const status = formal_eskf::runtime::try_reset_gnss_vertical_position(
+                    auto const status = formal_eskf::runtime::try_reset_vertical_position(
                         state, covariance, navigation_row[3U], noise.position_z, state, covariance, delta);
                     record_reset(GnssLifecycle::Group::vertical_position, "vertical_position", reason, status,
                                  Linalg::vector_type<1U>::from_row_major({delta}));

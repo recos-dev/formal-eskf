@@ -3851,36 +3851,36 @@
         "lean": [],
         "cpp": [
           {
-            "file": "include/formal_eskf/runtime/gnss_measurement.hpp",
+            "file": "include/formal_eskf/runtime/navigation_measurement.hpp",
             "symbol": "struct GnssVelocityConditions"
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_measurement.hpp",
-            "symbol": "struct GnssMeasurementResult"
+            "file": "include/formal_eskf/runtime/navigation_measurement.hpp",
+            "symbol": "struct NavigationFusionResult"
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_measurement.hpp",
-            "symbol": "struct GnssInnovationCheck"
+            "file": "include/formal_eskf/runtime/navigation_measurement.hpp",
+            "symbol": "struct NavigationInnovationCheck"
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_measurement.hpp",
-            "symbol": "void limit_gnss_innovation("
+            "file": "include/formal_eskf/runtime/navigation_measurement.hpp",
+            "symbol": "void limit_vertical_innovation("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_measurement.hpp",
-            "symbol": "correct_gnss_measurement("
+            "file": "include/formal_eskf/runtime/navigation_measurement.hpp",
+            "symbol": "correct_navigation_measurement("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_measurement.hpp",
+            "file": "include/formal_eskf/runtime/navigation_measurement.hpp",
             "symbol": "check_gnss_velocity("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_measurement.hpp",
+            "file": "include/formal_eskf/runtime/navigation_measurement.hpp",
             "symbol": "fuse_gnss_velocity("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_measurement.hpp",
-            "symbol": "fuse_gnss_height("
+            "file": "include/formal_eskf/runtime/navigation_measurement.hpp",
+            "symbol": "fuse_height("
           },
           {
             "file": "examples/replay_ins.cpp",
@@ -3915,28 +3915,32 @@
         "lean": [],
         "cpp": [
           {
-            "file": "include/formal_eskf/runtime/gnss_reset.hpp",
-            "symbol": "Status validate_gnss_reset_inputs("
+            "file": "include/formal_eskf/runtime/navigation_reset.hpp",
+            "symbol": "Status validate_navigation_reset_inputs("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_reset.hpp",
+            "file": "include/formal_eskf/runtime/navigation_reset.hpp",
             "symbol": "void uncorrelate_navigation_axis("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_reset.hpp",
+            "file": "include/formal_eskf/runtime/navigation_reset.hpp",
+            "symbol": "void reset_navigation_axis("
+          },
+          {
+            "file": "include/formal_eskf/runtime/navigation_reset.hpp",
             "symbol": "Status try_reset_gnss_horizontal_position("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_reset.hpp",
-            "symbol": "Status try_reset_gnss_vertical_position("
+            "file": "include/formal_eskf/runtime/navigation_reset.hpp",
+            "symbol": "Status try_reset_vertical_position("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_reset.hpp",
-            "symbol": "Status try_reset_gnss_vertical_velocity("
+            "file": "include/formal_eskf/runtime/navigation_reset.hpp",
+            "symbol": "Status try_reset_vertical_velocity("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_reset.hpp",
-            "symbol": "Status try_reset_gnss_velocity("
+            "file": "include/formal_eskf/runtime/navigation_reset.hpp",
+            "symbol": "Status try_reset_velocity("
           },
           {
             "file": "integrations/px4/module/FormalEskf.cpp",

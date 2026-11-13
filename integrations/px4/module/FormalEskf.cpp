@@ -502,7 +502,7 @@ void FormalEskf::fuse_gps()
     {
         vector3_type delta;
         auto const status =
-            try_reset_gnss_velocity(m_state, m_covariance, velocity, velocity_variances, m_state, m_covariance, delta);
+            try_reset_velocity(m_state, m_covariance, velocity, velocity_variances, m_state, m_covariance, delta);
         if (!check(
                 m_gnss_fusion.record_reset(Group::velocity, m_gnss_sample.time_us, formal_eskf::succeeded(status))) ||
             !check(status))
@@ -531,8 +531,8 @@ void FormalEskf::fuse_gps()
         if (m_height_aiding.reset_required(m_time, {health.last_update_time_us, health.last_good_time_us}))
         {
             double delta{};
-            if (!check(try_reset_gnss_vertical_velocity(m_state, m_covariance, velocity(2), velocity_variances(2),
-                                                        m_state, m_covariance, delta)))
+            if (!check(try_reset_vertical_velocity(m_state, m_covariance, velocity(2), velocity_variances(2), m_state,
+                                                   m_covariance, delta)))
             {
                 return;
             }

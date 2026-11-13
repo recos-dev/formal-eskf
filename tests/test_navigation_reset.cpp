@@ -14,7 +14,7 @@
 #include <string_view>
 
 // Exercise the standalone public header on each configured backend.
-#include <formal_eskf/runtime/gnss_reset.hpp>
+#include <formal_eskf/runtime/navigation_reset.hpp>
 #include "test_backend.hpp"
 #include "test_support.hpp"
 
@@ -80,10 +80,10 @@ template <typename Scalar, ResetGroup Group> struct Fixture
         for (std::size_t axis = 0U; axis < 3U; ++axis)
         {
             Scalar const n = static_cast<Scalar>(axis + 1U);
-            state.p_n.set(axis, n * Scalar{10});
-            state.v_n.set(axis, -n * Scalar{2});
-            state.b_a.set(axis, n / Scalar{8});
-            state.b_g.set(axis, -n / Scalar{16});
+            state.p_n(axis) = n * Scalar{10};
+            state.v_n(axis) = -n * Scalar{2};
+            state.b_a(axis) = n / Scalar{8};
+            state.b_g(axis) = -n / Scalar{16};
         }
         // Dense, strictly diagonally dominant symmetric P: every reset row has
         // cross-covariances, so identity-only fixtures cannot hide omissions.
@@ -94,16 +94,16 @@ template <typename Scalar, ResetGroup Group> struct Fixture
                 Scalar const value = row == column               ? Scalar{16} + static_cast<Scalar>(row)
                                      : (row + column) % 2U == 0U ? Scalar{0.125}
                                                                  : Scalar{-0.125};
-                P.set(row, column, value);
+                P(row, column) = value;
             }
         }
         // A retained signed zero must not be changed by blanket symmetrization.
-        P.set(10U, 11U, -Scalar{0});
-        P.set(11U, 10U, -Scalar{0});
+        P(10U, 11U) = -Scalar{0};
+        P(11U, 10U) = -Scalar{0};
         for (std::size_t axis = 0U; axis < size; ++axis)
         {
-            observation.set(axis, Scalar{4} - static_cast<Scalar>(axis) * Scalar{7});
-            variances.set(axis, Scalar{1} + static_cast<Scalar>(axis) * Scalar{3});
+            observation(axis) = Scalar{4} - static_cast<Scalar>(axis) * Scalar{7};
+            variances(axis) = Scalar{1} + static_cast<Scalar>(axis) * Scalar{3};
         }
     }
 
@@ -121,22 +121,22 @@ template <typename Scalar, ResetGroup Group> struct Fixture
             Status status{};
             if constexpr (velocity)
             {
-                status = formal_eskf::runtime::try_reset_gnss_vertical_velocity(
-                    state, P, observation(0U), variances(0U), state_output, covariance_output, delta);
+                status = formal_eskf::runtime::try_reset_vertical_velocity(state, P, observation(0U), variances(0U),
+                                                                           state_output, covariance_output, delta);
             }
             else
             {
-                status = formal_eskf::runtime::try_reset_gnss_vertical_position(
-                    state, P, observation(0U), variances(0U), state_output, covariance_output, delta);
+                status = formal_eskf::runtime::try_reset_vertical_position(state, P, observation(0U), variances(0U),
+                                                                           state_output, covariance_output, delta);
             }
             // Forward even on failure: rollback checks must see the actual scalar output.
-            delta_output.set(0U, delta);
+            delta_output(0U) = delta;
             return status;
         }
         else
         {
-            return formal_eskf::runtime::try_reset_gnss_velocity(state, P, observation, variances, state_output,
-                                                                 covariance_output, delta_output);
+            return formal_eskf::runtime::try_reset_velocity(state, P, observation, variances, state_output,
+                                                            covariance_output, delta_output);
         }
     }
 };
@@ -153,10 +153,12 @@ void check_success(TestContext & test, Fixture<Scalar, Group> const & fixture, s
     // Independent entry-wise oracle, not calls to the production reset helper.
     for (std::size_t axis = 0U; axis < F::size; ++axis)
     {
+        // Coefficient writes require the non-const matrix operator().
+        // cppcheck-suppress constVariableReference
         auto & target = F::velocity ? expected_state.v_n : expected_state.p_n;
         auto const state_axis = F::axis_offset + axis;
-        expected_delta.set(axis, fixture.observation(axis) - target(state_axis));
-        target.set(state_axis, fixture.observation(axis));
+        expected_delta(axis) = fixture.observation(axis) - target(state_axis);
+        target(state_axis) = fixture.observation(axis);
     }
     for (std::size_t row = 0U; row < 15U; ++row)
     {
@@ -169,7 +171,7 @@ void check_success(TestContext & test, Fixture<Scalar, Group> const & fixture, s
                                        : row < 6U || column < 6U;
             if (row != column && decoupled)
             {
-                expected_P.set(row, column, Scalar{0});
+                expected_P(row, column) = Scalar{0};
             }
             bool const replaced = Group == ResetGroup::horizontal_position ? row < 2U
                                   : Group == ResetGroup::vertical_position ? row == 2U
@@ -190,7 +192,7 @@ void check_success(TestContext & test, Fixture<Scalar, Group> const & fixture, s
                 {
                     variance = fixture.variances(row - 3U);
                 }
-                expected_P.set(row, column, variance < floor ? floor : variance);
+                expected_P(row, column) = variance < floor ? floor : variance;
             }
         }
     }
@@ -222,7 +224,7 @@ void check_failure(TestContext & test, Fixture<Scalar, Group> const & fixture, S
     {
         auto input = fixture;
         typename F::state_type separate_state;
-        separate_state.p_n.set(0U, Scalar{99});
+        separate_state.p_n(0U) = Scalar{99};
         auto separate_P = F::covariance_type::identity() * Scalar{99};
         auto & state = (aliases & 1U) != 0U ? input.state : separate_state;
         auto & P = (aliases & 2U) != 0U ? input.P : separate_P;
@@ -231,7 +233,7 @@ void check_failure(TestContext & test, Fixture<Scalar, Group> const & fixture, S
         typename F::vector_type delta;
         for (std::size_t axis = 0U; axis < F::size; ++axis)
         {
-            delta.set(axis, Scalar{-64});
+            delta(axis) = Scalar{-64};
         }
         auto const before_delta = delta;
         test.expect(input.reset(state, P, delta) == expected, profile, "failure reports the specified status");
@@ -258,7 +260,7 @@ template <typename Scalar, ResetGroup Group> void run_conformance(TestContext & 
         for (Scalar down : {Scalar{-40}, -Scalar{0}, Scalar{0}, prior, Scalar{40}})
         {
             auto input = fixture;
-            input.observation.set(0U, down);
+            input.observation(0U) = down;
             check_success(test, input, profile);
         }
     }
@@ -269,12 +271,12 @@ template <typename Scalar, ResetGroup Group> void run_conformance(TestContext & 
         auto input = fixture;
         for (std::size_t axis = 0U; axis < F::size; ++axis)
         {
-            input.variances.set(axis, variance);
+            input.variances(axis) = variance;
         }
         check_success(test, input, profile);
     }
     auto mixed = fixture;
-    mixed.variances.set(0U, Scalar{0});
+    mixed.variances(0U) = Scalar{0};
     check_success(test, mixed, profile);
     auto singular = fixture;
     singular.P = typename F::covariance_type{};
@@ -288,10 +290,10 @@ template <typename Scalar, ResetGroup Group> void run_conformance(TestContext & 
         for (std::size_t axis = 0U; axis < F::size; ++axis)
         {
             auto input = fixture;
-            input.observation.set(axis, bad_value);
+            input.observation(axis) = bad_value;
             check_failure(test, input, Status::non_finite_input, profile);
             input = fixture;
-            input.variances.set(axis, bad_value);
+            input.variances(axis) = bad_value;
             check_failure(test, input, Status::non_finite_input, profile);
         }
         for (std::size_t axis = 0U; axis < 3U; ++axis)
@@ -299,7 +301,7 @@ template <typename Scalar, ResetGroup Group> void run_conformance(TestContext & 
             for (auto member : {&F::state_type::p_n, &F::state_type::v_n, &F::state_type::b_a, &F::state_type::b_g})
             {
                 auto input = fixture;
-                (input.state.*member).set(axis, bad_value);
+                (input.state.*member)(axis) = bad_value;
                 check_failure(test, input, Status::non_finite_input, profile);
             }
         }
@@ -308,7 +310,7 @@ template <typename Scalar, ResetGroup Group> void run_conformance(TestContext & 
             for (std::size_t column = 0U; column < 15U; ++column)
             {
                 auto input = fixture;
-                input.P.set(row, column, bad_value);
+                input.P(row, column) = bad_value;
                 check_failure(test, input, Status::non_finite_input, profile);
             }
         }
@@ -316,42 +318,42 @@ template <typename Scalar, ResetGroup Group> void run_conformance(TestContext & 
     for (std::size_t axis = 0U; axis < F::size; ++axis)
     {
         auto input = fixture;
-        input.variances.set(axis, Scalar{-1});
+        input.variances(axis) = Scalar{-1};
         check_failure(test, input, Status::domain_error, profile);
-        input.observation.set(axis, nan);
+        input.observation(axis) = nan;
         check_failure(test, input, Status::non_finite_input, profile);
         for (Scalar observation : {max, -max})
         {
             input = fixture;
             if constexpr (F::velocity)
             {
-                input.state.v_n.set(F::axis_offset + axis, -observation);
+                input.state.v_n(F::axis_offset + axis) = -observation;
             }
             else
             {
-                input.state.p_n.set(F::axis_offset + axis, -observation);
+                input.state.p_n(F::axis_offset + axis) = -observation;
             }
-            input.observation.set(axis, observation);
+            input.observation(axis) = observation;
             check_failure(test, input, Status::non_finite_result, profile);
         }
     }
     for (std::size_t row = 0U; row < 15U; ++row)
     {
         auto input = fixture;
-        input.P.set(row, row, Scalar{-1});
+        input.P(row, row) = Scalar{-1};
         check_failure(test, input, Status::domain_error, profile);
         for (std::size_t column = row + 1U; column < 15U; ++column)
         {
             input = fixture;
-            input.P.set(row, column, Scalar{1});
+            input.P(row, column) = Scalar{1};
             check_failure(test, input, Status::domain_error, profile);
         }
     }
     auto extreme = fixture;
-    extreme.variances.set(0U, max);
+    extreme.variances(0U) = max;
     if constexpr (!F::vertical)
     {
-        extreme.variances.set(1U, max);
+        extreme.variances(1U) = max;
     }
     if constexpr (Group == ResetGroup::horizontal_position)
     {

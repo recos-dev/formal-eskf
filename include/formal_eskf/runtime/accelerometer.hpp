@@ -8,8 +8,6 @@
 
 #pragma once
 
-#include <type_traits>
-
 #include <formal_eskf/eskf/accelerometer.hpp>
 #include <formal_eskf/runtime/accelerometer_conditions.hpp>
 #include <formal_eskf/runtime/measurement_fusion.hpp>
@@ -24,52 +22,6 @@ struct AccelerometerFusionResult
     FusionDecision decision = FusionDecision::failed;
     Status status = Status::success;
 };
-
-namespace detail
-{
-
-template <typename State, typename Linalg, std::size_t Size>
-[[nodiscard]] AccelerometerFusionResult
-fuse_accelerometer_state(State const & state, linalg::Matrix<Linalg, Size, Size> const & covariance,
-                         linalg::Matrix<Linalg, 3U, 1U> const & specific_force_b,
-                         linalg::Matrix<Linalg, 3U, 1U> const & gravity_n, linalg::Matrix<Linalg, 3U, 3U> const & V,
-                         AccelerometerFusionConditions const & conditions,
-                         typename AccelerometerMagnitude<Linalg>::Result const & magnitude,
-                         typename Linalg::value_type minimum_quaternion_norm, State & state_output,
-                         linalg::Matrix<Linalg, Size, Size> & covariance_output,
-                         configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
-{
-    AccelerometerFusionResult result;
-    result.conditions = check_accelerometer_fusion_conditions<Linalg>(conditions, magnitude);
-    result.status = result.conditions.status;
-    if (!succeeded(result.status))
-    {
-        return result;
-    }
-    if (!result.conditions.sample_eligible)
-    {
-        result.decision = FusionDecision::rejected;
-        return result;
-    }
-    if constexpr (std::is_same_v<State, configuration::Ins::NominalState<Linalg>>)
-    {
-        result.status =
-            try_correct_accelerometer(state, covariance, specific_force_b, gravity_n, V, minimum_quaternion_norm,
-                                      state_output, covariance_output, bias_update);
-    }
-    else
-    {
-        result.status = try_correct_accelerometer(state, covariance, specific_force_b, gravity_n, V,
-                                                  minimum_quaternion_norm, state_output, covariance_output);
-    }
-    if (succeeded(result.status))
-    {
-        result.decision = FusionDecision::fused;
-    }
-    return result;
-}
-
-} /* end namespace detail */
 
 /**
  * Check gravity-fusion prerequisites, then run the unchanged core correction.
@@ -94,29 +46,63 @@ fuse_accelerometer_state(State const & state, linalg::Matrix<Linalg, Size, Size>
 template <typename Linalg>
 [[nodiscard]] AccelerometerFusionResult fuse_accelerometer(
     configuration::Ahrs::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 3U, 3U> const & covariance,
-    linalg::Matrix<Linalg, 3U, 1U> const & specific_force_b, linalg::Matrix<Linalg, 3U, 1U> const & gravity_n,
+    linalg::Vector<Linalg, 3U> const & specific_force_b, linalg::Vector<Linalg, 3U> const & gravity_n,
     linalg::Matrix<Linalg, 3U, 3U> const & V, AccelerometerFusionConditions const & conditions,
     typename AccelerometerMagnitude<Linalg>::Result const & magnitude,
     typename Linalg::value_type minimum_quaternion_norm, configuration::Ahrs::NominalState<Linalg> & state_output,
     linalg::Matrix<Linalg, 3U, 3U> & covariance_output) noexcept
 {
-    return detail::fuse_accelerometer_state(state, covariance, specific_force_b, gravity_n, V, conditions, magnitude,
-                                            minimum_quaternion_norm, state_output, covariance_output);
+    AccelerometerFusionResult result;
+    result.conditions = check_accelerometer_fusion_conditions<Linalg>(conditions, magnitude);
+    result.status = result.conditions.status;
+    if (!succeeded(result.status))
+    {
+        return result;
+    }
+    if (!result.conditions.sample_eligible)
+    {
+        result.decision = FusionDecision::rejected;
+        return result;
+    }
+    result.status = try_correct_accelerometer(state, covariance, specific_force_b, gravity_n, V,
+                                              minimum_quaternion_norm, state_output, covariance_output);
+    if (succeeded(result.status))
+    {
+        result.decision = FusionDecision::fused;
+    }
+    return result;
 }
 
 /** INS forwards all six bias-learning permissions unchanged to the core. */
 template <typename Linalg>
 [[nodiscard]] AccelerometerFusionResult fuse_accelerometer(
     configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-    linalg::Matrix<Linalg, 3U, 1U> const & specific_force_b, linalg::Matrix<Linalg, 3U, 1U> const & gravity_n,
+    linalg::Vector<Linalg, 3U> const & specific_force_b, linalg::Vector<Linalg, 3U> const & gravity_n,
     linalg::Matrix<Linalg, 3U, 3U> const & V, AccelerometerFusionConditions const & conditions,
     typename AccelerometerMagnitude<Linalg>::Result const & magnitude,
     typename Linalg::value_type minimum_quaternion_norm, configuration::Ins::NominalState<Linalg> & state_output,
     linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
     configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
 {
-    return detail::fuse_accelerometer_state(state, covariance, specific_force_b, gravity_n, V, conditions, magnitude,
-                                            minimum_quaternion_norm, state_output, covariance_output, bias_update);
+    AccelerometerFusionResult result;
+    result.conditions = check_accelerometer_fusion_conditions<Linalg>(conditions, magnitude);
+    result.status = result.conditions.status;
+    if (!succeeded(result.status))
+    {
+        return result;
+    }
+    if (!result.conditions.sample_eligible)
+    {
+        result.decision = FusionDecision::rejected;
+        return result;
+    }
+    result.status = try_correct_accelerometer(state, covariance, specific_force_b, gravity_n, V,
+                                              minimum_quaternion_norm, state_output, covariance_output, bias_update);
+    if (succeeded(result.status))
+    {
+        result.decision = FusionDecision::fused;
+    }
+    return result;
 }
 
 } /* end namespace formal_eskf::runtime */

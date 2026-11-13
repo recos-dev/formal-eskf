@@ -3488,15 +3488,19 @@
           },
           {
             "file": "include/formal_eskf/runtime/accelerometer.hpp",
-            "symbol": "fuse_accelerometer_state("
-          },
-          {
-            "file": "include/formal_eskf/runtime/accelerometer.hpp",
             "symbol": "[[nodiscard]] AccelerometerFusionResult fuse_accelerometer("
           },
           {
             "file": "include/formal_eskf/runtime/accelerometer_sample.hpp",
             "symbol": "class AccelerometerSample"
+          },
+          {
+            "file": "include/formal_eskf/runtime/accelerometer_sample.hpp",
+            "symbol": "AccelerometerSample<Linalg, IntervalUs>::integrate("
+          },
+          {
+            "file": "include/formal_eskf/runtime/accelerometer_sample.hpp",
+            "symbol": "AccelerometerSample<Linalg, IntervalUs>::update("
           },
           {
             "file": "examples/replay_ins.cpp",
@@ -3505,6 +3509,10 @@
           {
             "file": "integrations/px4/module/GravityAiding.hpp",
             "symbol": "class GravityAiding"
+          },
+          {
+            "file": "integrations/px4/module/GravityAiding.hpp",
+            "symbol": "GravityAiding<Linalg>::fuse_observation("
           },
           {
             "file": "integrations/px4/module/FormalEskf.cpp",

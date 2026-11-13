@@ -28,6 +28,7 @@
 
 #include <formal_eskf/eskf/eskf.hpp>
 #include <formal_eskf/runtime/accelerometer.hpp>
+#include <formal_eskf/runtime/accelerometer_sample.hpp>
 #include <formal_eskf/runtime/bias_limits.hpp>
 #include <formal_eskf/runtime/bias_process_noise.hpp>
 #include <formal_eskf/runtime/gnss_measurement.hpp>
@@ -43,7 +44,6 @@
 #include <formal_eskf/runtime/position.hpp>
 #include <formal_eskf/runtime/velocity.hpp>
 #include <formal_eskf/runtime/vertical_acceleration_health.hpp>
-#include "replay_accelerometer.hpp"
 #include "replay_conditions.hpp"
 #include "replay_gnss.hpp"
 #if defined(FORMAL_ESKF_REPLAY_PX4_MATRIX)
@@ -123,7 +123,7 @@ using formal_eskf::Status;
 using FusionConditions = formal_eskf::example::ReplayFusionConditions<Linalg>;
 using BiasInhibition = formal_eskf::runtime::ImuBiasInhibition<Linalg>;
 using BiasLimits = formal_eskf::runtime::BiasLimits<double>;
-using Accelerometer = formal_eskf::example::ReplayAccelerometer<Linalg, ACCEL_OBS_PERIOD_US>;
+using Accelerometer = formal_eskf::runtime::AccelerometerSample<Linalg, ACCEL_OBS_PERIOD_US>;
 using MagneticLifecycle = formal_eskf::runtime::MagnetometerFusion;
 using GnssQuality = formal_eskf::example::ReplayGnssQuality<Linalg>;
 using GnssLifecycle = formal_eskf::runtime::GnssFusion;
@@ -1079,7 +1079,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         }
     }
     magnetic_lifecycle.reset(initial_magnetic_source);
-    auto const accel_V = Linalg::matrix_type<3U, 3U>::identity() * (ACCEL_OBS_STD * ACCEL_OBS_STD);
+    auto const accel_V = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>::identity() * (ACCEL_OBS_STD * ACCEL_OBS_STD);
     // Consume seed metadata, but initialization is not a successful aiding event.
     (void)read_imu_flags(flags, time);
     auto previous_imu = imu_sample(imu_row);

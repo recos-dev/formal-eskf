@@ -103,7 +103,7 @@ template <typename Linalg> void test_magnitude_integration(TestContext & test, s
                 "caller rest flag bypasses only the successful magnitude-band rejection");
 
     auto invalid = gravity;
-    invalid.set(0U, std::numeric_limits<value_type>::quiet_NaN());
+    invalid(0U) = std::numeric_limits<value_type>::quiet_NaN();
     magnitude = monitor.update(invalid);
     result = check_accelerometer_fusion_conditions<Linalg>(conditions, magnitude);
     test.expect(result.status == Status::non_finite_input && !result.active && !result.sample_eligible, profile,

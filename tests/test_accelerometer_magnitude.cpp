@@ -109,7 +109,7 @@ template <typename Linalg> void test_band(TestContext & test, std::string_view p
             {
                 Monitor monitor;
                 vector_type sample;
-                sample.set(axis, static_cast<value_type>(sign) * magnitudes[index]);
+                sample(axis) = static_cast<value_type>(sign) * magnitudes[index];
                 auto const result = monitor.update(sample);
                 test.expect(result.status == Status::success && result.within_gravity_band == expected[index], profile,
                             "strict gravity band, adjacent floats, all axes and both signs");
@@ -155,7 +155,7 @@ template <typename Linalg> void test_failures(TestContext & test, std::string_vi
                 }
                 auto const before = monitor.filtered_specific_force_b();
                 auto bad = good;
-                bad.set(axis, value);
+                bad(axis) = value;
                 auto const result = monitor.update(bad);
                 auto const expected = std::isfinite(value) ? Status::non_finite_result : Status::non_finite_input;
                 test.expect(result.status == expected && !result.within_gravity_band &&

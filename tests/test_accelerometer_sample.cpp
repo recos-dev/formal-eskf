@@ -6,10 +6,11 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include "../examples/replay_accelerometer.hpp"
+#include <formal_eskf/runtime/accelerometer_sample.hpp>
 #include "../examples/replay_conditions.hpp"
 #include <formal_eskf/runtime/accelerometer.hpp>
 
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -24,7 +25,7 @@ namespace
 
 using formal_eskf::Status;
 using TestContext = formal_eskf::test::Context;
-template <typename Linalg> using Sampler = formal_eskf::example::ReplayAccelerometer<Linalg, 10000U>;
+template <typename Linalg> using Sampler = formal_eskf::runtime::AccelerometerSample<Linalg, 10000U>;
 
 template <typename Linalg> void test_sampling(TestContext & test, std::string_view profile)
 {
@@ -148,7 +149,21 @@ template <typename Linalg> void test_failure_preservation(TestContext & test, st
     (void)baseline.update(imu, 5000U, 0, minimum_norm);
     (void)baseline.update(imu, 5000U, 0, minimum_norm);
     (void)baseline.update(imu, 5000U, 1, minimum_norm);
-    for (unsigned failure = 0U; failure < 8U; ++failure)
+    enum class Failure
+    {
+        zero_period,
+        excessive_period,
+        invalid_unknown_mask,
+        excessive_mask,
+        zero_norm_limit,
+        non_finite_force,
+        angular_overflow,
+        magnitude_overflow
+    };
+    constexpr std::array failures{Failure::zero_period,      Failure::excessive_period,  Failure::invalid_unknown_mask,
+                                  Failure::excessive_mask,   Failure::zero_norm_limit,   Failure::non_finite_force,
+                                  Failure::angular_overflow, Failure::magnitude_overflow};
+    for (auto const failure : failures)
     {
         auto sampler = baseline;
         auto invalid = imu;
@@ -158,30 +173,30 @@ template <typename Linalg> void test_failure_preservation(TestContext & test, st
         auto expected_status = Status::domain_error;
         switch (failure)
         {
-        case 0U:
+        case Failure::zero_period:
             period = 0U;
             break;
-        case 1U:
+        case Failure::excessive_period:
             period = 50001U;
             break;
-        case 2U:
+        case Failure::invalid_unknown_mask:
             mask = -2;
             break;
-        case 3U:
+        case Failure::excessive_mask:
             mask = 8;
             break;
-        case 4U:
+        case Failure::zero_norm_limit:
             minimum = value_type{0};
             break;
-        case 5U:
+        case Failure::non_finite_force:
             invalid.specific_force_b(0U) = std::numeric_limits<value_type>::quiet_NaN();
             expected_status = Status::non_finite_input;
             break;
-        case 6U:
+        case Failure::angular_overflow:
             invalid.angular_rate_b(0U) = std::numeric_limits<value_type>::max();
             expected_status = Status::non_finite_result;
             break;
-        default:
+        case Failure::magnitude_overflow:
             invalid.specific_force_b(0U) = std::numeric_limits<value_type>::max();
             expected_status = Status::non_finite_result; // LPF squared-norm overflow on the completed interval.
             break;
@@ -200,13 +215,13 @@ template <typename Linalg> void test_failure_preservation(TestContext & test, st
 template <typename Linalg> void test_fusion(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
-    using matrix_type = typename Linalg::template matrix_type<3U, 3U>;
+    using matrix_type = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
     using state_type = formal_eskf::configuration::Ins::NominalState<Linalg>;
-    using covariance_type = typename Linalg::template matrix_type<15U, 15U>;
+    using covariance_type = formal_eskf::linalg::Matrix<Linalg, 15U, 15U>;
     auto const minimum_norm = static_cast<value_type>(1e-6);
     auto const g = static_cast<value_type>(9.80665);
     auto const V = matrix_type::identity() * (g * g);
-    typename Linalg::template vector_type<3U> gravity{};
+    formal_eskf::linalg::Vector<Linalg, 3U> gravity{};
     gravity(2U) = g;
     formal_eskf::ImuSample<Linalg> imu{};
     imu.specific_force_b = -gravity;
@@ -263,6 +278,6 @@ int main()
     {
         return 1;
     }
-    std::cout << "Replay accelerometer tests passed\n";
+    std::cout << "Accelerometer sampling tests passed\n";
     return 0;
 }

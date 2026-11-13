@@ -1502,8 +1502,9 @@ select the latest raw sample every 10 ms. The selected target is not a promise o
 exactly 100 Hz or an instruction to fuse each roughly 250 Hz raw input. Fixed LPF
 alpha remains `0.1`; its effective time constant depends on actual update intervals.
 
-`runtime::AccelerometerSample` (also exposed through the replay alias) prepares non-overlapping observations without
-changing prediction/navigation timing or adding a delayed fusion buffer:
+`runtime::AccelerometerSample` prepares non-overlapping observations; replay and
+the PX4 adapter use it directly. It does not change prediction/navigation timing
+or add a delayed fusion buffer:
 
 - For each real sample, form `dtheta = omega_m * dt`, `dv = f_m * dt` and
   `D = R(Exp(dtheta))^T`. Accumulate in the latest body frame as
@@ -1562,6 +1563,19 @@ corrections and publishes the latest emission interval and gravity mode. Mode is
 not a successful-fusion count. The pinned PX4 gravity controller supplies the
 condition reference; its normalized sequential/gated update remains a declared
 difference. Native tests, flight A/B evidence and formal-proof gaps remain distinct.
+
+The adapter consumes tilt history before sampling, and a completed interval/LPF
+update before correction. A later failure does not roll back those earlier
+stages. `reset_samples()` clears partial increments, LPF history and active mode,
+but preserves the tilt-alignment latch. After successful sampling, disabled,
+horizontally aided or unaligned contexts clear active mode even on partial
+intervals; otherwise it is held until an emission. Unknown interval clipping
+clears active mode and rejects that
+observation; known clipping preserves an otherwise active mode while rejecting
+the sample. These history boundaries are checked in
+`tests/test_px4_gravity_aiding.cpp`; sampler cadence and failure preservation are
+checked in `tests/test_accelerometer_sample.cpp`. Neither establishes a whole-tick
+transaction or closes the pending runtime Lean/ESBMC obligations.
 
 ### R-IMU-DYNAMICS: instantaneous IMU magnitude check
 

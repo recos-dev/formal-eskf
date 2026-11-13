@@ -31,8 +31,8 @@ template <typename Linalg, std::uint64_t IntervalUs> class AccelerometerSample
 
 public:
     using value_type = typename Linalg::value_type;
-    using vector_type = linalg::Matrix<Linalg, 3U, 1U>;
-    using magnitude_type = runtime::AccelerometerMagnitude<Linalg>;
+    using vector_type = linalg::Vector<Linalg, 3U>;
+    using magnitude_type = AccelerometerMagnitude<Linalg>;
 
     struct Result
     {
@@ -44,17 +44,19 @@ public:
         typename magnitude_type::Result magnitude{};
     };
 
-    AccelerometerSample() { clear_interval(); }
+    AccelerometerSample() noexcept { clear_interval(); }
 
     /** Discard partial increments AND LPF history, without fabricating an observation. */
-    void reset() { *this = AccelerometerSample{}; }
+    void reset() noexcept { *this = AccelerometerSample{}; }
 
     /** Failure preserves all history; only ready results contain a new LPF evaluation. */
     [[nodiscard]] Result update(ImuSample<Linalg> const & imu, std::uint64_t period_us, int clipping_mask,
-                                value_type minimum_quaternion_norm);
+                                value_type minimum_quaternion_norm) noexcept;
 
 private:
-    void clear_interval();
+    [[nodiscard]] Status integrate(ImuSample<Linalg> const & imu, value_type dt, value_type minimum_quaternion_norm,
+                                   vector_type & accumulated) const noexcept;
+    void clear_interval() noexcept;
 
     magnitude_type m_magnitude{};
     vector_type m_delta_velocity{};
@@ -67,7 +69,8 @@ private:
     double m_minimum_period_us = 0.0;
 }; /* end class AccelerometerSample */
 
-template <typename Linalg, std::uint64_t IntervalUs> void AccelerometerSample<Linalg, IntervalUs>::clear_interval()
+template <typename Linalg, std::uint64_t IntervalUs>
+void AccelerometerSample<Linalg, IntervalUs>::clear_interval() noexcept
 {
     m_delta_velocity = {};
     m_interval_us = 0U;
@@ -82,9 +85,38 @@ template <typename Linalg, std::uint64_t IntervalUs> void AccelerometerSample<Li
 }
 
 template <typename Linalg, std::uint64_t IntervalUs>
+Status AccelerometerSample<Linalg, IntervalUs>::integrate(ImuSample<Linalg> const & imu, value_type dt,
+                                                          value_type minimum_quaternion_norm,
+                                                          vector_type & accumulated) const noexcept
+{
+    auto const delta_angle = imu.angular_rate_b * dt;
+    auto const delta_velocity = imu.specific_force_b * dt;
+    if (!linalg::all_finite(delta_angle) || !linalg::all_finite(delta_velocity))
+    {
+        return Status::non_finite_result;
+    }
+    so3::UnitQuaternion<Linalg> delta_q;
+    auto const status = so3::try_exp<Linalg>(delta_angle, minimum_quaternion_norm, delta_q);
+    if (!succeeded(status))
+    {
+        return status;
+    }
+    // Express previous increments in the new body frame. The newest increment
+    // uses a trapezoidal endpoint rotation, not an exact continuous-time integral.
+    auto const candidate = so3::inverse_rotate(delta_q, m_delta_velocity) +
+                           (delta_velocity + so3::inverse_rotate(delta_q, delta_velocity)) * value_type{0.5};
+    if (!linalg::all_finite(candidate))
+    {
+        return Status::non_finite_result;
+    }
+    accumulated = candidate;
+    return Status::success;
+}
+
+template <typename Linalg, std::uint64_t IntervalUs>
 typename AccelerometerSample<Linalg, IntervalUs>::Result
 AccelerometerSample<Linalg, IntervalUs>::update(ImuSample<Linalg> const & imu, std::uint64_t period_us,
-                                                int clipping_mask, value_type minimum_quaternion_norm)
+                                                int clipping_mask, value_type minimum_quaternion_norm) noexcept
 {
     Result result;
     if (!linalg::all_finite(imu.specific_force_b) || !linalg::all_finite(imu.angular_rate_b))
@@ -98,31 +130,15 @@ AccelerometerSample<Linalg, IntervalUs>::update(ImuSample<Linalg> const & imu, s
         return result;
     }
     auto const dt = static_cast<value_type>(period_us) * static_cast<value_type>(1e-6);
-    auto const delta_angle = imu.angular_rate_b * dt;
-    auto const delta_velocity = imu.specific_force_b * dt;
-    if (!linalg::all_finite(delta_angle) || !linalg::all_finite(delta_velocity))
-    {
-        result.status = Status::non_finite_result;
-        return result;
-    }
-    so3::UnitQuaternion<Linalg> delta_q;
-    result.status = so3::try_exp<Linalg>(delta_angle, minimum_quaternion_norm, delta_q);
+    vector_type accumulated;
+    result.status = integrate(imu, dt, minimum_quaternion_norm, accumulated);
     if (!succeeded(result.status))
     {
         return result;
     }
-    // Express previous increments in the new body frame. The newest increment
-    // uses a trapezoidal endpoint rotation, not an exact continuous-time integral.
-    auto const accumulated = so3::inverse_rotate(delta_q, m_delta_velocity) +
-                             (delta_velocity + so3::inverse_rotate(delta_q, delta_velocity)) * value_type{0.5};
     auto const interval_us = m_interval_us + period_us;
     auto const samples = m_samples + 1U;
     auto const mask = m_clipping_mask < 0 || clipping_mask < 0 ? -1 : m_clipping_mask | clipping_mask;
-    if (!linalg::all_finite(accumulated))
-    {
-        result.status = Status::non_finite_result;
-        return result;
-    }
     bool const ready = (samples >= m_required_samples && static_cast<double>(interval_us) > m_minimum_period_us) ||
                        static_cast<double>(interval_us) > m_target_period_us;
     if (ready)

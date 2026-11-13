@@ -24,7 +24,7 @@ template <typename Linalg> class MagnetometerFilter
 {
 public:
     using value_type = typename Linalg::value_type;
-    using vector_type = linalg::Matrix<Linalg, 3U, 1U>;
+    using vector_type = linalg::Vector<Linalg, 3U>;
 
     [[nodiscard]] bool initialized() const noexcept { return m_initialized; }
     [[nodiscard]] vector_type const & field_b() const noexcept { return m_field_b; }

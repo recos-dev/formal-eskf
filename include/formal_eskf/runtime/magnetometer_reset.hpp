@@ -150,15 +150,15 @@ reset_magnetic_heading(State const & state, linalg::Matrix<Linalg, Size, Size> c
         {
             if (column < AttitudeOffset || column >= AttitudeOffset + 3U)
             {
-                P.set(AttitudeOffset + row, column, cross(row, column));
-                P.set(column, AttitudeOffset + row, cross(row, column));
+                P(AttitudeOffset + row, column) = cross(row, column);
+                P(column, AttitudeOffset + row) = cross(row, column);
             }
         }
         for (std::size_t column = row; column < 3U; ++column)
         {
             value_type const value = attitude(row, column) / value_type{2} + attitude(column, row) / value_type{2};
-            P.set(AttitudeOffset + row, AttitudeOffset + column, value);
-            P.set(AttitudeOffset + column, AttitudeOffset + row, value);
+            P(AttitudeOffset + row, AttitudeOffset + column) = value;
+            P(AttitudeOffset + column, AttitudeOffset + row) = value;
         }
     }
     state_output = candidate;

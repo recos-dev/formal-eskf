@@ -64,6 +64,20 @@ template <typename Scalar> void run_tests(TestContext & test)
                     model.state().last_check_time_us == 30000104U && model.state().reference_id == 3U,
                 profile, "unchanged successful lookup refreshes only the check clock");
 
+    auto invalid_unchecked = sample;
+    invalid_unchecked.strength = std::numeric_limits<Scalar>::quiet_NaN();
+    result = model.update(30000105U, invalid_unchecked, true);
+    test.expect(result.status == Status::success && !result.checked && !result.changed &&
+                    model.state().last_check_time_us == 30000104U && model.state().reference_id == 3U,
+                profile, "a skipped model is not consumed and retains the check clock");
+    result = model.update(30000105U, sample, true, true);
+    test.expect(result.status == Status::out_of_range && !result.checked, profile,
+                "a skipped check still consumes its update timestamp, even before an origin request");
+    result = model.update(30000106U, model.state().model, true, true);
+    test.expect(result.status == Status::success && result.checked && !result.changed &&
+                    model.state().last_check_time_us == 30000106U,
+                profile, "the adopted sample may alias the borrowed input");
+
     for (unsigned axis = 0U; axis < 3U; ++axis)
     {
         model.reset();

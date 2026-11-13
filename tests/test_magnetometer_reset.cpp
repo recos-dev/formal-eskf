@@ -38,6 +38,10 @@ template <typename Scalar> void test_reset_filter(TestContext & test)
     auto const first = Vector::from_row_major({Scalar{20}, Scalar{0}, Scalar{40}});
     auto const second = Vector::from_row_major({Scalar{0}, Scalar{20}, Scalar{40}});
     Filter filter;
+    auto invalid_first = first;
+    invalid_first(1U) = std::numeric_limits<Scalar>::quiet_NaN();
+    test.expect(filter.update(invalid_first, true) == Status::non_finite_input && !filter.initialized(), profile,
+                "an invalid initial reseed does not establish filter history");
     test.expect(filter.update(first) == Status::success && filter.initialized() && same_matrix(filter.field_b(), first),
                 profile, "first valid magnetic sample seeds reset LPF exactly");
     test.expect(filter.update(second) == Status::success &&
@@ -48,11 +52,11 @@ template <typename Scalar> void test_reset_filter(TestContext & test)
     test.expect(filter.update(second, true) == Status::success && same_matrix(filter.field_b(), second), profile,
                 "source reseed retains no old-source weighted field");
     auto invalid = first;
-    invalid.set(0U, std::numeric_limits<Scalar>::quiet_NaN());
+    invalid(0U) = std::numeric_limits<Scalar>::quiet_NaN();
     test.expect(filter.update(invalid, true) == Status::non_finite_input && same_matrix(filter.field_b(), second),
                 profile, "invalid reseed preserves the previous valid filter");
     auto extreme = first;
-    extreme.set(0U, std::numeric_limits<Scalar>::max());
+    extreme(0U) = std::numeric_limits<Scalar>::max();
     test.expect(filter.update(extreme, true) == Status::success, profile, "seed finite extreme sample");
     test.expect(filter.update(extreme * Scalar{-1}) == Status::non_finite_result &&
                     same_matrix(filter.field_b(), extreme),
@@ -92,8 +96,8 @@ template <typename Scalar, typename Configuration> void run_reset_tests(TestCont
         for (std::size_t column = 0U; column < size; ++column)
         {
             // Dense symmetric, strictly diagonally dominant positive definite prior.
-            P.set(row, column,
-                  row == column ? Scalar{4} + static_cast<Scalar>(row) / Scalar{4} : static_cast<Scalar>(0.125));
+            P(row, column) =
+                row == column ? Scalar{4} + static_cast<Scalar>(row) / Scalar{4} : static_cast<Scalar>(0.125);
         }
     }
     for (Scalar pitch : {Scalar{0}, pi / Scalar{2}, -pi / Scalar{2}, pi / Scalar{5}})
@@ -139,11 +143,11 @@ template <typename Scalar, typename Configuration> void run_reset_tests(TestCont
             auto expected = T * P * formal_eskf::linalg::transpose(T);
             for (std::size_t index = 0U; index < size; ++index)
             {
-                expected.set(offset + 2U, index, Scalar{0});
-                expected.set(index, offset + 2U, Scalar{0});
+                expected(offset + 2U, index) = Scalar{0};
+                expected(index, offset + 2U) = Scalar{0};
             }
             Scalar const minimum_std = static_cast<Scalar>(0.01);
-            expected.set(offset + 2U, offset + 2U, minimum_std * minimum_std);
+            expected(offset + 2U, offset + 2U) = minimum_std * minimum_std;
             T.template set_block<offset, offset>(formal_eskf::so3::to_rotation_matrix(output.q_nb));
             auto const actual = T * result * formal_eskf::linalg::transpose(T);
             test.expect(formal_eskf::linalg::max_abs(actual - expected) < tolerance &&
@@ -204,16 +208,16 @@ template <typename Scalar, typename Configuration> void run_reset_tests(TestCont
         switch (failure)
         {
         case 0U:
-            measurement.set(0U, std::numeric_limits<Scalar>::quiet_NaN());
+            measurement(0U) = std::numeric_limits<Scalar>::quiet_NaN();
             break;
         case 1U:
-            field.set(1U, std::numeric_limits<Scalar>::infinity());
+            field(1U) = std::numeric_limits<Scalar>::infinity();
             break;
         case 2U:
-            input_P.set(0U, 0U, Scalar{-1});
+            input_P(0U, 0U) = Scalar{-1};
             break;
         case 3U:
-            input_P.set(0U, 1U, Scalar{1});
+            input_P(0U, 1U) = Scalar{1};
             break;
         case 4U:
             variance = Scalar{-1};
@@ -234,7 +238,7 @@ template <typename Scalar, typename Configuration> void run_reset_tests(TestCont
             measurement = down * Scalar{40};
             break;
         case 10U:
-            measurement.set(0U, std::numeric_limits<Scalar>::max());
+            measurement(0U) = std::numeric_limits<Scalar>::max();
             break;
         default:
             field = down * Scalar{40};
@@ -252,7 +256,7 @@ template <typename Scalar, typename Configuration> void run_reset_tests(TestCont
     {
         for (std::size_t column = 0U; column < size; ++column)
         {
-            overflowing_P.set(row, column, std::numeric_limits<Scalar>::max());
+            overflowing_P(row, column) = std::numeric_limits<Scalar>::max();
         }
     }
     auto const before_P = result;
@@ -265,7 +269,7 @@ template <typename Scalar, typename Configuration> void run_reset_tests(TestCont
     if constexpr (ins)
     {
         auto invalid_state = state;
-        invalid_state.b_a.set(0U, std::numeric_limits<Scalar>::quiet_NaN());
+        invalid_state.b_a(0U) = std::numeric_limits<Scalar>::quiet_NaN();
         test.expect(formal_eskf::runtime::try_reset_magnetic_heading(invalid_state, P, reference, reference, Scalar{1},
                                                                      Scalar{5}, minimum_norm, output, result,
                                                                      delta) == Status::non_finite_input &&

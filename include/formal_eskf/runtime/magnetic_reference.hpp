@@ -22,7 +22,7 @@ template <typename Linalg> class MagneticReference
 {
 public:
     using value_type = typename Linalg::value_type;
-    using vector_type = linalg::Matrix<Linalg, 3U, 1U>;
+    using vector_type = linalg::Vector<Linalg, 3U>;
 
     struct Sample
     {
@@ -66,6 +66,9 @@ public:
                                 bool origin_updated = false) noexcept;
 
 private:
+    [[nodiscard]] static Status validate_sample(Sample const & sample) noexcept;
+    [[nodiscard]] Status adopt(Sample const & sample) noexcept;
+
     State m_state{};
     std::uint64_t m_update_time_us{};
 }; /* end class MagneticReference */
@@ -89,60 +92,78 @@ typename MagneticReference<Linalg>::Result MagneticReference<Linalg>::update(std
         return result;
     }
     result.checked = true;
-    if (!scalar::is_finite<math_type>(sample.declination) || !scalar::is_finite<math_type>(sample.inclination) ||
-        !scalar::is_finite<math_type>(sample.strength))
+    result.status = validate_sample(sample);
+    if (!succeeded(result.status))
     {
-        result.status = Status::non_finite_input;
         return result;
     }
-    auto const pi = scalar::pi<math_type>();
-    if (scalar::absolute<math_type>(sample.declination) > pi ||
-        scalar::absolute<math_type>(sample.inclination) > pi / value_type{2} ||
-        sample.strength < std::numeric_limits<value_type>::min())
-    {
-        result.status = Status::domain_error;
-        return result;
-    }
-    auto const angle_threshold = pi / value_type{180};
+    auto const angle_threshold = scalar::pi<math_type>() / value_type{180};
     bool const changed =
         !initialized || scalar::absolute<math_type>(sample.declination - m_state.model.declination) > angle_threshold ||
         scalar::absolute<math_type>(sample.inclination - m_state.model.inclination) > angle_threshold ||
         scalar::absolute<math_type>(sample.strength - m_state.model.strength) > value_type{1};
     if (changed)
     {
-        if (m_state.reference_id == std::numeric_limits<std::uint32_t>::max())
-        {
-            result.status = Status::out_of_range;
-            return result;
-        }
-        scalar::SinCos<value_type> declination, inclination;
-        result.status = scalar::try_sin_cos<math_type>(sample.declination, declination);
+        result.status = adopt(sample);
         if (!succeeded(result.status))
         {
             return result;
         }
-        result.status = scalar::try_sin_cos<math_type>(sample.inclination, inclination);
-        if (!succeeded(result.status))
-        {
-            return result;
-        }
-        vector_type field;
-        field.set(0U, sample.strength * inclination.cosine * declination.cosine);
-        field.set(1U, sample.strength * inclination.cosine * declination.sine);
-        field.set(2U, sample.strength * inclination.sine);
-        if (!linalg::all_finite(field))
-        {
-            result.status = Status::non_finite_result;
-            return result;
-        }
-        m_state.model = sample;
-        m_state.field_n = field;
-        ++m_state.reference_id;
         result.changed = true;
     }
     m_state.last_check_time_us = now_us;
     m_update_time_us = now_us;
     return result;
+}
+
+template <typename Linalg> Status MagneticReference<Linalg>::validate_sample(Sample const & sample) noexcept
+{
+    using math_type = typename Linalg::scalar_math_type;
+    if (!scalar::is_finite<math_type>(sample.declination) || !scalar::is_finite<math_type>(sample.inclination) ||
+        !scalar::is_finite<math_type>(sample.strength))
+    {
+        return Status::non_finite_input;
+    }
+    auto const pi = scalar::pi<math_type>();
+    if (scalar::absolute<math_type>(sample.declination) > pi ||
+        scalar::absolute<math_type>(sample.inclination) > pi / value_type{2} ||
+        sample.strength < std::numeric_limits<value_type>::min())
+    {
+        return Status::domain_error;
+    }
+    return Status::success;
+}
+
+template <typename Linalg> Status MagneticReference<Linalg>::adopt(Sample const & sample) noexcept
+{
+    using math_type = typename Linalg::scalar_math_type;
+    if (m_state.reference_id == std::numeric_limits<std::uint32_t>::max())
+    {
+        return Status::out_of_range;
+    }
+    scalar::SinCos<value_type> declination, inclination;
+    auto status = scalar::try_sin_cos<math_type>(sample.declination, declination);
+    if (!succeeded(status))
+    {
+        return status;
+    }
+    status = scalar::try_sin_cos<math_type>(sample.inclination, inclination);
+    if (!succeeded(status))
+    {
+        return status;
+    }
+    vector_type field;
+    field(0U) = sample.strength * inclination.cosine * declination.cosine;
+    field(1U) = sample.strength * inclination.cosine * declination.sine;
+    field(2U) = sample.strength * inclination.sine;
+    if (!linalg::all_finite(field))
+    {
+        return Status::non_finite_result;
+    }
+    m_state.model = sample;
+    m_state.field_n = field;
+    ++m_state.reference_id;
+    return Status::success;
 }
 
 } /* end namespace formal_eskf::runtime */

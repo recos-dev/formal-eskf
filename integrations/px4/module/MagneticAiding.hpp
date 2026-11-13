@@ -59,7 +59,7 @@ public:
     // Fixed deployment profile; runtime EKF2 parameter changes do not configure it.
     static constexpr runtime::MagneticFieldParameters<value_type> field_parameters{
         value_type{20}, std::numbers::pi_v<value_type> / value_type{9}, value_type{0}, value_type{5}};
-    static constexpr runtime::MagneticFieldChecks field_checks{true, false, false, true};
+    static constexpr runtime::MagneticFieldChecks field_checks{true, false, false};
     static constexpr typename runtime::MagneticHeading<Linalg>::Parameters heading_parameters{
         static_cast<value_type>(0.3), static_cast<value_type>(0.5), value_type{5}};
     static constexpr lifecycle_type::Parameters timing{1000000U, 500000U, 7000000U};
@@ -125,8 +125,7 @@ MagneticAiding<Linalg>::update(std::uint64_t now_us, Sample const & sample, Cont
 {
     Result result;
     auto const previous = lifecycle();
-    auto checks = field_checks;
-    checks.reference_available = reference.model_available;
+    auto const * health_reference = reference.model_available ? &reference.health_n : nullptr;
     m_horizontal_aiding = context.horizontal_aiding;
     lifecycle_type::Sample event;
     bool usable = false;
@@ -172,8 +171,9 @@ MagneticAiding<Linalg>::update(std::uint64_t now_us, Sample const & sample, Cont
             {
                 return result;
             }
-            m_observation.field = runtime::check_magnetic_field(state.q_nb, sample.field_b, reference.observation_n,
-                                                                reference.health_n, field_parameters, false, checks);
+            m_observation.field =
+                runtime::check_magnetic_field(state.q_nb, sample.field_b, reference.observation_n, health_reference,
+                                              field_parameters, false, field_checks);
             result.status = m_observation.field.status;
             if (!succeeded(result.status))
             {
@@ -215,10 +215,10 @@ MagneticAiding<Linalg>::update(std::uint64_t now_us, Sample const & sample, Cont
     }
     if (lifecycle().fusion_allowed)
     {
-        auto const V = Linalg::template matrix_type<3U, 3U>::identity() * noise_variance;
+        auto const V = linalg::Matrix<Linalg, 3U, 3U>::identity() * noise_variance;
         m_observation = runtime::fuse_magnetometer(state, covariance, sample.field_b, reference.observation_n,
-                                                   reference.health_n, V, field_parameters, false, minimum_norm,
-                                                   gate_sigma, state, covariance, bias_update, checks);
+                                                   health_reference, V, field_parameters, false, minimum_norm,
+                                                   gate_sigma, state, covariance, bias_update, field_checks);
         result.status = m_lifecycle.record_fusion(event.time_us, m_observation.fusion.decision);
         if (!succeeded(result.status))
         {

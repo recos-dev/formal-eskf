@@ -734,17 +734,17 @@ void test_real_fusion(TestContext & test, std::string_view scalar_profile)
     Fixture fixture;
     auto step = [&](std::uint64_t time, vector_type const & measurement)
     {
-        auto const field =
-            formal_eskf::runtime::check_magnetic_field(state.q_nb, measurement, reference, field_parameters, false);
+        auto const field = formal_eskf::runtime::check_magnetic_field(state.q_nb, measurement, reference, &reference,
+                                                                      field_parameters, false);
         test.expect(fixture.sample(time, formal_eskf::succeeded(field.status) && field.diagnostics_valid &&
                                              field.accepted) == Status::success,
                     scalar_profile, "use actual same-prior field check");
         auto decision = FusionDecision::rejected;
         if (fixture.monitor.state().fusion_allowed)
         {
-            auto const result =
-                formal_eskf::runtime::fuse_magnetometer(state, P, measurement, reference, V, field_parameters, false,
-                                                        static_cast<value_type>(1e-6), value_type{3}, state, P);
+            auto const result = formal_eskf::runtime::fuse_magnetometer(
+                state, P, measurement, reference, &reference, V, field_parameters, false, static_cast<value_type>(1e-6),
+                value_type{3}, state, P);
             decision = result.fusion.decision;
             test.expect(fixture.monitor.record_fusion(time, decision) == Status::success, scalar_profile,
                         "use actual gated transaction feedback");

@@ -15,13 +15,12 @@
 namespace formal_eskf::runtime
 {
 
-/** Per-call field-check selection and availability of an independent reference. */
+/** Per-call physical checks; reference availability is expressed by the optional input. */
 struct MagneticFieldChecks
 {
     bool strength = true;
     bool inclination = true;
     bool require_reference = false;
-    bool reference_available = true; // A measured seed alone does not establish this.
 };
 
 template <typename Scalar> struct MagneticFieldParameters
@@ -68,7 +67,7 @@ template <typename Scalar> struct MagneticFieldGeometry
 
 /** Bounded geometry for a finite NED field; reject overflow/underflow, never clamp. */
 template <typename Linalg>
-[[nodiscard]] Status magnetic_field_geometry(linalg::Matrix<Linalg, 3U, 1U> const & field,
+[[nodiscard]] Status magnetic_field_geometry(linalg::Vector<Linalg, 3U> const & field,
                                              MagneticFieldGeometry<typename Linalg::value_type> & output) noexcept
 {
     using value_type = typename Linalg::value_type;
@@ -102,20 +101,82 @@ template <typename Linalg>
     return status;
 }
 
+template <typename Linalg>
+[[nodiscard]] Status
+validate_magnetic_field(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Vector<Linalg, 3U> const & m_b,
+                        linalg::Vector<Linalg, 3U> const & m_n,
+                        MagneticFieldParameters<typename Linalg::value_type> const & parameters) noexcept
+{
+    using value_type = typename Linalg::value_type;
+    using math_type = typename Linalg::scalar_math_type;
+    if (!linalg::all_finite(q_nb.coefficients()) || !linalg::all_finite(m_b) || !linalg::all_finite(m_n) ||
+        !scalar::is_finite<math_type>(parameters.strength_tolerance) ||
+        !scalar::is_finite<math_type>(parameters.inclination_tolerance) ||
+        !scalar::is_finite<math_type>(parameters.heading_tolerance) ||
+        !scalar::is_finite<math_type>(parameters.minimum_horizontal_field))
+    {
+        return Status::non_finite_input;
+    }
+    auto const pi = scalar::pi<math_type>();
+    if (parameters.strength_tolerance < value_type{0} || parameters.inclination_tolerance < value_type{0} ||
+        parameters.inclination_tolerance > pi || parameters.heading_tolerance < value_type{0} ||
+        parameters.heading_tolerance > pi ||
+        parameters.minimum_horizontal_field < std::numeric_limits<value_type>::min() ||
+        !(linalg::max_abs(m_b) > value_type{0}) || !(linalg::max_abs(m_n) > value_type{0}))
+    {
+        return Status::domain_error;
+    }
+    return Status::success;
+}
+
+/** Wrapped horizontal-direction residual; publish only after both angles succeed. */
+template <typename Linalg>
+[[nodiscard]] Status magnetic_heading_error(linalg::Vector<Linalg, 3U> const & measured_n,
+                                            linalg::Vector<Linalg, 3U> const & observation_n,
+                                            typename Linalg::value_type & output) noexcept
+{
+    using value_type = typename Linalg::value_type;
+    using math_type = typename Linalg::scalar_math_type;
+    value_type measured_heading{}, reference_heading{};
+    auto status = scalar::try_atan2<math_type>(measured_n(1U), measured_n(0U), measured_heading);
+    if (!succeeded(status))
+    {
+        return status;
+    }
+    status = scalar::try_atan2<math_type>(observation_n(1U), observation_n(0U), reference_heading);
+    if (!succeeded(status))
+    {
+        return status;
+    }
+    auto error = measured_heading - reference_heading;
+    auto const pi = scalar::pi<math_type>();
+    if (error > pi)
+    {
+        error -= value_type{2} * pi;
+    }
+    else if (error < -pi)
+    {
+        error += value_type{2} * pi;
+    }
+    output = error;
+    return Status::success;
+}
+
 } /* end namespace detail */
 
 /**
  * Stateless field plausibility, not sensor-health qualification or yaw alignment.
  * q_nb is unit and maps calibrated body m_b into NED; m_n is a trustworthy fixed
- * observation reference. field_reference_n supplies independent health geometry.
+ * observation reference. health_reference_n borrows independent health data for
+ * this call only; nullptr means unavailable. Pass &m_n only when the caller
+ * establishes that it is also a trustworthy health reference.
  * All fields use microtesla in the same navigation frame and fusion horizon.
  * No model lookup, bias estimate, clock or filtering is owned here.
  *
- * Selected strength/inclination checks use field_reference_n when marked as an
- * independent reference. Without one, require_reference rejects selected checks;
+ * Selected strength/inclination checks use the supplied health reference.
+ * Without one, require_reference rejects selected checks;
  * otherwise strength uses 45 +/- 40 microtesla and inclination is skipped.
  * This fallback is only a health test: it never replaces m_n for correction.
- * Default selection preserves the supplied-reference contract of existing calls.
  * Always require sufficient horizontal field in the measured and observation
  * vectors. The health reference never supplies the heading check or correction.
  * Apply the wrapped horizontal-direction check only when
@@ -130,32 +191,17 @@ template <typename Linalg>
  */
 template <typename Linalg>
 [[nodiscard]] MagneticFieldCheck<typename Linalg::value_type>
-check_magnetic_field(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Matrix<Linalg, 3U, 1U> const & m_b,
-                     linalg::Matrix<Linalg, 3U, 1U> const & m_n,
-                     linalg::Matrix<Linalg, 3U, 1U> const & field_reference_n,
+check_magnetic_field(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Vector<Linalg, 3U> const & m_b,
+                     linalg::Vector<Linalg, 3U> const & m_n, linalg::Vector<Linalg, 3U> const * health_reference_n,
                      MagneticFieldParameters<typename Linalg::value_type> const & parameters, bool heading_observable,
                      MagneticFieldChecks const & checks = {}) noexcept
 {
     using value_type = typename Linalg::value_type;
     using math_type = typename Linalg::scalar_math_type;
     MagneticFieldCheck<value_type> result;
-    if (!linalg::all_finite(q_nb.coefficients()) || !linalg::all_finite(m_b) || !linalg::all_finite(m_n) ||
-        !scalar::is_finite<math_type>(parameters.strength_tolerance) ||
-        !scalar::is_finite<math_type>(parameters.inclination_tolerance) ||
-        !scalar::is_finite<math_type>(parameters.heading_tolerance) ||
-        !scalar::is_finite<math_type>(parameters.minimum_horizontal_field))
+    result.status = detail::validate_magnetic_field(q_nb, m_b, m_n, parameters);
+    if (!succeeded(result.status))
     {
-        result.status = Status::non_finite_input;
-        return result;
-    }
-    auto const pi = scalar::pi<math_type>();
-    if (parameters.strength_tolerance < value_type{0} || parameters.inclination_tolerance < value_type{0} ||
-        parameters.inclination_tolerance > pi || parameters.heading_tolerance < value_type{0} ||
-        parameters.heading_tolerance > pi ||
-        parameters.minimum_horizontal_field < std::numeric_limits<value_type>::min() ||
-        !(linalg::max_abs(m_b) > value_type{0}) || !(linalg::max_abs(m_n) > value_type{0}))
-    {
-        result.status = Status::domain_error;
         return result;
     }
     auto const measured_n = so3::rotate(q_nb, m_b);
@@ -165,84 +211,69 @@ check_magnetic_field(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Matrix<Li
         return result;
     }
     detail::MagneticFieldGeometry<value_type> measured;
-    detail::MagneticFieldGeometry<value_type> reference;
+    detail::MagneticFieldGeometry<value_type> observation;
     result.status = detail::magnetic_field_geometry(measured_n, measured);
     if (!succeeded(result.status))
     {
         return result;
     }
-    result.status = detail::magnetic_field_geometry(m_n, reference);
+    result.status = detail::magnetic_field_geometry(m_n, observation);
     if (!succeeded(result.status))
     {
         return result;
     }
-    detail::MagneticFieldGeometry<value_type> field_reference;
-    if (checks.reference_available && (checks.strength || checks.inclination))
+    bool const reference_available = health_reference_n != nullptr;
+    detail::MagneticFieldGeometry<value_type> health;
+    if (reference_available && (checks.strength || checks.inclination))
     {
-        if (!linalg::all_finite(field_reference_n))
+        if (!linalg::all_finite(*health_reference_n))
         {
             result.status = Status::non_finite_input;
             return result;
         }
-        if (!(linalg::max_abs(field_reference_n) > value_type{0}))
+        if (!(linalg::max_abs(*health_reference_n) > value_type{0}))
         {
             result.status = Status::domain_error;
             return result;
         }
-        // The single-reference overload has already computed this geometry.
-        field_reference = reference;
-        if (&field_reference_n != &m_n)
+        // Reuse geometry when the caller explicitly assigns both roles to m_n.
+        health = observation;
+        if (health_reference_n != &m_n)
         {
-            result.status = detail::magnetic_field_geometry(field_reference_n, field_reference);
+            result.status = detail::magnetic_field_geometry(*health_reference_n, health);
         }
         if (!succeeded(result.status))
         {
             return result;
         }
     }
-    auto const inclination_error = measured.inclination - field_reference.inclination;
+    auto const inclination_error = measured.inclination - health.inclination;
     bool const horizontal_failure = measured.horizontal < parameters.minimum_horizontal_field ||
-                                    reference.horizontal < parameters.minimum_horizontal_field;
+                                    observation.horizontal < parameters.minimum_horizontal_field;
     value_type heading_error{};
     bool const heading_checked = heading_observable && !horizontal_failure;
     if (heading_checked)
     {
-        value_type measured_heading{};
-        value_type reference_heading{};
-        result.status = scalar::try_atan2<math_type>(measured_n(1U), measured_n(0U), measured_heading);
+        result.status = detail::magnetic_heading_error(measured_n, m_n, heading_error);
         if (!succeeded(result.status))
         {
             return result;
-        }
-        result.status = scalar::try_atan2<math_type>(m_n(1U), m_n(0U), reference_heading);
-        if (!succeeded(result.status))
-        {
-            return result;
-        }
-        heading_error = measured_heading - reference_heading;
-        if (heading_error > pi)
-        {
-            heading_error -= value_type{2} * pi;
-        }
-        else if (heading_error < -pi)
-        {
-            heading_error += value_type{2} * pi;
         }
     }
     result.strength = measured.strength;
-    result.reference_strength = checks.reference_available ? field_reference.strength : value_type{45};
-    result.strength_checked = checks.strength && (checks.reference_available || !checks.require_reference);
-    result.inclination_checked = checks.inclination && checks.reference_available;
+    result.reference_strength = reference_available ? health.strength : value_type{45};
+    result.strength_checked = checks.strength && (reference_available || !checks.require_reference);
+    result.inclination_checked = checks.inclination && reference_available;
     result.inclination_error = result.inclination_checked ? inclination_error : value_type{0};
     result.heading_error = heading_error;
     result.heading_checked = heading_checked;
     result.failures.reference =
-        checks.require_reference && !checks.reference_available && (checks.strength || checks.inclination);
+        checks.require_reference && !reference_available && (checks.strength || checks.inclination);
     result.failures.strength =
         result.strength_checked &&
-        (checks.reference_available ? scalar::absolute<math_type>(measured.strength - result.reference_strength) >
-                                          parameters.strength_tolerance
-                                    : measured.strength < value_type{5} || measured.strength > value_type{85});
+        (reference_available ? scalar::absolute<math_type>(measured.strength - result.reference_strength) >
+                                   parameters.strength_tolerance
+                             : measured.strength < value_type{5} || measured.strength > value_type{85});
     result.failures.inclination =
         result.inclination_checked && scalar::absolute<math_type>(inclination_error) > parameters.inclination_tolerance;
     result.failures.horizontal_field = horizontal_failure;
@@ -252,17 +283,6 @@ check_magnetic_field(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Matrix<Li
                       !result.failures.horizontal_field && !result.failures.heading;
     result.diagnostics_valid = true;
     return result;
-}
-
-/** Use the observation field for health checks when no separate reference is supplied. */
-template <typename Linalg>
-[[nodiscard]] MagneticFieldCheck<typename Linalg::value_type>
-check_magnetic_field(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Matrix<Linalg, 3U, 1U> const & m_b,
-                     linalg::Matrix<Linalg, 3U, 1U> const & m_n,
-                     MagneticFieldParameters<typename Linalg::value_type> const & parameters, bool heading_observable,
-                     MagneticFieldChecks const & checks = {}) noexcept
-{
-    return check_magnetic_field(q_nb, m_b, m_n, m_n, parameters, heading_observable, checks);
 }
 
 } /* end namespace formal_eskf::runtime */

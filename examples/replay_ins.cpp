@@ -646,7 +646,7 @@ struct MagneticFieldConfiguration
     bool configured = false;
 };
 
-MagneticFieldConfiguration read_magnetic_field_parameters(std::filesystem::path const & input, bool model_available)
+MagneticFieldConfiguration read_magnetic_field_parameters(std::filesystem::path const & input)
 {
     MagneticFieldConfiguration result;
     if (!std::filesystem::exists(input / "magnetic_field_parameters.csv"))
@@ -667,7 +667,7 @@ MagneticFieldConfiguration read_magnetic_field_parameters(std::filesystem::path 
     }
     result.parameters.strength_tolerance = row[1U];
     result.parameters.inclination_tolerance = row[2U];
-    result.checks = {(mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0, model_available};
+    result.checks = {(mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0};
     result.configured = true;
     return result;
 }
@@ -1091,9 +1091,10 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     {
         throw std::runtime_error("empty magnetometer input");
     }
-    auto const field_configuration = read_magnetic_field_parameters(input, has_magnetic_model);
+    auto const field_configuration = read_magnetic_field_parameters(input);
     auto const & field_parameters = field_configuration.parameters;
     auto const & field_checks = field_configuration.checks;
+    bool const field_reference_available = !field_configuration.configured || has_magnetic_model;
     bool const field_checks_disabled =
         !field_checks.strength && !field_checks.inclination && !field_checks.require_reference;
     MagneticLifecycle::Parameters const magnetic_timing{field_checks_disabled ? 0U : MAG_HEALTH_TIME_US,
@@ -1879,8 +1880,9 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     magnetic_source.reference_id = reference_model.state().reference_id;
                 }
             }
-            auto const & field_reference_n =
+            auto const & health_field =
                 has_magnetic_model && !model_heading ? reference_model.state().field_n : magnetic.m_n;
+            auto const * field_reference_n = field_reference_available ? &health_field : nullptr;
             bool const source_changed =
                 previous_magnetic_source.device_id != magnetic_context.source.device_id ||
                 previous_magnetic_source.calibration_count != magnetic_context.source.calibration_count;
@@ -2156,8 +2158,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << (field_configuration.configured ? "true" : "false") << ",\n  \"magnetometer_check_mask\": "
             << ((field_checks.strength ? 1 : 0) | (field_checks.inclination ? 2 : 0) |
                 (field_checks.require_reference ? 4 : 0))
-            << ",\n  \"magnetometer_check_reference_available\": "
-            << (field_checks.reference_available ? "true" : "false")
+            << ",\n  \"magnetometer_check_reference_available\": " << (field_reference_available ? "true" : "false")
             << ",\n  \"magnetometer_strength_tolerance_ut\": " << field_parameters.strength_tolerance
             << ",\n  \"magnetometer_inclination_tolerance_deg\": "
             << field_parameters.inclination_tolerance * 180.0 / std::numbers::pi

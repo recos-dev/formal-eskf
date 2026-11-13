@@ -31,7 +31,7 @@ template <typename State, typename Linalg, std::size_t Size>
 [[nodiscard]] MagnetometerFusionResult<Linalg> fuse_magnetometer_state(
     State const & state, linalg::Matrix<Linalg, Size, Size> const & covariance,
     linalg::Matrix<Linalg, 3U, 1U> const & m_b, linalg::Matrix<Linalg, 3U, 1U> const & m_n,
-    linalg::Matrix<Linalg, 3U, 1U> const & field_reference_n, linalg::Matrix<Linalg, 3U, 3U> const & V,
+    linalg::Vector<Linalg, 3U> const * field_reference_n, linalg::Matrix<Linalg, 3U, 3U> const & V,
     MagneticFieldParameters<typename Linalg::value_type> const & field_parameters, bool heading_observable,
     typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma, State & state_output,
     linalg::Matrix<Linalg, Size, Size> & covariance_output, configuration::Ins::BiasUpdate const & bias_update = {},
@@ -99,14 +99,15 @@ template <typename State, typename Linalg, std::size_t Size>
  * Rejection does not certify unused inputs: covariance/solver checks are deferred
  * until their stage. Unit attitude, PSD P, SPD V and calibration/time alignment
  * remain caller premises. Heading observability follows check_magnetic_field.
- * field_reference_n supplies health checks only; m_n owns the innovation and correction.
+ * field_reference_n is borrowed for health checks only (nullptr means absent);
+ * m_n owns the innovation and correction, even when no health reference exists.
  * No lifecycle, recovery timer, yaw reset, magnetic states or implicit tuning.
  */
 template <typename Linalg>
 [[nodiscard]] MagnetometerFusionResult<Linalg> fuse_magnetometer(
     configuration::Ahrs::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 3U, 3U> const & covariance,
     linalg::Matrix<Linalg, 3U, 1U> const & m_b, linalg::Matrix<Linalg, 3U, 1U> const & m_n,
-    linalg::Matrix<Linalg, 3U, 1U> const & field_reference_n, linalg::Matrix<Linalg, 3U, 3U> const & V,
+    linalg::Vector<Linalg, 3U> const * field_reference_n, linalg::Matrix<Linalg, 3U, 3U> const & V,
     MagneticFieldParameters<typename Linalg::value_type> const & field_parameters, bool heading_observable,
     typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
     configuration::Ahrs::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 3U, 3U> & covariance_output,
@@ -122,7 +123,7 @@ template <typename Linalg>
 [[nodiscard]] MagnetometerFusionResult<Linalg> fuse_magnetometer(
     configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
     linalg::Matrix<Linalg, 3U, 1U> const & m_b, linalg::Matrix<Linalg, 3U, 1U> const & m_n,
-    linalg::Matrix<Linalg, 3U, 1U> const & field_reference_n, linalg::Matrix<Linalg, 3U, 3U> const & V,
+    linalg::Vector<Linalg, 3U> const * field_reference_n, linalg::Matrix<Linalg, 3U, 3U> const & V,
     MagneticFieldParameters<typename Linalg::value_type> const & field_parameters, bool heading_observable,
     typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
     configuration::Ins::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
@@ -131,39 +132,6 @@ template <typename Linalg>
     return detail::fuse_magnetometer_state(state, covariance, m_b, m_n, field_reference_n, V, field_parameters,
                                            heading_observable, minimum_quaternion_norm, gate_sigma, state_output,
                                            covariance_output, bias_update, field_checks);
-}
-
-/** Single-reference overloads retain the existing observation/health contract. */
-template <typename Linalg>
-[[nodiscard]] MagnetometerFusionResult<Linalg>
-fuse_magnetometer(configuration::Ahrs::NominalState<Linalg> const & state,
-                  linalg::Matrix<Linalg, 3U, 3U> const & covariance, linalg::Matrix<Linalg, 3U, 1U> const & m_b,
-                  linalg::Matrix<Linalg, 3U, 1U> const & m_n, linalg::Matrix<Linalg, 3U, 3U> const & V,
-                  MagneticFieldParameters<typename Linalg::value_type> const & field_parameters,
-                  bool heading_observable, typename Linalg::value_type minimum_quaternion_norm,
-                  typename Linalg::value_type gate_sigma, configuration::Ahrs::NominalState<Linalg> & state_output,
-                  linalg::Matrix<Linalg, 3U, 3U> & covariance_output,
-                  MagneticFieldChecks const & field_checks = {}) noexcept
-{
-    return detail::fuse_magnetometer_state(state, covariance, m_b, m_n, m_n, V, field_parameters, heading_observable,
-                                           minimum_quaternion_norm, gate_sigma, state_output, covariance_output, {},
-                                           field_checks);
-}
-
-/** INS forwards per-axis bias permissions unchanged; neither gate uses them. */
-template <typename Linalg>
-[[nodiscard]] MagnetometerFusionResult<Linalg> fuse_magnetometer(
-    configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-    linalg::Matrix<Linalg, 3U, 1U> const & m_b, linalg::Matrix<Linalg, 3U, 1U> const & m_n,
-    linalg::Matrix<Linalg, 3U, 3U> const & V,
-    MagneticFieldParameters<typename Linalg::value_type> const & field_parameters, bool heading_observable,
-    typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
-    configuration::Ins::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-    configuration::Ins::BiasUpdate const & bias_update = {}, MagneticFieldChecks const & field_checks = {}) noexcept
-{
-    return detail::fuse_magnetometer_state(state, covariance, m_b, m_n, m_n, V, field_parameters, heading_observable,
-                                           minimum_quaternion_norm, gate_sigma, state_output, covariance_output,
-                                           bias_update, field_checks);
 }
 
 } /* end namespace formal_eskf::runtime */

@@ -75,13 +75,13 @@ template <typename Linalg> void run(Context & test)
         F f;
         f.start(test);
         f.P = F::aiding_type::covariance_type::identity();
-        f.P.set(8, 9, static_cast<Scalar>(0.2));
-        f.P.set(9, 8, static_cast<Scalar>(0.2));
-        f.P.set(8, 12, static_cast<Scalar>(0.2));
-        f.P.set(12, 8, static_cast<Scalar>(0.2));
+        f.P(8, 9) = static_cast<Scalar>(0.2);
+        f.P(9, 8) = static_cast<Scalar>(0.2);
+        f.P(8, 12) = static_cast<Scalar>(0.2);
+        f.P(12, 8) = static_cast<Scalar>(0.2);
         auto open = f;
         auto field = f.reference;
-        field.set(1, Scalar{1});
+        field(1) = Scalar{1};
         typename F::aiding_type::Sample sample{f.now + 10000U, f.source, field};
         formal_eskf::configuration::Ins::BiasUpdate inhibited{{false, false, false}, {true, true, true}};
         auto result = f.aiding.update(sample.time_us, sample, f.context, f.reference_data(), f.state, f.P, inhibited);
@@ -94,15 +94,15 @@ template <typename Linalg> void run(Context & test)
     {
         F f;
         f.start(test);
-        f.state.b_a.set(0, Scalar{-1});
-        f.state.b_g.set(1, Scalar{1});
+        f.state.b_a(0) = Scalar{-1};
+        f.state.b_g(1) = Scalar{1};
         formal_eskf::configuration::Ins::BiasUpdate inhibited{{false, false, false}, {false, false, false}};
         typename F::aiding_type::Sample sample{f.now + 10000U, f.source, f.sample};
         auto result = f.aiding.update(sample.time_us, sample, f.context, f.reference_data(), f.state, f.P, inhibited);
         test.expect(result.fused && f.state.b_a(0) == static_cast<Scalar>(-0.4) &&
                         f.state.b_g(1) == static_cast<Scalar>(0.15),
                     "bias limits", "successful magnetic group limits biases despite inhibited learning");
-        f.state.b_a.set(0, Scalar{-1});
+        f.state.b_a(0) = Scalar{-1};
         sample.time_us += 10000U;
         sample.field_b = f.reference * Scalar{2};
         result = f.aiding.update(sample.time_us, sample, f.context, f.reference_data(), f.state, f.P, inhibited);
@@ -131,7 +131,7 @@ template <typename Linalg> void run(Context & test)
                     "field", "field inhibition retains session without refreshing progress");
         f.sample = f.reference;
         test.expect(f.tick().fused, "field", "active session resumes on a good field without startup delay");
-        f.sample.set(0, std::numeric_limits<Scalar>::quiet_NaN());
+        f.sample(0) = std::numeric_limits<Scalar>::quiet_NaN();
         result = f.tick();
         test.expect(result.status == Status::success && result.rejected && !f.aiding.lifecycle().active, "invalid",
                     "non-finite external observation stops aiding without estimator numerical fault");
@@ -271,7 +271,7 @@ template <typename Linalg> void run(Context & test)
         F f;
         f.start(test);
         ++f.source.calibration_count;
-        f.P.set(0, 0, Scalar{-1});
+        f.P(0, 0) = Scalar{-1};
         auto const P = f.P;
         auto const q = f.state.q_nb;
         for (unsigned i = 0; i < 3; ++i)
@@ -284,7 +284,7 @@ template <typename Linalg> void run(Context & test)
                     "reset failure", "failed reset preserves estimate and notification count");
         test.expect(f.aiding.lifecycle().recovery_reason == Lifecycle::RecoveryReason::reset_failed, "reset failure",
                     "numerical failure latches repair requirement");
-        f.P.set(0, 0, static_cast<Scalar>(0.01));
+        f.P(0, 0) = static_cast<Scalar>(0.01);
         ++f.source.device_id;
         for (unsigned i = 0; i < 5; ++i)
         {

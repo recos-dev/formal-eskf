@@ -2904,7 +2904,7 @@
     },
     {
       "id": "R-MAGNETIC-FIELD",
-      "title": "Selectable magnetic field checks with separate health/heading references and fallback; Lean and ESBMC evidence pending",
+      "title": "Magnetic field checks with an explicit optional health reference and fallback; Lean and ESBMC evidence pending",
       "references": {
         "spec": [
           {
@@ -2933,6 +2933,14 @@
           {
             "file": "include/formal_eskf/runtime/magnetic_field.hpp",
             "symbol": "struct MagneticFieldCheck"
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetic_field.hpp",
+            "symbol": "validate_magnetic_field("
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetic_field.hpp",
+            "symbol": "magnetic_heading_error("
           },
           {
             "file": "include/formal_eskf/runtime/magnetic_field.hpp",
@@ -3029,6 +3037,14 @@
           {
             "file": "include/formal_eskf/runtime/magnetic_reference.hpp",
             "symbol": "class MagneticReference"
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetic_reference.hpp",
+            "symbol": "MagneticReference<Linalg>::validate_sample("
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetic_reference.hpp",
+            "symbol": "MagneticReference<Linalg>::adopt("
           },
           {
             "file": "examples/replay_ins.cpp",

@@ -75,7 +75,7 @@ template <typename Linalg> void test_field_checks(TestContext & test, std::strin
     formal_eskf::so3::UnitQuaternion<Linalg> const identity;
     auto parameters = field_parameters<Linalg>();
     auto const reference = vector_type::from_row_major({value_type{30}, value_type{0}, value_type{40}});
-    auto result = check_magnetic_field(identity, reference, reference, parameters, true);
+    auto result = check_magnetic_field<Linalg>(identity, reference, reference, &reference, parameters, true);
     test.expect(result.status == Status::success && result.accepted && result.diagnostics_valid &&
                     result.heading_checked && result.strength == value_type{50} &&
                     result.reference_strength == value_type{50} && result.heading_error == value_type{0} &&
@@ -83,33 +83,34 @@ template <typename Linalg> void test_field_checks(TestContext & test, std::strin
                 profile, "matching calibrated field passes all checks");
 
     auto sample = reference * value_type{2};
-    result = check_magnetic_field(identity, sample, reference, parameters, true);
+    result = check_magnetic_field<Linalg>(identity, sample, reference, &reference, parameters, true);
     test.expect(result.status == Status::success && !result.accepted && result.failures.strength &&
                     !result.failures.inclination && !result.failures.heading,
                 profile, "same direction with excessive strength is rejected");
     sample = vector_type::from_row_major({value_type{40}, value_type{0}, value_type{30}});
-    result = check_magnetic_field(identity, sample, reference, parameters, true);
+    result = check_magnetic_field<Linalg>(identity, sample, reference, &reference, parameters, true);
     test.expect(!result.accepted && !result.failures.strength && result.failures.inclination &&
                     !result.failures.heading,
                 profile, "same strength but different inclination is rejected");
     sample = vector_type::from_row_major({value_type{0}, value_type{30}, value_type{40}});
-    result = check_magnetic_field(identity, sample, reference, parameters, true);
+    result = check_magnetic_field<Linalg>(identity, sample, reference, &reference, parameters, true);
     test.expect(!result.accepted && !result.failures.strength && !result.failures.inclination &&
                     result.failures.heading && result.heading_checked,
                 profile, "horizontal-direction disturbance needs an independent heading premise");
-    result = check_magnetic_field(identity, sample, reference, parameters, false);
+    result = check_magnetic_field<Linalg>(identity, sample, reference, &reference, parameters, false);
     test.expect(result.accepted && !result.heading_checked && result.heading_error == value_type{0}, profile,
                 "unobservable heading skips only the heading consistency check");
 
     auto const vertical = vector_type::from_row_major({value_type{0}, value_type{0}, value_type{50}});
-    result = check_magnetic_field(identity, vertical, vertical, parameters, true);
+    result = check_magnetic_field<Linalg>(identity, vertical, vertical, &vertical, parameters, true);
     test.expect(result.status == Status::success && result.diagnostics_valid && !result.accepted &&
                     result.failures.horizontal_field && !result.heading_checked,
                 profile, "vertical fields have valid inclination but no usable heading");
     for (bool weak_reference : {false, true})
     {
-        result = check_magnetic_field(identity, weak_reference ? reference : vertical,
-                                      weak_reference ? vertical : reference, parameters, false);
+        result = check_magnetic_field<Linalg>(identity, weak_reference ? reference : vertical,
+                                              weak_reference ? vertical : reference,
+                                              &(weak_reference ? vertical : reference), parameters, false);
         test.expect(result.failures.horizontal_field && !result.accepted, profile,
                     "either weak horizontal field rejects, even when heading consistency is skipped");
     }
@@ -118,7 +119,8 @@ template <typename Linalg> void test_field_checks(TestContext & test, std::strin
     auto const west_b = vector_type::from_row_major({value_type{-40}, value_type{-0.5}, value_type{10}});
     for (bool reverse : {false, true})
     {
-        result = check_magnetic_field(identity, reverse ? west_n : west_b, reverse ? west_b : west_n, parameters, true);
+        result = check_magnetic_field<Linalg>(identity, reverse ? west_n : west_b, reverse ? west_b : west_n,
+                                              &(reverse ? west_b : west_n), parameters, true);
         long double const expected = (reverse ? -2.0L : 2.0L) * std::atan2(0.5L, 40.0L);
         test.expect(result.accepted && std::abs(static_cast<long double>(result.heading_error) - expected) < 1e-6L,
                     profile, "heading wraps across both sides of the +/-pi boundary");
@@ -126,37 +128,38 @@ template <typename Linalg> void test_field_checks(TestContext & test, std::strin
 
     auto const north = vector_type::from_row_major({value_type{5}, value_type{0}, value_type{0}});
     auto const stronger = north * value_type{2};
-    result = check_magnetic_field(identity, stronger, north, parameters, true);
+    result = check_magnetic_field<Linalg>(identity, stronger, north, &north, parameters, true);
     test.expect(result.accepted, profile, "strength tolerance equality passes");
     parameters.strength_tolerance = std::nextafter(value_type{5}, value_type{0});
-    test.expect(check_magnetic_field(identity, stronger, north, parameters, true).failures.strength, profile,
-                "just beyond strength tolerance rejects");
+    test.expect(check_magnetic_field<Linalg>(identity, stronger, north, &north, parameters, true).failures.strength,
+                profile, "just beyond strength tolerance rejects");
     parameters = field_parameters<Linalg>();
     parameters.minimum_horizontal_field = value_type{5};
-    test.expect(check_magnetic_field(identity, north, north, parameters, true).accepted, profile,
+    test.expect(check_magnetic_field<Linalg>(identity, north, north, &north, parameters, true).accepted, profile,
                 "minimum horizontal equality passes");
     parameters.minimum_horizontal_field = std::nextafter(value_type{5}, value_type{6});
-    test.expect(check_magnetic_field(identity, north, north, parameters, true).failures.horizontal_field, profile,
-                "just below minimum horizontal rejects");
+    test.expect(
+        check_magnetic_field<Linalg>(identity, north, north, &north, parameters, true).failures.horizontal_field,
+        profile, "just below minimum horizontal rejects");
 
     parameters = field_parameters<Linalg>();
     sample = vector_type::from_row_major({value_type{0}, value_type{5}, value_type{0}});
-    result = check_magnetic_field(identity, sample, north, parameters, true);
+    result = check_magnetic_field<Linalg>(identity, sample, north, &north, parameters, true);
     parameters.heading_tolerance = std::abs(result.heading_error);
-    test.expect(check_magnetic_field(identity, sample, north, parameters, true).accepted, profile,
+    test.expect(check_magnetic_field<Linalg>(identity, sample, north, &north, parameters, true).accepted, profile,
                 "computed heading tolerance equality passes");
     parameters.heading_tolerance = std::nextafter(parameters.heading_tolerance, value_type{0});
-    test.expect(check_magnetic_field(identity, sample, north, parameters, true).failures.heading, profile,
-                "computed heading just beyond tolerance rejects");
+    test.expect(check_magnetic_field<Linalg>(identity, sample, north, &north, parameters, true).failures.heading,
+                profile, "computed heading just beyond tolerance rejects");
     parameters = field_parameters<Linalg>();
     sample = vector_type::from_row_major({value_type{3}, value_type{0}, value_type{4}});
-    result = check_magnetic_field(identity, sample, north, parameters, true);
+    result = check_magnetic_field<Linalg>(identity, sample, north, &north, parameters, true);
     parameters.inclination_tolerance = std::abs(result.inclination_error);
-    test.expect(check_magnetic_field(identity, sample, north, parameters, true).accepted, profile,
+    test.expect(check_magnetic_field<Linalg>(identity, sample, north, &north, parameters, true).accepted, profile,
                 "computed inclination tolerance equality passes");
     parameters.inclination_tolerance = std::nextafter(parameters.inclination_tolerance, value_type{0});
-    test.expect(check_magnetic_field(identity, sample, north, parameters, true).failures.inclination, profile,
-                "computed inclination just beyond tolerance rejects");
+    test.expect(check_magnetic_field<Linalg>(identity, sample, north, &north, parameters, true).failures.inclination,
+                profile, "computed inclination just beyond tolerance rejects");
 }
 
 template <typename Linalg> void test_field_selection(TestContext & test, std::string_view profile)
@@ -174,11 +177,11 @@ template <typename Linalg> void test_field_selection(TestContext & test, std::st
         for (bool available : {false, true})
         {
             formal_eskf::runtime::MagneticFieldChecks const checks{(mask & 1U) != 0U, (mask & 2U) != 0U,
-                                                                   (mask & 4U) != 0U, available};
+                                                                   (mask & 4U) != 0U};
             for (std::size_t sample = 0U; sample < samples.size(); ++sample)
             {
-                auto const result =
-                    check_magnetic_field(identity, samples[sample], reference, parameters, false, checks);
+                auto const result = check_magnetic_field<Linalg>(
+                    identity, samples[sample], reference, available ? &reference : nullptr, parameters, false, checks);
                 bool const waiting = !available && checks.require_reference && (checks.strength || checks.inclination);
                 bool const strength_checked = checks.strength && (available || !checks.require_reference);
                 bool const inclination_checked = checks.inclination && available;
@@ -199,11 +202,12 @@ template <typename Linalg> void test_field_selection(TestContext & test, std::st
             }
         }
     }
-    formal_eskf::runtime::MagneticFieldChecks const fallback{true, true, false, false};
+    formal_eskf::runtime::MagneticFieldChecks const fallback{true, true, false};
     for (value_type magnitude : {value_type{5}, value_type{85}})
     {
         auto const sample = vector_type::from_row_major({magnitude, value_type{0}, value_type{0}});
-        auto const result = check_magnetic_field(identity, sample, reference, parameters, false, fallback);
+        auto const result =
+            check_magnetic_field<Linalg>(identity, sample, reference, nullptr, parameters, false, fallback);
         test.expect(result.accepted && result.strength_checked && !result.inclination_checked &&
                         result.reference_strength == value_type{45},
                     profile, "without a reference the inclusive 5 to 85 microtesla range applies");
@@ -212,17 +216,19 @@ template <typename Linalg> void test_field_selection(TestContext & test, std::st
          {std::nextafter(value_type{5}, value_type{0}), std::nextafter(value_type{85}, value_type{100})})
     {
         auto const sample = vector_type::from_row_major({magnitude, value_type{0}, value_type{0}});
-        test.expect(check_magnetic_field(identity, sample, reference, parameters, false, fallback).failures.strength,
+        test.expect(check_magnetic_field<Linalg>(identity, sample, reference, nullptr, parameters, false, fallback)
+                        .failures.strength,
                     profile, "just outside the fallback range rejects independently of configured tolerance");
     }
     auto const vertical = vector_type::from_row_major({value_type{0}, value_type{0}, value_type{50}});
-    formal_eskf::runtime::MagneticFieldChecks const disabled{false, false, false, false};
-    test.expect(
-        check_magnetic_field(identity, vertical, reference, parameters, false, disabled).failures.horizontal_field,
-        profile, "disabling physical checks retains the separate weak-heading guard");
+    formal_eskf::runtime::MagneticFieldChecks const disabled{false, false, false};
+    test.expect(check_magnetic_field<Linalg>(identity, vertical, reference, nullptr, parameters, false, disabled)
+                    .failures.horizontal_field,
+                profile, "disabling physical checks retains the separate weak-heading guard");
     auto const east = vector_type::from_row_major({value_type{0}, value_type{30}, value_type{40}});
-    test.expect(check_magnetic_field(identity, east, reference, parameters, true, disabled).failures.heading, profile,
-                "field selection does not disable the separately requested heading check");
+    test.expect(
+        check_magnetic_field<Linalg>(identity, east, reference, nullptr, parameters, true, disabled).failures.heading,
+        profile, "field selection does not disable the separately requested heading check");
 }
 
 template <typename Linalg> void test_field_frames(TestContext & test, std::string_view profile)
@@ -263,7 +269,8 @@ template <typename Linalg> void test_field_frames(TestContext & test, std::strin
             measured(axis) = static_cast<value_type>(reference(axis) + 2.0L * q.q0() * first[axis] +
                                                      2.0L * (u[j] * first[k] - u[k] * first[j]));
         }
-        auto const result = check_magnetic_field(q, measured, reference, field_parameters<Linalg>(), true);
+        auto const result =
+            check_magnetic_field<Linalg>(q, measured, reference, &reference, field_parameters<Linalg>(), true);
         test.expect(result.accepted && std::abs(result.inclination_error) < static_cast<value_type>(1e-5) &&
                         std::abs(result.heading_error) < static_cast<value_type>(1e-5) &&
                         std::abs(static_cast<long double>(result.strength) - std::sqrt(2369.0L)) < 1e-4L,
@@ -293,8 +300,10 @@ template <typename Linalg> void test_invalid_field(TestContext & test, std::stri
         {
             auto bad = reference;
             bad(axis) = invalid;
-            expect_failure(check_magnetic_field(identity, bad, reference, parameters, true), Status::non_finite_input);
-            expect_failure(check_magnetic_field(identity, reference, bad, parameters, true), Status::non_finite_input);
+            expect_failure(check_magnetic_field<Linalg>(identity, bad, reference, &reference, parameters, true),
+                           Status::non_finite_input);
+            expect_failure(check_magnetic_field<Linalg>(identity, reference, bad, &bad, parameters, true),
+                           Status::non_finite_input);
         }
         for (std::size_t index = 0U; index < 4U; ++index)
         {
@@ -302,13 +311,15 @@ template <typename Linalg> void test_invalid_field(TestContext & test, std::stri
             std::array<value_type *, 4U> fields{&bad.strength_tolerance, &bad.inclination_tolerance,
                                                 &bad.heading_tolerance, &bad.minimum_horizontal_field};
             *fields[index] = invalid;
-            expect_failure(check_magnetic_field(identity, reference, reference, bad, false), Status::non_finite_input);
+            expect_failure(check_magnetic_field<Linalg>(identity, reference, reference, &reference, bad, false),
+                           Status::non_finite_input);
             // Test-only invalid representation; never construct this through the checked public API.
             std::array<value_type, 4U> coefficients{value_type{1}, value_type{0}, value_type{0}, value_type{0}};
             coefficients[index] = invalid;
             static_assert(sizeof(quaternion_type) == sizeof(coefficients));
             auto const q = std::bit_cast<quaternion_type>(coefficients);
-            expect_failure(check_magnetic_field(q, reference, reference, parameters, true), Status::non_finite_input);
+            expect_failure(check_magnetic_field<Linalg>(q, reference, reference, &reference, parameters, true),
+                           Status::non_finite_input);
         }
     }
     for (std::size_t index = 0U; index < 4U; ++index)
@@ -317,24 +328,34 @@ template <typename Linalg> void test_invalid_field(TestContext & test, std::stri
         std::array<value_type *, 4U> fields{&bad.strength_tolerance, &bad.inclination_tolerance, &bad.heading_tolerance,
                                             &bad.minimum_horizontal_field};
         *fields[index] = value_type{-1};
-        expect_failure(check_magnetic_field(identity, reference, reference, bad, true), Status::domain_error);
+        expect_failure(check_magnetic_field<Linalg>(identity, reference, reference, &reference, bad, true),
+                       Status::domain_error);
     }
     auto bad_parameters = parameters;
     bad_parameters.inclination_tolerance = value_type{4};
-    expect_failure(check_magnetic_field(identity, reference, reference, bad_parameters, true), Status::domain_error);
+    expect_failure(check_magnetic_field<Linalg>(identity, reference, reference, &reference, bad_parameters, true),
+                   Status::domain_error);
     bad_parameters = parameters;
     bad_parameters.heading_tolerance = value_type{4};
-    expect_failure(check_magnetic_field(identity, reference, reference, bad_parameters, false), Status::domain_error);
-    expect_failure(check_magnetic_field(identity, reference, reference, {}, true), Status::domain_error);
-    expect_failure(check_magnetic_field(identity, Vector<Linalg>{}, reference, parameters, true), Status::domain_error);
-    expect_failure(check_magnetic_field(identity, reference, Vector<Linalg>{}, parameters, true), Status::domain_error);
+    expect_failure(check_magnetic_field<Linalg>(identity, reference, reference, &reference, bad_parameters, false),
+                   Status::domain_error);
+    expect_failure(check_magnetic_field<Linalg>(identity, reference, reference, &reference, {}, true),
+                   Status::domain_error);
+    expect_failure(check_magnetic_field<Linalg>(identity, Vector<Linalg>{}, reference, &reference, parameters, true),
+                   Status::domain_error);
+    expect_failure(check_magnetic_field<Linalg>(identity, reference, Vector<Linalg>{}, nullptr, parameters, true),
+                   Status::domain_error);
     auto huge = reference;
     huge(2U) = limits_type::max();
-    expect_failure(check_magnetic_field(identity, huge, reference, parameters, true), Status::non_finite_result);
-    expect_failure(check_magnetic_field(identity, reference, huge, parameters, true), Status::non_finite_result);
+    expect_failure(check_magnetic_field<Linalg>(identity, huge, reference, &reference, parameters, true),
+                   Status::non_finite_result);
+    expect_failure(check_magnetic_field<Linalg>(identity, reference, huge, &huge, parameters, true),
+                   Status::non_finite_result);
     auto const tiny = Vector<Linalg>::from_row_major({limits_type::min(), value_type{0}, value_type{0}});
-    expect_failure(check_magnetic_field(identity, tiny, reference, parameters, true), Status::zero_or_unsafe_divisor);
-    expect_failure(check_magnetic_field(identity, reference, tiny, parameters, true), Status::zero_or_unsafe_divisor);
+    expect_failure(check_magnetic_field<Linalg>(identity, tiny, reference, &reference, parameters, true),
+                   Status::zero_or_unsafe_divisor);
+    expect_failure(check_magnetic_field<Linalg>(identity, reference, tiny, &tiny, parameters, true),
+                   Status::zero_or_unsafe_divisor);
 }
 
 template <typename Linalg, typename Configuration> struct FusionFixture
@@ -353,6 +374,7 @@ template <typename Linalg, typename Configuration> struct FusionFixture
     value_type minimum_norm = static_cast<value_type>(1e-6);
     value_type sigma = value_type{3};
     bool heading_observable = true;
+    bool has_health_reference = true;
     Ins::BiasUpdate bias_update{};
     formal_eskf::runtime::MagneticFieldChecks checks{};
 
@@ -378,15 +400,15 @@ template <typename Linalg, typename Configuration> struct FusionFixture
     {
         if constexpr (std::is_same_v<Configuration, Ins>)
         {
-            return formal_eskf::runtime::fuse_magnetometer(state, P, sample, reference, V, parameters,
-                                                           heading_observable, minimum_norm, sigma, output, output_P,
-                                                           bias_update, checks);
+            return formal_eskf::runtime::fuse_magnetometer(
+                state, P, sample, reference, has_health_reference ? &reference : nullptr, V, parameters,
+                heading_observable, minimum_norm, sigma, output, output_P, bias_update, checks);
         }
         else
         {
-            return formal_eskf::runtime::fuse_magnetometer(state, P, sample, reference, V, parameters,
-                                                           heading_observable, minimum_norm, sigma, output, output_P,
-                                                           checks);
+            return formal_eskf::runtime::fuse_magnetometer(
+                state, P, sample, reference, has_health_reference ? &reference : nullptr, V, parameters,
+                heading_observable, minimum_norm, sigma, output, output_P, checks);
         }
     }
 
@@ -410,7 +432,7 @@ void test_missing_reference(TestContext & test, std::string_view profile)
 {
     FusionFixture<Linalg, Configuration> fixture;
     fixture.checks.require_reference = true;
-    fixture.checks.reference_available = false;
+    fixture.has_health_reference = false;
     // A missing required reference must reject before consuming covariance/noise.
     fixture.V(0U, 0U) = std::numeric_limits<typename Linalg::value_type>::quiet_NaN();
     auto output = fixture.state;
@@ -681,15 +703,17 @@ void test_separate_references(TestContext & test, std::string_view profile)
     {
         if constexpr (std::is_same_v<Configuration, Ins>)
         {
-            return formal_eskf::runtime::fuse_magnetometer(
-                fixture.state, fixture.P, fixture.sample, fixture.reference, health, fixture.V, fixture.parameters,
-                fixture.heading_observable, fixture.minimum_norm, fixture.sigma, output, output_P, fixture.bias_update,
-                fixture.checks);
+            return formal_eskf::runtime::fuse_magnetometer(fixture.state, fixture.P, fixture.sample, fixture.reference,
+                                                           fixture.has_health_reference ? &health : nullptr, fixture.V,
+                                                           fixture.parameters, fixture.heading_observable,
+                                                           fixture.minimum_norm, fixture.sigma, output, output_P,
+                                                           fixture.bias_update, fixture.checks);
         }
         else
         {
             return formal_eskf::runtime::fuse_magnetometer(
-                fixture.state, fixture.P, fixture.sample, fixture.reference, health, fixture.V, fixture.parameters,
+                fixture.state, fixture.P, fixture.sample, fixture.reference,
+                fixture.has_health_reference ? &health : nullptr, fixture.V, fixture.parameters,
                 fixture.heading_observable, fixture.minimum_norm, fixture.sigma, output, output_P, fixture.checks);
         }
     };
@@ -717,15 +741,16 @@ void test_separate_references(TestContext & test, std::string_view profile)
     test.expect(invalid.fusion.status == Status::non_finite_input && !invalid.field.diagnostics_valid &&
                     same_state(output, before) && same_bits(output_P, before_P),
                 profile, "invalid consumed health reference fails without publishing state or covariance");
-    fixture.checks.reference_available = false;
+    fixture.has_health_reference = false;
     auto const fallback = fuse();
     test.expect(fallback.fusion.decision == FusionDecision::fused && !fallback.field.inclination_checked &&
                     fallback.field.reference_strength == value_type{45} && same_state(output, expected),
                 profile, "unavailable health reference is unused and retains the ordinary fallback");
-    fixture.checks = {false, false, false, true};
+    fixture.has_health_reference = true;
+    fixture.checks = {false, false, false};
     test.expect(fuse().fusion.decision == FusionDecision::fused, profile,
                 "disabled physical checks do not consume an independent health vector");
-    fixture.checks = {true, false, false, true};
+    fixture.checks = {true, false, false};
     health = Vector<Linalg>::from_row_major({value_type{0}, value_type{0}, value_type{50}});
     test.expect(fuse().fusion.decision == FusionDecision::fused, profile,
                 "a strength-only reference needs no heading information");

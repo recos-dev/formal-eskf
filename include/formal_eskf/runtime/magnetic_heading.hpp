@@ -10,7 +10,7 @@
 
 #include <limits>
 
-#include <formal_eskf/so3/operations.hpp>
+#include <formal_eskf/runtime/magnetic_field.hpp>
 
 namespace formal_eskf::runtime
 {
@@ -20,8 +20,8 @@ template <typename Linalg> class MagneticHeading
 {
 public:
     using value_type = typename Linalg::value_type;
-    using vector_type = linalg::Matrix<Linalg, 3U, 1U>;
-    using horizontal_type = linalg::Matrix<Linalg, 2U, 1U>;
+    using vector_type = linalg::Vector<Linalg, 3U>;
+    using horizontal_type = linalg::Vector<Linalg, 2U>;
 
     struct Parameters
     {
@@ -73,6 +73,9 @@ public:
                                 bool horizontal_aiding) noexcept;
 
 private:
+    [[nodiscard]] static Status validate_inputs(so3::UnitQuaternion<Linalg> const & q_nb, vector_type const & m_b,
+                                                vector_type const & m_n, Parameters const & parameters) noexcept;
+
     horizontal_type m_acceleration{};
     State m_state{};
 }; /* end class MagneticHeading */
@@ -91,7 +94,7 @@ Status MagneticHeading<Linalg>::update_acceleration(vector_type const & accelera
     }
     // A one-second vector LPF: opposing accelerations cancel before taking the norm.
     auto const alpha = dt / (value_type{1} + dt);
-    auto const candidate = m_acceleration + (acceleration_n.template block<0U, 0U, 2U, 1U>() - m_acceleration) * alpha;
+    auto const candidate = m_acceleration + (acceleration_n.template segment<0U, 2U>() - m_acceleration) * alpha;
     auto const squared_norm = linalg::dot(candidate, candidate);
     if (!linalg::all_finite(candidate) || !scalar::is_finite<math_type>(squared_norm))
     {
@@ -114,19 +117,10 @@ Status MagneticHeading<Linalg>::update(so3::UnitQuaternion<Linalg> const & q_nb,
                                        bool horizontal_aiding) noexcept
 {
     using math_type = typename Linalg::scalar_math_type;
-    if (!linalg::all_finite(q_nb.coefficients()) || !linalg::all_finite(m_b) || !linalg::all_finite(m_n) ||
-        !scalar::is_finite<math_type>(parameters.heading_noise) ||
-        !scalar::is_finite<math_type>(parameters.acceleration_limit) ||
-        !scalar::is_finite<math_type>(parameters.minimum_horizontal_field))
+    auto status = validate_inputs(q_nb, m_b, m_n, parameters);
+    if (!succeeded(status))
     {
-        return Status::non_finite_input;
-    }
-    auto const pi = scalar::pi<math_type>();
-    if (!(parameters.heading_noise > value_type{0}) || parameters.heading_noise > pi ||
-        parameters.acceleration_limit < value_type{0} ||
-        parameters.minimum_horizontal_field < std::numeric_limits<value_type>::min())
-    {
-        return Status::domain_error;
+        return status;
     }
     auto candidate = m_state;
     candidate.observable = horizontal_aiding && m_state.horizontal_acceleration > parameters.acceleration_limit;
@@ -140,8 +134,8 @@ Status MagneticHeading<Linalg>::update(so3::UnitQuaternion<Linalg> const & q_nb,
         return Status::success;
     }
     auto const measured_n = so3::rotate(q_nb, m_b);
-    auto const measured_horizontal = linalg::norm(measured_n.template block<0U, 0U, 2U, 1U>());
-    auto const reference_horizontal = linalg::norm(m_n.template block<0U, 0U, 2U, 1U>());
+    auto const measured_horizontal = linalg::norm(measured_n.template segment<0U, 2U>());
+    auto const reference_horizontal = linalg::norm(m_n.template segment<0U, 2U>());
     if (!linalg::all_finite(measured_n) || !scalar::is_finite<math_type>(measured_horizontal) ||
         !scalar::is_finite<math_type>(reference_horizontal))
     {
@@ -154,25 +148,11 @@ Status MagneticHeading<Linalg>::update(so3::UnitQuaternion<Linalg> const & q_nb,
         m_state = candidate;
         return Status::success;
     }
-    value_type measured_heading{}, reference_heading{};
-    auto status = scalar::try_atan2<math_type>(measured_n(1U), measured_n(0U), measured_heading);
+    value_type innovation{};
+    status = detail::magnetic_heading_error(measured_n, m_n, innovation);
     if (!succeeded(status))
     {
         return status;
-    }
-    status = scalar::try_atan2<math_type>(m_n(1U), m_n(0U), reference_heading);
-    if (!succeeded(status))
-    {
-        return status;
-    }
-    auto innovation = measured_heading - reference_heading;
-    if (innovation > pi)
-    {
-        innovation -= value_type{2} * pi;
-    }
-    else if (innovation < -pi)
-    {
-        innovation += value_type{2} * pi;
     }
     // Nominal 10 ms / 90 ms LPF, applied once per magnetic sample, not per IMU tick.
     constexpr auto interval = static_cast<value_type>(0.01);
@@ -190,6 +170,28 @@ Status MagneticHeading<Linalg>::update(so3::UnitQuaternion<Linalg> const & q_nb,
         candidate.consistent = true;
     }
     m_state = candidate;
+    return Status::success;
+}
+
+template <typename Linalg>
+Status MagneticHeading<Linalg>::validate_inputs(so3::UnitQuaternion<Linalg> const & q_nb, vector_type const & m_b,
+                                                vector_type const & m_n, Parameters const & parameters) noexcept
+{
+    using math_type = typename Linalg::scalar_math_type;
+    if (!linalg::all_finite(q_nb.coefficients()) || !linalg::all_finite(m_b) || !linalg::all_finite(m_n) ||
+        !scalar::is_finite<math_type>(parameters.heading_noise) ||
+        !scalar::is_finite<math_type>(parameters.acceleration_limit) ||
+        !scalar::is_finite<math_type>(parameters.minimum_horizontal_field))
+    {
+        return Status::non_finite_input;
+    }
+    auto const pi = scalar::pi<math_type>();
+    if (!(parameters.heading_noise > value_type{0}) || parameters.heading_noise > pi ||
+        parameters.acceleration_limit < value_type{0} ||
+        parameters.minimum_horizontal_field < std::numeric_limits<value_type>::min())
+    {
+        return Status::domain_error;
+    }
     return Status::success;
 }
 

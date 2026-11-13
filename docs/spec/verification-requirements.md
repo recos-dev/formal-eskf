@@ -281,8 +281,10 @@ and caller-established heading alignment/horizontal aiding.
 - A successful actual magnetic alignment/reset explicitly sets consistency and
   zeroes heading history. It does not claim independent observability. An
   unaligned heading clears that history and latch. Insufficient horizontal field
-  clears consistency and marks the innovation invalid. IMU gaps clear only
-  acceleration history. Source switches do not automatically assert consistency.
+  clears consistency, marks the innovation invalid and zeroes its current value,
+  while retaining the filtered residual. IMU gaps clear acceleration history and
+  current observability, retaining heading history and the consistency latch.
+  Source switches do not automatically assert consistency.
 - Inputs/parameters must be finite; `dt` and minimum horizontal field are positive
   normal values, `0 < heading_noise <= pi`, acceleration limit is nonnegative.
   Invalid inputs/parameters or unrepresentable geometry/filter arithmetic fail
@@ -757,7 +759,8 @@ P_theta_other' = A P_theta_other
 ```
 
 Retain the non-attitude P block exactly and mirror the cross block. Symmetrize
-the computed attitude block. `yaw_variance` is rad²; zero receives the explicit
+the computed attitude block with `a_ij / 2 + a_ji / 2`, retaining the established
+overflow/rounding behavior. `yaw_variance` is rad²; zero receives the explicit
 floor. The transform removes navigation yaw correlations while retaining
 navigation tilt/cross terms; simply clearing body-Z rows is wrong at general tilt.
 

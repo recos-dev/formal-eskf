@@ -275,6 +275,14 @@ template <typename Scalar, typename Configuration> void run_reset_tests(TestCont
                                                                      delta) == Status::non_finite_input &&
                         formal_eskf::so3::same_coefficients(output.q_nb, sentinel) && same_matrix(result, before_P),
                     profile, "retained non-finite INS fields cannot pass through reset");
+        auto invalid_P = P;
+        invalid_P(0U, 0U) = Scalar{-1};
+        test.expect(formal_eskf::runtime::try_reset_magnetic_heading(invalid_state, invalid_P, reference, reference,
+                                                                     Scalar{-1}, Scalar{0}, minimum_norm, output,
+                                                                     result, delta) == Status::non_finite_input &&
+                        same_matrix(result, before_P) && formal_eskf::so3::same_coefficients(delta, sentinel) &&
+                        formal_eskf::so3::same_coefficients(output.q_nb, sentinel),
+                    profile, "non-finite INS fields retain precedence over all common domain failures");
     }
     Scalar const variance = static_cast<Scalar>(0.09);
     test.expect(formal_eskf::runtime::try_reset_magnetic_heading(state, P, reference, reference, variance, Scalar{5},

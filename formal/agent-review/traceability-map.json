@@ -2995,6 +2995,14 @@
             "symbol": "class MagneticHeading"
           },
           {
+            "file": "include/formal_eskf/runtime/magnetic_heading.hpp",
+            "symbol": "MagneticHeading<Linalg>::validate_inputs("
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetic_field.hpp",
+            "symbol": "magnetic_heading_error("
+          },
+          {
             "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
             "symbol": "MagnetometerFusion::update("
           },
@@ -3252,7 +3260,11 @@
         "cpp": [
           {
             "file": "include/formal_eskf/runtime/magnetometer_reset.hpp",
-            "symbol": "reset_magnetic_heading("
+            "symbol": "compute_magnetic_heading_reset("
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetometer_reset.hpp",
+            "symbol": "reset_heading_covariance("
           },
           {
             "file": "include/formal_eskf/runtime/magnetometer_reset.hpp",

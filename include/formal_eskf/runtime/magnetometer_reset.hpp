@@ -10,7 +10,6 @@
 
 #include <cstddef>
 #include <limits>
-#include <type_traits>
 
 #include <formal_eskf/eskf/configuration/ahrs.hpp>
 #include <formal_eskf/eskf/configuration/ins.hpp>
@@ -23,33 +22,77 @@ namespace formal_eskf::runtime
 namespace detail
 {
 
-template <std::size_t AttitudeOffset, typename Linalg, typename State, std::size_t Size>
-[[nodiscard]] Status
-reset_magnetic_heading(State const & state, linalg::Matrix<Linalg, Size, Size> const & covariance,
-                       linalg::Matrix<Linalg, 3U, 1U> const & m_b, linalg::Matrix<Linalg, 3U, 1U> const & m_n,
-                       typename Linalg::value_type yaw_variance, typename Linalg::value_type minimum_horizontal_field,
-                       typename Linalg::value_type minimum_quaternion_norm, State & state_output,
-                       linalg::Matrix<Linalg, Size, Size> & covariance_output,
-                       so3::UnitQuaternion<Linalg> & delta_output) noexcept
+/** Reset navigation yaw uncertainty and re-express tilt/cross terms in the new local frame. */
+template <std::size_t AttitudeOffset, typename Linalg, std::size_t Size>
+[[nodiscard]] Status reset_heading_covariance(linalg::Matrix<Linalg, Size, Size> const & covariance,
+                                              linalg::Matrix<Linalg, 3U, 3U> const & R_before,
+                                              linalg::Matrix<Linalg, 3U, 3U> const & R_after,
+                                              typename Linalg::value_type yaw_variance,
+                                              linalg::Matrix<Linalg, Size, Size> & output) noexcept
+{
+    static_assert(AttitudeOffset + 3U <= Size);
+    using value_type = typename Linalg::value_type;
+    using vector_type = linalg::Vector<Linalg, 3U>;
+    using matrix_type = linalg::Matrix<Linalg, 3U, 3U>;
+    // Reset the navigation-frame yaw variance, then express the retained tilt
+    // and cross-covariances in the new body-local attitude coordinates.
+    auto const R_after_transpose = linalg::transpose(R_after);
+    auto const down_n = vector_type::from_row_major({value_type{0}, value_type{0}, value_type{1}});
+    auto const down_b = R_after_transpose * down_n;
+    auto const tilt_n = matrix_type::identity() - down_n * linalg::transpose(down_n);
+    auto const A = R_after_transpose * tilt_n * R_before;
+    auto const cross = A * covariance.template block<AttitudeOffset, 0U, 3U, Size>();
+    constexpr value_type minimum_std = static_cast<value_type>(0.01);
+    value_type const variance = yaw_variance < minimum_std * minimum_std ? minimum_std * minimum_std : yaw_variance;
+    auto attitude = cross.template block<0U, AttitudeOffset, 3U, 3U>() * linalg::transpose(A) +
+                    (down_b * linalg::transpose(down_b)) * variance;
+    if (!linalg::all_finite(cross) || !linalg::all_finite(attitude))
+    {
+        return Status::non_finite_result;
+    }
+    for (std::size_t row = 0U; row < 3U; ++row)
+    {
+        if (attitude(row, row) < value_type{0})
+        {
+            return Status::not_positive_definite;
+        }
+        for (std::size_t column = row; column < 3U; ++column)
+        {
+            // Divide before adding: keep the established overflow/rounding behavior.
+            value_type const value = attitude(row, column) / value_type{2} + attitude(column, row) / value_type{2};
+            attitude(row, column) = value;
+            attitude(column, row) = value;
+        }
+    }
+    output = covariance;
+    output.template set_block<AttitudeOffset, 0U>(cross);
+    output.template set_block<0U, AttitudeOffset>(linalg::transpose(cross));
+    output.template set_block<AttitudeOffset, AttitudeOffset>(attitude);
+    return Status::success;
+}
+
+/**
+ * Compute only quaternion/covariance candidates. Outputs are disjoint scratch
+ * storage and may be partial on failure; the INS/AHRS entry points publish them
+ * together only after success.
+ */
+template <std::size_t AttitudeOffset, typename Linalg, std::size_t Size>
+[[nodiscard]] Status compute_magnetic_heading_reset(
+    so3::UnitQuaternion<Linalg> const & q_nb, linalg::Matrix<Linalg, Size, Size> const & covariance,
+    linalg::Vector<Linalg, 3U> const & m_b, linalg::Vector<Linalg, 3U> const & m_n,
+    typename Linalg::value_type yaw_variance, typename Linalg::value_type minimum_horizontal_field,
+    typename Linalg::value_type minimum_quaternion_norm, so3::UnitQuaternion<Linalg> & attitude_output,
+    linalg::Matrix<Linalg, Size, Size> & covariance_output, so3::UnitQuaternion<Linalg> & delta_output) noexcept
 {
     using value_type = typename Linalg::value_type;
     using math_type = typename Linalg::scalar_math_type;
-    using vector_type = linalg::Matrix<Linalg, 3U, 1U>;
-    using matrix_type = linalg::Matrix<Linalg, 3U, 3U>;
-    if (!linalg::all_finite(state.q_nb.coefficients()) || !linalg::all_finite(covariance) || !linalg::all_finite(m_b) ||
+    using vector_type = linalg::Vector<Linalg, 3U>;
+    if (!linalg::all_finite(q_nb.coefficients()) || !linalg::all_finite(covariance) || !linalg::all_finite(m_b) ||
         !linalg::all_finite(m_n) || !scalar::is_finite<math_type>(yaw_variance) ||
         !scalar::is_finite<math_type>(minimum_horizontal_field) ||
         !scalar::is_finite<math_type>(minimum_quaternion_norm))
     {
         return Status::non_finite_input;
-    }
-    if constexpr (std::is_same_v<State, configuration::Ins::NominalState<Linalg>>)
-    {
-        if (!linalg::all_finite(state.p_n) || !linalg::all_finite(state.v_n) || !linalg::all_finite(state.b_a) ||
-            !linalg::all_finite(state.b_g))
-        {
-            return Status::non_finite_input;
-        }
     }
     if (yaw_variance < value_type{0} || minimum_horizontal_field < std::numeric_limits<value_type>::min() ||
         !(minimum_quaternion_norm > value_type{0}) || minimum_quaternion_norm > value_type{1} ||
@@ -65,7 +108,7 @@ reset_magnetic_heading(State const & state, linalg::Matrix<Linalg, Size, Size> c
         }
     }
 
-    auto const R_before = so3::to_rotation_matrix(state.q_nb);
+    auto const R_before = so3::to_rotation_matrix(q_nb);
     auto const measured_n = R_before * m_b;
     if (!linalg::all_finite(measured_n))
     {
@@ -109,62 +152,20 @@ reset_magnetic_heading(State const & state, linalg::Matrix<Linalg, Size, Size> c
     {
         heading_change += value_type{2} * pi;
     }
-    so3::UnitQuaternion<Linalg> delta;
     status = so3::try_exp<Linalg>(vector_type::from_row_major({value_type{0}, value_type{0}, heading_change}),
-                                  minimum_quaternion_norm, delta);
+                                  minimum_quaternion_norm, delta_output);
     if (!succeeded(status))
     {
         return status;
     }
-    auto candidate = state;
-    status = so3::try_compose_normalized(delta, state.q_nb, minimum_quaternion_norm, candidate.q_nb);
+    status = so3::try_compose_normalized(delta_output, q_nb, minimum_quaternion_norm, attitude_output);
     if (!succeeded(status))
     {
         return status;
     }
 
-    // Reset the navigation-frame yaw variance, then express the retained tilt
-    // and cross-covariances in the new body-local attitude coordinates.
-    auto const R_after_transpose = linalg::transpose(so3::to_rotation_matrix(candidate.q_nb));
-    auto const down_n = vector_type::from_row_major({value_type{0}, value_type{0}, value_type{1}});
-    auto const down_b = R_after_transpose * down_n;
-    auto const tilt_n = matrix_type::identity() - down_n * linalg::transpose(down_n);
-    auto const A = R_after_transpose * tilt_n * R_before;
-    auto const cross = A * covariance.template block<AttitudeOffset, 0U, 3U, Size>();
-    constexpr value_type minimum_std = static_cast<value_type>(0.01);
-    value_type const variance = yaw_variance < minimum_std * minimum_std ? minimum_std * minimum_std : yaw_variance;
-    auto const attitude = cross.template block<0U, AttitudeOffset, 3U, 3U>() * linalg::transpose(A) +
-                          (down_b * linalg::transpose(down_b)) * variance;
-    if (!linalg::all_finite(cross) || !linalg::all_finite(attitude))
-    {
-        return Status::non_finite_result;
-    }
-    auto P = covariance;
-    for (std::size_t row = 0U; row < 3U; ++row)
-    {
-        if (attitude(row, row) < value_type{0})
-        {
-            return Status::not_positive_definite;
-        }
-        for (std::size_t column = 0U; column < Size; ++column)
-        {
-            if (column < AttitudeOffset || column >= AttitudeOffset + 3U)
-            {
-                P(AttitudeOffset + row, column) = cross(row, column);
-                P(column, AttitudeOffset + row) = cross(row, column);
-            }
-        }
-        for (std::size_t column = row; column < 3U; ++column)
-        {
-            value_type const value = attitude(row, column) / value_type{2} + attitude(column, row) / value_type{2};
-            P(AttitudeOffset + row, AttitudeOffset + column) = value;
-            P(AttitudeOffset + column, AttitudeOffset + row) = value;
-        }
-    }
-    state_output = candidate;
-    covariance_output = P;
-    delta_output = delta;
-    return Status::success;
+    return reset_heading_covariance<AttitudeOffset>(covariance, R_before, so3::to_rotation_matrix(attitude_output),
+                                                    yaw_variance, covariance_output);
 }
 
 } /* end namespace detail */
@@ -190,26 +191,55 @@ reset_magnetic_heading(State const & state, linalg::Matrix<Linalg, Size, Size> c
 template <typename Linalg>
 [[nodiscard]] Status try_reset_magnetic_heading(
     configuration::Ahrs::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 3U, 3U> const & covariance,
-    linalg::Matrix<Linalg, 3U, 1U> const & m_b, linalg::Matrix<Linalg, 3U, 1U> const & m_n,
+    linalg::Vector<Linalg, 3U> const & m_b, linalg::Vector<Linalg, 3U> const & m_n,
     typename Linalg::value_type yaw_variance, typename Linalg::value_type minimum_horizontal_field,
     typename Linalg::value_type minimum_quaternion_norm, configuration::Ahrs::NominalState<Linalg> & state_output,
     linalg::Matrix<Linalg, 3U, 3U> & covariance_output, so3::UnitQuaternion<Linalg> & delta_output) noexcept
 {
-    return detail::reset_magnetic_heading<0U>(state, covariance, m_b, m_n, yaw_variance, minimum_horizontal_field,
-                                              minimum_quaternion_norm, state_output, covariance_output, delta_output);
+    auto candidate = state;
+    linalg::Matrix<Linalg, 3U, 3U> P;
+    so3::UnitQuaternion<Linalg> delta;
+    auto const status = detail::compute_magnetic_heading_reset<0U>(state.q_nb, covariance, m_b, m_n, yaw_variance,
+                                                                   minimum_horizontal_field, minimum_quaternion_norm,
+                                                                   candidate.q_nb, P, delta);
+    if (!succeeded(status))
+    {
+        return status;
+    }
+    state_output = candidate;
+    covariance_output = P;
+    delta_output = delta;
+    return Status::success;
 }
 
 /** INS overload; position, velocity and bias values are retained exactly. */
 template <typename Linalg>
 [[nodiscard]] Status try_reset_magnetic_heading(
     configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-    linalg::Matrix<Linalg, 3U, 1U> const & m_b, linalg::Matrix<Linalg, 3U, 1U> const & m_n,
+    linalg::Vector<Linalg, 3U> const & m_b, linalg::Vector<Linalg, 3U> const & m_n,
     typename Linalg::value_type yaw_variance, typename Linalg::value_type minimum_horizontal_field,
     typename Linalg::value_type minimum_quaternion_norm, configuration::Ins::NominalState<Linalg> & state_output,
     linalg::Matrix<Linalg, 15U, 15U> & covariance_output, so3::UnitQuaternion<Linalg> & delta_output) noexcept
 {
-    return detail::reset_magnetic_heading<6U>(state, covariance, m_b, m_n, yaw_variance, minimum_horizontal_field,
-                                              minimum_quaternion_norm, state_output, covariance_output, delta_output);
+    if (!linalg::all_finite(state.p_n) || !linalg::all_finite(state.v_n) || !linalg::all_finite(state.b_a) ||
+        !linalg::all_finite(state.b_g))
+    {
+        return Status::non_finite_input;
+    }
+    auto candidate = state;
+    linalg::Matrix<Linalg, 15U, 15U> P;
+    so3::UnitQuaternion<Linalg> delta;
+    auto const status = detail::compute_magnetic_heading_reset<6U>(state.q_nb, covariance, m_b, m_n, yaw_variance,
+                                                                   minimum_horizontal_field, minimum_quaternion_norm,
+                                                                   candidate.q_nb, P, delta);
+    if (!succeeded(status))
+    {
+        return status;
+    }
+    state_output = candidate;
+    covariance_output = P;
+    delta_output = delta;
+    return Status::success;
 }
 
 } /* end namespace formal_eskf::runtime */

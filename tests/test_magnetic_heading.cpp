@@ -139,10 +139,28 @@ template <typename Scalar> void run_tests(TestContext & test)
                     !monitor.state().innovation_valid && !monitor.state().consistent,
                 profile, "a weak horizontal reference also invalidates heading");
 
+    // Weak-field handling and an IMU gap clear different histories.
+    test.expect(observe(east) == Status::success, profile, "establish nonzero heading history");
+    auto const before_weak = monitor.state();
+    test.expect(before_weak.filtered_innovation != Scalar{0}, profile,
+                "weak-field fixture has meaningful retained history");
+    auto const weak_status = observe(weak);
+    test.expect(weak_status == Status::success && !monitor.state().innovation_valid &&
+                    monitor.state().innovation == Scalar{0} && !monitor.state().consistent &&
+                    monitor.state().filtered_innovation == before_weak.filtered_innovation,
+                profile, "weak horizontal field clears the current verdict but retains the filtered residual");
+    monitor.reset_acceleration();
+    test.expect(monitor.state().horizontal_acceleration == Scalar{0} && !monitor.state().observable &&
+                    monitor.state().filtered_innovation == before_weak.filtered_innovation,
+                profile, "an IMU gap does not erase heading history");
+    test.expect(observe(north, true, false) == Status::success && monitor.state().filtered_innovation == Scalar{0} &&
+                    !monitor.state().consistent,
+                profile, "lost heading alignment clears the filtered residual as well as consistency");
+
     monitor.reset_heading();
     auto const saved = monitor.state();
     auto invalid = north;
-    invalid.set(0U, std::numeric_limits<Scalar>::quiet_NaN());
+    invalid(0U) = std::numeric_limits<Scalar>::quiet_NaN();
     test.expect(observe(invalid) == Status::non_finite_input &&
                     monitor.update_acceleration(invalid, Scalar{1}) == Status::non_finite_input &&
                     monitor.update_acceleration(acceleration, Scalar{0}) == Status::domain_error &&
@@ -151,7 +169,7 @@ template <typename Scalar> void run_tests(TestContext & test)
                     monitor.update(Quaternion{}, north, north, {}, true, true) == Status::domain_error,
                 profile, "reject invalid sensor values, intervals and unconfigured thresholds");
     auto extreme = north;
-    extreme.set(0U, std::numeric_limits<Scalar>::max());
+    extreme(0U) = std::numeric_limits<Scalar>::max();
     test.expect(observe(extreme) == Status::non_finite_result &&
                     monitor.update_acceleration(extreme, Scalar{1}) == Status::non_finite_result &&
                     monitor.state().consistent == saved.consistent &&

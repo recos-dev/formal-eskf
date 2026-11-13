@@ -18,12 +18,12 @@ void verify_pcov_regression()
 {
     __ESBMC_assert(ESKF_QUAT_APPROX == 0, "E-PCOV regression: default prediction uses Exp");
     Results results{};
-    results.propagated.set(size - 1U, size - 1U, std::numeric_limits<Scalar>::quiet_NaN());
-    results.propagated.set(0U, size - 1U, std::numeric_limits<Scalar>::infinity());
+    results.propagated(size - 1U, size - 1U) = std::numeric_limits<Scalar>::quiet_NaN();
+    results.propagated(0U, size - 1U) = std::numeric_limits<Scalar>::infinity();
     auto candidate = results.propagated;
     Calls::result = &results;
 #if FORMAL_ESKF_TEST_FAULT
-    candidate.set(size - 1U, size - 1U, Scalar{0});
+    candidate(size - 1U, size - 1U) = Scalar{0};
 #endif
     check_candidate(candidate);
 }

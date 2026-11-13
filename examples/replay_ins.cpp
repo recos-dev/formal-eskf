@@ -117,7 +117,7 @@ constexpr std::string_view backend_name = "eigen";
 using Types = formal_eskf::EskfTypes<Linalg, formal_eskf::configuration::Ins>;
 using State = Types::nominal_state_type;
 using Covariance = Types::error_covariance_type;
-using Vector3 = Linalg::vector_type<3U>;
+using Vector3 = formal_eskf::linalg::Vector<Linalg, 3U>;
 using Imu = Types::imu_sample_type;
 using formal_eskf::Status;
 using FusionConditions = formal_eskf::example::ReplayFusionConditions<Linalg>;
@@ -580,7 +580,7 @@ NavigationVariances navigation_variances(double horizontal_accuracy, double vert
 struct MagneticReference
 {
     Vector3 m_n{};
-    Linalg::matrix_type<3U, 3U> V{};
+    formal_eskf::linalg::Matrix<Linalg, 3U, 3U> V{};
     double gate_sigma{};
     bool use_model_heading = true; // Legacy model inputs use the geographic field for both roles.
 };
@@ -612,7 +612,7 @@ MagneticReference read_magnetic_reference(std::filesystem::path const & input)
     {
         throw std::runtime_error("invalid magnetic reference/noise/gate or insufficient horizontal field");
     }
-    return {vector3(mn, me, md), Linalg::matrix_type<3U, 3U>::identity() * noise_variance, gate_sigma,
+    return {vector3(mn, me, md), formal_eskf::linalg::Matrix<Linalg, 3U, 3U>::identity() * noise_variance, gate_sigma,
             metadata_integer(use_model_heading, 0, 1) != 0};
 }
 
@@ -833,9 +833,10 @@ void write_magnetic_update(std::ostream & stream, std::uint64_t source_time, std
 /** One row per observed axis; the outcome applies to the whole group. */
 template <std::size_t Size>
 bool record_navigation_fusion(std::ostream & stream, formal_eskf::runtime::FusionResult<Linalg, Size> const & result,
-                              Linalg::matrix_type<Size, Size> const & V, std::string_view group,
+                              formal_eskf::linalg::Matrix<Linalg, Size, Size> const & V, std::string_view group,
                               std::uint64_t source_time, std::uint64_t time,
-                              Linalg::matrix_type<Size, 1U> const & fusion_innovation, bool innovation_limited)
+                              formal_eskf::linalg::Matrix<Linalg, Size, 1U> const & fusion_innovation,
+                              bool innovation_limited)
 {
     for (std::size_t axis = 0U; axis < Size; ++axis)
     {
@@ -877,7 +878,7 @@ Covariance initial_covariance(NavigationVariances const & noise)
     Covariance result;
     for (std::size_t index = 0U; index < diagonal.size(); ++index)
     {
-        result.set(index, index, diagonal[index]);
+        result(index, index) = diagonal[index];
     }
     return result;
 }
@@ -888,9 +889,9 @@ void correct_navigation(State & state, Covariance & covariance, std::array<doubl
 {
     // Adapter-provided standard deviations use independent axes and fixed
     // floors (m, m/s), not a full joint 6x6 observation covariance.
-    auto const position = Linalg::vector_type<2U>::from_row_major({row[1U], row[2U]});
+    auto const position = formal_eskf::linalg::Vector<Linalg, 2U>::from_row_major({row[1U], row[2U]});
     double const horizontal_variance = variance(row[7U], POS_XY_STD_MIN);
-    auto const position_noise = Linalg::matrix_type<2U, 2U>::identity() * horizontal_variance;
+    auto const position_noise = formal_eskf::linalg::Matrix<Linalg, 2U, 2U>::identity() * horizontal_variance;
     check_status(formal_eskf::try_correct_horizontal_position(state, covariance, position, position_noise,
                                                               QUAT_MIN_NORM, state, covariance, bias_update),
                  "horizontal position", time);
@@ -900,7 +901,8 @@ void correct_navigation(State & state, Covariance & covariance, std::array<doubl
                                                             covariance, bias_update),
                  "vertical position", time);
     limit_bias(state, limits, limit_counts, time);
-    auto const velocity_noise = Linalg::matrix_type<3U, 3U>::identity() * variance(row[9U], VEL_STD_MIN);
+    auto const velocity_noise =
+        formal_eskf::linalg::Matrix<Linalg, 3U, 3U>::identity() * variance(row[9U], VEL_STD_MIN);
     check_status(formal_eskf::try_correct_velocity(state, covariance, vector3(row[4U], row[5U], row[6U]),
                                                    velocity_noise, QUAT_MIN_NORM, state, covariance, bias_update),
                  "velocity", time);
@@ -949,6 +951,61 @@ void write_state(std::ostream & stream, std::uint64_t time, State const & state,
         stream << ',' << covariance(axis, axis);
     }
     stream << '\n';
+}
+
+struct PredictionStatistics
+{
+    std::array<std::size_t, 3U> accel_noise_overridden{};
+    std::array<std::size_t, 3U> accel_bias_noise_inhibited{};
+    std::array<std::size_t, 3U> gyro_bias_noise_inhibited{};
+    std::size_t accel_noise_unavailable = 0U;
+};
+
+// Keep replay-specific unknown-input accounting beside the prediction it describes.
+formal_eskf::configuration::Ins::ProcessNoise<Linalg>
+predict_interval(State & state, Covariance & covariance, Imu const & sample, std::uint64_t period_us,
+                 std::uint64_t prediction_time, Types::parameter_type const & settings,
+                 std::optional<formal_eskf::runtime::ImuNoiseConditions> const & noise_conditions,
+                 PredictionStatistics & statistics)
+{
+    // Start with configured noise so both policies can release their selections.
+    auto step_settings = settings;
+    if (noise_conditions)
+    {
+        check_status(formal_eskf::runtime::try_select_imu_process_noise(settings.process_noise, *noise_conditions,
+                                                                        BAD_ACCEL_STD * BAD_ACCEL_STD,
+                                                                        step_settings.process_noise),
+                     "IMU process noise", prediction_time);
+    }
+    // Missing clipping and synthetic gap holds retain configured measurement
+    // noise with an unavailable count, not a claim of fault-free sensor data.
+    // The bias threshold must see the selected IMU variances, not the defaults.
+    check_status(formal_eskf::runtime::try_inhibit_bias_process_noise(covariance, step_settings.process_noise,
+                                                                      step_settings.process_noise),
+                 "bias process noise", prediction_time);
+    check_status(formal_eskf::try_predict(state, covariance, sample, static_cast<double>(period_us) * 1e-6,
+                                          step_settings, state, covariance),
+                 "prediction", prediction_time);
+    auto const & selected = step_settings.process_noise;
+    statistics.accel_noise_unavailable += !noise_conditions ? 1U : 0U;
+    for (std::size_t axis = 0U; axis < 3U; ++axis)
+    {
+        statistics.accel_noise_overridden[axis] += noise_conditions && (noise_conditions->bad_vertical_acceleration ||
+                                                                        noise_conditions->accelerometer_clipped[axis])
+                                                       ? 1U
+                                                       : 0U;
+        statistics.accel_bias_noise_inhibited[axis] +=
+            settings.process_noise.accelerometer_bias_random_walk_variance_density(axis) > 0.0 &&
+                    selected.accelerometer_bias_random_walk_variance_density(axis) == 0.0
+                ? 1U
+                : 0U;
+        statistics.gyro_bias_noise_inhibited[axis] +=
+            settings.process_noise.gyroscope_bias_random_walk_variance_density(axis) > 0.0 &&
+                    selected.gyroscope_bias_random_walk_variance_density(axis) == 0.0
+                ? 1U
+                : 0U;
+    }
+    return selected;
 }
 
 void replay(std::filesystem::path const & input, std::filesystem::path const & output, bool mag_enabled)
@@ -1224,51 +1281,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
     std::array<std::size_t, 3U> accel_bias_enabled{}, gyro_bias_enabled{};
     std::size_t bias_high_dynamics = 0U;
     std::size_t vertical_evaluations = 0U, vertical_fault_samples = 0U, vertical_bias_inhibited = 0U;
-    std::array<std::size_t, 3U> accel_bias_noise_inhibited{}, gyro_bias_noise_inhibited{};
-    std::array<std::size_t, 3U> accel_noise_overridden{};
-    std::size_t accel_noise_unavailable = 0U;
-    auto predict = [&](Imu const & sample, std::uint64_t period_us, std::uint64_t prediction_time,
-                       std::optional<formal_eskf::runtime::ImuNoiseConditions> const & noise_conditions)
-    {
-        // Start with configured noise so both policies can release their selections.
-        auto step_settings = settings;
-        if (noise_conditions)
-        {
-            check_status(formal_eskf::runtime::try_select_imu_process_noise(settings.process_noise, *noise_conditions,
-                                                                            BAD_ACCEL_STD * BAD_ACCEL_STD,
-                                                                            step_settings.process_noise),
-                         "IMU process noise", prediction_time);
-        }
-        // Missing clipping and synthetic gap holds retain configured measurement
-        // noise with an unavailable count, not a claim of fault-free sensor data.
-        // The bias threshold must see the selected IMU variances, not the defaults.
-        check_status(formal_eskf::runtime::try_inhibit_bias_process_noise(covariance, step_settings.process_noise,
-                                                                          step_settings.process_noise),
-                     "bias process noise", prediction_time);
-        check_status(formal_eskf::try_predict(state, covariance, sample, static_cast<double>(period_us) * 1e-6,
-                                              step_settings, state, covariance),
-                     "prediction", prediction_time);
-        auto const & selected = step_settings.process_noise;
-        accel_noise_unavailable += !noise_conditions ? 1U : 0U;
-        for (std::size_t axis = 0U; axis < 3U; ++axis)
-        {
-            accel_noise_overridden[axis] += noise_conditions && (noise_conditions->bad_vertical_acceleration ||
-                                                                 noise_conditions->accelerometer_clipped[axis])
-                                                ? 1U
-                                                : 0U;
-            accel_bias_noise_inhibited[axis] +=
-                settings.process_noise.accelerometer_bias_random_walk_variance_density(axis) > 0.0 &&
-                        selected.accelerometer_bias_random_walk_variance_density(axis) == 0.0
-                    ? 1U
-                    : 0U;
-            gyro_bias_noise_inhibited[axis] +=
-                settings.process_noise.gyroscope_bias_random_walk_variance_density(axis) > 0.0 &&
-                        selected.gyroscope_bias_random_walk_variance_density(axis) == 0.0
-                    ? 1U
-                    : 0U;
-        }
-        return selected;
-    };
+    PredictionStatistics prediction_statistics;
     std::uint64_t mag_max_alignment_us = 0U;
     while (read_row(imu, imu_row))
     {
@@ -1283,7 +1296,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
         {
             // A logged average only covers its integral_dt. Explicitly hold
             // the PREVIOUS rate over the missing interval, then use this one.
-            (void)predict(previous_imu, missing, time + missing, std::nullopt);
+            (void)predict_interval(state, covariance, previous_imu, missing, time + missing, settings, std::nullopt,
+                                   prediction_statistics);
             ++gaps;
             gap_us += missing;
             // Held prediction rates are not new measurements. Discard the
@@ -1335,7 +1349,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             }
         }
         auto const bias_corrected_force = sample.specific_force_b - state.b_a;
-        auto const selected_noise = predict(sample, period, next_time, noise_conditions);
+        auto const selected_noise = predict_interval(state, covariance, sample, period, next_time, settings,
+                                                     noise_conditions, prediction_statistics);
         if (has_magnetic_input && mag_enabled)
         {
             check_status(
@@ -1449,8 +1464,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 {
                     auto const noise =
                         navigation_variances(navigation_row[7U], navigation_row[8U], navigation_row[9U], gnss);
-                    auto V = Linalg::matrix_type<3U, 3U>::identity() * noise.velocity_xy;
-                    V.set(2U, 2U, noise.velocity_z);
+                    auto V = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>::identity() * noise.velocity_xy;
+                    V(2U, 2U) = noise.velocity_z;
                     auto const evidence = formal_eskf::runtime::check_gnss_velocity(
                         state, covariance, vector3(navigation_row[4U], navigation_row[5U], navigation_row[6U]), V,
                         QUAT_MIN_NORM, gnss->velocity_gate,
@@ -1542,8 +1557,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     navigation_variances(navigation_row[7U], navigation_row[8U], navigation_row[9U], gnss);
                 // Each group gates and corrects its own latest prior. A rejected
                 // group does not block the others or refresh horizontal aiding.
-                auto velocity_V = Linalg::matrix_type<3U, 3U>::identity() * noise.velocity_xy;
-                velocity_V.set(2U, 2U, noise.velocity_z);
+                auto velocity_V = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>::identity() * noise.velocity_xy;
+                velocity_V(2U, 2U) = noise.velocity_z;
                 auto const velocity = vector3(navigation_row[4U], navigation_row[5U], navigation_row[6U]);
                 if (quality_parameters && (gnss_lifecycle.state().velocity.action == GnssLifecycle::Action::reset))
                 {
@@ -1612,7 +1627,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     check_status(gnss_lifecycle.record_vertical_velocity_reset(source_time, status == Status::success),
                                  "GNSS vertical velocity reset feedback", time);
                     write_gnss_reset(gnss_resets, "vertical_velocity", reason, status,
-                                     Linalg::vector_type<1U>::from_row_major({delta}), source_time, time);
+                                     formal_eskf::linalg::Vector<Linalg, 1U>::from_row_major({delta}), source_time,
+                                     time);
                     if (status != Status::success)
                     {
                         write_gnss_lifecycle(lifecycle_updates, previous_lifecycle, gnss_lifecycle.state(), source_time,
@@ -1624,15 +1640,16 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                         reason == GnssLifecycle::StopReason::bad_vertical_acceleration ? 1U : 0U;
                 }
 
-                auto const position_V = Linalg::matrix_type<2U, 2U>::identity() * noise.position_xy;
-                auto const position = Linalg::vector_type<2U>::from_row_major({navigation_row[1U], navigation_row[2U]});
+                auto const position_V = formal_eskf::linalg::Matrix<Linalg, 2U, 2U>::identity() * noise.position_xy;
+                auto const position =
+                    formal_eskf::linalg::Vector<Linalg, 2U>::from_row_major({navigation_row[1U], navigation_row[2U]});
                 if (quality_parameters &&
                     (gnss_lifecycle.state().horizontal_position.action == GnssLifecycle::Action::reset))
                 {
-                    Linalg::vector_type<2U> delta;
+                    formal_eskf::linalg::Vector<Linalg, 2U> delta;
                     auto const reason = gnss_lifecycle.state().horizontal_position.stop_reason;
                     auto const variances =
-                        Linalg::vector_type<2U>::from_row_major({noise.position_xy, noise.position_xy});
+                        formal_eskf::linalg::Vector<Linalg, 2U>::from_row_major({noise.position_xy, noise.position_xy});
                     auto const status = formal_eskf::runtime::try_reset_gnss_horizontal_position(
                         state, covariance, position, variances, state, covariance, delta);
                     record_reset(GnssLifecycle::Group::horizontal_position, "horizontal_position", reason, status,
@@ -1679,7 +1696,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                         vertical_available && vertical_health.state().bad_vertical_acceleration, state, covariance,
                         bias_update);
                     auto const & result = measurement.fusion;
-                    auto const height_V = Linalg::matrix_type<1U, 1U>::from_row_major({noise.position_z});
+                    auto const height_V =
+                        formal_eskf::linalg::Matrix<Linalg, 1U, 1U>::from_row_major({noise.position_z});
                     vertical_cache.observations.gnss_height = {
                         result.diagnostics_valid, -measurement.fusion_innovation(0U), result.innovation_variance(0U)};
                     vertical_cache.height_time_us = source_time;
@@ -1716,7 +1734,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     auto const status = formal_eskf::runtime::try_reset_vertical_position(
                         state, covariance, navigation_row[3U], noise.position_z, state, covariance, delta);
                     record_reset(GnssLifecycle::Group::vertical_position, "vertical_position", reason, status,
-                                 Linalg::vector_type<1U>::from_row_major({delta}));
+                                 formal_eskf::linalg::Vector<Linalg, 1U>::from_row_major({delta}));
                     ++position_z_resets;
                     acceleration_height_resets +=
                         reason == GnssLifecycle::StopReason::bad_vertical_acceleration ? 1U : 0U;
@@ -2112,14 +2130,20 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             << bias_limit_counts[1U] << ',' << bias_limit_counts[2U] << ']'
             << ",\n  \"gyroscope_bias_limited_corrections\": [" << bias_limit_counts[3U] << ',' << bias_limit_counts[4U]
             << ',' << bias_limit_counts[5U] << ']' << ",\n  \"covariance_predictions\": " << predictions + gaps
-            << ",\n  \"accelerometer_bias_process_noise_inhibited_predictions\": [" << accel_bias_noise_inhibited[0U]
-            << ',' << accel_bias_noise_inhibited[1U] << ',' << accel_bias_noise_inhibited[2U] << ']'
-            << ",\n  \"gyroscope_bias_process_noise_inhibited_predictions\": [" << gyro_bias_noise_inhibited[0U] << ','
-            << gyro_bias_noise_inhibited[1U] << ',' << gyro_bias_noise_inhibited[2U] << ']'
+            << ",\n  \"accelerometer_bias_process_noise_inhibited_predictions\": ["
+            << prediction_statistics.accel_bias_noise_inhibited[0U] << ','
+            << prediction_statistics.accel_bias_noise_inhibited[1U] << ','
+            << prediction_statistics.accel_bias_noise_inhibited[2U] << ']'
+            << ",\n  \"gyroscope_bias_process_noise_inhibited_predictions\": ["
+            << prediction_statistics.gyro_bias_noise_inhibited[0U] << ','
+            << prediction_statistics.gyro_bias_noise_inhibited[1U] << ','
+            << prediction_statistics.gyro_bias_noise_inhibited[2U] << ']'
             << ",\n  \"accelerometer_fault_noise_std\": " << BAD_ACCEL_STD
-            << ",\n  \"accelerometer_noise_overridden_predictions\": [" << accel_noise_overridden[0U] << ','
-            << accel_noise_overridden[1U] << ',' << accel_noise_overridden[2U] << ']'
-            << ",\n  \"accelerometer_noise_unavailable_predictions\": " << accel_noise_unavailable
+            << ",\n  \"accelerometer_noise_overridden_predictions\": ["
+            << prediction_statistics.accel_noise_overridden[0U] << ','
+            << prediction_statistics.accel_noise_overridden[1U] << ','
+            << prediction_statistics.accel_noise_overridden[2U] << ']'
+            << ",\n  \"accelerometer_noise_unavailable_predictions\": " << prediction_statistics.accel_noise_unavailable
             << ",\n  \"bias_process_noise_threshold_source\": \"selected per-axis IMU measurement variances\""
             << ",\n  \"bias_process_noise_scaling\": \"continuous intensity times dt\""
             << ",\n  \"accelerometer_observations\": " << accel_observations

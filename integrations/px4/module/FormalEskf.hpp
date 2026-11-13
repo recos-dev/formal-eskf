@@ -60,8 +60,8 @@ private:
     using types_type = formal_eskf::EskfTypes<backend_type, formal_eskf::configuration::Ins>;
     using state_type = types_type::nominal_state_type;
     using covariance_type = types_type::error_covariance_type;
-    using vector3_type = backend_type::vector_type<3>;
-    using matrix3_type = backend_type::matrix_type<3, 3>;
+    using vector3_type = formal_eskf::linalg::Vector<backend_type, 3>;
+    using matrix3_type = formal_eskf::linalg::Matrix<backend_type, 3, 3>;
     using imu_type = types_type::imu_sample_type;
     using status_type = formal_eskf::Status;
     using height_type = formal_eskf::px4::HeightAiding<backend_type>;
@@ -71,6 +71,9 @@ private:
     using magnetic_model_type = formal_eskf::px4::MagneticModel<backend_type>;
 
     void Run() override;
+    void process_imu(vehicle_imu_s const & sample);
+    void predict_and_fuse(vehicle_imu_s const & sample, imu_type const & imu, double dt, double accel_dt,
+                          uint64_t previous_time);
     void initialize(vehicle_imu_s const & sample, imu_type const & imu);
     void fuse_gps();
     void fuse_mag();
@@ -169,7 +172,7 @@ private:
     double m_gps_previous_alt{};
     uint32_t m_gps_device_id{};
     bool m_gps_metadata_valid{};
-    backend_type::vector_type<2> m_position_reset_delta{};
+    formal_eskf::linalg::Vector<backend_type, 2> m_position_reset_delta{};
     vector3_type m_velocity_reset_delta{};
     uint8_t m_position_reset_counter{}, m_velocity_reset_counter{}, m_vertical_velocity_reset_counter{},
         m_odometry_reset_counter{};

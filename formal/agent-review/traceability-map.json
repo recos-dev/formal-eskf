@@ -3705,6 +3705,10 @@
           {
             "file": "integrations/px4/module/MagneticAiding.hpp",
             "symbol": "MagneticAiding<Linalg>::update("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::process_imu("
           }
         ],
         "esbmc": []
@@ -3745,6 +3749,14 @@
           {
             "file": "examples/replay_ins.cpp",
             "symbol": "void replay("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::predict_and_fuse("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "predict_interval("
           }
         ],
         "esbmc": []
@@ -3777,6 +3789,14 @@
           {
             "file": "examples/replay_ins.cpp",
             "symbol": "void replay("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::predict_and_fuse("
+          },
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "predict_interval("
           }
         ],
         "esbmc": []

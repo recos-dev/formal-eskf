@@ -281,7 +281,7 @@ void FormalEskf::initialize(vehicle_imu_s const & sample, imu_type const & imu)
     const double diagonal[15] = {1., 1., 2.25, 0.09, 0.09, 0.09, 0.01, 0.01, 0.04, 0.04, 0.04, 0.04, 1e-4, 1e-4, 1e-4};
     for (size_t i = 0; i < 15; ++i)
     {
-        m_covariance.set(i, i, diagonal[i]);
+        m_covariance(i, i) = diagonal[i];
     }
     m_origin_time = m_time;
     m_projection.initReference(m_gps.latitude_deg, m_gps.longitude_deg, m_origin_time);
@@ -327,110 +327,130 @@ void FormalEskf::Run()
     vehicle_imu_s sample{};
     if (m_imu_sub.update(&sample))
     {
-        const double dt = double(sample.delta_angle_dt) * 1e-6;
-        const double accel_dt = double(sample.delta_velocity_dt) * 1e-6;
-        if (sample.timestamp_sample <= m_time || dt < 1e-6 || dt > 0.05 || accel_dt < 1e-6 || accel_dt > 0.05 ||
-            !formal_eskf::px4::imu_clipping_acceptable(sample.delta_velocity_clipping, sample.delta_angle_clipping,
-                                                       m_initialized))
-        {
-            ++m_rejections;
-            // Rejected/missing IMU data cannot preserve a learning authorization or health verdict.
-            m_bias_learning_result = {};
-            m_vertical_health.reset();
-            m_gravity_aiding.reset_samples();
-            m_average_imu_interval = nominal_imu_interval;
-        }
-        else
-        {
-            const imu_type imu{vector3(double(sample.delta_velocity[0]) / accel_dt,
-                                       double(sample.delta_velocity[1]) / accel_dt,
-                                       double(sample.delta_velocity[2]) / accel_dt),
-                               vector3(double(sample.delta_angle[0]) / dt, double(sample.delta_angle[1]) / dt,
-                                       double(sample.delta_angle[2]) / dt)};
-            const uint64_t previous_time = m_time;
-            m_time = sample.timestamp_sample;
-            if (!formal_eskf::linalg::all_finite(imu.specific_force_b) ||
-                !formal_eskf::linalg::all_finite(imu.angular_rate_b))
-            {
-                ++m_rejections;
-                m_fault = m_initialized;
-            }
-            else if (!m_fault)
-            {
-                update_gps_quality();
-                if (!m_initialized && !m_fault)
-                {
-                    initialize(sample, imu);
-                }
-                else if (!m_fault)
-                {
-                    const int64_t gap = int64_t(m_time - previous_time) - int64_t(sample.delta_angle_dt);
-                    if (m_time - previous_time > 50000 || gap < -200 ||
-                        sample.accel_device_id != m_last_imu.accel_device_id ||
-                        sample.gyro_device_id != m_last_imu.gyro_device_id ||
-                        sample.accel_calibration_count != m_last_imu.accel_calibration_count ||
-                        sample.gyro_calibration_count != m_last_imu.gyro_calibration_count)
-                    {
-                        m_fault = true;
-                        ++m_errors;
-                        PX4_ERR("IMU discontinuity; restart required (gap=%lld us)", (long long)gap);
-                    }
-                    else
-                    {
-                        // Small missing intervals use the PREVIOUS measured rate explicitly.
-                        if (gap > 200)
-                        {
-                            ++m_gaps;
-                            m_vertical_health.reset();
-                            m_gravity_aiding.reset_samples();
-                            m_average_imu_interval = nominal_imu_interval;
-                            m_magnetic_aiding.reset_acceleration();
-                            check(formal_eskf::px4::try_predict_imu(m_state, m_covariance, m_previous_imu,
-                                                                    double(gap) * 1e-6, m_parameters, 0, false));
-                        }
-                        if (!m_fault && update_imu_bias(sample, imu) &&
-                            check(formal_eskf::px4::try_predict_imu(
-                                m_state, m_covariance, imu, dt, m_parameters, sample.delta_velocity_clipping,
-                                m_vertical_health.state().bad_vertical_acceleration)))
-                        {
-                            ++m_predictions;
-                            auto const acceleration_n =
-                                formal_eskf::so3::rotate(m_state.q_nb, imu.specific_force_b - m_state.b_a);
-                            if (check(m_magnetic_aiding.update_acceleration(acceleration_n, accel_dt)))
-                            {
-                                fuse_gps();
-                            }
-                            if (!m_fault && update_imu_health(sample))
-                            {
-                                fuse_height();
-                            }
-                            if (!m_fault)
-                            {
-                                fuse_gravity(sample, imu);
-                            }
-                            if (!m_fault)
-                            {
-                                fuse_mag();
-                            }
-                        }
-                    }
-                    m_previous_imu = imu;
-                    m_last_imu = sample;
-                }
-            }
-            if (m_initialized && !m_fault)
-            {
-                publish(imu);
-            }
-        }
+        process_imu(sample);
     }
-    const uint64_t now = hrt_absolute_time();
+    uint64_t const now = hrt_absolute_time();
     if (now - m_last_status >= 100000)
     {
         publish_status(now);
         m_last_status = now;
     }
     perf_end(m_cycle_perf);
+}
+
+void FormalEskf::process_imu(vehicle_imu_s const & sample)
+{
+    double const dt = double(sample.delta_angle_dt) * 1e-6;
+    double const accel_dt = double(sample.delta_velocity_dt) * 1e-6;
+    if (sample.timestamp_sample <= m_time || dt < 1e-6 || dt > 0.05 || accel_dt < 1e-6 || accel_dt > 0.05 ||
+        !formal_eskf::px4::imu_clipping_acceptable(sample.delta_velocity_clipping, sample.delta_angle_clipping,
+                                                   m_initialized))
+    {
+        ++m_rejections;
+        // Admission failure revokes learning/health, but does not consume the timeline.
+        m_bias_learning_result = {};
+        m_vertical_health.reset();
+        m_gravity_aiding.reset_samples();
+        m_average_imu_interval = nominal_imu_interval;
+        return;
+    }
+
+    imu_type const imu{vector3(double(sample.delta_velocity[0]) / accel_dt, double(sample.delta_velocity[1]) / accel_dt,
+                               double(sample.delta_velocity[2]) / accel_dt),
+                       vector3(double(sample.delta_angle[0]) / dt, double(sample.delta_angle[1]) / dt,
+                               double(sample.delta_angle[2]) / dt)};
+    uint64_t const previous_time = m_time;
+    m_time = sample.timestamp_sample;
+    if (!formal_eskf::linalg::all_finite(imu.specific_force_b) || !formal_eskf::linalg::all_finite(imu.angular_rate_b))
+    {
+        ++m_rejections;
+        m_fault = m_initialized;
+        return;
+    }
+    if (m_fault)
+    {
+        return;
+    }
+    update_gps_quality();
+    if (m_fault)
+    {
+        return;
+    }
+    if (!m_initialized)
+    {
+        initialize(sample, imu);
+    }
+    else
+    {
+        predict_and_fuse(sample, imu, dt, accel_dt, previous_time);
+        // An admitted initialized sample consumes these watermarks even on fault.
+        m_previous_imu = imu;
+        m_last_imu = sample;
+    }
+    if (m_initialized && !m_fault)
+    {
+        publish(imu);
+    }
+}
+
+void FormalEskf::predict_and_fuse(vehicle_imu_s const & sample, imu_type const & imu, double dt, double accel_dt,
+                                  uint64_t previous_time)
+{
+    int64_t const gap = int64_t(m_time - previous_time) - int64_t(sample.delta_angle_dt);
+    if (m_time - previous_time > 50000 || gap < -200 || sample.accel_device_id != m_last_imu.accel_device_id ||
+        sample.gyro_device_id != m_last_imu.gyro_device_id ||
+        sample.accel_calibration_count != m_last_imu.accel_calibration_count ||
+        sample.gyro_calibration_count != m_last_imu.gyro_calibration_count)
+    {
+        m_fault = true;
+        ++m_errors;
+        PX4_ERR("IMU discontinuity; restart required (gap=%lld us)", (long long)gap);
+        return;
+    }
+    if (gap > 200)
+    {
+        ++m_gaps;
+        m_vertical_health.reset();
+        m_gravity_aiding.reset_samples();
+        m_average_imu_interval = nominal_imu_interval;
+        m_magnetic_aiding.reset_acceleration();
+        // Synthetic intervals use the previous rate, never a fresh sensor observation.
+        if (!check(formal_eskf::px4::try_predict_imu(m_state, m_covariance, m_previous_imu, double(gap) * 1e-6,
+                                                     m_parameters, 0, false)))
+        {
+            return;
+        }
+    }
+    if (!update_imu_bias(sample, imu) ||
+        !check(formal_eskf::px4::try_predict_imu(m_state, m_covariance, imu, dt, m_parameters,
+                                                 sample.delta_velocity_clipping,
+                                                 m_vertical_health.state().bad_vertical_acceleration)))
+    {
+        return;
+    }
+    ++m_predictions;
+    auto const acceleration_n = formal_eskf::so3::rotate(m_state.q_nb, imu.specific_force_b - m_state.b_a);
+    if (!check(m_magnetic_aiding.update_acceleration(acceleration_n, accel_dt)))
+    {
+        return;
+    }
+    fuse_gps();
+    // Current GNSS velocity and preceding height evidence feed the health check.
+    if (m_fault || !update_imu_health(sample))
+    {
+        return;
+    }
+    fuse_height();
+    if (m_fault)
+    {
+        return;
+    }
+    fuse_gravity(sample, imu);
+    if (m_fault)
+    {
+        return;
+    }
+    fuse_mag();
 }
 
 void FormalEskf::fuse_gps()
@@ -467,7 +487,7 @@ void FormalEskf::fuse_gps()
     const double velocity_variance = square(std::max(double(m_gps.s_variance_m_s), 0.3));
     const auto velocity_variances = vector3(velocity_variance, velocity_variance, 2.25 * velocity_variance);
     auto Rv = matrix3_type::identity() * velocity_variance;
-    Rv.set(2, 2, velocity_variances(2));
+    Rv(2, 2) = velocity_variances(2);
     auto const & session = m_gnss_fusion.state();
     auto const & health = m_vertical_health.state();
     GnssVelocityConditions<double> const velocity_conditions{health.bad_vertical_acceleration,
@@ -480,23 +500,24 @@ void FormalEskf::fuse_gps()
         {
             auto const evidence = check_gnss_velocity(m_state, m_covariance, velocity, Rv, minimum_quaternion_norm, 5.,
                                                       velocity_conditions);
-            if (!check(evidence.status))
+            if (!check(evidence.gate.status))
             {
                 return;
             }
-            m_gps_velocity_innovation = {evidence.diagnostics_valid, -evidence.fusion_innovation(2),
-                                         evidence.innovation_variance(2)};
-            m_vel_ratio = evidence.diagnostics_valid
-                              ? std::max({evidence.test_ratio(0), evidence.test_ratio(1), evidence.test_ratio(2)})
-                              : double(INFINITY);
+            m_gps_velocity_innovation = {evidence.gate.diagnostics_valid, -evidence.fusion_innovation(2),
+                                         evidence.gate.innovation_variance(2)};
+            m_vel_ratio =
+                evidence.gate.diagnostics_valid
+                    ? std::max({evidence.gate.test_ratio(0), evidence.gate.test_ratio(1), evidence.gate.test_ratio(2)})
+                    : double(INFINITY);
         }
         return;
     }
     float north{}, east{};
     m_projection.project(m_gps.latitude_deg, m_gps.longitude_deg, north, east);
-    const auto xy = backend_type::vector_type<2>::from_row_major({double(north), double(east)});
+    const auto xy = formal_eskf::linalg::Vector<backend_type, 2>::from_row_major({double(north), double(east)});
     const double position_variance = square(std::min(std::max(double(m_gps.eph), 0.5), 10.));
-    const auto Rxy = backend_type::matrix_type<2, 2>::identity() * position_variance;
+    const auto Rxy = formal_eskf::linalg::Matrix<backend_type, 2, 2>::identity() * position_variance;
     // Snapshot the coupled reset decision before either horizontal group advances.
     if (session.velocity.action == GnssFusion::Action::reset)
     {
@@ -543,8 +564,9 @@ void FormalEskf::fuse_gps()
     }
     if (session.horizontal_position.action == GnssFusion::Action::reset)
     {
-        backend_type::vector_type<2> delta;
-        auto const variances = backend_type::vector_type<2>::from_row_major({position_variance, position_variance});
+        formal_eskf::linalg::Vector<backend_type, 2> delta;
+        auto const variances =
+            formal_eskf::linalg::Vector<backend_type, 2>::from_row_major({position_variance, position_variance});
         auto const status =
             try_reset_gnss_horizontal_position(m_state, m_covariance, xy, variances, m_state, m_covariance, delta);
         if (!check(m_gnss_fusion.record_reset(Group::horizontal_position, m_gnss_sample.time_us,

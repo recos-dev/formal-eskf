@@ -29,30 +29,30 @@ template <unsigned Aliases> void step_fixture(Status nominal_status, Status cova
     __ESBMC_assert(initialization == Status::success, "E-STEP regression: construct distinct nominal output");
     for (std::size_t i = 0U; i < 3U; ++i)
     {
-        error.delta_theta_b.set(i, Scalar{4});
-        error_output.delta_theta_b.set(i, Scalar{5});
+        error.delta_theta_b(i) = Scalar{4};
+        error_output.delta_theta_b(i) = Scalar{5};
 #if FORMAL_ESKF_PROOF_INS
-        state.p_n.set(i, Scalar{1});
-        state.v_n.set(i, Scalar{2});
-        state.b_a.set(i, Scalar{3});
-        state.b_g.set(i, Scalar{4});
-        error.delta_p_n.set(i, Scalar{5});
-        error.delta_v_n.set(i, Scalar{6});
-        error.delta_b_a.set(i, Scalar{7});
-        error.delta_b_g.set(i, Scalar{8});
+        state.p_n(i) = Scalar{1};
+        state.v_n(i) = Scalar{2};
+        state.b_a(i) = Scalar{3};
+        state.b_g(i) = Scalar{4};
+        error.delta_p_n(i) = Scalar{5};
+        error.delta_v_n(i) = Scalar{6};
+        error.delta_b_a(i) = Scalar{7};
+        error.delta_b_g(i) = Scalar{8};
         error_output = error;
-        results.nominal.v_n.set(i, Scalar{-1});
+        results.nominal.v_n(i) = Scalar{-1};
 #endif
     }
     for (std::size_t row = 0U; row < Matrix::row_count; ++row)
         for (std::size_t column = 0U; column < Matrix::column_count; ++column)
         {
-            covariance.set(row, column, Scalar{1});
-            covariance_output.set(row, column, Scalar{2});
-            results.covariance.set(row, column, Scalar{3});
+            covariance(row, column) = Scalar{1};
+            covariance_output(row, column) = Scalar{2};
+            results.covariance(row, column) = Scalar{3};
         }
-    covariance.set(0U, 0U, std::numeric_limits<Scalar>::infinity());
-    results.covariance.set(Matrix::row_count - 1U, Matrix::column_count - 1U, std::numeric_limits<Scalar>::quiet_NaN());
+    covariance(0U, 0U) = std::numeric_limits<Scalar>::infinity();
+    results.covariance(Matrix::row_count - 1U, Matrix::column_count - 1U) = std::numeric_limits<Scalar>::quiet_NaN();
     results.nominal_status = nominal_status;
     results.covariance_status = covariance_status;
     prediction_transaction<(Aliases & 3U)>(state, covariance, imu, Scalar{0}, parameters, state_output,

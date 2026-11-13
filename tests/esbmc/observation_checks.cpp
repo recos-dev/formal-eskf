@@ -14,8 +14,22 @@
 #endif
 #undef main
 
+#include <array>
 #include <cstdio>
 #include <cstdlib>
+
+enum class TestCase
+{
+    baseline,
+    nan_measurement,
+    infinite_reference,
+    zero_reference,
+    zero_measurement,
+    nan_rotation,
+    max_finite_inputs,
+    negative_zero,
+    accelerometer_bias_overflow,
+};
 
 void __ESBMC_assert(bool condition, char const * description)
 {
@@ -33,7 +47,12 @@ float nondet_float() { return 0.0F; }
 int main()
 {
     using namespace observation_proof;
-    for (unsigned test_case = 0U; test_case < 9U; ++test_case)
+    constexpr std::array test_cases{
+        TestCase::baseline,          TestCase::nan_measurement,  TestCase::infinite_reference,
+        TestCase::zero_reference,    TestCase::zero_measurement, TestCase::nan_rotation,
+        TestCase::max_finite_inputs, TestCase::negative_zero,    TestCase::accelerometer_bias_overflow,
+    };
+    for (auto const test_case : test_cases)
     {
         state_type state;
         vector_type reference;
@@ -41,54 +60,54 @@ int main()
         residual_type measurement;
         for (std::size_t i = 0U; i < 3U; ++i)
         {
-            reference.set(i, static_cast<value_type>(i + 1U));
+            reference(i) = static_cast<value_type>(i + 1U);
             for (std::size_t j = 0U; j < 3U; ++j)
             {
-                R.set(i, j, static_cast<value_type>(i * 3U + j + 1U) / value_type{8});
+                R(i, j) = static_cast<value_type>(i * 3U + j + 1U) / value_type{8};
             }
 #if FORMAL_ESKF_PROOF_STATE_SIZE == 15
-            state.p_n.set(i, static_cast<value_type>(i + 3U));
-            state.v_n.set(i, static_cast<value_type>(i + 4U));
-            state.b_a.set(i, static_cast<value_type>(i + 5U));
-            state.b_g.set(i, static_cast<value_type>(i + 6U));
+            state.p_n(i) = static_cast<value_type>(i + 3U);
+            state.v_n(i) = static_cast<value_type>(i + 4U);
+            state.b_a(i) = static_cast<value_type>(i + 5U);
+            state.b_g(i) = static_cast<value_type>(i + 6U);
 #endif
         }
         for (std::size_t i = 0U; i < measurement_size; ++i)
         {
-            measurement.set(i, static_cast<value_type>(i + 7U));
+            measurement(i) = static_cast<value_type>(i + 7U);
         }
         switch (test_case)
         {
-        case 1U:
-            measurement.set(measurement_size - 1U, std::numeric_limits<value_type>::quiet_NaN());
+        case TestCase::baseline:
             break;
-        case 2U:
-            reference.set(2U, std::numeric_limits<value_type>::infinity());
+        case TestCase::nan_measurement:
+            measurement(measurement_size - 1U) = std::numeric_limits<value_type>::quiet_NaN();
             break;
-        case 3U:
+        case TestCase::infinite_reference:
+            reference(2U) = std::numeric_limits<value_type>::infinity();
+            break;
+        case TestCase::zero_reference:
             reference = vector_type{};
             break;
-        case 4U:
+        case TestCase::zero_measurement:
             measurement = residual_type{};
             break;
-        case 5U:
-            R.set(2U, 2U, std::numeric_limits<value_type>::quiet_NaN());
+        case TestCase::nan_rotation:
+            R(2U, 2U) = std::numeric_limits<value_type>::quiet_NaN();
             break;
-        case 6U:
-            reference.set(2U, std::numeric_limits<value_type>::max());
-            R.set(2U, 2U, std::numeric_limits<value_type>::max());
+        case TestCase::max_finite_inputs:
+            reference(2U) = std::numeric_limits<value_type>::max();
+            R(2U, 2U) = std::numeric_limits<value_type>::max();
             break;
-        case 7U:
-            R.set(2U, 1U, -value_type{0});
-            measurement.set(0U, -value_type{0});
+        case TestCase::negative_zero:
+            R(2U, 1U) = -value_type{0};
+            measurement(0U) = -value_type{0};
             break;
-        case 8U:
+        case TestCase::accelerometer_bias_overflow:
 #if FORMAL_ESKF_PROOF_OBSERVATION == 7 && FORMAL_ESKF_PROOF_STATE_SIZE == 15
-            state.b_a.set(0U, -std::numeric_limits<value_type>::max());
-            measurement.set(0U, std::numeric_limits<value_type>::max());
+            state.b_a(0U) = -std::numeric_limits<value_type>::max();
+            measurement(0U) = std::numeric_limits<value_type>::max();
 #endif
-            break;
-        default:
             break;
         }
 #if FORMAL_ESKF_PROOF_OBSERVATION_CONTRACT
@@ -102,22 +121,33 @@ int main()
         {
             for (std::size_t j = 0U; j < state_size; ++j)
             {
-                covariance.set(i, j, static_cast<value_type>(i * state_size + j + 1U));
-                covariance_output.set(i, j, value_type{-2});
-                result.covariance.set(i, j, value_type{-3});
+                covariance(i, j) = static_cast<value_type>(i * state_size + j + 1U);
+                covariance_output(i, j) = value_type{-2};
+                result.covariance(i, j) = value_type{-3};
             }
         }
         for (std::size_t i = 0U; i < measurement_size; ++i)
         {
             for (std::size_t j = 0U; j < measurement_size; ++j)
             {
-                V.set(i, j, static_cast<value_type>(i * measurement_size + j + 1U));
+                V(i, j) = static_cast<value_type>(i * measurement_size + j + 1U);
             }
         }
-        result.covariance.set(state_size - 1U, state_size - 1U, std::numeric_limits<value_type>::quiet_NaN());
-        for (unsigned status = 0U; status < 9U; ++status)
+        result.covariance(state_size - 1U, state_size - 1U) = std::numeric_limits<value_type>::quiet_NaN();
+        constexpr std::array statuses{
+            Status::success,
+            Status::non_finite_input,
+            Status::domain_error,
+            Status::out_of_range,
+            Status::zero_or_unsafe_divisor,
+            Status::invalid_quaternion_norm,
+            Status::not_positive_definite,
+            Status::ill_conditioned,
+            Status::non_finite_result,
+        };
+        for (auto const status : statuses)
         {
-            result.status = static_cast<Status>(status);
+            result.status = status;
             verify_observation(state, covariance, measurement, V, reference, value_type{0.125}, state_output,
                                covariance_output, result, R);
         }

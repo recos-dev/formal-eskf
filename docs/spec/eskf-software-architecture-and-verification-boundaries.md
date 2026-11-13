@@ -54,9 +54,36 @@ The current `FormalEskf::Run()` path is:
 5. Process gravity aiding, then magnetic aiding, when their respective conditions permit.
 6. Publish estimates while initialized and fault-free. Publish status separately at its scheduled interval, including when no new IMU sample arrives.
 
-`Run()` owns estimator mutation on the PX4 work queue; a mutex serializes it with shell status reads. Numerical failure or a discontinuity can latch a module fault requiring restart. Rejected observations and failed numerical operations have different meanings. Individual checked-operation guarantees do not establish that the entire tick is one failure-atomic transaction.
+`Run()` owns scheduling, subscription updates and status publication under one
+mutex shared with shell status reads. `process_imu()` owns sample admission,
+timeline consumption, initialization and estimate publication. For an initialized
+filter, `predict_and_fuse()` handles continuity, gap holds and the ordered aiding
+sequence above. A failed stage prevents later aiding and estimate publication.
+After entering this prediction path, the caller stores the admitted sample as
+previous-IMU metadata even if prediction or fusion fails; earlier admission,
+finite-data and GNSS-quality failures retain the previous metadata.
+Numerical failure or a discontinuity can latch a module fault requiring restart. Rejected observations and failed numerical operations have different meanings. Individual checked-operation guarantees do not establish that the entire tick is one failure-atomic transaction.
 
 The [integration guide](../../integrations/px4/README.md#adapter-behavior-and-verification-boundary) owns the pinned target, setup, deployment settings and current limitations. Core/runtime contracts remain in the specifications; the guide's SITL results do not extend their formal proof boundaries.
+
+### Integration invariants and proof boundaries
+
+| Boundary | Owner and invariant | Premise for composition |
+|---|---|---|
+| Timeline and mutation | The module serializes each tick. Admission failure preserves the horizon; admitted non-finite data consumes the horizon and faults an initialized filter. Watchdog/status scheduling continues without new IMU. | Adapter timestamps, units, identity and work-queue serialization must be established separately from numerical correctness. |
+| Prediction and health | Configured noise is selected afresh for each interval. Bias learning uses preceding vertical health; current GNSS velocity and preceding height evidence feed the next health evaluation before height correction. Held rates never become fresh observations. | Sample integration intervals and clipping/context availability are supplied honestly. Module and replay retain their distinct missing-data policies. |
+| Source actions and feedback | Each controller owns its qualification/history. Its current action authorizes a call; only actual correction/reset results acknowledge progress. Numerical failure, rejection and deliberate inhibition remain distinct. | The caller uses the same sample/prior and completes feedback before the next update; no fabricated successful fusion or reset. |
+| Geographic and magnetic references | Navigation origin, previous GNSS fix, selected magnetic observation reference and optional magnetic-health reference have different lifetimes and purposes. | Source/calibration/reference changes follow their existing reset rules; similar coordinates do not justify merging their history. |
+| Publication and recovery | The module owns fault latching and reset counters/deltas. Successful operations may precede a later failure in the same tick; published estimates require initialization and no fault. | Per-operation output preservation is not whole-tick rollback, and native/SITL evidence is not a concurrency or hardware-safety proof. |
+
+The replay keeps CSV cursors, its log-time scheduler and evidence files. Its
+`predict_interval()` explicitly receives the prior, configured parameters and
+available noise context; prediction statistics describe the executed intervals.
+Sharing runtime components does not make replay and module scheduling equivalent.
+
+These are composition boundaries for the software verification plan. Existing
+core proofs remain scoped to their own contracts; runtime/controller and complete
+module formal proofs remain pending.
 
 ## Software proof obligations
 

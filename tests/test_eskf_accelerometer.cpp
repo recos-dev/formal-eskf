@@ -63,7 +63,7 @@ template <typename Linalg, typename Configuration> struct AccelerometerFixture
     static constexpr std::size_t size = Configuration::error_state_dimension;
     static constexpr std::size_t attitude_offset = size == 3U ? 0U : 6U;
     static constexpr value_type minimum_norm = static_cast<value_type>(1.0e-6);
-    using vector_type = formal_eskf::linalg::Matrix<Linalg, 3U, 1U>;
+    using vector_type = formal_eskf::linalg::Vector<Linalg, 3U>;
     using matrix3_type = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
     using covariance_type = formal_eskf::linalg::Matrix<Linalg, size, size>;
     using jacobian_type = formal_eskf::linalg::Matrix<Linalg, 3U, size>;
@@ -93,13 +93,13 @@ template <typename Linalg, typename Configuration> struct AccelerometerFixture
     {
         if constexpr (size == 3U)
         {
-            error.delta_theta_b.set(column, amount);
+            error.delta_theta_b(column) = amount;
         }
         else
         {
             std::array<vector_type *, 5U> blocks{&error.delta_p_n, &error.delta_v_n, &error.delta_theta_b,
                                                  &error.delta_b_a, &error.delta_b_g};
-            blocks[column / 3U]->set(column % 3U, amount);
+            (*blocks[column / 3U])(column % 3U) = amount;
         }
     }
 };
@@ -227,7 +227,7 @@ void test_accelerometer_analytic(TestContext & test, std::string_view profile, t
                         profile, "stationary covariance matches analytic oracle; gravity does not observe heading");
         }
     }
-    fixture.f_b.set(0U, value_type{0.125});
+    fixture.f_b(0U) = value_type{0.125};
     test.expect(fixture.correct(output, P_output) == Status::success, profile, "horizontal residual succeeds");
     long double const angle = 0.25L / S[0];
     test.expect(near(output.q_nb.q0(), static_cast<value_type>(std::cos(angle / 2)), tolerance) &&
@@ -286,11 +286,11 @@ void test_accelerometer_delegation(TestContext & test, std::string_view profile,
     auto const r = Fixture::vector_type::from_row_major({value_type{0.125}, value_type{-0.0625}, value_type{0.25}});
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
-        fixture.f_b.set(axis, static_cast<value_type>(h[axis]) + r(axis));
+        fixture.f_b(axis) = static_cast<value_type>(h[axis]) + r(axis);
         if constexpr (Fixture::size == 15U)
         {
             // Fixed preprocessing subtracts this prior bias exactly once.
-            fixture.f_b.set(axis, fixture.f_b(axis) + fixture.state.b_a(axis));
+            fixture.f_b(axis) = fixture.f_b(axis) + fixture.state.b_a(axis);
         }
     }
     // Dense SPD prior ensures measurement updates are not restricted to tilt.
@@ -301,8 +301,8 @@ void test_accelerometer_delegation(TestContext & test, std::string_view profile,
             fixture.P(row, column) += static_cast<value_type>((row + 1U) * (column + 1U)) / value_type{256};
         }
     }
-    fixture.V.set(0U, 1U, value_type{0.25});
-    fixture.V.set(1U, 0U, value_type{0.25});
+    fixture.V(0U, 1U) = value_type{0.25};
+    fixture.V(1U, 0U) = value_type{0.25};
     typename Fixture::state_type expected_state;
     typename Fixture::covariance_type expected_P;
     test.expect(formal_eskf::try_correct(fixture.state, fixture.P, r, fixture.jacobian(), fixture.V,
@@ -383,23 +383,23 @@ template <typename Linalg> void test_ins_gravity_model(TestContext & test, typen
     using Fixture = AccelerometerFixture<Linalg, formal_eskf::configuration::Ins>;
     constexpr std::string_view profile = "INS gravity model";
     Fixture fixture;
-    fixture.state.v_n.set(0U, value_type{3});
+    fixture.state.v_n(0U) = value_type{3};
     auto const before = fixture.state;
     test.expect(fixture.correct(fixture.state, fixture.P) == Status::success && same_state(fixture.state, before),
                 profile, "gravity prediction does not depend on the prior velocity");
     fixture = Fixture{};
-    fixture.state.b_a.set(0U, value_type{0.25});
-    fixture.state.b_a.set(2U, value_type{0.25});
-    fixture.state.b_g.set(0U, value_type{0.5});
-    fixture.f_b.set(0U, value_type{0.25});
-    fixture.f_b.set(2U, value_type{-1.75});
+    fixture.state.b_a(0U) = value_type{0.25};
+    fixture.state.b_a(2U) = value_type{0.25};
+    fixture.state.b_g(0U) = value_type{0.5};
+    fixture.f_b(0U) = value_type{0.25};
+    fixture.f_b(2U) = value_type{-1.75};
     auto const biased = fixture.state;
     test.expect(fixture.correct(fixture.state, fixture.P) == Status::success && same_state(fixture.state, biased),
                 profile, "raw stationary specific force subtracts the accelerometer bias exactly once");
 
     // With no attitude cross-covariance, INS attitude correction reduces to AHRS.
     AccelerometerFixture<Linalg, formal_eskf::configuration::Ahrs> ahrs;
-    ahrs.f_b.set(0U, value_type{0.125});
+    ahrs.f_b(0U) = value_type{0.125};
     fixture = Fixture{};
     fixture.P = Fixture::covariance_type::zero();
     fixture.P.template set_block<6U, 6U>(ahrs.P);
@@ -443,10 +443,10 @@ void test_accelerometer_failures(TestContext & test, std::string_view profile)
         for (std::size_t axis = 0U; axis < 3U; ++axis)
         {
             auto bad = fixture;
-            bad.f_b.set(axis, invalid);
+            bad.f_b(axis) = invalid;
             fail(bad, Fixture::minimum_norm, Status::non_finite_input, "non-finite specific force rolls back");
             bad = fixture;
-            bad.g_n.set(axis, invalid);
+            bad.g_n(axis) = invalid;
             fail(bad, Fixture::minimum_norm, Status::non_finite_input, "non-finite gravity rolls back");
             if constexpr (Fixture::size == 15U)
             {
@@ -455,7 +455,7 @@ void test_accelerometer_failures(TestContext & test, std::string_view profile)
                     bad = fixture;
                     std::array<typename Fixture::vector_type *, 4U> fields{&bad.state.v_n, &bad.state.b_a,
                                                                            &bad.state.b_g, &bad.state.p_n};
-                    fields[field]->set(axis, invalid);
+                    (*fields[field])(axis) = invalid;
                     fail(bad, Fixture::minimum_norm, Status::non_finite_input, "non-finite INS input rolls back");
                 }
             }
@@ -465,27 +465,27 @@ void test_accelerometer_failures(TestContext & test, std::string_view profile)
     bad.g_n = Fixture::vector_type::zero();
     fail(bad, Fixture::minimum_norm, Status::domain_error, "zero gravity reference rolls back");
     bad = fixture;
-    bad.g_n.set(2U, std::numeric_limits<value_type>::max());
-    bad.f_b.set(2U, std::numeric_limits<value_type>::max());
+    bad.g_n(2U) = std::numeric_limits<value_type>::max();
+    bad.f_b(2U) = std::numeric_limits<value_type>::max();
     fail(bad, Fixture::minimum_norm, Status::non_finite_result, "finite residual overflow rolls back");
     bad = fixture;
-    bad.V.set(0U, 1U, value_type{0.25});
+    bad.V(0U, 1U) = value_type{0.25};
     fail(bad, Fixture::minimum_norm, Status::domain_error, "asymmetric effective V rolls back");
     bad = fixture;
-    bad.V.set(0U, 0U, value_type{0});
+    bad.V(0U, 0U) = value_type{0};
     fail(bad, Fixture::minimum_norm, Status::domain_error, "zero measurement variance rolls back");
     bad = fixture;
-    bad.V.set(1U, 1U, std::numeric_limits<value_type>::infinity());
+    bad.V(1U, 1U) = std::numeric_limits<value_type>::infinity();
     fail(bad, Fixture::minimum_norm, Status::non_finite_input, "non-finite effective V rolls back");
     bad = fixture;
-    bad.P.set(0U, 1U, value_type{0.25});
+    bad.P(0U, 1U) = value_type{0.25};
     fail(bad, Fixture::minimum_norm, Status::domain_error, "asymmetric P rolls back");
     bad = fixture;
-    bad.P.set(0U, 0U, value_type{-1});
+    bad.P(0U, 0U) = value_type{-1};
     fail(bad, Fixture::minimum_norm, Status::domain_error, "negative prior variance rolls back");
     bad = fixture;
-    bad.P.set(Fixture::attitude_offset, Fixture::attitude_offset + 1U, value_type{4});
-    bad.P.set(Fixture::attitude_offset + 1U, Fixture::attitude_offset, value_type{4});
+    bad.P(Fixture::attitude_offset, Fixture::attitude_offset + 1U) = value_type{4};
+    bad.P(Fixture::attitude_offset + 1U, Fixture::attitude_offset) = value_type{4};
     fail(bad, Fixture::minimum_norm, Status::not_positive_definite, "indefinite innovation fails Cholesky atomically");
     fail(fixture, value_type{0}, Status::domain_error, "zero quaternion norm bound rolls back");
     fail(fixture, value_type{2}, Status::domain_error, "excessive quaternion norm bound rolls back");
@@ -494,8 +494,8 @@ void test_accelerometer_failures(TestContext & test, std::string_view profile)
     if constexpr (Fixture::size == 15U)
     {
         bad = fixture;
-        bad.f_b.set(0U, std::numeric_limits<value_type>::max());
-        bad.state.b_a.set(0U, -std::numeric_limits<value_type>::max());
+        bad.f_b(0U) = std::numeric_limits<value_type>::max();
+        bad.state.b_a(0U) = -std::numeric_limits<value_type>::max();
         fail(bad, Fixture::minimum_norm, Status::non_finite_result, "bias preprocessing overflow rolls back");
     }
     auto zero_measurement = fixture;

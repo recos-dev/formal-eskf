@@ -39,7 +39,7 @@ template <typename Linalg> [[nodiscard]] linalg::Matrix<Linalg, 2U, 15U> horizon
 template <typename Linalg> [[nodiscard]] linalg::Matrix<Linalg, 1U, 15U> vertical_position_jacobian() noexcept
 {
     linalg::Matrix<Linalg, 1U, 15U> H;
-    H.set(0U, 2U, typename Linalg::value_type{1});
+    H(0U, 2U) = typename Linalg::value_type{1};
     return H;
 }
 
@@ -67,7 +67,7 @@ template <typename Linalg> [[nodiscard]] linalg::Matrix<Linalg, 1U, 15U> vertica
 template <typename Linalg>
 [[nodiscard]] Status try_correct_horizontal_position(configuration::Ins::NominalState<Linalg> const & state,
                                                      linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-                                                     linalg::Matrix<Linalg, 2U, 1U> const & z_p_ne,
+                                                     linalg::Vector<Linalg, 2U> const & z_p_ne,
                                                      linalg::Matrix<Linalg, 2U, 2U> const & V,
                                                      typename Linalg::value_type minimum_quaternion_norm,
                                                      configuration::Ins::NominalState<Linalg> & state_output,
@@ -119,7 +119,7 @@ try_correct_vertical_position(configuration::Ins::NominalState<Linalg> const & s
     {
         return Status::non_finite_input;
     }
-    auto const r = linalg::Matrix<Linalg, 1U, 1U>::from_row_major({z_p_d - state.p_n(2U)});
+    auto const r = linalg::Vector<Linalg, 1U>::from_row_major({z_p_d - state.p_n(2U)});
     if (!linalg::all_finite(r))
     {
         return Status::non_finite_result;

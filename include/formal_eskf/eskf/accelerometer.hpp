@@ -18,20 +18,6 @@
 namespace formal_eskf
 {
 
-namespace detail
-{
-
-template <typename Linalg>
-[[nodiscard]] linalg::Matrix<Linalg, 3U, 15U>
-accelerometer_jacobian_from_prediction(linalg::Matrix<Linalg, 3U, 1U> const & h) noexcept
-{
-    linalg::Matrix<Linalg, 3U, 15U> H;
-    H.template set_block<0U, 6U>(so3::hat<Linalg>(h));
-    return H;
-}
-
-} /* end namespace detail */
-
 /**
  * AHRS Jacobian of h = -R(q_nb)^T * gravity_n, with respect to the local
  * error in q_true = q_nb * Exp(delta_theta_b). H = hat(h), not the residual derivative.
@@ -40,7 +26,7 @@ accelerometer_jacobian_from_prediction(linalg::Matrix<Linalg, 3U, 1U> const & h)
 template <typename Linalg>
 [[nodiscard]] linalg::Matrix<Linalg, 3U, 3U>
 accelerometer_jacobian(configuration::Ahrs::NominalState<Linalg> const & state,
-                       linalg::Matrix<Linalg, 3U, 1U> const & gravity_n) noexcept
+                       linalg::Vector<Linalg, 3U> const & gravity_n) noexcept
 {
     return so3::hat<Linalg>(-so3::inverse_rotate(state.q_nb, gravity_n));
 }
@@ -55,9 +41,12 @@ accelerometer_jacobian(configuration::Ahrs::NominalState<Linalg> const & state,
 template <typename Linalg>
 [[nodiscard]] linalg::Matrix<Linalg, 3U, 15U>
 accelerometer_jacobian(configuration::Ins::NominalState<Linalg> const & state,
-                       linalg::Matrix<Linalg, 3U, 1U> const & gravity_n) noexcept
+                       linalg::Vector<Linalg, 3U> const & gravity_n) noexcept
 {
-    return detail::accelerometer_jacobian_from_prediction(-so3::inverse_rotate(state.q_nb, gravity_n));
+    auto const h = -so3::inverse_rotate(state.q_nb, gravity_n);
+    linalg::Matrix<Linalg, 3U, 15U> H;
+    H.template set_block<0U, 6U>(so3::hat<Linalg>(h));
+    return H;
 }
 
 /**
@@ -87,8 +76,8 @@ accelerometer_jacobian(configuration::Ins::NominalState<Linalg> const & state,
 template <typename Linalg>
 [[nodiscard]] Status try_correct_accelerometer(configuration::Ahrs::NominalState<Linalg> const & state,
                                                linalg::Matrix<Linalg, 3U, 3U> const & covariance,
-                                               linalg::Matrix<Linalg, 3U, 1U> const & specific_force_b,
-                                               linalg::Matrix<Linalg, 3U, 1U> const & gravity_n,
+                                               linalg::Vector<Linalg, 3U> const & specific_force_b,
+                                               linalg::Vector<Linalg, 3U> const & gravity_n,
                                                linalg::Matrix<Linalg, 3U, 3U> const & V,
                                                typename Linalg::value_type minimum_quaternion_norm,
                                                configuration::Ahrs::NominalState<Linalg> & state_output,
@@ -137,7 +126,7 @@ template <typename Linalg>
 template <typename Linalg>
 [[nodiscard]] Status try_correct_accelerometer(
     configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-    linalg::Matrix<Linalg, 3U, 1U> const & specific_force_b, linalg::Matrix<Linalg, 3U, 1U> const & gravity_n,
+    linalg::Vector<Linalg, 3U> const & specific_force_b, linalg::Vector<Linalg, 3U> const & gravity_n,
     linalg::Matrix<Linalg, 3U, 3U> const & V, typename Linalg::value_type minimum_quaternion_norm,
     configuration::Ins::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
     configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
@@ -160,7 +149,8 @@ template <typename Linalg>
         return Status::non_finite_result;
     }
     auto const r = z - h;
-    auto const H = detail::accelerometer_jacobian_from_prediction(h);
+    linalg::Matrix<Linalg, 3U, 15U> H;
+    H.template set_block<0U, 6U>(so3::hat<Linalg>(h));
     if (!linalg::all_finite(h) || !linalg::all_finite(r) || !linalg::all_finite(H))
     {
         return Status::non_finite_result;

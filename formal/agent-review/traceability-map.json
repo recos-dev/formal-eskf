@@ -135,10 +135,6 @@
           },
           {
             "file": "include/formal_eskf/eskf/accelerometer.hpp",
-            "symbol": "accelerometer_jacobian_from_prediction("
-          },
-          {
-            "file": "include/formal_eskf/eskf/accelerometer.hpp",
             "symbol": "accelerometer_jacobian("
           },
           {

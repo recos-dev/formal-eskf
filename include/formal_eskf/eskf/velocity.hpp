@@ -70,7 +70,7 @@ template <typename Linalg> [[nodiscard]] linalg::Matrix<Linalg, 3U, 15U> velocit
 template <typename Linalg>
 [[nodiscard]] Status
 try_correct_velocity(configuration::Ins::NominalState<Linalg> const & state,
-                     linalg::Matrix<Linalg, 15U, 15U> const & covariance, linalg::Matrix<Linalg, 3U, 1U> const & z_v_n,
+                     linalg::Matrix<Linalg, 15U, 15U> const & covariance, linalg::Vector<Linalg, 3U> const & z_v_n,
                      linalg::Matrix<Linalg, 3U, 3U> const & V, typename Linalg::value_type minimum_quaternion_norm,
                      configuration::Ins::NominalState<Linalg> & state_output,
                      linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
@@ -106,7 +106,7 @@ try_correct_velocity(configuration::Ins::NominalState<Linalg> const & state,
 template <typename Linalg>
 [[nodiscard]] Status try_correct_horizontal_velocity(configuration::Ins::NominalState<Linalg> const & state,
                                                      linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-                                                     linalg::Matrix<Linalg, 2U, 1U> const & z_v_ne,
+                                                     linalg::Vector<Linalg, 2U> const & z_v_ne,
                                                      linalg::Matrix<Linalg, 2U, 2U> const & V,
                                                      typename Linalg::value_type minimum_quaternion_norm,
                                                      configuration::Ins::NominalState<Linalg> & state_output,

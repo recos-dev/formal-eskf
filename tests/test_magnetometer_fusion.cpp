@@ -524,6 +524,7 @@ template <typename Linalg, typename Configuration> void test_rejection(TestConte
         invalid_norm_bound,
         field_rejection_before_noise_validation,
         non_finite_measurement,
+        non_finite_attitude_before_field_validation,
     };
 
     using fixture_type = FusionFixture<Linalg, Configuration>;
@@ -533,7 +534,8 @@ template <typename Linalg, typename Configuration> void test_rejection(TestConte
          {Scenario::excessive_field_strength, Scenario::heading_mismatch, Scenario::innovation_outlier,
           Scenario::non_finite_noise_covariance, Scenario::zero_gate_sigma, Scenario::indefinite_innovation_covariance,
           Scenario::negative_measurement_variance, Scenario::invalid_norm_bound,
-          Scenario::field_rejection_before_noise_validation, Scenario::non_finite_measurement})
+          Scenario::field_rejection_before_noise_validation, Scenario::non_finite_measurement,
+          Scenario::non_finite_attitude_before_field_validation})
     {
         fixture_type fixture;
         FusionDecision expected = FusionDecision::failed;
@@ -587,6 +589,18 @@ template <typename Linalg, typename Configuration> void test_rejection(TestConte
             fixture.V(2U, 2U) = limits_type::quiet_NaN();
             expected = FusionDecision::rejected;
             break;
+        case Scenario::non_finite_attitude_before_field_validation:
+        {
+            using quaternion_type = formal_eskf::so3::UnitQuaternion<Linalg>;
+            std::array<value_type, 4U> const invalid{limits_type::quiet_NaN(), value_type{0}, value_type{0},
+                                                     value_type{0}};
+            fixture.state.q_nb = std::bit_cast<quaternion_type>(invalid);
+            fixture.sample = Vector<Linalg>{}; // Would fail field validation with domain_error.
+            fixture.V(0U, 0U) = limits_type::infinity();
+            fixture.sigma = value_type{0};
+            status = Status::non_finite_input;
+            break;
+        }
         case Scenario::non_finite_measurement:
             fixture.sample(2U) = limits_type::infinity();
             status = Status::non_finite_input;

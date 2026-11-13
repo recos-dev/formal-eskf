@@ -27,6 +27,14 @@ namespace formal_eskf::runtime
 class MagnetometerFusion
 {
 public:
+    /** One consumable instruction for the current sample, separate from session history. */
+    enum class Action : std::uint8_t
+    {
+        none,
+        fuse,
+        reset,
+    };
+
     enum class StopReason
     {
         none,
@@ -102,8 +110,7 @@ public:
     struct State
     {
         bool active = false; // Fusion started, or established by an acknowledged heading reset.
-        bool fusion_allowed = false;
-        bool reset_allowed = false;
+        Action action = Action::none;
         bool filter_reset = false; // Seed the measurement LPF on this enabled sample.
         StopReason stop_reason = StopReason::disabled;
         RecoveryReason recovery_reason = RecoveryReason::none;
@@ -157,6 +164,9 @@ public:
     }
 
 private:
+    [[nodiscard]] Status validate_update(std::uint64_t now_us, Conditions const & conditions,
+                                         Parameters const & parameters, Sample const & sample) const noexcept;
+    void select_sample_action(Conditions const & conditions, bool field_accepted) noexcept;
     void stop(StopReason reason) noexcept;
     void require_recovery(RecoveryReason reason) noexcept;
     void check_fusion_timeout() noexcept;
@@ -176,8 +186,7 @@ private:
 inline void MagnetometerFusion::stop(StopReason reason) noexcept
 {
     m_state.active = false;
-    m_state.fusion_allowed = false;
-    m_state.reset_allowed = false;
+    m_state.action = Action::none;
     m_state.stop_reason = reason;
 }
 
@@ -199,7 +208,7 @@ inline void MagnetometerFusion::check_fusion_timeout() noexcept
         if (m_reset_on_timeout)
         {
             require_recovery(RecoveryReason::fusion_timeout);
-            m_state.reset_allowed = m_reset_sample_qualified;
+            m_state.action = m_reset_sample_qualified ? Action::reset : Action::none;
         }
         else
         {
@@ -239,13 +248,9 @@ inline void MagnetometerFusion::update_source(Source const & source, Conditions 
     }
 }
 
-inline Status MagnetometerFusion::update(std::uint64_t now_us, Conditions const & conditions,
-                                         Parameters const & parameters, Sample const & sample) noexcept
+inline Status MagnetometerFusion::validate_update(std::uint64_t now_us, Conditions const & conditions,
+                                                  Parameters const & parameters, Sample const & sample) const noexcept
 {
-    m_state.fusion_allowed = false;
-    m_state.reset_allowed = false;
-    m_state.filter_reset = false;
-    m_reset_sample_qualified = false;
     if (parameters.maximum_interval_us == 0U ||
         parameters.maximum_interval_us > std::numeric_limits<std::uint64_t>::max() / 2U ||
         parameters.fusion_timeout_us == 0U ||
@@ -253,25 +258,37 @@ inline Status MagnetometerFusion::update(std::uint64_t now_us, Conditions const 
                                     parameters.maximum_interval_us != m_parameters.maximum_interval_us ||
                                     parameters.fusion_timeout_us != m_parameters.fusion_timeout_us)))
     {
-        stop(StopReason::invalid_call);
         return Status::domain_error;
     }
     if (now_us <= m_update_time_us ||
         (sample.time_us != 0U && (sample.time_us <= m_sample_time_us || sample.time_us > now_us)))
     {
-        stop(StopReason::invalid_call);
         return Status::out_of_range;
     }
     if (sample.time_us != 0U && sample.source.device_id == 0U)
     {
-        stop(StopReason::invalid_call);
         return Status::domain_error;
     }
     if (conditions.flight_state != FlightState::unknown && conditions.flight_state != FlightState::on_ground &&
         conditions.flight_state != FlightState::in_air)
     {
-        stop(StopReason::invalid_call);
         return Status::domain_error;
+    }
+
+    return Status::success;
+}
+
+inline Status MagnetometerFusion::update(std::uint64_t now_us, Conditions const & conditions,
+                                         Parameters const & parameters, Sample const & sample) noexcept
+{
+    m_state.action = Action::none;
+    m_state.filter_reset = false;
+    m_reset_sample_qualified = false;
+    auto const status = validate_update(now_us, conditions, parameters, sample);
+    if (!succeeded(status))
+    {
+        stop(StopReason::invalid_call);
+        return status;
     }
 
     m_update_time_us = now_us;
@@ -307,108 +324,119 @@ inline Status MagnetometerFusion::update(std::uint64_t now_us, Conditions const 
         }
         return Status::success;
     }
-    if (!conditions.ready)
+    select_sample_action(conditions, sample.field_accepted);
+    if (m_state.action == Action::fuse && conditions.horizontal_aiding && !conditions.heading_consistent)
     {
-        stop(StopReason::not_ready);
-    }
-    else if (m_state.recovery_reason == RecoveryReason::fusion_failed ||
-             m_state.recovery_reason == RecoveryReason::reset_failed)
-    {
-        stop(StopReason::recovery_required);
-    }
-    else
-    {
-        if (!sample.field_accepted || m_state.last_field_failure_time_us == 0U)
-        {
-            m_state.last_field_failure_time_us = now_us;
-        }
-        bool const health_qualified =
-            parameters.health_time_us == 0U || now_us - m_state.last_field_failure_time_us > parameters.health_time_us;
-        m_reset_sample_qualified = conditions.starting_allowed && sample.field_accepted && m_sample_count >= 4U &&
-                                   now_us - m_sample_time_us < parameters.maximum_interval_us && health_qualified;
-        if (!conditions.heading_aligned)
-        {
-            stop(StopReason::not_ready);
-            m_state.reset_allowed =
-                m_reset_sample_qualified && (m_state.recovery_reason != RecoveryReason::source_changed ||
-                                             conditions.flight_state != FlightState::unknown);
-        }
-        else if (m_state.recovery_reason == RecoveryReason::source_changed)
-        {
-            stop(StopReason::recovery_required);
-            if (m_reset_sample_qualified && conditions.flight_state != FlightState::unknown)
-            {
-                if (m_heading_reset_required)
-                {
-                    m_state.reset_allowed = true;
-                }
-                else
-                {
-                    m_state.recovery_reason = RecoveryReason::none;
-                    m_state.stop_reason = StopReason::none;
-                    m_state.fusion_allowed = true;
-                }
-            }
-        }
-        else if (m_state.recovery_reason == RecoveryReason::fusion_timeout ||
-                 m_state.recovery_reason == RecoveryReason::reference_changed)
-        {
-            if (m_reset_on_timeout)
-            {
-                stop(StopReason::recovery_required);
-                m_state.reset_allowed = m_reset_sample_qualified;
-            }
-            else
-            {
-                // A recovered horizontal aid removes the timeout-reset policy.
-                // Stop normally; a following qualified sample may retry fusion.
-                auto const reason = m_state.recovery_reason;
-                m_state.recovery_reason = RecoveryReason::none;
-                stop(reason == RecoveryReason::fusion_timeout ? StopReason::fusion_timeout : StopReason::none);
-            }
-        }
-        else if (m_state.active)
-        {
-            // A field disturbance inhibits navigation-state correction without
-            // ending the session. The next good field need not requalify startup.
-            m_state.fusion_allowed = sample.field_accepted;
-            m_state.stop_reason = sample.field_accepted ? StopReason::none : StopReason::field_rejected;
-            if (!sample.field_accepted)
-            {
-                check_fusion_timeout();
-            }
-        }
-        else if (!conditions.starting_allowed)
-        {
-            stop(StopReason::not_ready);
-        }
-        else if (now_us - m_sample_time_us >= parameters.maximum_interval_us)
-        {
-            stop(StopReason::data_timeout);
-        }
-        else if (!sample.field_accepted)
-        {
-            stop(StopReason::field_rejected);
-        }
-        else if (m_sample_count < 4U || !health_qualified)
-        {
-            stop(StopReason::waiting_for_health);
-        }
-        else
-        {
-            // A rejected start is still inactive and does not invent progress.
-            m_state.fusion_allowed = true;
-            m_state.stop_reason = StopReason::none;
-        }
-    }
-    if (m_state.fusion_allowed && conditions.horizontal_aiding && !conditions.heading_consistent)
-    {
-        // Intentional navigation inhibition is neither a failed fusion attempt
-        // nor magnetic-state-only fusion. Preserve the session and real clocks.
-        m_state.fusion_allowed = false;
+        // Inhibition preserves the session and clocks; it is not a fusion attempt.
+        m_state.action = Action::none;
         m_state.stop_reason = StopReason::heading_inconsistent;
     }
     return Status::success;
+}
+
+inline void MagnetometerFusion::select_sample_action(Conditions const & conditions, bool field_accepted) noexcept
+{
+    if (!conditions.ready)
+    {
+        stop(StopReason::not_ready);
+        return;
+    }
+    if (m_state.recovery_reason == RecoveryReason::fusion_failed ||
+        m_state.recovery_reason == RecoveryReason::reset_failed)
+    {
+        stop(StopReason::recovery_required);
+        return;
+    }
+
+    if (!field_accepted || m_state.last_field_failure_time_us == 0U)
+    {
+        m_state.last_field_failure_time_us = m_update_time_us;
+    }
+    bool const health_qualified = m_parameters.health_time_us == 0U ||
+                                  m_update_time_us - m_state.last_field_failure_time_us > m_parameters.health_time_us;
+    bool const fresh_sample = m_update_time_us - m_sample_time_us < m_parameters.maximum_interval_us;
+    m_reset_sample_qualified =
+        conditions.starting_allowed && field_accepted && m_sample_count >= 4U && fresh_sample && health_qualified;
+
+    if (!conditions.heading_aligned)
+    {
+        stop(StopReason::not_ready);
+        if (m_reset_sample_qualified && (m_state.recovery_reason != RecoveryReason::source_changed ||
+                                         conditions.flight_state != FlightState::unknown))
+        {
+            m_state.action = Action::reset;
+        }
+        return;
+    }
+    if (m_state.recovery_reason == RecoveryReason::source_changed)
+    {
+        stop(StopReason::recovery_required);
+        if (m_reset_sample_qualified && conditions.flight_state != FlightState::unknown)
+        {
+            if (m_heading_reset_required)
+            {
+                m_state.action = Action::reset;
+            }
+            else
+            {
+                m_state.recovery_reason = RecoveryReason::none;
+                m_state.stop_reason = StopReason::none;
+                m_state.action = Action::fuse;
+            }
+        }
+        return;
+    }
+    if (m_state.recovery_reason == RecoveryReason::fusion_timeout ||
+        m_state.recovery_reason == RecoveryReason::reference_changed)
+    {
+        if (m_reset_on_timeout)
+        {
+            stop(StopReason::recovery_required);
+            m_state.action = m_reset_sample_qualified ? Action::reset : Action::none;
+        }
+        else
+        {
+            // Horizontal aiding removes the reset policy. Retry on a following sample.
+            auto const reason = m_state.recovery_reason;
+            m_state.recovery_reason = RecoveryReason::none;
+            stop(reason == RecoveryReason::fusion_timeout ? StopReason::fusion_timeout : StopReason::none);
+        }
+        return;
+    }
+    if (m_state.active)
+    {
+        // A field disturbance inhibits correction without requiring a fresh startup.
+        m_state.action = field_accepted ? Action::fuse : Action::none;
+        m_state.stop_reason = field_accepted ? StopReason::none : StopReason::field_rejected;
+        if (!field_accepted)
+        {
+            check_fusion_timeout();
+        }
+        return;
+    }
+
+    if (!conditions.starting_allowed)
+    {
+        stop(StopReason::not_ready);
+    }
+    else if (!fresh_sample)
+    {
+        stop(StopReason::data_timeout);
+    }
+    else if (!field_accepted)
+    {
+        stop(StopReason::field_rejected);
+    }
+    else if (m_sample_count < 4U || !health_qualified)
+    {
+        stop(StopReason::waiting_for_health);
+    }
+    else
+    {
+        // Permission is not an acknowledged start and does not invent progress.
+        m_state.action = Action::fuse;
+        m_state.stop_reason = StopReason::none;
+    }
 }
 
 inline Status MagnetometerFusion::record_fusion(std::uint64_t sample_time_us, FusionDecision decision) noexcept
@@ -417,13 +445,14 @@ inline Status MagnetometerFusion::record_fusion(std::uint64_t sample_time_us, Fu
     {
         return Status::domain_error;
     }
-    if (!m_state.fusion_allowed || sample_time_us != m_sample_time_us)
+    if (m_state.action != Action::fuse || sample_time_us != m_sample_time_us)
     {
         return Status::out_of_range;
     }
-    m_state.fusion_allowed = false;
-    if (decision == FusionDecision::fused)
+    m_state.action = Action::none;
+    switch (decision)
     {
+    case FusionDecision::fused:
         if (!m_state.active)
         {
             m_state.start_time_us = m_update_time_us;
@@ -431,28 +460,26 @@ inline Status MagnetometerFusion::record_fusion(std::uint64_t sample_time_us, Fu
         m_state.active = true;
         m_state.last_fuse_time_us = m_update_time_us;
         m_state.stop_reason = StopReason::none;
-    }
-    else if (decision == FusionDecision::failed)
-    {
+        break;
+    case FusionDecision::failed:
         require_recovery(RecoveryReason::fusion_failed);
-    }
-    else
-    {
+        break;
+    case FusionDecision::rejected:
         m_state.stop_reason = StopReason::innovation_rejected;
-        // Try the current observation first: success at an overdue horizon
-        // refreshes progress instead of being discarded before correction.
+        // Try the observation first; success at an overdue horizon refreshes progress.
         check_fusion_timeout();
+        break;
     }
     return Status::success;
 }
 
 inline Status MagnetometerFusion::record_reset(std::uint64_t sample_time_us, bool reset_succeeded) noexcept
 {
-    if (!m_state.reset_allowed || sample_time_us != m_sample_time_us)
+    if (m_state.action != Action::reset || sample_time_us != m_sample_time_us)
     {
         return Status::out_of_range;
     }
-    m_state.reset_allowed = false;
+    m_state.action = Action::none;
     if (reset_succeeded)
     {
         if (m_state.start_time_us == 0U)

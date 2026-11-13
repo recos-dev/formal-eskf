@@ -3007,6 +3007,14 @@
             "symbol": "MagnetometerFusion::update("
           },
           {
+            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "symbol": "MagnetometerFusion::validate_update("
+          },
+          {
+            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "symbol": "MagnetometerFusion::select_sample_action("
+          },
+          {
             "file": "examples/replay_ins.cpp",
             "symbol": "read_magnetic_heading_parameters("
           },
@@ -3108,7 +3116,7 @@
           },
           {
             "file": "include/formal_eskf/runtime/magnetometer.hpp",
-            "symbol": "fuse_magnetometer_state("
+            "symbol": "check_magnetic_observation("
           },
           {
             "file": "include/formal_eskf/runtime/magnetometer.hpp",

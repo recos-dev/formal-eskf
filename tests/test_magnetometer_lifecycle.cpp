@@ -23,6 +23,7 @@ namespace
 using formal_eskf::Status;
 using formal_eskf::runtime::FusionDecision;
 using formal_eskf::runtime::MagnetometerFusion;
+using Action = MagnetometerFusion::Action;
 using StopReason = MagnetometerFusion::StopReason;
 using RecoveryReason = MagnetometerFusion::RecoveryReason;
 using TestContext = formal_eskf::test::Context;
@@ -47,7 +48,7 @@ struct Fixture
     {
         test.expect(sample(first) == Status::success && sample(first + 8U) == Status::success &&
                         sample(first + 16U) == Status::success && sample(first + 21U) == Status::success &&
-                        monitor.state().fusion_allowed && !monitor.state().active &&
+                        monitor.state().action == Action::fuse && !monitor.state().active &&
                         monitor.state().last_fuse_time_us == 0U,
                     profile, "four samples and strictly elapsed health permit an attempt, not a fictitious fusion");
     }
@@ -63,11 +64,10 @@ struct Fixture
 
 bool same_state(MagnetometerFusion::State const & a, MagnetometerFusion::State const & b)
 {
-    return a.active == b.active && a.fusion_allowed == b.fusion_allowed && a.reset_allowed == b.reset_allowed &&
-           a.filter_reset == b.filter_reset && a.last_reset_time_us == b.last_reset_time_us &&
-           a.stop_reason == b.stop_reason && a.recovery_reason == b.recovery_reason &&
-           a.last_field_failure_time_us == b.last_field_failure_time_us && a.start_time_us == b.start_time_us &&
-           a.last_fuse_time_us == b.last_fuse_time_us;
+    return a.active == b.active && a.action == b.action && a.filter_reset == b.filter_reset &&
+           a.last_reset_time_us == b.last_reset_time_us && a.stop_reason == b.stop_reason &&
+           a.recovery_reason == b.recovery_reason && a.last_field_failure_time_us == b.last_field_failure_time_us &&
+           a.start_time_us == b.start_time_us && a.last_fuse_time_us == b.last_fuse_time_us;
 }
 
 void test_heading_policy(TestContext & test)
@@ -79,7 +79,7 @@ void test_heading_policy(TestContext & test)
     for (auto time : {130U, 150U, 180U, 200U})
     {
         test.expect(fixture.sample(time) == Status::success && fixture.monitor.state().active &&
-                        !fixture.monitor.state().fusion_allowed && !fixture.monitor.state().reset_allowed &&
+                        fixture.monitor.state().action == Action::none &&
                         fixture.monitor.state().stop_reason == StopReason::heading_inconsistent &&
                         fixture.monitor.state().last_fuse_time_us == 121U,
                     profile, "intentional inhibition retains session without fake fusion or at-rest yaw reset");
@@ -87,19 +87,19 @@ void test_heading_policy(TestContext & test)
     test.expect(fixture.monitor.record_fusion(200U, FusionDecision::fused) == Status::out_of_range, profile,
                 "inhibited sample cannot report fusion");
     fixture.conditions.heading_consistent = true;
-    test.expect(fixture.sample(201U) == Status::success && fixture.monitor.state().fusion_allowed &&
+    test.expect(fixture.sample(201U) == Status::success && fixture.monitor.state().action == Action::fuse &&
                     fixture.monitor.record_fusion(201U, FusionDecision::fused) == Status::success,
                 profile, "consistency recovery tries the observation before judging timeout");
     fixture.conditions.heading_consistent = false;
     fixture.conditions.horizontal_aiding = false;
-    test.expect(fixture.sample(202U) == Status::success && fixture.monitor.state().fusion_allowed, profile,
+    test.expect(fixture.sample(202U) == Status::success && fixture.monitor.state().action == Action::fuse, profile,
                 "without horizontal aiding, inconsistency does not veto magnetic heading aiding");
     fixture.conditions.horizontal_aiding = true;
     ++fixture.source.reference_id;
-    test.expect(fixture.sample(203U) == Status::success && !fixture.monitor.state().reset_allowed &&
+    test.expect(fixture.sample(203U) == Status::success && fixture.monitor.state().action != Action::reset &&
                     fixture.monitor.state().recovery_reason == RecoveryReason::none,
                 profile, "reference change at rest cannot reset an inconsistent aided heading");
-    test.expect(fixture.sample(260U, false) == Status::success && !fixture.monitor.state().reset_allowed &&
+    test.expect(fixture.sample(260U, false) == Status::success && fixture.monitor.state().action != Action::reset &&
                     fixture.monitor.state().stop_reason == StopReason::fusion_timeout,
                 profile, "a subsequent field failure times out without an inconsistent aided yaw reset");
 
@@ -109,12 +109,12 @@ void test_heading_policy(TestContext & test)
     {
         test.expect(startup.sample(time) == Status::success, profile, "unconfirmed startup consumes healthy samples");
     }
-    test.expect(!startup.monitor.state().active && !startup.monitor.state().fusion_allowed &&
+    test.expect(!startup.monitor.state().active && startup.monitor.state().action != Action::fuse &&
                     startup.monitor.state().stop_reason == StopReason::heading_inconsistent &&
                     startup.monitor.state().last_field_failure_time_us == 100U,
                 profile, "heading inhibition does not falsify field health");
     startup.conditions.heading_consistent = true;
-    test.expect(startup.sample(122U) == Status::success && startup.monitor.state().fusion_allowed, profile,
+    test.expect(startup.sample(122U) == Status::success && startup.monitor.state().action == Action::fuse, profile,
                 "establishing consistency releases already-qualified startup");
 }
 
@@ -130,7 +130,7 @@ void test_startup(TestContext & test)
         auto const expected = !fixture.conditions.enabled ? StopReason::disabled
                               : !fixture.conditions.ready ? StopReason::not_ready
                                                           : StopReason::waiting_for_health;
-        test.expect(!state.active && !state.fusion_allowed && state.stop_reason == expected &&
+        test.expect(!state.active && state.action != Action::fuse && state.stop_reason == expected &&
                         state.last_field_failure_time_us == (mask == 3U ? 100U : 0U),
                     profile, "health checks run only when enabled and continuing conditions pass");
     }
@@ -143,32 +143,32 @@ void test_startup(TestContext & test)
                 profile, "no-sample metadata cannot create health or bind a source");
     test.expect(fixture.sample(100U) == Status::success && fixture.sample(108U) == Status::success &&
                     fixture.sample(116U) == Status::success && fixture.sample(120U) == Status::success &&
-                    !fixture.monitor.state().fusion_allowed && fixture.sample(121U) == Status::success &&
-                    fixture.monitor.state().fusion_allowed && !fixture.monitor.state().active,
+                    fixture.monitor.state().action != Action::fuse && fixture.sample(121U) == Status::success &&
+                    fixture.monitor.state().action == Action::fuse && !fixture.monitor.state().active,
                 profile, "health equality does not qualify; one microsecond later permits an attempt");
     test.expect(fixture.monitor.record_fusion(121U, FusionDecision::rejected) == Status::success &&
                     !fixture.monitor.state().active && fixture.monitor.state().start_time_us == 0U &&
                     fixture.monitor.state().last_fuse_time_us == 0U && fixture.sample(180U) == Status::success &&
-                    fixture.monitor.state().fusion_allowed &&
+                    fixture.monitor.state().action == Action::fuse &&
                     fixture.monitor.record_fusion(180U, FusionDecision::rejected) == Status::success &&
                     fixture.monitor.state().recovery_reason == RecoveryReason::none,
                 profile, "rejected startup retries without an invented active-session timeout");
 
     Fixture count;
     test.expect(count.sample(100U) == Status::success && count.sample(130U) == Status::success &&
-                    count.sample(140U) == Status::success && !count.monitor.state().fusion_allowed &&
-                    count.sample(150U) == Status::success && count.monitor.state().fusion_allowed,
+                    count.sample(140U) == Status::success && count.monitor.state().action != Action::fuse &&
+                    count.sample(150U) == Status::success && count.monitor.state().action == Action::fuse,
                 profile, "elapsed time alone cannot bypass the four-sample requirement");
     Fixture failure;
     test.expect(failure.sample(100U, false) == Status::success && failure.sample(108U) == Status::success &&
                     failure.sample(116U) == Status::success && failure.sample(121U) == Status::success &&
-                    failure.monitor.state().fusion_allowed &&
+                    failure.monitor.state().action == Action::fuse &&
                     failure.monitor.state().last_field_failure_time_us == 100U,
                 profile, "health starts at the failed check, not the subsequent first good sample");
     test.expect(failure.sample(122U, false) == Status::success &&
                     failure.monitor.state().last_field_failure_time_us == 122U &&
-                    failure.sample(142U) == Status::success && !failure.monitor.state().fusion_allowed &&
-                    failure.sample(143U) == Status::success && failure.monitor.state().fusion_allowed,
+                    failure.sample(142U) == Status::success && failure.monitor.state().action != Action::fuse &&
+                    failure.sample(143U) == Status::success && failure.monitor.state().action == Action::fuse,
                 profile, "each failed startup field check restarts the strict health timer");
 
     for (std::uint64_t age : {9U, 10U, 11U})
@@ -177,15 +177,15 @@ void test_startup(TestContext & test)
         delayed.qualify(test);
         test.expect(delayed.monitor.update(150U, delayed.conditions, delayed.parameters,
                                            {150U - age, delayed.source, true}) == Status::success &&
-                        delayed.monitor.state().fusion_allowed == (age < 10U),
+                        (delayed.monitor.state().action == Action::fuse) == (age < 10U),
                     profile, "startup age must be strictly less than one maximum interval");
     }
     Fixture horizon;
     test.expect(horizon.monitor.update(100U, horizon.conditions, horizon.parameters, {91U, horizon.source, false}) ==
                         Status::success &&
                     horizon.sample(108U) == Status::success && horizon.sample(116U) == Status::success &&
-                    horizon.sample(120U) == Status::success && !horizon.monitor.state().fusion_allowed &&
-                    horizon.sample(121U) == Status::success && horizon.monitor.state().fusion_allowed &&
+                    horizon.sample(120U) == Status::success && horizon.monitor.state().action != Action::fuse &&
+                    horizon.sample(121U) == Status::success && horizon.monitor.state().action == Action::fuse &&
                     horizon.monitor.state().last_field_failure_time_us == 100U,
                 profile, "health uses the check horizon, not the delayed sample timestamp");
 
@@ -193,12 +193,12 @@ void test_startup(TestContext & test)
     reset_frame.conditions.starting_allowed = false;
     for (auto time : {100U, 108U, 116U, 121U})
     {
-        test.expect(reset_frame.sample(time) == Status::success && !reset_frame.monitor.state().fusion_allowed, profile,
-                    "no startup on a yaw-alignment/reset frame");
+        test.expect(reset_frame.sample(time) == Status::success && reset_frame.monitor.state().action != Action::fuse,
+                    profile, "no startup on a yaw-alignment/reset frame");
     }
     reset_frame.conditions.starting_allowed = true;
-    test.expect(reset_frame.sample(122U) == Status::success && reset_frame.monitor.state().fusion_allowed, profile,
-                "stable following frame may start without discarding field history");
+    test.expect(reset_frame.sample(122U) == Status::success && reset_frame.monitor.state().action == Action::fuse,
+                profile, "stable following frame may start without discarding field history");
 }
 
 void test_active_and_outages(TestContext & test)
@@ -206,14 +206,14 @@ void test_active_and_outages(TestContext & test)
     Fixture fixture;
     fixture.start(test);
     test.expect(fixture.sample(130U, false) == Status::success && fixture.monitor.state().active &&
-                    !fixture.monitor.state().fusion_allowed &&
+                    fixture.monitor.state().action != Action::fuse &&
                     fixture.monitor.state().stop_reason == StopReason::field_rejected &&
                     fixture.monitor.state().last_fuse_time_us == 121U && fixture.sample(131U) == Status::success &&
-                    fixture.monitor.state().fusion_allowed &&
+                    fixture.monitor.state().action == Action::fuse &&
                     fixture.monitor.record_fusion(131U, FusionDecision::fused) == Status::success,
                 profile, "active disturbance inhibits correction but the next good field need not requalify startup");
     test.expect(fixture.tick(150U) == Status::success && fixture.monitor.state().active &&
-                    !fixture.monitor.state().fusion_allowed && fixture.tick(151U) == Status::success &&
+                    fixture.monitor.state().action != Action::fuse && fixture.tick(151U) == Status::success &&
                     !fixture.monitor.state().active &&
                     fixture.monitor.state().stop_reason == StopReason::data_timeout &&
                     fixture.monitor.state().last_field_failure_time_us == 130U &&
@@ -221,7 +221,7 @@ void test_active_and_outages(TestContext & test)
                 profile, "no-data stop occurs at two intervals and preserves field/progress history");
     test.expect(fixture.tick(300U) == Status::success &&
                     fixture.monitor.state().recovery_reason == RecoveryReason::none &&
-                    fixture.sample(301U) == Status::success && fixture.monitor.state().fusion_allowed &&
+                    fixture.sample(301U) == Status::success && fixture.monitor.state().action == Action::fuse &&
                     fixture.monitor.record_fusion(301U, FusionDecision::fused) == Status::success &&
                     fixture.monitor.state().active && fixture.monitor.state().start_time_us == 301U,
                 profile, "long outage restarts on fresh qualified data without a permanent timeout latch");
@@ -237,7 +237,7 @@ void test_active_and_outages(TestContext & test)
                     profile, "disable/continuing-condition failure stops the session");
         paused.conditions.enabled = true;
         paused.conditions.ready = true;
-        test.expect(paused.sample(131U) == Status::success && paused.monitor.state().fusion_allowed &&
+        test.expect(paused.sample(131U) == Status::success && paused.monitor.state().action == Action::fuse &&
                         paused.monitor.record_fusion(131U, FusionDecision::fused) == Status::success,
                     profile, "ordinary stops preserve startup health");
     }
@@ -253,12 +253,12 @@ void test_timeouts(TestContext & test)
         fixture.conditions.at_rest = (mask & 2U) != 0U;
         for (auto time : {131U, 141U, 151U, 161U, 171U})
         {
-            test.expect(fixture.sample(time) == Status::success && fixture.monitor.state().fusion_allowed &&
+            test.expect(fixture.sample(time) == Status::success && fixture.monitor.state().action == Action::fuse &&
                             fixture.monitor.record_fusion(time, FusionDecision::rejected) == Status::success &&
                             fixture.monitor.state().active && fixture.monitor.state().last_fuse_time_us == 121U,
                         profile, "active gate rejections do not refresh progress; timeout equality is allowed");
         }
-        test.expect(fixture.sample(172U) == Status::success && fixture.monitor.state().fusion_allowed &&
+        test.expect(fixture.sample(172U) == Status::success && fixture.monitor.state().action == Action::fuse &&
                         fixture.monitor.record_fusion(172U, FusionDecision::rejected) == Status::success &&
                         !fixture.monitor.state().active,
                     profile, "attempt fusion before applying the unsuccessful-fusion timeout");
@@ -269,7 +269,7 @@ void test_timeouts(TestContext & test)
                             (requires_reset ? RecoveryReason::fusion_timeout : RecoveryReason::none),
                     profile, "timeout requests reset without horizontal aid or at rest; otherwise ordinary stop");
         test.expect(fixture.sample(173U) == Status::success &&
-                        fixture.monitor.state().fusion_allowed == !requires_reset,
+                        (fixture.monitor.state().action == Action::fuse) == !requires_reset,
                     profile, "ordinary timeout can retry; pending reset cannot acknowledge itself");
         if (!requires_reset)
         {
@@ -280,7 +280,7 @@ void test_timeouts(TestContext & test)
     }
     Fixture recovered;
     recovered.start(test);
-    test.expect(recovered.sample(172U) == Status::success && recovered.monitor.state().fusion_allowed &&
+    test.expect(recovered.sample(172U) == Status::success && recovered.monitor.state().action == Action::fuse &&
                     recovered.monitor.record_fusion(172U, FusionDecision::fused) == Status::success &&
                     recovered.monitor.state().active && recovered.monitor.state().last_fuse_time_us == 172U,
                 profile, "success at an overdue horizon prevents timeout instead of being discarded beforehand");
@@ -321,7 +321,7 @@ void test_feedback_and_recovery(TestContext & test)
                     fixture.monitor.record_fusion(140U, FusionDecision::failed) == Status::success &&
                     fixture.monitor.state().recovery_reason == RecoveryReason::fusion_failed &&
                     fixture.monitor.state().last_fuse_time_us == 121U && fixture.sample(200U) == Status::success &&
-                    !fixture.monitor.state().fusion_allowed,
+                    fixture.monitor.state().action != Action::fuse,
                 profile, "numerical failure requests repair without automatic estimator modification");
     fixture.conditions.enabled = false;
     test.expect(fixture.sample(201U) == Status::success &&
@@ -348,12 +348,12 @@ void test_feedback_and_recovery(TestContext & test)
         {
             ++changed.source.device_id;
         }
-        test.expect(changed.sample(130U) == Status::success &&
-                        changed.monitor.state().recovery_reason == RecoveryReason::source_changed &&
-                        !changed.monitor.state().fusion_allowed && changed.monitor.state().last_fuse_time_us == 0U &&
-                        changed.monitor.record_fusion(121U, FusionDecision::fused) == Status::out_of_range,
-                    profile,
-                    "source/calibration change requires reference/state reinitialization, invalidates old feedback");
+        test.expect(
+            changed.sample(130U) == Status::success &&
+                changed.monitor.state().recovery_reason == RecoveryReason::source_changed &&
+                changed.monitor.state().action != Action::fuse && changed.monitor.state().last_fuse_time_us == 0U &&
+                changed.monitor.record_fusion(121U, FusionDecision::fused) == Status::out_of_range,
+            profile, "source/calibration change requires reference/state reinitialization, invalidates old feedback");
         changed.monitor.restart();
         test.expect(changed.sample(130U) == Status::out_of_range, profile, "restart retains source/time watermarks");
         changed.qualify(test, 140U);
@@ -385,7 +385,7 @@ void test_source_reinitialization(TestContext & test)
                                 fixture.monitor.state().recovery_reason == RecoveryReason::source_changed &&
                                 fixture.monitor.state().last_field_failure_time_us == 100U &&
                                 fixture.monitor.state().last_fuse_time_us == 0U &&
-                                !fixture.monitor.state().fusion_allowed && !fixture.monitor.state().reset_allowed &&
+                                fixture.monitor.state().action == Action::none &&
                                 fixture.monitor.record_fusion(121U, FusionDecision::fused) == Status::out_of_range,
                             profile,
                             "new source reseeds LPF/count/session and revokes old feedback; field health persists");
@@ -397,8 +397,9 @@ void test_source_reinitialization(TestContext & test)
                 bool const reset = flight != FlightState::unknown && (flight == FlightState::on_ground || !aided);
                 bool const fuse = flight == FlightState::in_air && aided;
                 auto const & state = fixture.monitor.state();
-                test.expect(state.reset_allowed == reset && state.fusion_allowed == fuse && !state.active, profile,
-                            "four samples: ground/unaided realign, aided flight preserves yaw, unknown waits");
+                test.expect((state.action == Action::reset) == reset && (state.action == Action::fuse) == fuse &&
+                                !state.active,
+                            profile, "four samples: ground/unaided realign, aided flight preserves yaw, unknown waits");
                 if (reset)
                 {
                     test.expect(fixture.monitor.record_reset(133U, true) == Status::success && state.active &&
@@ -415,7 +416,7 @@ void test_source_reinitialization(TestContext & test)
                 else
                 {
                     fixture.conditions.flight_state = FlightState::on_ground;
-                    test.expect(fixture.sample(134U) == Status::success && state.reset_allowed, profile,
+                    test.expect(fixture.sample(134U) == Status::success && state.action == Action::reset, profile,
                                 "known ground state resolves pending unknown flight context");
                 }
             }
@@ -431,13 +432,13 @@ void test_source_reinitialization(TestContext & test)
     fixture.conditions.ready = true;
     fixture.conditions.flight_state = FlightState::in_air;
     test.expect(fixture.sample(131U) == Status::success && fixture.sample(132U) == Status::success &&
-                    fixture.sample(133U) == Status::success && fixture.monitor.state().reset_allowed,
+                    fixture.sample(133U) == Status::success && fixture.monitor.state().action == Action::reset,
                 profile, "ground change keeps its alignment requirement after takeoff/readiness");
     test.expect(fixture.monitor.record_reset(133U, false) == Status::success, profile, "record real reset failure");
     ++fixture.source.device_id;
     test.expect(fixture.sample(134U) == Status::success && fixture.sample(200U) == Status::success &&
                     fixture.monitor.state().recovery_reason == RecoveryReason::reset_failed &&
-                    !fixture.monitor.state().reset_allowed && !fixture.monitor.state().fusion_allowed,
+                    fixture.monitor.state().action != Action::reset && fixture.monitor.state().action != Action::fuse,
                 profile, "another source cannot silently repair a numerical failure");
 }
 
@@ -454,8 +455,8 @@ void test_reference_change(TestContext & test)
             ++fixture.source.reference_id;
             bool const reset = !aided || at_rest;
             test.expect(fixture.sample(130U) == Status::success && !fixture.monitor.state().filter_reset &&
-                            fixture.monitor.state().reset_allowed == reset &&
-                            fixture.monitor.state().fusion_allowed == !reset &&
+                            (fixture.monitor.state().action == Action::reset) == reset &&
+                            (fixture.monitor.state().action == Action::fuse) == !reset &&
                             fixture.monitor.state().last_fuse_time_us == 121U,
                         profile, "reference-only update retains sensor history; aiding/rest selects heading reset");
             if (reset)
@@ -472,13 +473,13 @@ void test_reference_change(TestContext & test)
     unhealthy.start(test);
     unhealthy.conditions.horizontal_aiding = false;
     ++unhealthy.source.reference_id;
-    test.expect(unhealthy.sample(130U, false) == Status::success && !unhealthy.monitor.state().reset_allowed &&
-                    unhealthy.sample(150U) == Status::success && !unhealthy.monitor.state().reset_allowed &&
-                    unhealthy.sample(151U) == Status::success && unhealthy.monitor.state().reset_allowed,
+    test.expect(unhealthy.sample(130U, false) == Status::success && unhealthy.monitor.state().action != Action::reset &&
+                    unhealthy.sample(150U) == Status::success && unhealthy.monitor.state().action != Action::reset &&
+                    unhealthy.sample(151U) == Status::success && unhealthy.monitor.state().action == Action::reset,
                 profile, "new reference still requires strictly elapsed field health, not just a revision change");
     auto pending = unhealthy;
     pending.conditions.horizontal_aiding = true;
-    test.expect(pending.sample(152U) == Status::success && !pending.monitor.state().reset_allowed &&
+    test.expect(pending.sample(152U) == Status::success && pending.monitor.state().action != Action::reset &&
                     pending.monitor.state().recovery_reason == RecoveryReason::none &&
                     pending.monitor.state().stop_reason == StopReason::none,
                 profile, "restored aiding cancels pending reference reset without reporting a timeout");
@@ -498,7 +499,7 @@ void test_reset_feedback(TestContext & test)
     fixture.start(test);
     test.expect(fixture.sample(172U) == Status::success &&
                     fixture.monitor.record_fusion(172U, FusionDecision::rejected) == Status::success &&
-                    fixture.monitor.state().reset_allowed,
+                    fixture.monitor.state().action == Action::reset,
                 profile, "healthy overdue rejection permits actual heading reset");
     auto const before = fixture.monitor.state();
     test.expect(fixture.monitor.record_reset(171U, true) == Status::out_of_range &&
@@ -514,40 +515,40 @@ void test_reset_feedback(TestContext & test)
                 profile, "one reset restores the session without fabricated fusion or second correction");
     test.expect(fixture.sample(222U) == Status::success &&
                     fixture.monitor.record_fusion(222U, FusionDecision::rejected) == Status::success &&
-                    !fixture.monitor.state().reset_allowed && fixture.monitor.state().active &&
+                    fixture.monitor.state().action != Action::reset && fixture.monitor.state().active &&
                     fixture.sample(223U) == Status::success &&
                     fixture.monitor.record_fusion(223U, FusionDecision::rejected) == Status::success &&
-                    fixture.monitor.state().reset_allowed &&
+                    fixture.monitor.state().action == Action::reset &&
                     fixture.monitor.record_reset(223U, false) == Status::success &&
                     fixture.monitor.state().recovery_reason == RecoveryReason::reset_failed &&
                     fixture.monitor.state().last_reset_time_us == 172U && fixture.sample(224U) == Status::success &&
-                    !fixture.monitor.state().reset_allowed,
+                    fixture.monitor.state().action != Action::reset,
                 profile, "reset refreshes timeout; failed reset requires caller repair without retry loop");
 
     Fixture disturbed;
     disturbed.conditions.horizontal_aiding = false;
     disturbed.start(test);
-    test.expect(disturbed.sample(172U, false) == Status::success && !disturbed.monitor.state().reset_allowed &&
-                    disturbed.sample(192U) == Status::success && !disturbed.monitor.state().reset_allowed &&
-                    disturbed.sample(193U) == Status::success && disturbed.monitor.state().reset_allowed,
+    test.expect(disturbed.sample(172U, false) == Status::success && disturbed.monitor.state().action != Action::reset &&
+                    disturbed.sample(192U) == Status::success && disturbed.monitor.state().action != Action::reset &&
+                    disturbed.sample(193U) == Status::success && disturbed.monitor.state().action == Action::reset,
                 profile, "bad field must requalify health before recovery reset");
     test.expect(disturbed.tick(194U) == Status::success &&
                     disturbed.monitor.record_reset(193U, true) == Status::out_of_range,
                 profile, "no-data tick revokes omitted reset feedback");
     disturbed.conditions.starting_allowed = false;
-    test.expect(disturbed.sample(195U) == Status::success && !disturbed.monitor.state().reset_allowed, profile,
+    test.expect(disturbed.sample(195U) == Status::success && disturbed.monitor.state().action != Action::reset, profile,
                 "external reset/yaw-alignment frame cannot reset again");
     disturbed.conditions.starting_allowed = true;
     test.expect(disturbed.monitor.update(206U, disturbed.conditions, disturbed.parameters,
                                          {196U, disturbed.source, true}) == Status::success &&
-                    !disturbed.monitor.state().reset_allowed,
+                    disturbed.monitor.state().action != Action::reset,
                 profile, "stale sample cannot authorize recovery reset");
     disturbed.conditions.ready = false;
-    test.expect(disturbed.sample(207U) == Status::success && !disturbed.monitor.state().reset_allowed, profile,
+    test.expect(disturbed.sample(207U) == Status::success && disturbed.monitor.state().action != Action::reset, profile,
                 "lost readiness preserves pending recovery without a reset permission");
     disturbed.conditions.ready = true;
     disturbed.conditions.horizontal_aiding = true;
-    test.expect(disturbed.sample(208U) == Status::success && !disturbed.monitor.state().reset_allowed &&
+    test.expect(disturbed.sample(208U) == Status::success && disturbed.monitor.state().action != Action::reset &&
                     disturbed.monitor.state().recovery_reason == RecoveryReason::none &&
                     disturbed.monitor.state().stop_reason == StopReason::fusion_timeout,
                 profile, "restored horizontal aid cancels timeout reset in favor of ordinary stop");
@@ -559,45 +560,45 @@ void test_disabled_health_wait(TestContext & test)
     fixture.parameters.health_time_us = 0U;
     for (auto time : {100U, 101U, 102U})
     {
-        test.expect(fixture.sample(time) == Status::success && !fixture.monitor.state().fusion_allowed, profile,
+        test.expect(fixture.sample(time) == Status::success && fixture.monitor.state().action != Action::fuse, profile,
                     "disabled health wait still requires four samples");
     }
-    test.expect(fixture.sample(103U, false) == Status::success && !fixture.monitor.state().fusion_allowed, profile,
-                "disabled health wait cannot bypass a current field rejection");
+    test.expect(fixture.sample(103U, false) == Status::success && fixture.monitor.state().action != Action::fuse,
+                profile, "disabled health wait cannot bypass a current field rejection");
     test.expect(fixture.monitor.update(114U, fixture.conditions, fixture.parameters, {104U, fixture.source, true}) ==
                         Status::success &&
-                    !fixture.monitor.state().fusion_allowed &&
+                    fixture.monitor.state().action != Action::fuse &&
                     fixture.monitor.state().stop_reason == StopReason::data_timeout,
                 profile, "disabled health wait still requires a fresh sample");
     fixture.conditions.starting_allowed = false;
-    test.expect(fixture.sample(115U) == Status::success && !fixture.monitor.state().fusion_allowed, profile,
+    test.expect(fixture.sample(115U) == Status::success && fixture.monitor.state().action != Action::fuse, profile,
                 "disabled health wait preserves startup inhibition");
     fixture.conditions.starting_allowed = true;
     fixture.conditions.ready = false;
-    test.expect(fixture.sample(116U) == Status::success && !fixture.monitor.state().fusion_allowed, profile,
+    test.expect(fixture.sample(116U) == Status::success && fixture.monitor.state().action != Action::fuse, profile,
                 "disabled health wait preserves alignment prerequisites");
     fixture.conditions.ready = true;
     fixture.conditions.heading_consistent = false;
-    test.expect(fixture.sample(117U) == Status::success && !fixture.monitor.state().fusion_allowed, profile,
+    test.expect(fixture.sample(117U) == Status::success && fixture.monitor.state().action != Action::fuse, profile,
                 "disabled health wait preserves aided heading consistency");
     fixture.conditions.heading_consistent = true;
-    test.expect(fixture.sample(118U) == Status::success && fixture.monitor.state().fusion_allowed &&
+    test.expect(fixture.sample(118U) == Status::success && fixture.monitor.state().action == Action::fuse &&
                     fixture.monitor.record_fusion(118U, FusionDecision::fused) == Status::success,
                 profile, "qualified sample can start without the health delay");
     test.expect(fixture.sample(119U, false) == Status::success && fixture.monitor.state().active &&
-                    !fixture.monitor.state().fusion_allowed && fixture.sample(120U) == Status::success &&
-                    fixture.monitor.state().fusion_allowed,
+                    fixture.monitor.state().action != Action::fuse && fixture.sample(120U) == Status::success &&
+                    fixture.monitor.state().action == Action::fuse,
                 profile, "brief disturbance retains the session and recovery can retry immediately");
 
     fixture.conditions.flight_state = MagnetometerFusion::FlightState::on_ground;
     ++fixture.source.device_id;
     for (auto time : {121U, 122U, 123U})
     {
-        test.expect(fixture.sample(time) == Status::success && !fixture.monitor.state().reset_allowed, profile,
+        test.expect(fixture.sample(time) == Status::success && fixture.monitor.state().action != Action::reset, profile,
                     "source change still needs four samples before heading reset");
     }
-    test.expect(fixture.sample(124U, false) == Status::success && !fixture.monitor.state().reset_allowed &&
-                    fixture.sample(125U) == Status::success && fixture.monitor.state().reset_allowed,
+    test.expect(fixture.sample(124U, false) == Status::success && fixture.monitor.state().action != Action::reset &&
+                    fixture.sample(125U) == Status::success && fixture.monitor.state().action == Action::reset,
                 profile, "source reset needs a good field but no disabled health delay");
 
     Fixture alignment;
@@ -608,7 +609,7 @@ void test_disabled_health_wait(TestContext & test)
         test.expect(alignment.sample(time) == Status::success, profile, "unaligned samples only establish the count");
     }
     alignment.conditions.ready = true;
-    test.expect(alignment.sample(103U) == Status::success && alignment.monitor.state().fusion_allowed &&
+    test.expect(alignment.sample(103U) == Status::success && alignment.monitor.state().action == Action::fuse &&
                     alignment.monitor.state().last_field_failure_time_us == 103U,
                 profile, "zero duration permits the first health check once other prerequisites hold");
 }
@@ -672,19 +673,19 @@ void test_invalid_calls(TestContext & test)
             break;
         }
         test.expect(fixture.monitor.update(now, fixture.conditions, parameters, sample) == expected &&
-                        !fixture.monitor.state().active && !fixture.monitor.state().fusion_allowed &&
+                        !fixture.monitor.state().active && fixture.monitor.state().action != Action::fuse &&
                         fixture.monitor.state().stop_reason == StopReason::invalid_call &&
                         fixture.monitor.state().last_fuse_time_us == 121U &&
                         fixture.monitor.state().last_field_failure_time_us == 100U,
                     profile,
                     "invalid call revokes permission but does not consume time/config/source or rewrite history");
-        test.expect(fixture.sample(130U) == Status::success && fixture.monitor.state().fusion_allowed, profile,
+        test.expect(fixture.sample(130U) == Status::success && fixture.monitor.state().action == Action::fuse, profile,
                     "valid retry can consume the timestamp rejected by an invalid call");
     }
     constexpr auto maximum = std::numeric_limits<std::uint64_t>::max();
     Fixture large;
     large.start(test, maximum - 30U);
-    test.expect(large.sample(maximum) == Status::success && large.monitor.state().fusion_allowed &&
+    test.expect(large.sample(maximum) == Status::success && large.monitor.state().action == Action::fuse &&
                     large.monitor.record_fusion(maximum, FusionDecision::fused) == Status::success &&
                     large.tick(0U) == Status::out_of_range,
                 profile, "elapsed arithmetic remains bounded near UINT64_MAX");
@@ -697,7 +698,7 @@ void test_invalid_calls(TestContext & test)
     duration.monitor.reset();
     test.expect(duration.sample(1U) == Status::success && duration.sample(2U) == Status::success &&
                     duration.sample(3U) == Status::success && duration.sample(maximum) == Status::success &&
-                    !duration.monitor.state().fusion_allowed,
+                    duration.monitor.state().action != Action::fuse,
                 profile, "four samples cannot overflow an unreachable health duration into qualification");
     duration.monitor.reset();
     duration.parameters = {20U, 10U, 50U};
@@ -740,7 +741,7 @@ void test_real_fusion(TestContext & test, std::string_view scalar_profile)
                                              field.accepted) == Status::success,
                     scalar_profile, "use actual same-prior field check");
         auto decision = FusionDecision::rejected;
-        if (fixture.monitor.state().fusion_allowed)
+        if (fixture.monitor.state().action == Action::fuse)
         {
             auto const result = formal_eskf::runtime::fuse_magnetometer(
                 state, P, measurement, reference, &reference, V, field_parameters, false, static_cast<value_type>(1e-6),
@@ -759,8 +760,9 @@ void test_real_fusion(TestContext & test, std::string_view scalar_profile)
     auto const before_q = state.q_nb.coefficients();
     auto const before_P = P;
     test.expect(step(130U, reference * value_type{2}) == FusionDecision::rejected && fixture.monitor.state().active &&
-                    !fixture.monitor.state().fusion_allowed && same_matrix(state.q_nb.coefficients(), before_q) &&
-                    same_matrix(P, before_P) && step(131U, reference) == FusionDecision::fused,
+                    fixture.monitor.state().action != Action::fuse &&
+                    same_matrix(state.q_nb.coefficients(), before_q) && same_matrix(P, before_P) &&
+                    step(131U, reference) == FusionDecision::fused,
                 scalar_profile, "disturbance preserves outputs; active session resumes on the next good field");
     auto const outlier = vector_type::from_row_major({value_type{0}, value_type{30}, value_type{40}});
     for (auto time : {141U, 151U, 161U, 171U, 181U})

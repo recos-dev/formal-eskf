@@ -336,7 +336,7 @@ externally supplied model remain separate obligations.
 
 ### R-MAGNETOMETER-FUSION: field checks and gated magnetic correction
 
-`runtime::fuse_magnetometer` supports AHRS/INS and returns `MagnetometerFusionResult` with separate `field` and `fusion` diagnostics. `fusion.decision/status` describe the overall call. It retains the existing core's calibration, time, unit-quaternion, PSD/SPD, noise-independence and whole-object alias premises.
+`runtime::fuse_magnetometer` has explicit AHRS/INS overloads sharing field qualification and residual arithmetic, and returns `MagnetometerFusionResult` with separate `field` and `fusion` diagnostics. `fusion.decision/status` describe the overall call. It retains the existing core's calibration, time, unit-quaternion, PSD/SPD, noise-independence and whole-object alias premises.
 
 - Check finite nominal fields, then apply `R-MAGNETIC-FIELD` to this prior. The optional health-reference pointer forwards independent health geometry; only `m_n` reaches the innovation, correction and attitude protection. Supplying the observation reference for both roles retains the same correction behavior. A field error returns `failed` with its status; a field rejection returns `rejected` with `success`. Neither runs the innovation gate or correction. Innovation diagnostics remain invalid; rejection does not certify unused covariance or later-stage parameters.
 - After field acceptance, form the existing magnetic residual `r=m_b-R(q_nb)^T m_n` and `magnetometer_jacobian(state,m_n)`. Gate using `diag(H P H^T + V)` through the existing same-prior gate stage. Any component ratio above one rejects the entire three-axis group. The gate uses the full observation model, not a projected H or measurement-noise-only variance, in both tilt configurations.
@@ -587,6 +587,11 @@ state transitions use source timestamp zero. Native checks are not formal proof.
 
 `runtime::MagnetometerFusion` manages one selected magnetic source without owning
 measurements, estimator state/P, clocks or numerical reset operations.
+`State::action` is one consumable instruction for the current sample: `none`,
+`fuse` or `reset`. It is independent of the active session, persistent recovery
+reason and progress timestamps. Each update revokes the previous instruction;
+only matching feedback consumes a new instruction. `filter_reset` separately
+requests LPF reseeding and does not authorize correction or acknowledge a reset.
 `Conditions::ready` covers continuing prerequisites: tilt alignment, valid
 reference/state/P and permitted aiding policy. Initial heading is caller-established;
 the controller tracks the new heading-reset requirement after source changes.
@@ -642,7 +647,7 @@ explicit source-change alignment recovery retains its separate reset policy.
   `recovery_required` reset request. No-data ticks use their recency branch,
   not a permanent unsuccessful-fusion latch. Inactive startup rejections do not
   acquire an active-session deadline.
-- A timeout request grants one `reset_allowed` permission only while enabled,
+- A timeout request grants one `Action::reset` permission only while enabled,
   ready, without horizontal aiding or at rest, on a stable starting frame with
   a fresh accepted sample satisfying startup count/health. A bad field must
   requalify health; no-data ticks revoke permission. Pending recovery does not
@@ -673,7 +678,7 @@ explicit source-change alignment recovery retains its separate reset policy.
   heading reset. Stopping an active magnetic session without horizontal aiding
   also latches that requirement. Subsequent takeoff or restored aiding does not
   silently restore alignment. Unknown flight state waits; it is not ground/rest.
-  If heading reset is required, grant `reset_allowed` and use actual reset feedback.
+  If heading reset is required, grant `Action::reset` and use actual reset feedback.
   Otherwise clear source recovery and grant a normal gated startup attempt; only
   actual fusion activates it. No caller `restart()` is required for this path.
 - A reference-only change retains physical-sensor LPF/count/health/progress. An

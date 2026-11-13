@@ -1928,7 +1928,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
             {
                 outcome = "failed";
             }
-            else if (magnetic_lifecycle.state().fusion_allowed)
+            else if (magnetic_lifecycle.state().action == formal_eskf::runtime::MagnetometerFusion::Action::fuse)
             {
                 result = formal_eskf::runtime::fuse_magnetometer(
                     state, covariance, magnetic_sample, magnetic.m_n, field_reference_n, magnetic.V, field_parameters,
@@ -1948,7 +1948,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 ++mag_skipped;
             }
             Status reset_status = Status::success;
-            if (magnetic_lifecycle.state().reset_allowed)
+            if (magnetic_lifecycle.state().action == formal_eskf::runtime::MagnetometerFusion::Action::reset)
             {
                 auto const reason = magnetic_lifecycle.state().recovery_reason;
                 formal_eskf::so3::UnitQuaternion<Linalg> delta;

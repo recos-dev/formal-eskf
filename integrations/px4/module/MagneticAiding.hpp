@@ -213,7 +213,7 @@ MagneticAiding<Linalg>::update(std::uint64_t now_us, Sample const & sample, Cont
             return result;
         }
     }
-    if (lifecycle().fusion_allowed)
+    if (lifecycle().action == runtime::MagnetometerFusion::Action::fuse)
     {
         auto const V = linalg::Matrix<Linalg, 3U, 3U>::identity() * noise_variance;
         m_observation = runtime::fuse_magnetometer(state, covariance, sample.field_b, reference.observation_n,
@@ -240,7 +240,7 @@ MagneticAiding<Linalg>::update(std::uint64_t now_us, Sample const & sample, Cont
             }
         }
     }
-    if (lifecycle().reset_allowed)
+    if (lifecycle().action == runtime::MagnetometerFusion::Action::reset)
     {
         quaternion_type delta;
         auto const reset_status = runtime::try_reset_magnetic_heading(

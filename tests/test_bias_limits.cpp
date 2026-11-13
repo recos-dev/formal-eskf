@@ -13,7 +13,7 @@
 #include <limits>
 
 #include <formal_eskf/eskf/velocity.hpp>
-#include <formal_eskf/runtime/bias_limits.hpp>
+#include <formal_eskf/runtime/imu.hpp>
 #include "test_backend.hpp"
 #include "test_support.hpp"
 

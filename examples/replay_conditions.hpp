@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <optional>
 
-#include <formal_eskf/runtime/accelerometer_conditions.hpp>
+#include <formal_eskf/runtime/accelerometer.hpp>
 #include <formal_eskf/runtime/tilt_alignment.hpp>
 
 namespace formal_eskf::example

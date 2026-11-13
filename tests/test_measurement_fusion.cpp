@@ -7,8 +7,7 @@
  */
 
 #include <formal_eskf/runtime/measurement_fusion.hpp>
-#include <formal_eskf/runtime/position.hpp>
-#include <formal_eskf/runtime/velocity.hpp>
+#include <formal_eskf/runtime/navigation.hpp>
 
 #include <array>
 #include <bit>

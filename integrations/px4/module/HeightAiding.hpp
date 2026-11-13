@@ -6,10 +6,8 @@
 #include <cmath>
 #include <cstdint>
 
-#include <formal_eskf/runtime/gnss_fusion.hpp>
-#include <formal_eskf/runtime/navigation_measurement.hpp>
-#include <formal_eskf/runtime/navigation_reset.hpp>
-#include <formal_eskf/runtime/position.hpp>
+#include <formal_eskf/runtime/gnss_lifecycle.hpp>
+#include <formal_eskf/runtime/navigation.hpp>
 #include <formal_eskf/runtime/vertical_acceleration_health.hpp>
 
 #include "BiasLimits.hpp"

@@ -14,7 +14,7 @@
 #include <string_view>
 
 // Exercise the standalone public header on each configured backend.
-#include <formal_eskf/runtime/navigation_reset.hpp>
+#include <formal_eskf/runtime/navigation.hpp>
 #include "test_backend.hpp"
 #include "test_support.hpp"
 

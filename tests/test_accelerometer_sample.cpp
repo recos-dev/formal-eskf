@@ -6,9 +6,8 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include <formal_eskf/runtime/accelerometer_sample.hpp>
-#include "../examples/replay_conditions.hpp"
 #include <formal_eskf/runtime/accelerometer.hpp>
+#include "../examples/replay_conditions.hpp"
 
 #include <array>
 #include <cmath>

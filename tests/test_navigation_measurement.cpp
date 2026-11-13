@@ -11,7 +11,7 @@
 #include <cmath>
 #include <limits>
 
-#include <formal_eskf/runtime/navigation_measurement.hpp>
+#include <formal_eskf/runtime/navigation.hpp>
 #include "test_backend.hpp"
 #include "test_support.hpp"
 

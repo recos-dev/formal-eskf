@@ -28,21 +28,11 @@
 
 #include <formal_eskf/eskf/eskf.hpp>
 #include <formal_eskf/runtime/accelerometer.hpp>
-#include <formal_eskf/runtime/accelerometer_sample.hpp>
-#include <formal_eskf/runtime/bias_limits.hpp>
-#include <formal_eskf/runtime/bias_process_noise.hpp>
-#include <formal_eskf/runtime/navigation_measurement.hpp>
-#include <formal_eskf/runtime/navigation_reset.hpp>
-#include <formal_eskf/runtime/imu_bias_inhibition.hpp>
-#include <formal_eskf/runtime/imu_process_noise.hpp>
+#include <formal_eskf/runtime/imu.hpp>
+#include <formal_eskf/runtime/navigation.hpp>
 #include <formal_eskf/runtime/magnetometer.hpp>
-#include <formal_eskf/runtime/magnetometer_fusion.hpp>
-#include <formal_eskf/runtime/magnetometer_reset.hpp>
-#include <formal_eskf/runtime/magnetometer_filter.hpp>
-#include <formal_eskf/runtime/magnetic_heading.hpp>
+#include <formal_eskf/runtime/magnetometer_lifecycle.hpp>
 #include <formal_eskf/runtime/magnetic_reference.hpp>
-#include <formal_eskf/runtime/position.hpp>
-#include <formal_eskf/runtime/velocity.hpp>
 #include <formal_eskf/runtime/vertical_acceleration_health.hpp>
 #include "replay_conditions.hpp"
 #include "replay_gnss.hpp"

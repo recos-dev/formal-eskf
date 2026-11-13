@@ -890,7 +890,7 @@ calibration evidence, model-epoch validation or long-distance flight qualificati
 These caller-invoked INS operations replace navigation estimates; they are not
 Kalman corrections or `E-RESET`'s post-injection change of error coordinates.
 The navigation reset operations and GNSS horizontal-variance policy belong to
-`runtime/navigation_reset.hpp`, not to the generic numerical correction. Inputs are already aligned to the prior's
+`runtime/navigation.hpp`, not to the generic numerical correction. Inputs are already aligned to the prior's
 local NED frame, body/IMU origin and time; quality, alignment and reset authority
 remain caller responsibilities. No clock, lifecycle or automatic retry is owned.
 
@@ -1272,7 +1272,7 @@ Replay checks are integration evidence, not new Lean/ESBMC proofs or accuracy cl
 
 ### R-GNSS-VERTICAL-RECOVERY: bounded vertical innovations during IMU faults
 
-`runtime/navigation_measurement.hpp` provides GNSS velocity fusion and
+`runtime/navigation.hpp` provides GNSS velocity fusion and
 source-independent NED Down position fusion (`fuse_height`). Generic gates and
 ungated correction APIs are unchanged. The caller must first establish source
 quality/lifecycle permission, frame/time, unit quaternion, symmetric PSD P and
@@ -1600,34 +1600,31 @@ transaction or closes the pending runtime Lean/ESBMC obligations.
 
 ### R-IMU-DYNAMICS: instantaneous IMU magnitude check
 
-`runtime::check_imu_dynamics` consumes an `ImuSample`, accelerometer/gyroscope bias vectors and two explicit magnitude thresholds. All vectors are in the same body frame; specific force is in m/s^2 and angular rate in rad/s, not integrated increments. Compute `f = specific_force_b - b_a` and `omega = angular_rate_b - b_g`, then `high_dynamics = squared_norm(f) > maximum_specific_force^2 OR squared_norm(omega) > maximum_angular_rate^2`.
-
-- Specific force retains the stationary gravity response: no rotation, gravity subtraction or normalization. The limits are vector magnitudes, not independent component limits. Threshold equality is accepted as not high dynamics. Decisions use computed floating-point squared quantities; no exact-real boundary or backend-independent rounding guarantee is claimed.
-- Validate every consumed vector coefficient and both thresholds before calculation; non-finite input returns `non_finite_input`. Thresholds must be positive with finite squares at least the smallest positive normal scalar value; zero defaults, negative or unrepresentable/small squared limits return `domain_error`. Finite inputs causing bias-subtraction or squared-norm overflow return `non_finite_result`. A high reading on one sensor must not hide invalid data on the other.
-- Return a fresh result without modifying any input. On success, both squared-norm diagnostics are finite/nonnegative and `high_dynamics` follows the comparison. On every failure it is true and diagnostics are invalid zero placeholders; failure must never be interpreted as a successful motion classification or reuse earlier results.
-- The check is stateless. Supply successful `high_dynamics` to `ImuBiasLearning` once per IMU sample at the same fusion horizon. On failure, set both sensor `healthy` conditions false for that update; preserve independent clipping and observability restrictions on success. The existing monitor alone owns continuous-good recovery; this check introduces no second timer or envelope filter. Reset the monitor on dynamics-threshold, calibration or sensor/frame changes.
-
-This upper-magnitude check does not detect free fall, saturation metadata, vibration, sensor faults or physical observability, nor authorize accelerometer measurement fusion. Passing it does not establish that a bias estimate or motion model is correct. Threshold tuning and adapter wiring remain caller/deployment work. Native arithmetic, boundary, failure and detector-to-policy-to-correction tests are supporting evidence; Lean and ESBMC evidence is pending.
+**Retired on 2026-11-14.** The standalone `check_imu_dynamics` API and its
+exclusive tests were removed with the timed qualification path. In-tree module
+and replay callers use `ImuBiasInhibition`; neither consumed this detector.
+The original contract remains in Git history at `7029404`.
 
 ### R-IMU-BIAS-LEARNING: bias-learning qualification
 
-`runtime::ImuBiasLearning` converts caller-supplied conditions into `Ins::BiasUpdate`. It owns six independent recovery timers, not sensor detection or ESKF state. Body-axis `permitted` combines the caller's configuration and aiding/observability policy; `healthy` means suitable for learning, including relevant cross-sensor faults. Both default to false. The caller supplies clipping accumulated since the preceding update and a high-dynamics flag.
+**Retired on 2026-11-14.** The `ImuBiasLearning` API, six continuous-good timers
+and their exclusive tests were removed. The deployed/replayed decaying-peak
+policy remains specified by `R-REPLAY-BIAS` and `R-PX4-IMU-BIAS`; it is not a
+behaviorally equivalent replacement for the retired public API. The original
+contract remains in Git history at `7029404`.
 
-- An accelerometer axis is eligible only when its sensor is healthy, its permission is true, it is not clipped and high dynamics is false. A gyroscope axis requires its own health, permission and no clipping; high dynamics alone does not inhibit it. Loss of eligibility immediately disables that axis and clears its good interval. No attitude/gravity-axis observability heuristic is inferred here.
-- Startup and reset inhibit all axes. An eligible axis starts its interval at the first good sample, not at the preceding bad sample. Enable only after uninterrupted eligible samples span at least `recovery_time_us`; equality is accepted. Other axes keep their own intervals. A new bad sample restarts recovery even after previous qualification.
-- Both configured intervals must be positive. Sample timestamps are nonzero, strictly increasing unsigned microseconds on one IMU/fusion timeline. An interval strictly greater than `maximum_sample_interval_us`, or a change to either parameter, clears all recovery history before considering the current sample. A gap exactly at the limit is allowed. Compare elapsed differences only after validating time order; do not add durations to timestamps.
-- Invalid configuration returns `domain_error` before time checks; zero/duplicate/backward time returns `out_of_range`. Every failure returns all-disabled permissions and clears the monitor's history. This deliberate fail-closed transition is not numerical-core failure rollback. The next valid sample begins fresh qualification, not an old authorization.
-- `status == success` means a valid policy evaluation, not that any axis may learn or a sensor may fuse. Pass the returned permissions to all relevant INS corrections at that same horizon. Call once per new IMU sample even if no correction occurs; never retain an authorization across missing updates. Reset on IMU/source/calibration/body-frame changes. The caller owns validity, freshness, fault detection and consistent event ordering.
-
-The policy does not alter nominal state, covariance, prediction, process noise or measurement admission. It is not a proof of physical observability or IMU health. `R-IMU-DYNAMICS` supplies an optional instantaneous magnitude check; sensor health, observability policy, adaptive process noise and platform wiring remain separate work. Native condition, timing and real-correction integration tests are supporting evidence; Lean and ESBMC evidence is pending.
+Both IDs are reserved historical records and excluded from the active
+traceability map. Their missing Lean/ESBMC evidence was not completed or converted
+to PASS. Retiring these APIs changes supported library scope; it leaves current
+module/replay behavior and every retained proof obligation unchanged.
 
 ### R-REPLAY-BIAS: replay bias-learning inhibition
 
 Replay directly uses the shared `runtime::ImuBiasInhibition`. It evaluates
 the prior biases and unit attitude once before
 prediction, then supplies the same six `Ins::BiasUpdate` permissions to every
-GNSS, gravity and magnetic correction at that horizon. It uses decaying peaks,
-not `ImuBiasLearning`'s separate continuous-good timers. Learning inhibition
+GNSS, gravity and magnetic correction at that horizon. It uses decaying peaks
+without a separate continuous-good timer. Learning inhibition
 does not control prediction noise; `R-BIAS-PROCESS-NOISE` supplies that independent
 policy. Core equations and bias-preserving resets remain unchanged.
 
@@ -1684,7 +1681,7 @@ Lean/ESBMC evidence remains pending.
 
 The PX4 module uses the shared `runtime::ImuBiasInhibition` decaying-peak policy
 specified in `R-REPLAY-BIAS`, and the detector in `R-VERTICAL-ACCELERATION`.
-`ImuBiasLearning`'s separate continuous-good recovery timer is not used here.
+No separate continuous-good recovery timer is used.
 
 - Before actual IMU prediction, evaluate once with the prior unit attitude/biases.
   Use separate angular/velocity integration durations for their respective peak

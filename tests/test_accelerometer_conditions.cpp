@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include <formal_eskf/runtime/accelerometer_conditions.hpp>
+#include <formal_eskf/runtime/accelerometer.hpp>
 
 #include <array>
 #include <iostream>

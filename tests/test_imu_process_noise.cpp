@@ -14,8 +14,7 @@
 #include <string_view>
 
 #include <formal_eskf/eskf/eskf.hpp>
-#include <formal_eskf/runtime/bias_process_noise.hpp>
-#include <formal_eskf/runtime/imu_process_noise.hpp>
+#include <formal_eskf/runtime/imu.hpp>
 #include "test_backend.hpp"
 #include "test_support.hpp"
 

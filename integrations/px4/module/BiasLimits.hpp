@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 #pragma once
 
-#include <formal_eskf/runtime/bias_limits.hpp>
+#include <formal_eskf/runtime/imu.hpp>
 
 namespace formal_eskf::px4
 {

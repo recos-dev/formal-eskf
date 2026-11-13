@@ -81,6 +81,36 @@ The replay keeps CSV cursors, its log-time scheduler and evidence files. Its
 available noise context; prediction statistics describe the executed intervals.
 Sharing runtime components does not make replay and module scheduling equivalent.
 
+### Caller differences before shared aiding
+
+The following differences were checked before consolidating runtime headers and
+retiring the unused timed IMU qualification policy. File consolidation preserves
+both callers; it does not make their integration profiles equivalent.
+
+| Boundary | PX4 module | Replay | Refactor treatment |
+|---|---|---|---|
+| Gravity sampling and tilt | `GravityAiding::update` evaluates tilt and samples after navigation/height corrections. Separate angle/velocity periods preserve the measured angle integral. | `replay` evaluates tilt and samples on the predicted prior, before navigation corrections; its prepared sample supplies one common period. | Preserve the documented horizons and integration periods. Sharing a controller must not silently move these evaluations. |
+| Horizontal aiding | Gravity and magnetic conditions consume current GNSS lifecycle activity. | `ReplayFusionConditions` retains activity for 7 s after an actual horizontal correction/reset. | Preserve caller-supplied meaning; do not infer one from the other in a common helper. |
+| Missing IMU metadata | The module validates actual clipping/identity metadata and faults on unsupported discontinuities. | Missing clipping assumes clear only for bias learning; it blocks gravity fusion and invalidates vertical-health history. | Keep input compatibility in the adapter; absence must not become measured health. |
+| Magnetic admission and settings | `MagneticAiding` discards arrivals aged 500 ms or more before updating lifecycle receipt, rejects unusable external fields, and binds fixed deployment settings. | Replay selects the newest arrived sample per tick and passes it to the lifecycle without the same admission filter; parameters and field checks can come from replay inputs. | Preserve existing admission/configuration boundaries; sharing lower-level code does not establish equal decisions. |
+| Magnetic heading alignment | `MagneticAiding` clears alignment on an unaided stop and explicitly supplies `heading_aligned` to the lifecycle. | Replay clears its local alignment flag on selected source changes, but omits that lifecycle field and therefore supplies its default `true`; it also lacks the unaided-stop alignment transition. | **Known replay wiring gap**, not an approved policy difference. Resolve separately before sharing magnetic coordination. |
+| Height sources | `HeightAiding` arbitrates barometer/GNSS and owns their offsets and datum. | Replay uses its GNSS-only vertical lifecycle. | Keep source arbitration and datum ownership distinct; a header merge cannot substitute one controller for the other. |
+| Numerical failure | A module fault prevents later aiding/publication and requires restart. | Replay terminates with an error; earlier successful operations remain observable in its evidence. | Preserve each caller's failure boundary; neither provides whole-tick rollback. |
+
+Source boundaries: [module update sequence](../../integrations/px4/module/FormalEskf.cpp),
+[gravity coordination](../../integrations/px4/module/GravityAiding.hpp),
+[magnetic coordination](../../integrations/px4/module/MagneticAiding.hpp),
+[replay sequence](../../examples/replay_ins.cpp), and
+[replay conditions](../../examples/replay_conditions.hpp).
+
+The magnetic gap has a concrete consequence: after an unaided data timeout,
+the lifecycle requests a reset for a qualified sample when `heading_aligned` is
+false, while the default true permits ordinary fusion. Source-change tests can
+still pass because the lifecycle separately remembers source-required resets.
+This gap predates the file consolidation; passing existing tests does not close
+it. Correcting it needs its own behavior change and regression case, not a
+compatibility switch that permanently preserves the omission.
+
 These are composition boundaries for the software verification plan. Existing
 core proofs remain scoped to their own contracts; runtime/controller and complete
 module formal proofs remain pending.

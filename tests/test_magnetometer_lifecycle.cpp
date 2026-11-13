@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include <formal_eskf/runtime/magnetometer_fusion.hpp>
+#include <formal_eskf/runtime/magnetometer_lifecycle.hpp>
 #include <formal_eskf/runtime/magnetometer.hpp>
 
 #include <cstdint>

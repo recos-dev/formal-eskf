@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include <formal_eskf/runtime/magnetic_heading.hpp>
+#include <formal_eskf/runtime/magnetometer.hpp>
 #include <formal_eskf/so3/rotation_vector.hpp>
 
 #include <cmath>

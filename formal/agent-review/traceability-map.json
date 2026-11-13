@@ -329,10 +329,10 @@
             "file": "formal/cpp/esbmc/scalar_support.hpp",
             "symbol": "#define sqrt formal_eskf_proof_sqrt"
           },
-        {
-          "file": "formal/cpp/esbmc/support.hpp",
-          "symbol": "#define sqrt formal_eskf_proof_sqrt"
-        },
+          {
+            "file": "formal/cpp/esbmc/support.hpp",
+            "symbol": "#define sqrt formal_eskf_proof_sqrt"
+          },
           {
             "file": "formal/cpp/esbmc/maps.cpp",
             "symbol": "void verify_scalar_wrappers("
@@ -2995,11 +2995,11 @@
         "lean": [],
         "cpp": [
           {
-            "file": "include/formal_eskf/runtime/magnetic_heading.hpp",
+            "file": "include/formal_eskf/runtime/magnetometer.hpp",
             "symbol": "class MagneticHeading"
           },
           {
-            "file": "include/formal_eskf/runtime/magnetic_heading.hpp",
+            "file": "include/formal_eskf/runtime/magnetometer.hpp",
             "symbol": "MagneticHeading<Linalg>::validate_inputs("
           },
           {
@@ -3007,15 +3007,15 @@
             "symbol": "magnetic_heading_error("
           },
           {
-            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "file": "include/formal_eskf/runtime/magnetometer_lifecycle.hpp",
             "symbol": "MagnetometerFusion::update("
           },
           {
-            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "file": "include/formal_eskf/runtime/magnetometer_lifecycle.hpp",
             "symbol": "MagnetometerFusion::validate_update("
           },
           {
-            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "file": "include/formal_eskf/runtime/magnetometer_lifecycle.hpp",
             "symbol": "MagnetometerFusion::select_sample_action("
           },
           {
@@ -3179,27 +3179,27 @@
         "lean": [],
         "cpp": [
           {
-            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "file": "include/formal_eskf/runtime/magnetometer_lifecycle.hpp",
             "symbol": "class MagnetometerFusion"
           },
           {
-            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "file": "include/formal_eskf/runtime/magnetometer_lifecycle.hpp",
             "symbol": "MagnetometerFusion::update("
           },
           {
-            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "file": "include/formal_eskf/runtime/magnetometer_lifecycle.hpp",
             "symbol": "MagnetometerFusion::record_fusion("
           },
           {
-            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "file": "include/formal_eskf/runtime/magnetometer_lifecycle.hpp",
             "symbol": "MagnetometerFusion::record_reset("
           },
           {
-            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "file": "include/formal_eskf/runtime/magnetometer_lifecycle.hpp",
             "symbol": "MagnetometerFusion::check_fusion_timeout()"
           },
           {
-            "file": "include/formal_eskf/runtime/magnetometer_fusion.hpp",
+            "file": "include/formal_eskf/runtime/magnetometer_lifecycle.hpp",
             "symbol": "void restart()"
           },
           {
@@ -3239,7 +3239,7 @@
         "lean": [],
         "cpp": [
           {
-            "file": "include/formal_eskf/runtime/magnetometer_filter.hpp",
+            "file": "include/formal_eskf/runtime/magnetometer.hpp",
             "symbol": "class MagnetometerFilter"
           },
           {
@@ -3271,15 +3271,15 @@
         "lean": [],
         "cpp": [
           {
-            "file": "include/formal_eskf/runtime/magnetometer_reset.hpp",
+            "file": "include/formal_eskf/runtime/magnetometer.hpp",
             "symbol": "compute_magnetic_heading_reset("
           },
           {
-            "file": "include/formal_eskf/runtime/magnetometer_reset.hpp",
+            "file": "include/formal_eskf/runtime/magnetometer.hpp",
             "symbol": "reset_heading_covariance("
           },
           {
-            "file": "include/formal_eskf/runtime/magnetometer_reset.hpp",
+            "file": "include/formal_eskf/runtime/magnetometer.hpp",
             "symbol": "reset_magnetic_heading("
           },
           {
@@ -3415,19 +3415,19 @@
             "symbol": "fuse_measurement("
           },
           {
-            "file": "include/formal_eskf/runtime/position.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "fuse_horizontal_position("
           },
           {
-            "file": "include/formal_eskf/runtime/position.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "fuse_vertical_position("
           },
           {
-            "file": "include/formal_eskf/runtime/velocity.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "fuse_horizontal_velocity("
           },
           {
-            "file": "include/formal_eskf/runtime/velocity.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "fuse_velocity("
           },
           {
@@ -3463,11 +3463,11 @@
         "lean": [],
         "cpp": [
           {
-            "file": "include/formal_eskf/runtime/accelerometer_magnitude.hpp",
+            "file": "include/formal_eskf/runtime/accelerometer.hpp",
             "symbol": "class AccelerometerMagnitude"
           },
           {
-            "file": "include/formal_eskf/runtime/accelerometer_magnitude.hpp",
+            "file": "include/formal_eskf/runtime/accelerometer.hpp",
             "symbol": "AccelerometerMagnitude<Linalg>::update("
           }
         ],
@@ -3487,11 +3487,11 @@
         "lean": [],
         "cpp": [
           {
-            "file": "include/formal_eskf/runtime/accelerometer_conditions.hpp",
+            "file": "include/formal_eskf/runtime/accelerometer.hpp",
             "symbol": "struct AccelerometerFusionConditions"
           },
           {
-            "file": "include/formal_eskf/runtime/accelerometer_conditions.hpp",
+            "file": "include/formal_eskf/runtime/accelerometer.hpp",
             "symbol": "check_accelerometer_fusion_conditions("
           },
           {
@@ -3531,15 +3531,15 @@
             "symbol": "[[nodiscard]] AccelerometerFusionResult fuse_accelerometer("
           },
           {
-            "file": "include/formal_eskf/runtime/accelerometer_sample.hpp",
+            "file": "include/formal_eskf/runtime/accelerometer.hpp",
             "symbol": "class AccelerometerSample"
           },
           {
-            "file": "include/formal_eskf/runtime/accelerometer_sample.hpp",
+            "file": "include/formal_eskf/runtime/accelerometer.hpp",
             "symbol": "AccelerometerSample<Linalg, IntervalUs>::integrate("
           },
           {
-            "file": "include/formal_eskf/runtime/accelerometer_sample.hpp",
+            "file": "include/formal_eskf/runtime/accelerometer.hpp",
             "symbol": "AccelerometerSample<Linalg, IntervalUs>::update("
           },
           {
@@ -3563,62 +3563,6 @@
       }
     },
     {
-      "id": "R-IMU-DYNAMICS",
-      "title": "Bias-corrected instantaneous IMU magnitude checks; Lean and ESBMC evidence pending",
-      "references": {
-        "spec": [
-          {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-IMU-DYNAMICS: instantaneous IMU magnitude check"
-          }
-        ],
-        "lean": [],
-        "cpp": [
-          {
-            "file": "include/formal_eskf/runtime/imu_dynamics.hpp",
-            "symbol": "struct ImuDynamicsParameters"
-          },
-          {
-            "file": "include/formal_eskf/runtime/imu_dynamics.hpp",
-            "symbol": "struct ImuDynamicsResult"
-          },
-          {
-            "file": "include/formal_eskf/runtime/imu_dynamics.hpp",
-            "symbol": "check_imu_dynamics("
-          }
-        ],
-        "esbmc": []
-      }
-    },
-    {
-      "id": "R-IMU-BIAS-LEARNING",
-      "title": "Per-axis IMU bias-learning inhibition and recovery; Lean and ESBMC evidence pending",
-      "references": {
-        "spec": [
-          {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-IMU-BIAS-LEARNING: bias-learning qualification"
-          }
-        ],
-        "lean": [],
-        "cpp": [
-          {
-            "file": "include/formal_eskf/runtime/imu_bias_learning.hpp",
-            "symbol": "class ImuBiasLearning"
-          },
-          {
-            "file": "include/formal_eskf/runtime/imu_bias_learning.hpp",
-            "symbol": "ImuBiasLearning::Result ImuBiasLearning::update("
-          },
-          {
-            "file": "include/formal_eskf/runtime/imu_bias_learning.hpp",
-            "symbol": "bool ImuBiasLearning::update_axis("
-          }
-        ],
-        "esbmc": []
-      }
-    },
-    {
       "id": "R-REPLAY-BIAS",
       "title": "Replay decaying-peak bias inhibition and correction wiring; Lean and ESBMC evidence pending",
       "references": {
@@ -3631,19 +3575,19 @@
         "lean": [],
         "cpp": [
           {
-            "file": "include/formal_eskf/runtime/imu_bias_inhibition.hpp",
+            "file": "include/formal_eskf/runtime/imu.hpp",
             "symbol": "ImuBiasInhibition<Linalg>::update("
           },
           {
-            "file": "include/formal_eskf/runtime/imu_bias_inhibition.hpp",
+            "file": "include/formal_eskf/runtime/imu.hpp",
             "symbol": "ImuBiasInhibition<Linalg>::decayed_peak("
           },
           {
-            "file": "include/formal_eskf/runtime/imu_bias_inhibition.hpp",
+            "file": "include/formal_eskf/runtime/imu.hpp",
             "symbol": "ImuBiasInhibition<Linalg>::learning_permissions("
           },
           {
-            "file": "include/formal_eskf/runtime/imu_bias_inhibition.hpp",
+            "file": "include/formal_eskf/runtime/imu.hpp",
             "symbol": "class ImuBiasInhibition"
           },
           {
@@ -3679,7 +3623,7 @@
         "lean": [],
         "cpp": [
           {
-            "file": "include/formal_eskf/runtime/imu_bias_inhibition.hpp",
+            "file": "include/formal_eskf/runtime/imu.hpp",
             "symbol": "class ImuBiasInhibition"
           },
           {
@@ -3731,11 +3675,11 @@
         "lean": [],
         "cpp": [
           {
-            "file": "include/formal_eskf/runtime/imu_process_noise.hpp",
+            "file": "include/formal_eskf/runtime/imu.hpp",
             "symbol": "struct ImuNoiseConditions"
           },
           {
-            "file": "include/formal_eskf/runtime/imu_process_noise.hpp",
+            "file": "include/formal_eskf/runtime/imu.hpp",
             "symbol": "select_imu_process_noise(configuration::Ins::ProcessNoise"
           },
           {
@@ -3779,7 +3723,7 @@
         "lean": [],
         "cpp": [
           {
-            "file": "include/formal_eskf/runtime/bias_process_noise.hpp",
+            "file": "include/formal_eskf/runtime/imu.hpp",
             "symbol": "[[nodiscard]] Status inhibit_bias_process_noise("
           },
           {
@@ -3819,11 +3763,11 @@
         "lean": [],
         "cpp": [
           {
-            "file": "include/formal_eskf/runtime/bias_limits.hpp",
+            "file": "include/formal_eskf/runtime/imu.hpp",
             "symbol": "struct BiasLimits"
           },
           {
-            "file": "include/formal_eskf/runtime/bias_limits.hpp",
+            "file": "include/formal_eskf/runtime/imu.hpp",
             "symbol": "Status limit_bias("
           },
           {
@@ -3911,35 +3855,35 @@
         "lean": [],
         "cpp": [
           {
-            "file": "include/formal_eskf/runtime/navigation_measurement.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "struct GnssVelocityConditions"
           },
           {
-            "file": "include/formal_eskf/runtime/navigation_measurement.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "struct NavigationFusionResult"
           },
           {
-            "file": "include/formal_eskf/runtime/navigation_measurement.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "struct NavigationInnovationCheck"
           },
           {
-            "file": "include/formal_eskf/runtime/navigation_measurement.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "void limit_vertical_innovation("
           },
           {
-            "file": "include/formal_eskf/runtime/navigation_measurement.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "correct_navigation_measurement("
           },
           {
-            "file": "include/formal_eskf/runtime/navigation_measurement.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "check_gnss_velocity("
           },
           {
-            "file": "include/formal_eskf/runtime/navigation_measurement.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "fuse_gnss_velocity("
           },
           {
-            "file": "include/formal_eskf/runtime/navigation_measurement.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "fuse_height("
           },
           {
@@ -3975,31 +3919,31 @@
         "lean": [],
         "cpp": [
           {
-            "file": "include/formal_eskf/runtime/navigation_reset.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "Status validate_navigation_reset_inputs("
           },
           {
-            "file": "include/formal_eskf/runtime/navigation_reset.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "void uncorrelate_navigation_axis("
           },
           {
-            "file": "include/formal_eskf/runtime/navigation_reset.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "void reset_navigation_axis("
           },
           {
-            "file": "include/formal_eskf/runtime/navigation_reset.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "Status reset_gnss_horizontal_position("
           },
           {
-            "file": "include/formal_eskf/runtime/navigation_reset.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "reset_vertical_position(configuration::Ins::NominalState"
           },
           {
-            "file": "include/formal_eskf/runtime/navigation_reset.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "reset_vertical_velocity(configuration::Ins::NominalState"
           },
           {
-            "file": "include/formal_eskf/runtime/navigation_reset.hpp",
+            "file": "include/formal_eskf/runtime/navigation.hpp",
             "symbol": "reset_velocity(configuration::Ins::NominalState<Linalg> const & state"
           },
           {
@@ -4035,63 +3979,63 @@
         "lean": [],
         "cpp": [
           {
-            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
             "symbol": "class GnssFusion"
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
             "symbol": "enum class Action"
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
             "symbol": "void GnssFusion::revoke_permissions("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
             "symbol": "void GnssFusion::clear_vertical_velocity_reset("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
             "symbol": "bool GnssFusion::height_waiting_for_velocity("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
             "symbol": "Status GnssFusion::validate_update("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
             "symbol": "void GnssFusion::request_horizontal_resets("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
             "symbol": "struct VerticalAccelerationTimes"
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
             "symbol": "GnssFusion::height_reset_reason("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
             "symbol": "void GnssFusion::update_group("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
             "symbol": "Status GnssFusion::update("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
             "symbol": "Status GnssFusion::record_fusion("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
             "symbol": "Status GnssFusion::record_reset("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
             "symbol": "Status GnssFusion::record_vertical_velocity_reset("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
             "symbol": "Status GnssFusion::restart("
           },
           {
@@ -4163,7 +4107,7 @@
             "symbol": "void FormalEskf::publish("
           },
           {
-            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
             "symbol": "struct VerticalAccelerationTimes"
           }
         ],

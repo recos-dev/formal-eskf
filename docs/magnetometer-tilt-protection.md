@@ -206,7 +206,7 @@ startup alignment, WMM and adapter wiring remain separate work. Requirements `R-
 
 ## Magnetic fusion lifecycle
 
-[`runtime::MagnetometerFusion`](../include/formal_eskf/runtime/magnetometer_fusion.hpp)
+[`runtime::MagnetometerFusion`](../include/formal_eskf/runtime/magnetometer_lifecycle.hpp)
 owns only the temporal admission policy. The single-writer call order is:
 
 ```text

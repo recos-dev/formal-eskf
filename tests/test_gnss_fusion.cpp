@@ -6,9 +6,8 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include <formal_eskf/runtime/gnss_fusion.hpp>
-#include <formal_eskf/runtime/position.hpp>
-#include <formal_eskf/runtime/velocity.hpp>
+#include <formal_eskf/runtime/gnss_lifecycle.hpp>
+#include <formal_eskf/runtime/navigation.hpp>
 
 #include <array>
 #include <cstdint>

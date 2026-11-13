@@ -2,7 +2,6 @@
 #pragma once
 
 #include <formal_eskf/runtime/accelerometer.hpp>
-#include <formal_eskf/runtime/accelerometer_sample.hpp>
 #include <formal_eskf/runtime/tilt_alignment.hpp>
 
 #include "BiasLimits.hpp"

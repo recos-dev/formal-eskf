@@ -6,8 +6,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include <formal_eskf/runtime/magnetometer_reset.hpp>
-#include <formal_eskf/runtime/magnetometer_filter.hpp>
+#include <formal_eskf/runtime/magnetometer.hpp>
 
 #include <cmath>
 #include <iostream>

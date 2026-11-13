@@ -10,7 +10,7 @@
 
 #include <string_view>
 
-#include <formal_eskf/runtime/gnss_fusion.hpp>
+#include <formal_eskf/runtime/gnss_lifecycle.hpp>
 
 namespace formal_eskf::example
 {

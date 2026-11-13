@@ -4,11 +4,8 @@
 #include <algorithm>
 #include <numbers>
 
-#include <formal_eskf/runtime/magnetic_heading.hpp>
 #include <formal_eskf/runtime/magnetometer.hpp>
-#include <formal_eskf/runtime/magnetometer_filter.hpp>
-#include <formal_eskf/runtime/magnetometer_fusion.hpp>
-#include <formal_eskf/runtime/magnetometer_reset.hpp>
+#include <formal_eskf/runtime/magnetometer_lifecycle.hpp>
 
 #include "BiasLimits.hpp"
 

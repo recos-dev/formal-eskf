@@ -21,7 +21,7 @@ namespace formal_eskf
 /** Diagnostics are valid only after a successful try_check_innovation call. */
 template <typename Linalg, std::size_t Size> struct InnovationCheck
 {
-    linalg::Matrix<Linalg, Size, 1U> test_ratio{};
+    linalg::Vector<Linalg, Size> test_ratio{};
     bool rejected = true;
 };
 
@@ -37,8 +37,8 @@ template <typename Linalg, std::size_t Size> struct InnovationCheck
  * See E-INNOV for numerical bounds and failure semantics.
  */
 template <typename Linalg, std::size_t Size>
-[[nodiscard]] Status try_check_innovation(linalg::Matrix<Linalg, Size, 1U> const & innovation,
-                                          linalg::Matrix<Linalg, Size, 1U> const & innovation_variance,
+[[nodiscard]] Status try_check_innovation(linalg::Vector<Linalg, Size> const & innovation,
+                                          linalg::Vector<Linalg, Size> const & innovation_variance,
                                           typename Linalg::value_type gate_sigma,
                                           InnovationCheck<Linalg, Size> & output) noexcept
 {
@@ -96,9 +96,10 @@ template <typename Linalg, std::size_t Size>
         {
             return Status::non_finite_result;
         }
-        candidate.test_ratio.set(axis, ratio);
+        candidate.test_ratio(axis) = ratio;
         candidate.rejected = candidate.rejected || ratio > value_type{1};
     }
+    // Either input may be output.test_ratio; publish only after every axis succeeds.
     output = candidate;
     return Status::success;
 }

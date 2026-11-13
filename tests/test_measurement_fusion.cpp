@@ -85,7 +85,7 @@ template <typename Linalg, typename Configuration, std::size_t MeasurementSize> 
     using state_type = typename Configuration::template NominalState<Linalg>;
     static constexpr std::size_t size = Configuration::error_state_dimension;
     using covariance_type = formal_eskf::linalg::Matrix<Linalg, size, size>;
-    using vector_type = formal_eskf::linalg::Matrix<Linalg, MeasurementSize, 1U>;
+    using vector_type = formal_eskf::linalg::Vector<Linalg, MeasurementSize>;
     using noise_type = formal_eskf::linalg::Matrix<Linalg, MeasurementSize, MeasurementSize>;
     using jacobian_type = formal_eskf::linalg::Matrix<Linalg, MeasurementSize, size>;
     value_type minimum_norm = static_cast<value_type>(1e-6);
@@ -107,8 +107,8 @@ template <typename Linalg, typename Configuration, std::size_t MeasurementSize> 
         }
         for (std::size_t row = 0U; row < MeasurementSize; ++row)
         {
-            H.set(row, row % size, value_type{1});
-            r.set(row, static_cast<value_type>(row + 1U) / value_type{64});
+            H(row, row % size) = value_type{1};
+            r(row) = static_cast<value_type>(row + 1U) / value_type{64};
             for (std::size_t column = 0U; column < MeasurementSize; ++column)
             {
                 V(row, column) += static_cast<value_type>((row + 1U) * (column + 1U)) / value_type{16};
@@ -197,8 +197,8 @@ void test_gate_and_failures(TestContext & test, std::string_view profile)
             auto current = source;
             typename fixture_type::state_type output;
             auto output_P = covariance_type::identity() * value_type{-2};
-            output_P.set(0U, 1U, limits_type::quiet_NaN());
-            output_P.set(1U, 0U, -value_type{0});
+            output_P(0U, 1U) = limits_type::quiet_NaN();
+            output_P(1U, 0U) = -value_type{0};
             auto & state_output = (aliases & 1U) != 0U ? current.state : output;
             auto & covariance_output = (aliases & 2U) != 0U ? current.P : output_P;
             auto const before_state = state_output;
@@ -224,15 +224,15 @@ void test_gate_and_failures(TestContext & test, std::string_view profile)
         for (value_type sign : {value_type{-1}, value_type{1}})
         {
             auto boundary = fixture;
-            boundary.r.set(axis, sign * value_type{2}); // S_ii=4, sigma=1.
+            boundary.r(axis) = sign * value_type{2}; // S_ii=4, sigma=1.
             typename fixture_type::state_type output;
             covariance_type output_P;
             auto result = boundary.fuse(output, output_P);
             test.expect(result.decision == FusionDecision::fused && result.test_ratio(axis) == value_type{1}, profile,
                         "gate equality fuses on every axis and either sign");
-            boundary.r.set(axis, sign * std::nextafter(value_type{2}, limits_type::infinity()));
+            boundary.r(axis) = sign * std::nextafter(value_type{2}, limits_type::infinity());
             preserved(boundary, FusionDecision::rejected, Status::success, true);
-            boundary.r.set(axis, sign * std::nextafter(value_type{2}, value_type{0}));
+            boundary.r(axis) = sign * std::nextafter(value_type{2}, value_type{0});
             result = boundary.fuse(output, output_P);
             test.expect(result.decision == FusionDecision::fused, profile, "next value below gate boundary fuses");
         }
@@ -240,33 +240,33 @@ void test_gate_and_failures(TestContext & test, std::string_view profile)
     for (value_type invalid : {limits_type::quiet_NaN(), limits_type::infinity(), -limits_type::infinity()})
     {
         auto bad = fixture;
-        bad.r.set(0U, value_type{3}); // An early outlier must not hide another invalid input.
-        bad.r.set(2U, invalid);
+        bad.r(0U) = value_type{3}; // An early outlier must not hide another invalid input.
+        bad.r(2U) = invalid;
         preserved(bad, FusionDecision::failed, Status::non_finite_input, false);
         bad = fixture;
-        bad.P.set(0U, fixture_type::size - 1U, invalid);
+        bad.P(0U, fixture_type::size - 1U) = invalid;
         preserved(bad, FusionDecision::failed, Status::non_finite_input, false);
         bad = fixture;
-        bad.H.set(2U, fixture_type::size - 1U, invalid);
+        bad.H(2U, fixture_type::size - 1U) = invalid;
         preserved(bad, FusionDecision::failed, Status::non_finite_input, false);
         bad = fixture;
-        bad.V.set(0U, 2U, invalid);
+        bad.V(0U, 2U) = invalid;
         preserved(bad, FusionDecision::failed, Status::non_finite_input, false);
         bad = fixture;
         bad.sigma = invalid;
         preserved(bad, FusionDecision::failed, Status::non_finite_input, false);
         bad = fixture;
         bad.state.q_nb = invalid_quaternion<Linalg>({value_type{1}, value_type{0}, value_type{0}, invalid});
-        bad.r.set(0U, value_type{3});
+        bad.r(0U) = value_type{3};
         preserved(bad, FusionDecision::failed, Status::non_finite_input, false);
         if constexpr (std::is_same_v<Configuration, formal_eskf::configuration::Ins>)
         {
             for (unsigned field = 0U; field < 12U; ++field)
             {
                 bad = fixture;
-                std::array<formal_eskf::linalg::Matrix<Linalg, 3U, 1U> *, 4U> fields{&bad.state.p_n, &bad.state.v_n,
-                                                                                     &bad.state.b_a, &bad.state.b_g};
-                fields[field / 3U]->set(field % 3U, invalid);
+                std::array<formal_eskf::linalg::Vector<Linalg, 3U> *, 4U> fields{&bad.state.p_n, &bad.state.v_n,
+                                                                                 &bad.state.b_a, &bad.state.b_g};
+                (*fields[field / 3U])(field % 3U) = invalid;
                 preserved(bad, FusionDecision::failed, Status::non_finite_input, false);
             }
         }
@@ -292,26 +292,26 @@ void test_gate_and_failures(TestContext & test, std::string_view profile)
     bad.sigma = limits_type::min();
     preserved(bad, FusionDecision::failed, Status::zero_or_unsafe_divisor, false);
     bad = fixture;
-    bad.P.set(0U, 1U, value_type{1}); // Asymmetry must not be silently repaired.
+    bad.P(0U, 1U) = value_type{1}; // Asymmetry must not be silently repaired.
     preserved(bad, FusionDecision::failed, Status::domain_error, false);
     bad = fixture;
-    bad.V.set(0U, 1U, value_type{1});
+    bad.V(0U, 1U) = value_type{1};
     preserved(bad, FusionDecision::failed, Status::domain_error, false);
     bad = fixture;
-    bad.P.set(0U, 0U, value_type{-1});
+    bad.P(0U, 0U) = value_type{-1};
     preserved(bad, FusionDecision::failed, Status::domain_error, false);
     bad = fixture;
-    bad.V.set(0U, 0U, value_type{0});
+    bad.V(0U, 0U) = value_type{0};
     preserved(bad, FusionDecision::failed, Status::domain_error, false);
     bad = fixture;
-    bad.P.set(0U, 0U, limits_type::max());
-    bad.H.set(0U, 0U, value_type{2}); // PHt overflow.
+    bad.P(0U, 0U) = limits_type::max();
+    bad.H(0U, 0U) = value_type{2}; // PHt overflow.
     preserved(bad, FusionDecision::failed, Status::non_finite_result, false);
     bad = fixture;
-    bad.H.set(0U, 0U, std::sqrt(limits_type::max())); // Finite PHt, overflowing S.
+    bad.H(0U, 0U) = std::sqrt(limits_type::max()); // Finite PHt, overflowing S.
     preserved(bad, FusionDecision::failed, Status::non_finite_result, false);
     bad = fixture;
-    bad.r.set(0U, limits_type::max());
+    bad.r(0U) = limits_type::max();
     preserved(bad, FusionDecision::failed, Status::non_finite_result, false);
     bad = fixture;
     bad.P = covariance_type::identity() * limits_type::min();
@@ -321,14 +321,14 @@ void test_gate_and_failures(TestContext & test, std::string_view profile)
 
     // Gate passes, LLT fails: positive innovation diagonal is not an SPD proof.
     bad = fixture;
-    bad.V.set(0U, 1U, value_type{8});
-    bad.V.set(1U, 0U, value_type{8});
+    bad.V(0U, 1U) = value_type{8};
+    bad.V(1U, 0U) = value_type{8};
     preserved(bad, FusionDecision::failed, Status::not_positive_definite, true);
     // Gate passes, injection fails; valid diagnostics survive but no estimate is published.
     bad = fixture;
     bad.state.q_nb = invalid_quaternion<Linalg>({value_type{0}, value_type{0}, value_type{0}, value_type{0}});
     preserved(bad, FusionDecision::failed, Status::invalid_quaternion_norm, true);
-    bad.r.set(0U, value_type{3});
+    bad.r(0U) = value_type{3};
     preserved(bad, FusionDecision::rejected, Status::success, true); // Rejection does not run injection.
 }
 
@@ -356,12 +356,12 @@ struct ObservationFusionFixture : FusionFixture<Linalg, formal_eskf::configurati
     {
         for (std::size_t axis = 0U; axis < 3U; ++axis)
         {
-            this->state.p_n.set(axis, static_cast<value_type>(axis + 1U));
-            this->state.v_n.set(axis, -static_cast<value_type>(axis + 1U));
+            this->state.p_n(axis) = static_cast<value_type>(axis + 1U);
+            this->state.v_n(axis) = -static_cast<value_type>(axis + 1U);
         }
         for (std::size_t axis = 0U; axis < measurement_size; ++axis)
         {
-            z.set(axis, observed_state()(offset + axis) + this->r(axis));
+            z(axis) = observed_state()(offset + axis) + this->r(axis);
         }
     }
 
@@ -476,12 +476,12 @@ void test_observation_fusion(TestContext & test, std::string_view profile, std::
     for (std::size_t axis = 0U; axis < fixture_type::measurement_size; ++axis)
     {
         auto bad = fixture;
-        bad.z.set(axis, value_type{100});
+        bad.z(axis) = value_type{100};
         no_publication(bad, FusionDecision::rejected, Status::success);
-        bad.z.set(axis, std::numeric_limits<value_type>::quiet_NaN());
+        bad.z(axis) = std::numeric_limits<value_type>::quiet_NaN();
         no_publication(bad, FusionDecision::failed, Status::non_finite_input);
-        bad.z.set(axis, std::numeric_limits<value_type>::max());
-        bad.observed_state().set(fixture_type::offset + axis, -std::numeric_limits<value_type>::max());
+        bad.z(axis) = std::numeric_limits<value_type>::max();
+        bad.observed_state()(fixture_type::offset + axis) = -std::numeric_limits<value_type>::max();
         no_publication(bad, FusionDecision::failed, Status::non_finite_result);
     }
 }
@@ -491,15 +491,15 @@ template <typename Linalg> void test_sequential_groups(TestContext & test, std::
     using value_type = typename Linalg::value_type;
     using state_type = formal_eskf::configuration::Ins::NominalState<Linalg>;
     using covariance_type = formal_eskf::linalg::Matrix<Linalg, 15U, 15U>;
-    using vector2_type = formal_eskf::linalg::Matrix<Linalg, 2U, 1U>;
-    using vector3_type = formal_eskf::linalg::Matrix<Linalg, 3U, 1U>;
+    using vector2_type = formal_eskf::linalg::Vector<Linalg, 2U>;
+    using vector3_type = formal_eskf::linalg::Vector<Linalg, 3U>;
     auto const V2 = formal_eskf::linalg::Matrix<Linalg, 2U, 2U>::identity();
     auto const V3 = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>::identity();
     auto const minimum_norm = static_cast<value_type>(1e-6);
     state_type state;
     auto P = covariance_type::identity();
-    P.set(0U, 3U, value_type{0.5});
-    P.set(3U, 0U, value_type{0.5});
+    P(0U, 3U) = value_type{0.5};
+    P(3U, 0U) = value_type{0.5};
     auto const position = vector2_type::from_row_major({value_type{2}, value_type{0}});
     auto const position_result =
         formal_eskf::runtime::fuse_horizontal_position(state, P, position, V2, minimum_norm, value_type{2}, state, P);
@@ -525,15 +525,17 @@ template <typename Linalg> void test_sequential_groups(TestContext & test, std::
                 profile, "sequential correction reference succeeds");
     auto const velocity_result =
         formal_eskf::runtime::fuse_velocity(state, P, velocity, V3, minimum_norm, value_type{1}, state, P);
-    test.expect(velocity_result.decision == FusionDecision::fused && velocity_result.innovation(0U) == value_type{1} &&
-                    velocity_result.innovation_variance(0U) == value_type{1.875} &&
+    // Use the actual committed prior: the preceding LLT may round the analytic values.
+    test.expect(velocity_result.decision == FusionDecision::fused &&
+                    velocity_result.innovation(0U) == velocity(0U) - after_position.v_n(0U) &&
+                    velocity_result.innovation_variance(0U) == after_position_P(3U, 3U) + V3(0U, 0U) &&
                     same_fusion_state(state, expected_state) && same_matrix_bits(P, expected_P),
                 profile, "later group recomputes residual and S from the latest committed prior");
     // Using the pre-position prior would reject: 1.5^2 / (1 + 1) > 1.
     state_type old_state;
     auto old_P = covariance_type::identity();
-    old_P.set(0U, 3U, value_type{0.5});
-    old_P.set(3U, 0U, value_type{0.5});
+    old_P(0U, 3U) = value_type{0.5};
+    old_P(3U, 0U) = value_type{0.5};
     auto const stale = formal_eskf::runtime::fuse_velocity(old_state, old_P, velocity, V3, minimum_norm, value_type{1},
                                                            old_state, old_P);
     test.expect(stale.decision == FusionDecision::rejected, profile,

@@ -43,7 +43,7 @@ template <typename Vector> [[nodiscard]] bool same_bits(Vector const & a, Vector
 template <typename Linalg, std::size_t Size> void run_conformance(TestContext & context, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
-    using vector_type = formal_eskf::linalg::Matrix<Linalg, Size, 1U>;
+    using vector_type = formal_eskf::linalg::Vector<Linalg, Size>;
     using check_type = formal_eskf::InnovationCheck<Linalg, Size>;
     using limits_type = std::numeric_limits<value_type>;
 
@@ -51,7 +51,7 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
     vector_type variance;
     for (std::size_t axis = 0U; axis < Size; ++axis)
     {
-        variance.set(axis, value_type{4});
+        variance(axis) = value_type{4};
     }
     check_type result;
     context.expect(formal_eskf::try_check_innovation(innovation, variance, value_type{2}, result) == Status::success &&
@@ -71,7 +71,7 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
                                         std::nextafter(value_type{4}, limits_type::infinity())})
             {
                 innovation = vector_type::zero();
-                innovation.set(axis, sign * boundary);
+                innovation(axis) = sign * boundary;
                 auto const status = formal_eskf::try_check_innovation(innovation, variance, value_type{2}, result);
                 context.expect(status == Status::success && result.rejected == (boundary > value_type{4}), profile,
                                "below/equal/above boundary, either residual sign");
@@ -84,7 +84,7 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
     // An early rejected axis must not prevent publishing later diagnostics.
     for (std::size_t axis = 0U; axis < Size; ++axis)
     {
-        innovation.set(axis, axis == 0U ? value_type{8} : value_type{-2});
+        innovation(axis) = axis == 0U ? value_type{8} : value_type{-2};
     }
     context.expect(formal_eskf::try_check_innovation(innovation, variance, value_type{2}, result) == Status::success &&
                        result.rejected,
@@ -95,7 +95,7 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
                        "all ratios published after rejection");
     }
     innovation = vector_type::zero();
-    innovation.set(0U, value_type{0.5});
+    innovation(0U) = value_type{0.5};
     context.expect(formal_eskf::try_check_innovation(innovation, variance, value_type{0.25}, result) ==
                            Status::success &&
                        !result.rejected && result.test_ratio(0U) == value_type{1},
@@ -107,8 +107,8 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
         bool rejected = false;
         for (std::size_t axis = 0U; axis < Size; ++axis)
         {
-            innovation.set(axis, static_cast<value_type>(sample) / value_type{3});
-            variance.set(axis, static_cast<value_type>(axis + 1U) / value_type{2});
+            innovation(axis) = static_cast<value_type>(sample) / value_type{3};
+            variance(axis) = static_cast<value_type>(axis + 1U) / value_type{2};
         }
         auto const status = formal_eskf::try_check_innovation(innovation, variance, value_type{2}, result);
         context.expect(status == Status::success, profile, "moderate-domain evaluation succeeds");
@@ -133,17 +133,32 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
         // Both Boolean states and unusual old values must survive failure.
         for (bool const old_rejected : {false, true})
         {
-            check_type output;
-            output.rejected = old_rejected;
-            for (std::size_t axis = 0U; axis < Size; ++axis)
+            // Separate output, residual alias, and variance alias. This also
+            // exercises failures after earlier candidate ratios were computed.
+            for (unsigned alias = 0U; alias < 3U; ++alias)
             {
-                output.test_ratio.set(axis, axis == 0U ? -value_type{0} : limits_type::quiet_NaN());
+                check_type output;
+                output.rejected = old_rejected;
+                for (std::size_t axis = 0U; axis < Size; ++axis)
+                {
+                    output.test_ratio(axis) = axis == 0U ? -value_type{0} : limits_type::quiet_NaN();
+                }
+                if (alias == 1U)
+                {
+                    output.test_ratio = residual;
+                }
+                else if (alias == 2U)
+                {
+                    output.test_ratio = variances;
+                }
+                auto const before = output;
+                auto const & r = alias == 1U ? output.test_ratio : residual;
+                auto const & S_diagonal = alias == 2U ? output.test_ratio : variances;
+                auto const status = formal_eskf::try_check_innovation(r, S_diagonal, sigma, output);
+                context.expect(status == expected, profile, description);
+                context.expect(output.rejected == before.rejected && same_bits(output.test_ratio, before.test_ratio),
+                               profile, "failure preserves all old diagnostics with each legal alias");
             }
-            auto const before = output;
-            auto const status = formal_eskf::try_check_innovation(residual, variances, sigma, output);
-            context.expect(status == expected, profile, description);
-            context.expect(output.rejected == before.rejected && same_bits(output.test_ratio, before.test_ratio),
-                           profile, "failure preserves all old diagnostics");
         }
         context.expect(same_bits(residual, old_residual) && same_bits(variances, old_variances), profile,
                        "inputs unchanged");
@@ -152,7 +167,7 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
     innovation = vector_type::zero();
     for (std::size_t axis = 0U; axis < Size; ++axis)
     {
-        variance.set(axis, value_type{1});
+        variance(axis) = value_type{1};
     }
     for (auto const invalid : {limits_type::quiet_NaN(), limits_type::infinity(), -limits_type::infinity()})
     {
@@ -160,11 +175,11 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
         for (std::size_t axis = 0U; axis < Size; ++axis)
         {
             auto residual = innovation;
-            residual.set(0U, value_type{2});
-            residual.set(axis, invalid);
+            residual(0U) = value_type{2};
+            residual(axis) = invalid;
             expect_failure(residual, variance, value_type{1}, Status::non_finite_input, "non-finite residual axis");
             auto variances = variance;
-            variances.set(axis, invalid);
+            variances(axis) = invalid;
             expect_failure(innovation, variances, value_type{1}, Status::non_finite_input, "non-finite variance axis");
         }
     }
@@ -174,9 +189,41 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
         for (std::size_t axis = 0U; axis < Size; ++axis)
         {
             auto variances = variance;
-            variances.set(axis, invalid);
+            variances(axis) = invalid;
             expect_failure(innovation, variances, value_type{1}, Status::domain_error, "nonpositive variance axis");
         }
+    }
+    if constexpr (Size > 1U)
+    {
+        auto residual = innovation;
+        auto variances = variance;
+        variances(0U) = value_type{0};
+        residual(Size - 1U) = limits_type::quiet_NaN();
+        expect_failure(residual, variances, value_type{1}, Status::non_finite_input,
+                       "all finite checks precede domain checks, including later axes");
+
+        residual = innovation;
+        residual(0U) = limits_type::max();
+        variances = variance;
+        variances(Size - 1U) = value_type{0};
+        expect_failure(residual, variances, limits_type::max(), Status::domain_error,
+                       "variance validation precedes both sigma and residual arithmetic");
+
+        // Preserve the current axis order for competing domain/safe-range errors.
+        variances(0U) = limits_type::denorm_min();
+        expect_failure(innovation, variances, value_type{1}, Status::zero_or_unsafe_divisor,
+                       "earlier unsafe variance precedes later nonpositive variance");
+        variances(0U) = value_type{0};
+        variances(Size - 1U) = limits_type::denorm_min();
+        expect_failure(innovation, variances, value_type{1}, Status::domain_error,
+                       "earlier nonpositive variance precedes later unsafe variance");
+
+        residual = innovation;
+        residual(0U) = value_type{1};
+        variances = variance;
+        variances(Size - 1U) = limits_type::min();
+        expect_failure(residual, variances, value_type{0.5}, Status::zero_or_unsafe_divisor,
+                       "an early rejected axis does not hide a later unsafe denominator");
     }
     expect_failure(innovation, variance, limits_type::max(), Status::non_finite_result, "squared sigma overflow");
     expect_failure(innovation, variance, limits_type::min(), Status::zero_or_unsafe_divisor, "squared sigma underflow");
@@ -185,52 +232,55 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
     for (std::size_t axis = 0U; axis < Size; ++axis)
     {
         auto residual = innovation;
-        residual.set(0U, value_type{2});
-        residual.set(axis, limits_type::max());
+        residual(0U) = value_type{2};
+        residual(axis) = limits_type::max();
         expect_failure(residual, variance, value_type{1}, Status::non_finite_result, "squared residual overflow");
         auto variances = variance;
-        variances.set(axis, limits_type::max());
+        variances(axis) = limits_type::max();
         expect_failure(innovation, variances, value_type{2}, Status::non_finite_result, "denominator overflow");
-        variances.set(axis, limits_type::min());
+        variances(axis) = limits_type::min();
         expect_failure(innovation, variances, value_type{0.5}, Status::zero_or_unsafe_divisor, "subnormal denominator");
         expect_failure(innovation, variances, std::sqrt(limits_type::min()), Status::zero_or_unsafe_divisor,
                        "zero denominator");
-        residual.set(axis, value_type{4});
+        residual(axis) = value_type{4};
         expect_failure(residual, variances, value_type{1}, Status::non_finite_result, "finite operands overflow ratio");
-        variances.set(axis, limits_type::denorm_min());
+        variances(axis) = limits_type::denorm_min();
         expect_failure(innovation, variances, value_type{1}, Status::zero_or_unsafe_divisor, "subnormal variance");
     }
 
-    innovation.set(0U, std::sqrt(limits_type::min()));
+    innovation(0U) = std::sqrt(limits_type::min());
     context.expect(formal_eskf::try_check_innovation(innovation, variance, std::sqrt(limits_type::min()), result) ==
                            Status::success &&
                        !result.rejected && result.test_ratio(0U) == value_type{1},
                    profile, "minimum normal squared sigma is inclusive");
-    variance.set(0U, limits_type::min());
+    variance(0U) = limits_type::min();
     context.expect(formal_eskf::try_check_innovation(innovation, variance, value_type{1}, result) == Status::success &&
                        !result.rejected && result.test_ratio(0U) == value_type{1},
                    profile, "minimum normal denominator is inclusive");
-    innovation.set(0U, limits_type::min());
+    innovation(0U) = limits_type::min();
     context.expect(formal_eskf::try_check_innovation(innovation, variance, value_type{1}, result) == Status::success &&
                        !result.rejected && result.test_ratio(0U) == value_type{0},
                    profile, "tiny innovation may square to zero");
 
     for (bool const alias_variance : {false, true})
     {
-        for (bool const fail : {false, true})
+        for (bool const rejected : {false, true})
         {
+            innovation = vector_type::zero();
+            innovation(0U) = rejected ? value_type{2} : value_type{0.5};
+            for (std::size_t axis = 0U; axis < Size; ++axis)
+            {
+                variance(axis) = value_type{1};
+            }
             result.test_ratio = alias_variance ? variance : innovation;
-            auto const before = result;
             auto const & residual = alias_variance ? innovation : result.test_ratio;
             auto const & variances = alias_variance ? result.test_ratio : variance;
             check_type expected;
-            auto const sigma = fail ? value_type{0} : value_type{1};
-            auto const expected_status = formal_eskf::try_check_innovation(residual, variances, sigma, expected);
-            auto const status = formal_eskf::try_check_innovation(residual, variances, sigma, result);
-            auto const & expected_output = fail ? before : expected;
-            context.expect(status == expected_status && result.rejected == expected_output.rejected &&
-                               same_bits(result.test_ratio, expected_output.test_ratio),
-                           profile, "complete input/output alias preserves success and failure semantics");
+            context.expect(
+                formal_eskf::try_check_innovation(residual, variances, value_type{1}, expected) == Status::success &&
+                    formal_eskf::try_check_innovation(residual, variances, value_type{1}, result) == Status::success &&
+                    result.rejected == rejected && same_bits(result.test_ratio, expected.test_ratio),
+                profile, "complete input/output alias publishes both accepted and rejected diagnostics");
         }
     }
 }

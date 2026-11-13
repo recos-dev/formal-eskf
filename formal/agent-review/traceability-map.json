@@ -4108,7 +4108,7 @@
           },
           {
             "file": "include/formal_eskf/runtime/gnss_quality.hpp",
-            "symbol": "typename GnssQuality<Linalg>::result_type GnssQuality<Linalg>::check_sample("
+            "symbol": "Status GnssQuality<Linalg>::update_stationary_checks("
           },
           {
             "file": "include/formal_eskf/runtime/gnss_quality.hpp",
@@ -4121,6 +4121,10 @@
           {
             "file": "examples/replay_gnss.hpp",
             "symbol": "class ReplayGnssQuality"
+          },
+          {
+            "file": "examples/replay_gnss.hpp",
+            "symbol": "ReplayGnssQuality<Linalg>::Result::outcome_name()"
           },
           {
             "file": "examples/replay_ins.cpp",

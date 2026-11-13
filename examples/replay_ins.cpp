@@ -431,8 +431,8 @@ void write_gnss_quality(std::ostream & stream, GnssQuality::Result const & resul
 {
     auto const & quality = result.quality;
     auto const & failures = quality.failures;
-    stream << source_time << ',' << time << ',' << result.outcome << ',' << static_cast<int>(quality.status) << ','
-           << result.evaluated << ',' << result.motion_available << ',' << result.spoofing_available << ','
+    stream << source_time << ',' << time << ',' << result.outcome_name() << ',' << static_cast<int>(quality.status)
+           << ',' << result.evaluated() << ',' << result.motion_available << ',' << result.spoofing_available << ','
            << quality.qualified << ',' << quality.invalid_fix;
     for (bool failed : {failures.satellites, failures.pdop, failures.horizontal_accuracy, failures.vertical_accuracy,
                         failures.speed_accuracy, failures.horizontal_drift, failures.vertical_drift,
@@ -1432,19 +1432,19 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 auto const result =
                     check_gnss_quality(quality_samples, quality_monitor, *quality_parameters, navigation_row, time);
                 write_gnss_quality(quality_updates, result, source_time, time);
-                if (result.outcome == "invalid_call")
+                if (result.outcome == GnssQuality::Outcome::invalid_call)
                 {
                     check_status(result.quality.status, "GNSS quality input", time);
                 }
                 quality_allows_fusion = result.accepted();
                 quality_accepted += result.accepted() ? 1U : 0U;
-                quality_rejected += result.outcome == "rejected" ? 1U : 0U;
-                quality_waiting += result.outcome == "waiting" ? 1U : 0U;
-                quality_unavailable += result.outcome == "unavailable" ? 1U : 0U;
-                invalid_velocity += result.outcome == "invalid_velocity" ? 1U : 0U;
+                quality_rejected += result.outcome == GnssQuality::Outcome::rejected ? 1U : 0U;
+                quality_waiting += result.outcome == GnssQuality::Outcome::waiting ? 1U : 0U;
+                quality_unavailable += result.outcome == GnssQuality::Outcome::unavailable ? 1U : 0U;
+                invalid_velocity += result.outcome == GnssQuality::Outcome::invalid_velocity ? 1U : 0U;
                 // A quality rejection need not deactivate velocity aiding. Keep
                 // current gate/limit diagnostics without invoking a correction.
-                if (!result.accepted() && result.evaluated && gnss_lifecycle.state().velocity.active)
+                if (!result.accepted() && result.evaluated() && gnss_lifecycle.state().velocity.active)
                 {
                     auto const noise =
                         navigation_variances(navigation_row[7U], navigation_row[8U], navigation_row[9U], gnss);
@@ -1460,7 +1460,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                         evidence.diagnostics_valid, -evidence.fusion_innovation(2U), evidence.innovation_variance(2U)};
                     vertical_cache.velocity_time_us = source_time;
                 }
-                else if (result.outcome == "unavailable")
+                else if (result.outcome == GnssQuality::Outcome::unavailable)
                 {
                     vertical_cache.observations.gnss_velocity_down = {};
                     vertical_cache.velocity_time_us = 0U;

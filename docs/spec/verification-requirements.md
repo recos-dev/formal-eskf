@@ -2077,6 +2077,12 @@ initialization assumption, not qualified fusion.
   from innovation rejections. Log outcomes, failure flags, diagnostic validity
   and health times in `result/gnss_quality.csv`.
 
+Replay control flow uses the named `ReplayGnssQuality::Outcome` values. Convert
+them to the existing CSV labels only when writing output. `evaluated()` derives
+whether the monitor consumed the sample from its quality decision; this is
+separate from receiver receipt, so unavailable metadata and invalid velocity
+retain their different lifecycle meanings.
+
 Without both quality files, legacy/KITTI input retains its previous behavior
 and reports quality OFF. A partial pair is an error. Native and replay checks
 support this integration; new Lean/ESBMC proofs and flight tuning remain pending.

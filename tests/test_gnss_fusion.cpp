@@ -1055,7 +1055,7 @@ template <typename Linalg> void test_quality_to_fusion(TestContext & test, std::
     formal_eskf::configuration::Ins::NominalState<Linalg> state;
     auto covariance = formal_eskf::linalg::Matrix<Linalg, 15U, 15U>::identity();
     Vector2 position;
-    position.set(0U, Scalar{1});
+    position(0U) = Scalar{1};
     auto const minimum_norm = static_cast<Scalar>(1e-6);
     auto const horizontal = formal_eskf::runtime::fuse_horizontal_position(
         state, covariance, position, Matrix2::identity(), minimum_norm, Scalar{3}, state, covariance);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -79,11 +80,11 @@ template <typename Linalg> struct GnssQualitySample
     value_type vertical_accuracy{};
     value_type speed_accuracy{};
     bool spoofed = false;
-    linalg::Matrix<Linalg, 3U, 1U> velocity_n{};
+    linalg::Vector<Linalg, 3U> velocity_n{};
     // Current fix relative to the preceding consumed fix, metres N/E/down.
     // Project N/E about that fix; down = old MSL altitude - new MSL altitude.
     // Ignored on the first fix, after invalid data, and outside stationary checks.
-    linalg::Matrix<Linalg, 3U, 1U> position_delta_n{};
+    linalg::Vector<Linalg, 3U> position_delta_n{};
     std::uint64_t position_reference_time_us{}; // Timestamp of that preceding fix.
 };
 
@@ -145,16 +146,15 @@ public:
 
 private:
     using math_type = typename Linalg::scalar_math_type;
-    using vector_type = linalg::Matrix<Linalg, 3U, 1U>;
+    using vector_type = linalg::Vector<Linalg, 3U>;
 
     [[nodiscard]] static Status validate_parameters(parameters_type const & parameters) noexcept;
     [[nodiscard]] Status validate_sample(sample_type const & sample, GnssQualityMotion motion) const noexcept;
-    [[nodiscard]] result_type check_sample(sample_type const & sample, GnssQualityMotion motion,
-                                           parameters_type const & parameters) noexcept;
+    [[nodiscard]] Status update_stationary_checks(sample_type const & sample, parameters_type const & parameters,
+                                                  result_type & result) noexcept;
     [[nodiscard]] Status update_motion_checks(sample_type const & sample, GnssQualityMotion motion,
                                               parameters_type const & parameters, result_type & result) noexcept;
     void update_health(std::uint64_t now_us, parameters_type const & parameters, result_type & result) noexcept;
-    [[nodiscard]] static value_type constrain(value_type value, value_type lower, value_type upper) noexcept;
     void reset_filters() noexcept;
 
     vector_type m_position_rate{};
@@ -167,13 +167,6 @@ private:
     bool m_previous_position_valid = false;
     bool m_qualified = false;
 }; /* end class GnssQuality */
-
-template <typename Linalg>
-typename GnssQuality<Linalg>::value_type GnssQuality<Linalg>::constrain(value_type value, value_type lower,
-                                                                        value_type upper) noexcept
-{
-    return value < lower ? lower : (value > upper ? upper : value);
-}
 
 template <typename Linalg> void GnssQuality<Linalg>::reset_filters() noexcept
 {
@@ -239,45 +232,56 @@ Status GnssQuality<Linalg>::validate_sample(sample_type const & sample, GnssQual
 }
 
 template <typename Linalg>
+Status GnssQuality<Linalg>::update_stationary_checks(sample_type const & sample, parameters_type const & parameters,
+                                                     result_type & result) noexcept
+{
+    auto const dt =
+        std::clamp(static_cast<value_type>(sample.time_us - m_sample_time_us) * static_cast<value_type>(1e-6),
+                   static_cast<value_type>(0.001), value_type{10});
+    auto const alpha = dt / value_type{10};
+    for (std::size_t axis = 0U; axis < 3U; ++axis)
+    {
+        auto const limit = axis == 2U ? parameters.maximum_vertical_drift : parameters.maximum_horizontal_drift;
+        auto const delta = m_previous_position_valid ? sample.position_delta_n(axis) : value_type{0};
+        auto const rate = delta / dt * alpha + m_position_rate(axis) * (value_type{1} - alpha);
+        if (!scalar::is_finite<math_type>(rate))
+        {
+            return Status::non_finite_result;
+        }
+        // Constrain position-filter state, but velocity-filter input.
+        m_position_rate(axis) = std::clamp(rate, -value_type{10} * limit, value_type{10} * limit);
+        auto const velocity = std::clamp(sample.velocity_n(axis), -value_type{10} * limit, value_type{10} * limit);
+        m_velocity(axis) = velocity * alpha + m_velocity(axis) * (value_type{1} - alpha);
+    }
+    result.horizontal_drift = linalg::norm(m_position_rate.template segment<0U, 2U>());
+    result.vertical_drift = scalar::absolute<math_type>(m_position_rate(2U));
+    result.horizontal_speed = linalg::norm(m_velocity.template segment<0U, 2U>());
+    result.vertical_speed = scalar::absolute<math_type>(m_velocity(2U));
+    if (!scalar::is_finite<math_type>(result.horizontal_drift) ||
+        !scalar::is_finite<math_type>(result.vertical_drift) ||
+        !scalar::is_finite<math_type>(result.horizontal_speed) || !scalar::is_finite<math_type>(result.vertical_speed))
+    {
+        return Status::non_finite_result;
+    }
+    result.drift_valid = true;
+    result.failures.horizontal_drift = result.horizontal_drift > parameters.maximum_horizontal_drift;
+    result.failures.vertical_drift = result.vertical_drift > parameters.maximum_vertical_drift;
+    result.failures.horizontal_speed = result.horizontal_speed > parameters.maximum_horizontal_drift;
+    result.failures.vertical_speed = result.vertical_speed > parameters.maximum_vertical_drift;
+    return Status::success;
+}
+
+template <typename Linalg>
 Status GnssQuality<Linalg>::update_motion_checks(sample_type const & sample, GnssQualityMotion motion,
                                                  parameters_type const & parameters, result_type & result) noexcept
 {
     if (!motion.in_air && motion.vehicle_at_rest)
     {
-        auto const dt =
-            constrain(static_cast<value_type>(sample.time_us - m_sample_time_us) * static_cast<value_type>(1e-6),
-                      static_cast<value_type>(0.001), value_type{10});
-        auto const alpha = dt / value_type{10};
-        for (std::size_t axis = 0U; axis < 3U; ++axis)
+        auto const status = update_stationary_checks(sample, parameters, result);
+        if (!succeeded(status))
         {
-            auto const limit = axis == 2U ? parameters.maximum_vertical_drift : parameters.maximum_horizontal_drift;
-            auto const delta = m_previous_position_valid ? sample.position_delta_n(axis) : value_type{0};
-            auto const rate = delta / dt * alpha + m_position_rate(axis) * (value_type{1} - alpha);
-            if (!scalar::is_finite<math_type>(rate))
-            {
-                return Status::non_finite_result;
-            }
-            // Constrain position-filter state, but velocity-filter input.
-            m_position_rate.set(axis, constrain(rate, -value_type{10} * limit, value_type{10} * limit));
-            auto const velocity = constrain(sample.velocity_n(axis), -value_type{10} * limit, value_type{10} * limit);
-            m_velocity.set(axis, velocity * alpha + m_velocity(axis) * (value_type{1} - alpha));
+            return status;
         }
-        result.horizontal_drift = linalg::norm(m_position_rate.template segment<0U, 2U>());
-        result.vertical_drift = scalar::absolute<math_type>(m_position_rate(2U));
-        result.horizontal_speed = linalg::norm(m_velocity.template segment<0U, 2U>());
-        result.vertical_speed = scalar::absolute<math_type>(m_velocity(2U));
-        if (!scalar::is_finite<math_type>(result.horizontal_drift) ||
-            !scalar::is_finite<math_type>(result.vertical_drift) ||
-            !scalar::is_finite<math_type>(result.horizontal_speed) ||
-            !scalar::is_finite<math_type>(result.vertical_speed))
-        {
-            return Status::non_finite_result;
-        }
-        result.drift_valid = true;
-        result.failures.horizontal_drift = result.horizontal_drift > parameters.maximum_horizontal_drift;
-        result.failures.vertical_drift = result.vertical_drift > parameters.maximum_vertical_drift;
-        result.failures.horizontal_speed = result.horizontal_speed > parameters.maximum_horizontal_drift;
-        result.failures.vertical_speed = result.vertical_speed > parameters.maximum_vertical_drift;
     }
     else
     {
@@ -308,39 +312,6 @@ Status GnssQuality<Linalg>::update_motion_checks(sample_type const & sample, Gns
         result.failures.vertical_speed = true;
     }
     return Status::success;
-}
-
-template <typename Linalg>
-typename GnssQuality<Linalg>::result_type GnssQuality<Linalg>::check_sample(sample_type const & sample,
-                                                                            GnssQualityMotion motion,
-                                                                            parameters_type const & parameters) noexcept
-{
-    result_type result;
-    result.failures = m_failures;
-    result.status = validate_sample(sample, motion);
-    if (succeeded(result.status))
-    {
-        result.status = update_motion_checks(sample, motion, parameters, result);
-    }
-    m_previous_position_valid = succeeded(result.status);
-    if (!m_previous_position_valid)
-    {
-        reset_filters();
-        result = result_type{.status = result.status};
-    }
-    result.invalid_fix = sample.fix_type < 3U;
-    result.failures.satellites = sample.satellites < parameters.minimum_satellites;
-    result.failures.pdop = sample.pdop > parameters.maximum_pdop;
-    result.failures.horizontal_accuracy = sample.horizontal_accuracy > parameters.maximum_horizontal_accuracy;
-    result.failures.vertical_accuracy = sample.vertical_accuracy > parameters.maximum_vertical_accuracy;
-    result.failures.speed_accuracy = sample.speed_accuracy > parameters.maximum_speed_accuracy;
-    result.failures.spoofed = sample.spoofed;
-    m_failures = result.failures;
-
-    auto const rejected =
-        !succeeded(result.status) || result.invalid_fix || result.failures.any_enabled(parameters.enabled_checks);
-    result.decision = rejected ? GnssQualityDecision::rejected : GnssQualityDecision::waiting;
-    return result;
 }
 
 template <typename Linalg>
@@ -392,7 +363,33 @@ typename GnssQuality<Linalg>::result_type GnssQuality<Linalg>::update(sample_typ
         return result_type{.status = Status::out_of_range};
     }
 
-    auto result = check_sample(sample, motion, parameters);
+    // From here, even a numerical rejection consumes the sample.
+    result_type result;
+    result.failures = m_failures;
+    result.status = validate_sample(sample, motion);
+    if (succeeded(result.status))
+    {
+        result.status = update_motion_checks(sample, motion, parameters, result);
+    }
+    m_previous_position_valid = succeeded(result.status);
+    if (!m_previous_position_valid)
+    {
+        reset_filters();
+        result = result_type{.status = result.status};
+    }
+    result.invalid_fix = sample.fix_type < 3U;
+    result.failures.satellites = sample.satellites < parameters.minimum_satellites;
+    result.failures.pdop = sample.pdop > parameters.maximum_pdop;
+    result.failures.horizontal_accuracy = sample.horizontal_accuracy > parameters.maximum_horizontal_accuracy;
+    result.failures.vertical_accuracy = sample.vertical_accuracy > parameters.maximum_vertical_accuracy;
+    result.failures.speed_accuracy = sample.speed_accuracy > parameters.maximum_speed_accuracy;
+    result.failures.spoofed = sample.spoofed;
+    m_failures = result.failures;
+
+    auto const rejected =
+        !succeeded(result.status) || result.invalid_fix || result.failures.any_enabled(parameters.enabled_checks);
+    result.decision = rejected ? GnssQualityDecision::rejected : GnssQualityDecision::waiting;
+
     update_health(now_us, parameters, result);
     m_sample_time_us = sample.time_us;
     m_update_time_us = now_us;

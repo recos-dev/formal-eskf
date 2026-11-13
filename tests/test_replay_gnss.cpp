@@ -43,19 +43,19 @@ template <typename Scalar> void run_conformance(TestContext & test, std::string_
     };
 
     auto result = update(100U);
-    test.expect(result.outcome == "unavailable" && !result.evaluated && !result.accepted(), profile,
+    test.expect(result.outcome == Replay::Outcome::unavailable && !result.evaluated() && !result.accepted(), profile,
                 "landed without rest metadata cannot pass selected stationary checks");
     metadata.in_air = 1;
     result = update(200U);
-    test.expect(result.evaluated && result.motion_available && !result.spoofing_available &&
-                    result.outcome == "waiting" && !result.quality.drift_valid,
+    test.expect(result.evaluated() && result.motion_available && !result.spoofing_available &&
+                    result.outcome == Replay::Outcome::waiting && !result.quality.drift_valid,
                 profile, "in-air needs no rest flag; absent unselected spoofing check is explicit");
     test.expect(!update(2'000'200U).accepted() && update(2'000'201U).accepted(), profile,
                 "initial qualification is strictly greater than health time");
     sample.fix_type = 2U;
     result = update(2'000'202U);
-    test.expect(result.outcome == "rejected" && result.quality.invalid_fix && result.quality.qualified, profile,
-                "bad fix reaches the monitor and retains only historical qualification");
+    test.expect(result.outcome == Replay::Outcome::rejected && result.quality.invalid_fix && result.quality.qualified,
+                profile, "bad fix reaches the monitor and retains only historical qualification");
     sample.fix_type = 3U;
     test.expect(!update(3'000'202U).accepted() && update(3'000'203U).accepted(), profile,
                 "recovery takes strictly more than one second, not another full startup wait");
@@ -75,38 +75,41 @@ template <typename Scalar> void run_conformance(TestContext & test, std::string_
                 "qualified restart needs recovery interval, not another initial qualification");
 
     metadata.in_air = 0;
-    test.expect(update(3'000'204U).outcome == "unavailable", profile, "lost required metadata blocks fusion");
+    test.expect(update(3'000'204U).outcome == Replay::Outcome::unavailable, profile,
+                "lost required metadata blocks fusion");
     metadata.in_air = 1;
     result = update(3'000'205U);
-    test.expect(result.outcome == "waiting" && !result.quality.qualified && !update(5'000'205U).accepted() &&
-                    update(5'000'206U).accepted(),
+    test.expect(result.outcome == Replay::Outcome::waiting && !result.quality.qualified &&
+                    !update(5'000'205U).accepted() && update(5'000'206U).accepted(),
                 profile, "unavailable interval cannot count toward uninterrupted qualification");
     metadata.velocity_valid = false;
     result = update(5'000'207U);
-    test.expect(result.outcome == "invalid_velocity" && !result.evaluated && !result.accepted(), profile,
-                "invalid velocity is skipped before quality evaluation");
+    test.expect(result.outcome == Replay::Outcome::invalid_velocity && !result.evaluated() && !result.accepted(),
+                profile, "invalid velocity is skipped before quality evaluation");
     test.expect(result.lifecycle_sample(sample.time_us).time_us == 0U, profile,
                 "invalid receiver velocity cannot refresh lifecycle data receipt");
     metadata.velocity_valid = true;
     test.expect(update(5'000'208U).accepted(), profile, "skipped velocity message did not fabricate a quality failure");
 
     parameters.enabled_checks.spoofed = true;
-    test.expect(update(5'000'209U).outcome == "unavailable", profile, "missing enabled spoofing data blocks quality");
+    test.expect(update(5'000'209U).outcome == Replay::Outcome::unavailable, profile,
+                "missing enabled spoofing data blocks quality");
     metadata.spoofed = 1;
     result = update(5'000'210U);
-    test.expect(result.outcome == "rejected" && result.quality.failures.spoofed, profile,
+    test.expect(result.outcome == Replay::Outcome::rejected && result.quality.failures.spoofed, profile,
                 "actual spoofing metadata reaches the selected check");
     metadata.spoofed = 0;
     test.expect(update(7'000'211U).accepted(), profile, "fresh complete metadata can qualify again");
     metadata.in_air = 2;
     result = update(7'000'212U);
-    test.expect(result.outcome == "invalid_call" && result.quality.status == formal_eskf::Status::domain_error, profile,
-                "malformed flags are not converted silently to false");
+    test.expect(result.outcome == Replay::Outcome::invalid_call &&
+                    result.quality.status == formal_eskf::Status::domain_error,
+                profile, "malformed flags are not converted silently to false");
     metadata.in_air = 1;
     test.expect(update(7'000'213U).accepted(), profile, "invalid flag did not mutate health history");
     sample.pdop = std::numeric_limits<Scalar>::quiet_NaN();
     result = update(7'000'214U);
-    test.expect(result.evaluated && result.outcome == "rejected" && !result.accepted() &&
+    test.expect(result.evaluated() && result.outcome == Replay::Outcome::rejected && !result.accepted() &&
                     result.quality.status == formal_eskf::Status::non_finite_input,
                 profile, "numerical quality rejection is not an invalid adapter call or successful sample");
     auto const rejected_sample = result.lifecycle_sample(sample.time_us);
@@ -123,7 +126,7 @@ template <typename Scalar> void run_conformance(TestContext & test, std::string_
     sample.pdop = Scalar{1};
     replay = Replay{};
     result = update(1U);
-    test.expect(result.evaluated && !result.motion_available && !result.quality.drift_valid &&
+    test.expect(result.evaluated() && !result.motion_available && !result.quality.drift_valid &&
                     update(2'000'002U).accepted(),
                 profile, "unknown unselected diagnostics do not authorize stationary checks or block selected checks");
     sample.fix_type = 2U;
@@ -142,6 +145,89 @@ template <typename Scalar> void run_conformance(TestContext & test, std::string_
     }
 }
 
+template <typename Scalar> void test_metadata_transitions(TestContext & test, std::string_view profile)
+{
+    using Linalg = formal_eskf::test::Backend<Scalar>;
+    using Replay = formal_eskf::example::ReplayGnssQuality<Linalg>;
+    using formal_eskf::Status;
+    // No optional checks, motion only, spoofing only, and all checks.
+    for (auto const mask : {0U, 32U, 512U, 1023U})
+    {
+        typename Replay::monitor_type::parameters_type parameters;
+        parameters.enabled_checks = formal_eskf::example::gnss_quality_checks(mask);
+        parameters.minimum_health_time_us = 1U;
+        typename Replay::monitor_type::sample_type sample;
+        sample.fix_type = 3U;
+        sample.satellites = 10U;
+        sample.time_us = 1U;
+        typename Replay::Metadata const complete{true, 1, 0, 0};
+        Replay baseline;
+        (void)baseline.update(sample, complete, sample.time_us, parameters);
+        sample.time_us = 1000002U;
+        test.expect(baseline.update(sample, complete, sample.time_us, parameters).accepted(), profile,
+                    "qualification before metadata interruptions");
+        sample.position_reference_time_us = sample.time_us;
+        sample.time_us = 1000003U;
+
+        for (int in_air = -2; in_air <= 2; ++in_air)
+        {
+            for (int at_rest = -2; at_rest <= 2; ++at_rest)
+            {
+                for (int spoofed = -2; spoofed <= 2; ++spoofed)
+                {
+                    for (bool const velocity_valid : {false, true})
+                    {
+                        auto replay = baseline;
+                        typename Replay::Metadata const metadata{velocity_valid, in_air, at_rest, spoofed};
+                        auto expected = Replay::Outcome::accepted;
+                        if (in_air < -1 || in_air > 1 || at_rest < -1 || at_rest > 1 || spoofed < -1 || spoofed > 1)
+                        {
+                            expected = Replay::Outcome::invalid_call;
+                        }
+                        else if (!velocity_valid)
+                        {
+                            expected = Replay::Outcome::invalid_velocity;
+                        }
+                        else if (((mask & 32U) != 0U && (in_air == -1 || (in_air == 0 && at_rest == -1))) ||
+                                 ((mask & 512U) != 0U && spoofed == -1))
+                        {
+                            expected = Replay::Outcome::unavailable;
+                        }
+                        else if ((mask & 512U) != 0U && spoofed == 1)
+                        {
+                            expected = Replay::Outcome::rejected;
+                        }
+                        auto const result = replay.update(sample, metadata, sample.time_us, parameters);
+                        auto const received = result.lifecycle_sample(sample.time_us);
+                        bool const evaluated =
+                            expected == Replay::Outcome::accepted || expected == Replay::Outcome::rejected;
+                        test.expect(result.outcome == expected && result.evaluated() == evaluated &&
+                                        result.quality.status == (expected == Replay::Outcome::invalid_call
+                                                                      ? Status::domain_error
+                                                                      : Status::success),
+                                    profile,
+                                    "metadata validation, velocity skip and availability have distinct precedence");
+                        test.expect(received.time_us ==
+                                            (expected == Replay::Outcome::invalid_velocity ? 0U : sample.time_us) &&
+                                        received.quality_available == evaluated,
+                                    profile, "lifecycle receipt and quality availability are independent facts");
+
+                        auto next = sample;
+                        ++next.time_us;
+                        auto const resumed = replay.update(next, complete, next.time_us, parameters);
+                        test.expect(resumed.accepted() == (expected != Replay::Outcome::unavailable &&
+                                                           expected != Replay::Outcome::rejected) &&
+                                        resumed.quality.qualified == (expected != Replay::Outcome::unavailable),
+                                    profile,
+                                    "invalid calls and dropped velocity retain health; missing data reset it; "
+                                    "rejection requires recovery");
+                    }
+                }
+            }
+        }
+    }
+}
+
 } /* end namespace */
 
 int main()
@@ -150,6 +236,8 @@ int main()
     TestContext test;
     run_conformance<float>(test, "float");
     run_conformance<double>(test, "double");
+    test_metadata_transitions<float>(test, "float metadata");
+    test_metadata_transitions<double>(test, "double metadata");
     if (test.failures() != 0)
     {
         return 1;

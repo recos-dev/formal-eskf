@@ -9,7 +9,7 @@
 #include "contracts.hpp"
 
 using namespace contract_proof;
-using CovarianceVector = Linalg::vector_type<15U>;
+using CovarianceVector = formal_eskf::linalg::Vector<Linalg, 15U>;
 
 namespace
 {
@@ -56,7 +56,7 @@ void verify_covariance_vector_storage(CovarianceVector source, CovarianceVector 
     auto const & const_source = source;
     __ESBMC_assert(same(source(index), before[index]) && same(const_source(index), before[index]),
                    "E-RESET vector storage: actual mutable and const access select the independent requested field");
-    source.set(index, replacement);
+    source(index) = replacement;
     flatten(source, after);
     flatten(copy, constructed);
     flatten(output, assigned);

@@ -15,9 +15,9 @@
 
 namespace solve_proof
 {
-using SystemMatrix = Backend::matrix_type<size, size>;
-using LeftMatrix = Backend::matrix_type<size, columns>;
-using RightMatrix = Backend::matrix_type<columns, size>;
+using SystemMatrix = formal_eskf::linalg::Matrix<Backend, size, size>;
+using LeftMatrix = formal_eskf::linalg::Matrix<Backend, size, columns>;
+using RightMatrix = formal_eskf::linalg::Matrix<Backend, columns, size>;
 using formal_eskf::linalg::detail::MatrixAccess;
 using Statuses = ScalarArray<Status, 2U * columns>;
 extern double nondet_double();

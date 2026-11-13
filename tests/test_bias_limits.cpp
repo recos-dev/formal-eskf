@@ -69,14 +69,14 @@ template <typename Linalg> void test_bounds(TestContext & test)
         }
         auto const inside_a = state.b_a(1U);
         auto const inside_g = state.b_g(1U);
-        test.expect(formal_eskf::runtime::try_limit_bias<Linalg>(state, limits) == Status::success &&
+        test.expect(formal_eskf::runtime::limit_bias<Linalg>(state, limits) == Status::success &&
                         state.b_a(0U) == sign * limits.accelerometer && state.b_a(1U) == inside_a &&
                         state.b_a(2U) == sign * limits.accelerometer && state.b_g(0U) == sign * limits.gyroscope &&
                         state.b_g(1U) == inside_g && state.b_g(2U) == sign * limits.gyroscope &&
                         same_navigation(state, original),
                     profile, "inclusive per-axis bounds preserve inside values and other nominal state");
         auto const bounded = state;
-        test.expect(formal_eskf::runtime::try_limit_bias<Linalg>(state, limits) == Status::success &&
+        test.expect(formal_eskf::runtime::limit_bias<Linalg>(state, limits) == Status::success &&
                         same_bits(state.b_a, bounded.b_a) && same_bits(state.b_g, bounded.b_g),
                     profile, "limiting is idempotent; it does not impose a vector norm bound");
     }
@@ -85,7 +85,7 @@ template <typename Linalg> void test_bounds(TestContext & test)
         state.b_a(axis) = std::numeric_limits<Scalar>::max();
         state.b_g(axis) = -std::numeric_limits<Scalar>::max();
     }
-    test.expect(formal_eskf::runtime::try_limit_bias<Linalg>(state, {}) == Status::success, profile,
+    test.expect(formal_eskf::runtime::limit_bias<Linalg>(state, {}) == Status::success, profile,
                 "zero bounds accept and limit even largest finite inputs without overflow");
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
@@ -123,7 +123,7 @@ template <typename Linalg> void test_invalid(TestContext & test)
             }
             auto const before = state;
             auto const expected = std::isfinite(invalid) ? Status::domain_error : Status::non_finite_input;
-            test.expect(formal_eskf::runtime::try_limit_bias<Linalg>(state, limits) == expected &&
+            test.expect(formal_eskf::runtime::limit_bias<Linalg>(state, limits) == expected &&
                             same_navigation(state, before) && same_bits(state.b_a, before.b_a) &&
                             same_bits(state.b_g, before.b_g),
                         profile, "invalid limits or any non-finite bias leave the complete state unchanged");
@@ -151,13 +151,13 @@ template <typename Linalg> void test_correction(TestContext & test)
     State state;
     auto const V = Matrix3::identity();
     auto const velocity = Vector::from_row_major({Scalar{4}, Scalar{-4}, Scalar{4}});
-    test.expect(formal_eskf::try_correct_velocity(state, P, velocity, V, (Scalar{1} / Scalar{1024}), state, P) ==
+    test.expect(formal_eskf::correct_velocity(state, P, velocity, V, (Scalar{1} / Scalar{1024}), state, P) ==
                     Status::success,
                 profile, "real correction produces nonzero bias through cross-covariances");
     auto const corrected = state;
     auto const corrected_P = P;
     test.expect(corrected.b_a(0U) > limits.accelerometer && corrected.b_g(0U) < -limits.gyroscope &&
-                    formal_eskf::runtime::try_limit_bias<Linalg>(state, limits) == Status::success &&
+                    formal_eskf::runtime::limit_bias<Linalg>(state, limits) == Status::success &&
                     state.b_a(0U) == limits.accelerometer && state.b_a(1U) == -limits.accelerometer &&
                     state.b_g(0U) == -limits.gyroscope && state.b_g(1U) == limits.gyroscope &&
                     same_navigation(state, corrected) && same_bits(P, corrected_P),
@@ -165,16 +165,16 @@ template <typename Linalg> void test_correction(TestContext & test)
 
     auto const bounded = state;
     formal_eskf::configuration::Ins::BiasUpdate const disabled{{false, false, false}, {false, false, false}};
-    test.expect(formal_eskf::try_correct_velocity(state, P, velocity, V, (Scalar{1} / Scalar{1024}), state, P,
-                                                  disabled) == Status::success &&
-                    formal_eskf::runtime::try_limit_bias<Linalg>(state, limits) == Status::success &&
+    test.expect(formal_eskf::correct_velocity(state, P, velocity, V, (Scalar{1} / Scalar{1024}), state, P, disabled) ==
+                        Status::success &&
+                    formal_eskf::runtime::limit_bias<Linalg>(state, limits) == Status::success &&
                     same_bits(state.b_a, bounded.b_a) && same_bits(state.b_g, bounded.b_g),
                 profile, "inhibited biases remain held when already inside fixed limits");
     state = corrected;
-    test.expect(formal_eskf::try_correct_velocity(state, P, velocity, V, (Scalar{1} / Scalar{1024}), state, P,
-                                                  disabled) == Status::success &&
+    test.expect(formal_eskf::correct_velocity(state, P, velocity, V, (Scalar{1} / Scalar{1024}), state, P, disabled) ==
+                        Status::success &&
                     same_bits(state.b_a, corrected.b_a) &&
-                    formal_eskf::runtime::try_limit_bias<Linalg>(state, limits) == Status::success &&
+                    formal_eskf::runtime::limit_bias<Linalg>(state, limits) == Status::success &&
                     state.b_a(0U) == limits.accelerometer && state.b_g(0U) == -limits.gyroscope,
                 profile, "limiting still repairs out-of-range bias despite disabled learning");
     // A correction in the opposite direction must be able to leave saturation.
@@ -185,9 +185,9 @@ template <typename Linalg> void test_correction(TestContext & test)
         P(12U + axis, 3U + axis) = Scalar{0};
     }
     auto const reverse_velocity = state.v_n - Vector::from_row_major({Scalar{0.25}, Scalar{-0.25}, Scalar{0.25}});
-    test.expect(formal_eskf::try_correct_velocity(state, P, reverse_velocity, V, (Scalar{1} / Scalar{1024}), state,
-                                                  P) == Status::success &&
-                    formal_eskf::runtime::try_limit_bias<Linalg>(state, limits) == Status::success &&
+    test.expect(formal_eskf::correct_velocity(state, P, reverse_velocity, V, (Scalar{1} / Scalar{1024}), state, P) ==
+                        Status::success &&
+                    formal_eskf::runtime::limit_bias<Linalg>(state, limits) == Status::success &&
                     state.b_a(0U) < limits.accelerometer && state.b_a(0U) > Scalar{0},
                 profile, "saturation does not latch or prevent a later inward correction");
 }

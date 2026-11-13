@@ -97,13 +97,13 @@ void reset_navigation_axis(linalg::Matrix<Linalg, 15U, 15U> & covariance, std::s
  * No quality decision, lifecycle acknowledgment or origin change is performed.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_reset_gnss_horizontal_position(configuration::Ins::NominalState<Linalg> const & state,
-                                                        linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-                                                        linalg::Vector<Linalg, 2U> const & position,
-                                                        linalg::Vector<Linalg, 2U> const & variances,
-                                                        configuration::Ins::NominalState<Linalg> & state_output,
-                                                        linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                                                        linalg::Vector<Linalg, 2U> & delta_output)
+[[nodiscard]] Status reset_gnss_horizontal_position(configuration::Ins::NominalState<Linalg> const & state,
+                                                    linalg::Matrix<Linalg, 15U, 15U> const & covariance,
+                                                    linalg::Vector<Linalg, 2U> const & position,
+                                                    linalg::Vector<Linalg, 2U> const & variances,
+                                                    configuration::Ins::NominalState<Linalg> & state_output,
+                                                    linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
+                                                    linalg::Vector<Linalg, 2U> & delta_output)
 {
     using value_type = typename Linalg::value_type;
     Status const status = detail::validate_navigation_reset_inputs(state, covariance, position, variances);
@@ -140,18 +140,17 @@ template <typename Linalg>
  *
  * Altitude datum/sign/origin conversion, lever arms and variance preparation
  * belong to the caller. Input validation, delta overflow and failure atomicity
- * follow try_reset_gnss_horizontal_position. State/P outputs may independently
+ * follow reset_gnss_horizontal_position. State/P outputs may independently
  * alias their complete priors; delta output must be disjoint from state/P.
  * No height-reference initialization, bias adjustment or velocity reset occurs.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_reset_vertical_position(configuration::Ins::NominalState<Linalg> const & state,
-                                                 linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-                                                 typename Linalg::value_type position_d,
-                                                 typename Linalg::value_type variance,
-                                                 configuration::Ins::NominalState<Linalg> & state_output,
-                                                 linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                                                 typename Linalg::value_type & delta_output)
+[[nodiscard]] Status
+reset_vertical_position(configuration::Ins::NominalState<Linalg> const & state,
+                        linalg::Matrix<Linalg, 15U, 15U> const & covariance, typename Linalg::value_type position_d,
+                        typename Linalg::value_type variance, configuration::Ins::NominalState<Linalg> & state_output,
+                        linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
+                        typename Linalg::value_type & delta_output)
 {
     using value_type = typename Linalg::value_type;
     using scalar_vector_type = linalg::Vector<Linalg, 1U>;
@@ -184,18 +183,17 @@ template <typename Linalg>
  * and Down velocity (rows/columns 2 and 5), retaining P(2,2). All other nominal
  * fields and covariance entries remain unchanged. Delta is new v_D minus old.
  *
- * Input validation, aliasing and atomicity follow try_reset_vertical_position.
+ * Input validation, aliasing and atomicity follow reset_vertical_position.
  * Variance is already prepared; no vertical-noise scaling is added here.
  * No height or horizontal-velocity reset, clock or fusion acknowledgment occurs.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_reset_vertical_velocity(configuration::Ins::NominalState<Linalg> const & state,
-                                                 linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-                                                 typename Linalg::value_type velocity_d,
-                                                 typename Linalg::value_type variance,
-                                                 configuration::Ins::NominalState<Linalg> & state_output,
-                                                 linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                                                 typename Linalg::value_type & delta_output)
+[[nodiscard]] Status
+reset_vertical_velocity(configuration::Ins::NominalState<Linalg> const & state,
+                        linalg::Matrix<Linalg, 15U, 15U> const & covariance, typename Linalg::value_type velocity_d,
+                        typename Linalg::value_type variance, configuration::Ins::NominalState<Linalg> & state_output,
+                        linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
+                        typename Linalg::value_type & delta_output)
 {
     using value_type = typename Linalg::value_type;
     using scalar_vector_type = linalg::Vector<Linalg, 1U>;
@@ -229,16 +227,15 @@ template <typename Linalg>
  * Decouple all position AND velocity coordinates from each other and the rest
  * of P; preserve position values/diagonals, attitude, biases and their P block.
  * Variances are already prepared per axis; no vertical-noise scaling is added.
- * Input, delta and atomicity contracts follow try_reset_gnss_horizontal_position.
+ * Input, delta and atomicity contracts follow reset_gnss_horizontal_position.
  * This is neither a height-position reset nor a gated Kalman correction.
  */
 template <typename Linalg>
 [[nodiscard]] Status
-try_reset_velocity(configuration::Ins::NominalState<Linalg> const & state,
-                   linalg::Matrix<Linalg, 15U, 15U> const & covariance, linalg::Vector<Linalg, 3U> const & velocity,
-                   linalg::Vector<Linalg, 3U> const & variances,
-                   configuration::Ins::NominalState<Linalg> & state_output,
-                   linalg::Matrix<Linalg, 15U, 15U> & covariance_output, linalg::Vector<Linalg, 3U> & delta_output)
+reset_velocity(configuration::Ins::NominalState<Linalg> const & state,
+               linalg::Matrix<Linalg, 15U, 15U> const & covariance, linalg::Vector<Linalg, 3U> const & velocity,
+               linalg::Vector<Linalg, 3U> const & variances, configuration::Ins::NominalState<Linalg> & state_output,
+               linalg::Matrix<Linalg, 15U, 15U> & covariance_output, linalg::Vector<Linalg, 3U> & delta_output)
 {
     Status const status = detail::validate_navigation_reset_inputs(state, covariance, velocity, variances);
     if (!succeeded(status))

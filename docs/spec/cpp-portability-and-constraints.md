@@ -59,7 +59,7 @@ The examples illustrate syntax, not new API declarations or required class desig
 | Ordinary branches and bounded loops | `for (std::size_t i = 0U; i < 3U; ++i)` | Use direct control flow with a known upper bound. |
 | Fixed-size containers | `std::array<bool, 3U> enabled{};` | Keep capacity static and operations allocation-free. |
 | Explicit numeric conversions | `static_cast<value_type>(time_us)` | Check range and precision requirements; a cast alone does not establish validity. |
-| Result-use annotations | `[[nodiscard]] Status update();` | Mark results that must be handled. |
+| Result-use annotations | `[[nodiscard]] Status update();` | Mark operation statuses and validation/fusion decisions that callers must handle. Omit from ordinary getters, constants, arithmetic and value-returning math functions. |
 | Explicit/defaulted/deleted special members | `explicit Estimator(parameters_type const &);`, `Estimator(Estimator const &) = delete;` | Use when conversion, construction or ownership semantics require them; omit redundant declarations. |
 
 ### Features with restricted use

@@ -34,7 +34,7 @@ template <typename Scalar> struct PrincipalQuaternionCoefficients
 };
 
 template <typename Linalg>
-[[nodiscard]] PrincipalQuaternionCoefficients<typename Linalg::value_type>
+PrincipalQuaternionCoefficients<typename Linalg::value_type>
 principal_quaternion_coefficients(UnitQuaternion<Linalg> const & quaternion)
 {
     using value_type = typename Linalg::value_type;
@@ -42,12 +42,12 @@ principal_quaternion_coefficients(UnitQuaternion<Linalg> const & quaternion)
     return {sign * quaternion.q0(), sign * quaternion.q1(), sign * quaternion.q2(), sign * quaternion.q3()};
 }
 
-template <typename Scalar> [[nodiscard]] Scalar log_taylor_scale(Scalar q0, Scalar q0_squared, Scalar qv_squared_norm)
+template <typename Scalar> Scalar log_taylor_scale(Scalar q0, Scalar q0_squared, Scalar qv_squared_norm)
 {
     return Scalar{2} / q0 * (Scalar{1} - qv_squared_norm / (Scalar{3} * q0_squared));
 }
 
-template <typename Scalar> [[nodiscard]] Scalar log_closed_form_scale(Scalar qv_norm, Scalar half_angle)
+template <typename Scalar> Scalar log_closed_form_scale(Scalar qv_norm, Scalar half_angle)
 {
     return Scalar{2} * half_angle / qv_norm;
 }
@@ -67,8 +67,8 @@ template <typename Scalar> [[nodiscard]] Scalar log_closed_form_scale(Scalar qv_
  * @see https://arxiv.org/abs/1711.02508
  */
 template <typename Linalg>
-[[nodiscard]] Status try_exp(linalg::Vector<Linalg, 3U> const & rotation_vector,
-                             typename Linalg::value_type minimum_quaternion_norm, UnitQuaternion<Linalg> & output)
+[[nodiscard]] Status exp(linalg::Vector<Linalg, 3U> const & rotation_vector,
+                         typename Linalg::value_type minimum_quaternion_norm, UnitQuaternion<Linalg> & output)
 {
     using scalar_math_type = typename Linalg::scalar_math_type;
     using value_type = typename Linalg::value_type;
@@ -103,14 +103,14 @@ template <typename Linalg>
     else
     {
         value_type theta;
-        Status const sqrt_status = scalar::try_sqrt<scalar_math_type>(theta_squared, theta);
+        Status const sqrt_status = scalar::sqrt<scalar_math_type>(theta_squared, theta);
         if (!succeeded(sqrt_status))
         {
             return sqrt_status;
         }
 
         scalar::SinCos<value_type> half_angle;
-        Status const sin_cos_status = scalar::try_sin_cos<scalar_math_type>(value_type{0.5} * theta, half_angle);
+        Status const sin_cos_status = scalar::sin_cos<scalar_math_type>(value_type{0.5} * theta, half_angle);
         if (!succeeded(sin_cos_status))
         {
             return sin_cos_status;
@@ -125,7 +125,7 @@ template <typename Linalg>
         return Status::non_finite_result;
     }
 
-    return UnitQuaternion<Linalg>::try_from_coefficients(
+    return UnitQuaternion<Linalg>::from_coefficients(
         q0, vector_scale * rotation_vector(0U), vector_scale * rotation_vector(1U), vector_scale * rotation_vector(2U),
         minimum_quaternion_norm, output);
 }
@@ -144,7 +144,7 @@ template <typename Linalg>
  * @see https://arxiv.org/abs/1711.02508
  */
 template <typename Linalg>
-[[nodiscard]] Status try_log(UnitQuaternion<Linalg> const & quaternion, linalg::Vector<Linalg, 3U> & output)
+[[nodiscard]] Status log(UnitQuaternion<Linalg> const & quaternion, linalg::Vector<Linalg, 3U> & output)
 {
     using scalar_math_type = typename Linalg::scalar_math_type;
     using value_type = typename Linalg::value_type;
@@ -192,14 +192,14 @@ template <typename Linalg>
     else
     {
         value_type qv_norm;
-        Status const sqrt_status = scalar::try_sqrt<scalar_math_type>(qv_squared_norm, qv_norm);
+        Status const sqrt_status = scalar::sqrt<scalar_math_type>(qv_squared_norm, qv_norm);
         if (!succeeded(sqrt_status))
         {
             return sqrt_status;
         }
 
         value_type half_angle;
-        Status const atan2_status = scalar::try_atan2<scalar_math_type>(qv_norm, q0, half_angle);
+        Status const atan2_status = scalar::atan2<scalar_math_type>(qv_norm, q0, half_angle);
         if (!succeeded(atan2_status))
         {
             return atan2_status;

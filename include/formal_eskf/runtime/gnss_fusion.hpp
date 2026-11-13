@@ -83,7 +83,7 @@ public:
         std::uint64_t last_good_time_us{};
 
         /** Caller validates timestamp ordering; unavailable health cannot request a reset. */
-        [[nodiscard]] constexpr bool reset_required(std::uint64_t now_us) const
+        constexpr bool reset_required(std::uint64_t now_us) const
         {
             return update_time_us != 0U && update_time_us <= now_us && last_good_time_us <= update_time_us &&
                    (last_good_time_us == 0U || now_us - last_good_time_us > acceleration_reset_delay_us);
@@ -132,7 +132,7 @@ public:
         bool restart_quality = false;
     };
 
-    [[nodiscard]] State const & state() const { return m_state; }
+    State const & state() const { return m_state; }
     void reset() { *this = GnssFusion{}; }
 
     /**
@@ -164,16 +164,16 @@ public:
 private:
     void revoke_permissions();
     void clear_vertical_velocity_reset();
-    [[nodiscard]] bool height_waiting_for_velocity() const;
+    bool height_waiting_for_velocity() const;
     [[nodiscard]] Status validate_update(std::uint64_t now_us, Conditions const & conditions,
                                          Parameters const & parameters, Sample const & sample) const;
     void request_horizontal_resets(Conditions const & conditions);
-    [[nodiscard]] GroupState * select_group(Group group);
+    GroupState * select_group(Group group);
     static void stop(GroupState & group, StopReason reason);
     static void require_recovery(GroupState & group, StopReason reason);
     static void request_reset(GroupState & group, StopReason reason);
-    [[nodiscard]] bool expired(GroupState const & group, std::uint64_t duration) const;
-    [[nodiscard]] StopReason height_reset_reason(VerticalAccelerationTimes const & health) const;
+    bool expired(GroupState const & group, std::uint64_t duration) const;
+    StopReason height_reset_reason(VerticalAccelerationTimes const & health) const;
     void update_group(GroupState & group, GroupConditions conditions, bool new_sample, bool accepted, bool fresh);
 
     State m_state{};

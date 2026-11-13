@@ -24,6 +24,6 @@ enum class Status
     non_finite_result,
 };
 
-[[nodiscard]] constexpr bool succeeded(Status status) { return status == Status::success; }
+constexpr bool succeeded(Status status) { return status == Status::success; }
 
 } /* end namespace formal_eskf */

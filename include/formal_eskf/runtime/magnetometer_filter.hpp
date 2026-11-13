@@ -26,8 +26,8 @@ public:
     using value_type = typename Linalg::value_type;
     using vector_type = linalg::Vector<Linalg, 3U>;
 
-    [[nodiscard]] bool initialized() const { return m_initialized; }
-    [[nodiscard]] vector_type const & field_b() const { return m_field_b; }
+    bool initialized() const { return m_initialized; }
+    vector_type const & field_b() const { return m_field_b; }
     void reset() { *this = MagnetometerFilter{}; }
 
     /** Invalid input/arithmetic preserves history, including a requested reseed. */

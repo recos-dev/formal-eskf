@@ -23,7 +23,7 @@ namespace formal_eskf::linalg
 {
 
 template <typename Linalg, std::size_t Rows, std::size_t Columns>
-[[nodiscard]] Matrix<Linalg, Columns, Rows> transpose(Matrix<Linalg, Rows, Columns> const & matrix)
+Matrix<Linalg, Columns, Rows> transpose(Matrix<Linalg, Rows, Columns> const & matrix)
 {
     Matrix<Linalg, Columns, Rows> result;
     Linalg::template transpose<Rows, Columns>(detail::MatrixAccess::storage(matrix),
@@ -32,25 +32,24 @@ template <typename Linalg, std::size_t Rows, std::size_t Columns>
 }
 
 template <typename Linalg, std::size_t Size>
-[[nodiscard]] typename Linalg::value_type dot(Vector<Linalg, Size> const & left, Vector<Linalg, Size> const & right)
+typename Linalg::value_type dot(Vector<Linalg, Size> const & left, Vector<Linalg, Size> const & right)
 {
     return Linalg::template dot<Size>(detail::MatrixAccess::storage(left), detail::MatrixAccess::storage(right));
 }
 
 template <typename Linalg, std::size_t Size>
-[[nodiscard]] typename Linalg::value_type squared_norm(Vector<Linalg, Size> const & vector)
+typename Linalg::value_type squared_norm(Vector<Linalg, Size> const & vector)
 {
     return Linalg::template squared_norm<Size>(detail::MatrixAccess::storage(vector));
 }
 
-template <typename Linalg, std::size_t Size>
-[[nodiscard]] typename Linalg::value_type norm(Vector<Linalg, Size> const & vector)
+template <typename Linalg, std::size_t Size> typename Linalg::value_type norm(Vector<Linalg, Size> const & vector)
 {
     return Linalg::template norm<Size>(detail::MatrixAccess::storage(vector));
 }
 
 template <typename Linalg, std::size_t Rows, std::size_t Columns>
-[[nodiscard]] bool all_finite(Matrix<Linalg, Rows, Columns> const & matrix)
+bool all_finite(Matrix<Linalg, Rows, Columns> const & matrix)
 {
     using scalar_math_type = typename Linalg::scalar_math_type;
 
@@ -68,8 +67,8 @@ template <typename Linalg, std::size_t Rows, std::size_t Columns>
 }
 
 template <typename Linalg, std::size_t Size>
-[[nodiscard]] Status try_normalize(Vector<Linalg, Size> const & input, typename Linalg::value_type minimum_norm,
-                                   Vector<Linalg, Size> & output)
+[[nodiscard]] Status normalize(Vector<Linalg, Size> const & input, typename Linalg::value_type minimum_norm,
+                               Vector<Linalg, Size> & output)
 {
     using value_type = typename Linalg::value_type;
     using scalar_math_type = typename Linalg::scalar_math_type;
@@ -102,8 +101,7 @@ template <typename Linalg, std::size_t Size>
     return Status::success;
 }
 
-template <typename Linalg>
-[[nodiscard]] Vector<Linalg, 3U> cross(Vector<Linalg, 3U> const & left, Vector<Linalg, 3U> const & right)
+template <typename Linalg> Vector<Linalg, 3U> cross(Vector<Linalg, 3U> const & left, Vector<Linalg, 3U> const & right)
 {
     Vector<Linalg, 3U> result;
     result(0U) = left(1U) * right(2U) - left(2U) * right(1U);
@@ -113,7 +111,7 @@ template <typename Linalg>
 }
 
 template <typename Linalg, std::size_t Size>
-[[nodiscard]] typename Linalg::value_type trace(Matrix<Linalg, Size, Size> const & matrix)
+typename Linalg::value_type trace(Matrix<Linalg, Size, Size> const & matrix)
 {
     typename Linalg::value_type result{0};
     for (std::size_t index = 0U; index < Size; ++index)
@@ -123,8 +121,7 @@ template <typename Linalg, std::size_t Size>
     return result;
 }
 
-template <typename Linalg, std::size_t Size>
-[[nodiscard]] Vector<Linalg, Size> diagonal(Matrix<Linalg, Size, Size> const & matrix)
+template <typename Linalg, std::size_t Size> Vector<Linalg, Size> diagonal(Matrix<Linalg, Size, Size> const & matrix)
 {
     Vector<Linalg, Size> result;
     for (std::size_t index = 0U; index < Size; ++index)
@@ -135,7 +132,7 @@ template <typename Linalg, std::size_t Size>
 }
 
 template <typename Linalg, std::size_t Rows, std::size_t Columns>
-[[nodiscard]] typename Linalg::value_type max_abs(Matrix<Linalg, Rows, Columns> const & matrix)
+typename Linalg::value_type max_abs(Matrix<Linalg, Rows, Columns> const & matrix)
 {
     using value_type = typename Linalg::value_type;
     using scalar_math_type = typename Linalg::scalar_math_type;
@@ -159,13 +156,13 @@ template <typename Linalg, std::size_t Rows, std::size_t Columns>
 }
 
 template <typename Linalg, std::size_t Size>
-[[nodiscard]] Matrix<Linalg, Size, Size> symmetrize(Matrix<Linalg, Size, Size> const & matrix)
+Matrix<Linalg, Size, Size> symmetrize(Matrix<Linalg, Size, Size> const & matrix)
 {
     return typename Linalg::value_type{0.5} * (matrix + transpose(matrix));
 }
 
 template <typename Linalg, std::size_t Size>
-[[nodiscard]] bool is_symmetric(Matrix<Linalg, Size, Size> const & matrix, typename Linalg::value_type tolerance)
+bool is_symmetric(Matrix<Linalg, Size, Size> const & matrix, typename Linalg::value_type tolerance)
 {
     using value_type = typename Linalg::value_type;
     using scalar_math_type = typename Linalg::scalar_math_type;
@@ -177,8 +174,8 @@ template <typename Linalg, std::size_t Size>
 }
 
 template <typename Linalg, std::size_t Rows, std::size_t Inner>
-[[nodiscard]] Matrix<Linalg, Rows, Rows> sandwich(Matrix<Linalg, Rows, Inner> const & transform,
-                                                  Matrix<Linalg, Inner, Inner> const & matrix)
+Matrix<Linalg, Rows, Rows> sandwich(Matrix<Linalg, Rows, Inner> const & transform,
+                                    Matrix<Linalg, Inner, Inner> const & matrix)
 {
     return transform * matrix * transpose(transform);
 }

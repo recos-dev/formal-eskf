@@ -66,8 +66,8 @@ public:
     [[nodiscard]] Result update(std::uint64_t time_us, Conditions const & conditions, Parameters const & parameters);
 
 private:
-    [[nodiscard]] static bool update_axis(bool eligible, std::uint64_t time_us, std::uint64_t recovery_time_us,
-                                          std::uint64_t & good_since_us);
+    static bool update_axis(bool eligible, std::uint64_t time_us, std::uint64_t recovery_time_us,
+                            std::uint64_t & good_since_us);
 
     std::array<std::uint64_t, 3U> m_accelerometer_good_since{};
     std::array<std::uint64_t, 3U> m_gyroscope_good_since{};

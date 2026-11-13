@@ -168,10 +168,10 @@ constexpr bool boundaries_clear = !FORMAL_ESKF_PROOF_CONSTRUCTOR_CONTRACT && !FO
 namespace formal_eskf
 {
 template <>
-inline Status try_predict_nominal<contract_proof::Linalg>(step_proof::State const & state, step_proof::Imu const & imu,
-                                                          contract_proof::Scalar dt,
-                                                          step_proof::Parameters const & parameters,
-                                                          step_proof::State & output)
+inline Status predict_nominal<contract_proof::Linalg>(step_proof::State const & state, step_proof::Imu const & imu,
+                                                      contract_proof::Scalar dt,
+                                                      step_proof::Parameters const & parameters,
+                                                      step_proof::State & output)
 {
     using namespace step_proof;
     nominal_request(state, output);
@@ -183,7 +183,7 @@ inline Status try_predict_nominal<contract_proof::Linalg>(step_proof::State cons
 }
 
 template <>
-inline Status try_predict_covariance<contract_proof::Linalg>(
+inline Status predict_covariance<contract_proof::Linalg>(
 #if FORMAL_ESKF_PROOF_INS
     step_proof::State const & state,
 #endif
@@ -203,9 +203,8 @@ inline Status try_predict_covariance<contract_proof::Linalg>(
 }
 
 template <>
-inline Status try_inject_nominal<contract_proof::Linalg>(step_proof::State const & state,
-                                                         step_proof::Error const & error,
-                                                         contract_proof::Scalar minimum, step_proof::State & output)
+inline Status inject_nominal<contract_proof::Linalg>(step_proof::State const & state, step_proof::Error const & error,
+                                                     contract_proof::Scalar minimum, step_proof::State & output)
 {
     using namespace step_proof;
     nominal_request(state, output);
@@ -216,9 +215,9 @@ inline Status try_inject_nominal<contract_proof::Linalg>(step_proof::State const
 }
 
 template <>
-inline Status try_reset_covariance<contract_proof::Linalg>(step_proof::Error const & error,
-                                                           step_proof::Matrix const & covariance,
-                                                           step_proof::Matrix & output)
+inline Status reset_covariance<contract_proof::Linalg>(step_proof::Error const & error,
+                                                       step_proof::Matrix const & covariance,
+                                                       step_proof::Matrix & output)
 {
     using namespace step_proof;
     covariance_request(covariance, output);
@@ -247,23 +246,23 @@ namespace formal_eskf::so3
 // retained dependencies (normalization.cpp and maps.cpp). No attitude helper,
 // nominal wrapper, validation or translation arithmetic is summarized here.
 template <>
-inline Status UnitQuaternion<contract_proof::Linalg>::try_from_coefficients(vector4_type const &, value_type,
-                                                                            UnitQuaternion & output)
+inline Status UnitQuaternion<contract_proof::Linalg>::from_coefficients(vector4_type const &, value_type,
+                                                                        UnitQuaternion & output)
 {
     output = step_proof::leaves->constructor;
     return step_proof::leaves->constructor_status;
 }
 template <>
-inline Status try_exp<contract_proof::Linalg>(contract_proof::Vector3 const &, contract_proof::Scalar,
-                                              contract_proof::Quaternion & output)
+inline Status exp<contract_proof::Linalg>(contract_proof::Vector3 const &, contract_proof::Scalar,
+                                          contract_proof::Quaternion & output)
 {
     output = step_proof::leaves->exponential;
     return step_proof::leaves->exponential_status;
 }
 template <>
-inline Status try_compose_normalized<contract_proof::Linalg>(contract_proof::Quaternion const &,
-                                                             contract_proof::Quaternion const &, contract_proof::Scalar,
-                                                             contract_proof::Quaternion & output)
+inline Status compose_normalized<contract_proof::Linalg>(contract_proof::Quaternion const &,
+                                                         contract_proof::Quaternion const &, contract_proof::Scalar,
+                                                         contract_proof::Quaternion & output)
 {
     output = step_proof::leaves->composition;
     return step_proof::leaves->composition_status;
@@ -313,8 +312,7 @@ void prediction_transaction(State state, Matrix covariance, Imu imu, Scalar dt, 
     Calls::covariance_before = &before_covariance;
     Calls::nominal = Calls::covariance_calls = 0U;
 
-    auto const status =
-        formal_eskf::try_predict(state, covariance, imu, dt, parameters, target_state, target_covariance);
+    auto const status = formal_eskf::predict(state, covariance, imu, dt, parameters, target_state, target_covariance);
     auto const expected =
         results.nominal_status == Status::success ? results.covariance_status : results.nominal_status;
     __ESBMC_assert(status == expected, "E-STEP: prediction returns the first failure or success");
@@ -386,8 +384,8 @@ void injection_reset_transaction(State state, Matrix covariance, Error error, Sc
     Calls::error_before = &before_error;
     Calls::nominal = Calls::covariance_calls = 0U;
 
-    auto const status = formal_eskf::try_inject_and_reset(state, covariance, error, minimum, target_state,
-                                                          target_covariance, target_error);
+    auto const status =
+        formal_eskf::inject_and_reset(state, covariance, error, minimum, target_state, target_covariance, target_error);
     auto const expected =
         results.nominal_status == Status::success ? results.covariance_status : results.nominal_status;
     __ESBMC_assert(status == expected, "E-STEP: injection/reset returns the first failure or success");
@@ -448,7 +446,7 @@ void verify_nominal_prediction_frame(State state, Imu imu, Scalar dt, Parameters
     auto const old_imu = imu;
     auto const old_parameters = parameters;
     leaves = &leaf_results;
-    (void)formal_eskf::try_predict_nominal(state, imu, dt, parameters, output);
+    (void)formal_eskf::predict_nominal(state, imu, dt, parameters, output);
     __ESBMC_assert(same_state(state, old_state) && same_imu(imu, old_imu) &&
                        same_parameters(parameters, old_parameters),
                    "E-STEP producer: actual same-type nominal prediction preserves every input field");

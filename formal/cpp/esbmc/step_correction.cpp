@@ -50,8 +50,8 @@ void unpublished()
 namespace formal_eskf::detail
 {
 template <>
-inline Status try_compute_correction_gain<step_correction_proof::Backend, step_correction_proof::state_size,
-                                          step_correction_proof::measurement_size>(
+inline Status compute_correction_gain<step_correction_proof::Backend, step_correction_proof::state_size,
+                                      step_correction_proof::measurement_size>(
     step_correction_proof::Covariance const & P, step_correction_proof::Residual const & r,
     step_correction_proof::Jacobian const & H, step_correction_proof::Noise const & V,
     step_correction_proof::Scalar minimum, correction_proof::Gain & output)
@@ -73,8 +73,8 @@ inline Status try_compute_correction_gain<step_correction_proof::Backend, step_c
 }
 
 template <>
-inline Status try_apply_correction_gain<step_correction_proof::Backend, step_correction_proof::state_size,
-                                        step_correction_proof::measurement_size>(
+inline Status apply_correction_gain<step_correction_proof::Backend, step_correction_proof::state_size,
+                                    step_correction_proof::measurement_size>(
     step_correction_proof::Covariance const & P, step_correction_proof::Residual const & r,
     step_correction_proof::Jacobian const & H, step_correction_proof::Noise const & V, correction_proof::Gain const & K,
     step_correction_proof::Correction & delta, step_correction_proof::Covariance & output)
@@ -100,10 +100,10 @@ inline Status try_apply_correction_gain<step_correction_proof::Backend, step_cor
 namespace formal_eskf
 {
 template <>
-inline Status try_inject_nominal<step_correction_proof::Backend>(step_correction_proof::State const & state,
-                                                                 step_correction_proof::Error const & error,
-                                                                 step_correction_proof::Scalar minimum,
-                                                                 step_correction_proof::State & output)
+inline Status inject_nominal<step_correction_proof::Backend>(step_correction_proof::State const & state,
+                                                             step_correction_proof::Error const & error,
+                                                             step_correction_proof::Scalar minimum,
+                                                             step_correction_proof::State & output)
 {
     using namespace step_correction_proof;
     __ESBMC_assert(Calls::correction == 1U && Calls::results->correction_status == Status::success &&
@@ -120,9 +120,9 @@ inline Status try_inject_nominal<step_correction_proof::Backend>(step_correction
 }
 
 template <>
-inline Status try_reset_covariance<step_correction_proof::Backend>(step_correction_proof::Error const & error,
-                                                                   step_correction_proof::Covariance const & covariance,
-                                                                   step_correction_proof::Covariance & output)
+inline Status reset_covariance<step_correction_proof::Backend>(step_correction_proof::Error const & error,
+                                                               step_correction_proof::Covariance const & covariance,
+                                                               step_correction_proof::Covariance & output)
 {
     using namespace step_correction_proof;
     __ESBMC_assert(Calls::injection == 1U && Calls::results->injection_status == Status::success &&
@@ -183,7 +183,7 @@ void verify_correction_step(State state, Covariance covariance, Residual residua
     Calls::covariance_before = &before_covariance;
     Calls::gain = Calls::correction = Calls::injection = Calls::reset = 0U;
     auto const status =
-        formal_eskf::try_correct(state, covariance, residual, H, V, minimum, target_state, target_covariance);
+        formal_eskf::correct(state, covariance, residual, H, V, minimum, target_state, target_covariance);
     bool const gain_ok = results.gain_status == Status::success;
     bool const correction_ok = gain_ok && results.correction_status == Status::success;
     bool const injection_ok = correction_ok && results.injection_status == Status::success;

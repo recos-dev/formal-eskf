@@ -61,11 +61,11 @@ public:
         bool spoofing_available = false;
         typename monitor_type::result_type quality{};
 
-        [[nodiscard]] bool evaluated() const { return quality.decision != runtime::GnssQualityDecision::invalid_call; }
-        [[nodiscard]] bool accepted() const { return quality.decision == runtime::GnssQualityDecision::accepted; }
-        [[nodiscard]] std::string_view outcome_name() const;
+        bool evaluated() const { return quality.decision != runtime::GnssQualityDecision::invalid_call; }
+        bool accepted() const { return quality.decision == runtime::GnssQualityDecision::accepted; }
+        std::string_view outcome_name() const;
 
-        [[nodiscard]] runtime::GnssFusion::Sample lifecycle_sample(std::uint64_t time_us) const
+        runtime::GnssFusion::Sample lifecycle_sample(std::uint64_t time_us) const
         {
             // Invalid velocity never entered the receiver buffer. Unavailable
             // quality metadata is a received sample, but cannot refresh health.

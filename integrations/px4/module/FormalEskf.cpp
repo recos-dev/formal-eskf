@@ -267,13 +267,13 @@ void FormalEskf::initialize(vehicle_imu_s const & sample, imu_type const & imu)
     }
     const double yaw = m_magnetic_model.declination() - std::atan2(level_mag(1), level_mag(0));
     const matrix::Quaternion<double> q{matrix::Euler<double>(roll, pitch, yaw)};
-    if (!check(state_type::quaternion_type::try_from_coefficients(q(0), q(1), q(2), q(3), minimum_quaternion_norm,
-                                                                  m_state.q_nb)))
+    if (!check(state_type::quaternion_type::from_coefficients(q(0), q(1), q(2), q(3), minimum_quaternion_norm,
+                                                              m_state.q_nb)))
     {
         return;
     }
     m_state.b_g = m_gyro_sum / double(m_init_samples);
-    if (!check(formal_eskf::px4::try_limit_imu_bias(m_state)))
+    if (!check(formal_eskf::px4::limit_imu_bias(m_state)))
     {
         return;
     }
@@ -415,16 +415,16 @@ void FormalEskf::predict_and_fuse(vehicle_imu_s const & sample, imu_type const &
         m_average_imu_interval = nominal_imu_interval;
         m_magnetic_aiding.reset_acceleration();
         // Synthetic intervals use the previous rate, never a fresh sensor observation.
-        if (!check(formal_eskf::px4::try_predict_imu(m_state, m_covariance, m_previous_imu, double(gap) * 1e-6,
-                                                     m_parameters, 0, false)))
+        if (!check(formal_eskf::px4::predict_imu(m_state, m_covariance, m_previous_imu, double(gap) * 1e-6,
+                                                 m_parameters, 0, false)))
         {
             return;
         }
     }
     if (!update_imu_bias(sample, imu) ||
-        !check(formal_eskf::px4::try_predict_imu(m_state, m_covariance, imu, dt, m_parameters,
-                                                 sample.delta_velocity_clipping,
-                                                 m_vertical_health.state().bad_vertical_acceleration)))
+        !check(formal_eskf::px4::predict_imu(m_state, m_covariance, imu, dt, m_parameters,
+                                             sample.delta_velocity_clipping,
+                                             m_vertical_health.state().bad_vertical_acceleration)))
     {
         return;
     }
@@ -523,7 +523,7 @@ void FormalEskf::fuse_gps()
     {
         vector3_type delta;
         auto const status =
-            try_reset_velocity(m_state, m_covariance, velocity, velocity_variances, m_state, m_covariance, delta);
+            reset_velocity(m_state, m_covariance, velocity, velocity_variances, m_state, m_covariance, delta);
         if (!check(
                 m_gnss_fusion.record_reset(Group::velocity, m_gnss_sample.time_us, formal_eskf::succeeded(status))) ||
             !check(status))
@@ -552,8 +552,8 @@ void FormalEskf::fuse_gps()
         if (m_height_aiding.reset_required(m_time, {health.last_update_time_us, health.last_good_time_us}))
         {
             double delta{};
-            if (!check(try_reset_vertical_velocity(m_state, m_covariance, velocity(2), velocity_variances(2), m_state,
-                                                   m_covariance, delta)))
+            if (!check(reset_vertical_velocity(m_state, m_covariance, velocity(2), velocity_variances(2), m_state,
+                                               m_covariance, delta)))
             {
                 return;
             }
@@ -568,7 +568,7 @@ void FormalEskf::fuse_gps()
         auto const variances =
             formal_eskf::linalg::Vector<backend_type, 2>::from_row_major({position_variance, position_variance});
         auto const status =
-            try_reset_gnss_horizontal_position(m_state, m_covariance, xy, variances, m_state, m_covariance, delta);
+            reset_gnss_horizontal_position(m_state, m_covariance, xy, variances, m_state, m_covariance, delta);
         if (!check(m_gnss_fusion.record_reset(Group::horizontal_position, m_gnss_sample.time_us,
                                               formal_eskf::succeeded(status))) ||
             !check(status))

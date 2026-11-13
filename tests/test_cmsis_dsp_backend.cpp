@@ -34,7 +34,7 @@ template <typename Matrix> void mark_padding(Matrix & matrix)
     }
 }
 
-template <typename Matrix> [[nodiscard]] bool padding_is(Matrix const & matrix, typename Matrix::value_type expected)
+template <typename Matrix> bool padding_is(Matrix const & matrix, typename Matrix::value_type expected)
 {
     auto const & storage = MatrixAccess::storage(matrix);
     for (std::size_t index = Matrix::row_count * Matrix::column_count; index < storage.values.size(); ++index)

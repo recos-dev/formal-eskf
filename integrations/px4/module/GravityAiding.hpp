@@ -41,8 +41,8 @@ public:
         m_sampler.reset();
         m_active = false;
     }
-    [[nodiscard]] bool active() const { return m_active; }
-    [[nodiscard]] bool tilt_aligned() const { return m_tilt.aligned(); }
+    bool active() const { return m_active; }
+    bool tilt_aligned() const { return m_tilt.aligned(); }
 
     /** Tilt/sampler history is consumed before correction; a later failure does not roll it back. */
     [[nodiscard]] Result update(ImuSample<Linalg> const & imu, std::uint64_t angular_period_us,
@@ -106,7 +106,7 @@ GravityAiding<Linalg>::update(ImuSample<Linalg> const & imu, std::uint64_t angul
     result.status = result.fusion.status;
     if (result.fusion.decision == runtime::FusionDecision::fused)
     {
-        result.status = try_limit_imu_bias(state);
+        result.status = limit_imu_bias(state);
     }
     return result;
 }

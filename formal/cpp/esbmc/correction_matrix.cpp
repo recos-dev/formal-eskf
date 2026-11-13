@@ -192,7 +192,7 @@ void correction_finish_case(Square candidate, bool finite)
     FiniteCall::input = &before;
     FiniteCall::result = finite;
     FiniteCall::count = 0U;
-    auto const status = formal_eskf::detail::try_finish_covariance(candidate, candidate);
+    auto const status = formal_eskf::detail::finish_covariance(candidate, candidate);
     __ESBMC_assert(FiniteCall::count == 1U && status == (finite ? Status::success : Status::non_finite_result),
                    "E-CORRECT finalizer: status is exactly the complete candidate finite predicate");
     Scalar old[rows * rows]{}, result[rows * rows]{};

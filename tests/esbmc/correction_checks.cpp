@@ -36,10 +36,10 @@ void verify_correction_regression()
     solve_proof::Math::sqrt = {};
     solve_proof::Math::sqrt.results.head = Scalar{2};
     Gain K;
-    Status status = formal_eskf::detail::try_compute_correction_gain(prior, residual, H, V, Scalar{0.5}, K);
+    Status status = formal_eskf::detail::compute_correction_gain(prior, residual, H, V, Scalar{0.5}, K);
     if (status == Status::success)
     {
-        status = formal_eskf::detail::try_apply_correction_gain(prior, residual, H, V, K, delta, output);
+        status = formal_eskf::detail::apply_correction_gain(prior, residual, H, V, K, delta, output);
     }
     __ESBMC_assert(status == Status::success && solve_proof::Math::sqrt.calls == 1U,
                    "Regression: coupled correction reaches actual solve and successful Joseph publication");
@@ -70,10 +70,10 @@ void verify_correction_regression()
     auto const saved_output = output;
     residual(0U) = std::numeric_limits<Scalar>::infinity();
     solve_proof::Math::sqrt.calls = 0U;
-    Status rejected = formal_eskf::detail::try_compute_correction_gain(prior, residual, H, V, Scalar{0.5}, K);
+    Status rejected = formal_eskf::detail::compute_correction_gain(prior, residual, H, V, Scalar{0.5}, K);
     if (rejected == Status::success)
     {
-        rejected = formal_eskf::detail::try_apply_correction_gain(prior, residual, H, V, K, delta, output);
+        rejected = formal_eskf::detail::apply_correction_gain(prior, residual, H, V, K, delta, output);
     }
     __ESBMC_assert(rejected == Status::non_finite_input && solve_proof::Math::sqrt.calls == 0U &&
                        same_matrix(delta, saved_delta) && same_matrix(output, saved_output),

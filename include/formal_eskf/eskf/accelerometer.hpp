@@ -24,9 +24,8 @@ namespace formal_eskf
  * This is an unchecked model evaluation; inputs and arithmetic must be finite.
  */
 template <typename Linalg>
-[[nodiscard]] linalg::Matrix<Linalg, 3U, 3U>
-accelerometer_jacobian(configuration::Ahrs::NominalState<Linalg> const & state,
-                       linalg::Vector<Linalg, 3U> const & gravity_n)
+linalg::Matrix<Linalg, 3U, 3U> accelerometer_jacobian(configuration::Ahrs::NominalState<Linalg> const & state,
+                                                      linalg::Vector<Linalg, 3U> const & gravity_n)
 {
     return so3::hat<Linalg>(-so3::inverse_rotate(state.q_nb, gravity_n));
 }
@@ -39,9 +38,8 @@ accelerometer_jacobian(configuration::Ahrs::NominalState<Linalg> const & state,
  * the consumed quaternion/gravity inputs and arithmetic must be finite.
  */
 template <typename Linalg>
-[[nodiscard]] linalg::Matrix<Linalg, 3U, 15U>
-accelerometer_jacobian(configuration::Ins::NominalState<Linalg> const & state,
-                       linalg::Vector<Linalg, 3U> const & gravity_n)
+linalg::Matrix<Linalg, 3U, 15U> accelerometer_jacobian(configuration::Ins::NominalState<Linalg> const & state,
+                                                       linalg::Vector<Linalg, 3U> const & gravity_n)
 {
     auto const h = -so3::inverse_rotate(state.q_nb, gravity_n);
     linalg::Matrix<Linalg, 3U, 15U> H;
@@ -66,15 +64,15 @@ accelerometer_jacobian(configuration::Ins::NominalState<Linalg> const & state,
  * V must account for effective measurement errors under the chosen model and
  * be independent of prior error for the standard correction to be applicable.
  *
- * Uses full three-axis try_correct: Cholesky, Joseph, right-multiplicative Exp
+ * Uses full three-axis correct: Cholesky, Joseph, right-multiplicative Exp
  * injection and covariance reset. P must be symmetric PSD and V symmetric SPD.
  * Non-finite consumed inputs return non_finite_input, zero gravity domain_error,
  * and non-finite model/Jacobian/residual arithmetic non_finite_result. Remaining
- * checks follow try_correct. Outputs commit only on success and may alias their
+ * checks follow correct. Outputs commit only on success and may alias their
  * respective inputs. No backend, state augmentation or allocation is added.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_correct_accelerometer(
+[[nodiscard]] Status correct_accelerometer(
     configuration::Ahrs::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 3U, 3U> const & covariance,
     linalg::Vector<Linalg, 3U> const & specific_force_b, linalg::Vector<Linalg, 3U> const & gravity_n,
     linalg::Matrix<Linalg, 3U, 3U> const & V, typename Linalg::value_type minimum_quaternion_norm,
@@ -97,7 +95,7 @@ template <typename Linalg>
         return Status::non_finite_result;
     }
     auto const H = so3::hat<Linalg>(h);
-    return try_correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output);
+    return correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output);
 }
 
 /**
@@ -121,7 +119,7 @@ template <typename Linalg>
  * failure atomicity follow the AHRS overload.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_correct_accelerometer(
+[[nodiscard]] Status correct_accelerometer(
     configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
     linalg::Vector<Linalg, 3U> const & specific_force_b, linalg::Vector<Linalg, 3U> const & gravity_n,
     linalg::Matrix<Linalg, 3U, 3U> const & V, typename Linalg::value_type minimum_quaternion_norm,
@@ -152,8 +150,7 @@ template <typename Linalg>
     {
         return Status::non_finite_result;
     }
-    return try_correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output,
-                       bias_update);
+    return correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output, bias_update);
 }
 
 } /* end namespace formal_eskf */

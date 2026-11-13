@@ -16,7 +16,7 @@ namespace formal_eskf::runtime
 
 /**
  * Gated horizontal position, using the core's NED observation and Jacobian.
- * Frames, units, covariance premises and aliases follow try_correct_horizontal_position.
+ * Frames, units, covariance premises and aliases follow correct_horizontal_position.
  * Both axes form one rejection group, independent of height and velocity calls.
  * Compute the residual from this call's prior; fuse_measurement owns gate/correction.
  */

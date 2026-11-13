@@ -132,12 +132,12 @@ template <std::size_t AttitudeOffset, typename Linalg, std::size_t Size>
     }
     value_type measured_heading{};
     value_type reference_heading{};
-    status = scalar::try_atan2<math_type>(measured_n(1U), measured_n(0U), measured_heading);
+    status = scalar::atan2<math_type>(measured_n(1U), measured_n(0U), measured_heading);
     if (!succeeded(status))
     {
         return status;
     }
-    status = scalar::try_atan2<math_type>(m_n(1U), m_n(0U), reference_heading);
+    status = scalar::atan2<math_type>(m_n(1U), m_n(0U), reference_heading);
     if (!succeeded(status))
     {
         return status;
@@ -152,13 +152,13 @@ template <std::size_t AttitudeOffset, typename Linalg, std::size_t Size>
     {
         heading_change += value_type{2} * pi;
     }
-    status = so3::try_exp<Linalg>(vector_type::from_row_major({value_type{0}, value_type{0}, heading_change}),
-                                  minimum_quaternion_norm, delta_output);
+    status = so3::exp<Linalg>(vector_type::from_row_major({value_type{0}, value_type{0}, heading_change}),
+                              minimum_quaternion_norm, delta_output);
     if (!succeeded(status))
     {
         return status;
     }
-    status = so3::try_compose_normalized(delta_output, q_nb, minimum_quaternion_norm, attitude_output);
+    status = so3::compose_normalized(delta_output, q_nb, minimum_quaternion_norm, attitude_output);
     if (!succeeded(status))
     {
         return status;
@@ -189,7 +189,7 @@ template <std::size_t AttitudeOffset, typename Linalg, std::size_t Size>
  * entire priors; all other storage, including delta_output, must be disjoint.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_reset_magnetic_heading(
+[[nodiscard]] Status reset_magnetic_heading(
     configuration::Ahrs::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 3U, 3U> const & covariance,
     linalg::Vector<Linalg, 3U> const & m_b, linalg::Vector<Linalg, 3U> const & m_n,
     typename Linalg::value_type yaw_variance, typename Linalg::value_type minimum_horizontal_field,
@@ -214,7 +214,7 @@ template <typename Linalg>
 
 /** INS overload; position, velocity and bias values are retained exactly. */
 template <typename Linalg>
-[[nodiscard]] Status try_reset_magnetic_heading(
+[[nodiscard]] Status reset_magnetic_heading(
     configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
     linalg::Vector<Linalg, 3U> const & m_b, linalg::Vector<Linalg, 3U> const & m_n,
     typename Linalg::value_type yaw_variance, typename Linalg::value_type minimum_horizontal_field,

@@ -70,7 +70,7 @@ public:
 
     /** Also required when restarting after missing IMU data or changing source/calibration/frame. */
     void reset() { m_state = {}; }
-    [[nodiscard]] State const & state() const { return m_state; }
+    State const & state() const { return m_state; }
 
     /**
      * Evaluate once per actual estimator IMU update. The caller owns source
@@ -135,7 +135,7 @@ Status VerticalAccelerationHealth<Linalg>::falling_likelihood(Observations const
             continue;
         }
         value_type deviation{};
-        auto const status = scalar::try_sqrt<math_type>(input.variance, deviation);
+        auto const status = scalar::sqrt<math_type>(input.variance, deviation);
         if (!succeeded(status))
         {
             return status;

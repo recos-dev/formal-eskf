@@ -110,8 +110,8 @@ fuse_magnetometer(configuration::Ahrs::NominalState<Linalg> const & state,
         return result;
     }
     // Magnetic correction owns attitude projection and the same-gain Joseph update.
-    result.fusion.status = try_correct_magnetometer(state, covariance, m_b, m_n, V, minimum_quaternion_norm,
-                                                    state_output, covariance_output);
+    result.fusion.status =
+        correct_magnetometer(state, covariance, m_b, m_n, V, minimum_quaternion_norm, state_output, covariance_output);
     if (succeeded(result.fusion.status))
     {
         result.fusion.decision = FusionDecision::fused;
@@ -156,8 +156,8 @@ template <typename Linalg>
         return result;
     }
     // Magnetic correction owns attitude projection and the same-gain Joseph update.
-    result.fusion.status = try_correct_magnetometer(state, covariance, m_b, m_n, V, minimum_quaternion_norm,
-                                                    state_output, covariance_output, bias_update);
+    result.fusion.status = correct_magnetometer(state, covariance, m_b, m_n, V, minimum_quaternion_norm, state_output,
+                                                covariance_output, bias_update);
     if (succeeded(result.fusion.status))
     {
         result.fusion.decision = FusionDecision::fused;

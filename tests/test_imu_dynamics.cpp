@@ -38,7 +38,7 @@ template <typename Linalg> struct ImuDynamicsFixture
     vector_type b_g{};
     formal_eskf::runtime::ImuDynamicsParameters<value_type> parameters{value_type{4}, value_type{2}};
 
-    [[nodiscard]] auto check() const { return formal_eskf::runtime::check_imu_dynamics(imu, b_a, b_g, parameters); }
+    auto check() const { return formal_eskf::runtime::check_imu_dynamics(imu, b_a, b_g, parameters); }
 };
 
 template <typename Matrix> bool same_bits(Matrix const & a, Matrix const & b)
@@ -289,8 +289,8 @@ template <typename Linalg> void test_learning_pipeline(TestContext & test, std::
                     profile, "detector and existing policy implement immediate inhibition and one recovery interval");
         state_type posterior;
         covariance_type posterior_P;
-        test.expect(formal_eskf::try_correct_velocity(prior, P, velocity, V, static_cast<value_type>(1e-6), posterior,
-                                                      posterior_P, result.bias_update) == Status::success,
+        test.expect(formal_eskf::correct_velocity(prior, P, velocity, V, static_cast<value_type>(1e-6), posterior,
+                                                  posterior_P, result.bias_update) == Status::success,
                     profile, "policy permissions reach real INS correction");
         for (std::size_t axis = 0U; axis < 3U; ++axis)
         {

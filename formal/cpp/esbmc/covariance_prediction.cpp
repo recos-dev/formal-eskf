@@ -204,8 +204,8 @@ inline Status validate_prediction_quaternion<contract_proof::Linalg>(contract_pr
 }
 template <>
 inline Status
-try_attitude_error_transition<contract_proof::Linalg>(contract_proof::Vector3 const & omega, contract_proof::Scalar dt,
-                                                      contract_proof::Scalar minimum, pcov_proof::Matrix3 & output)
+attitude_error_transition<contract_proof::Linalg>(contract_proof::Vector3 const & omega, contract_proof::Scalar dt,
+                                                  contract_proof::Scalar minimum, pcov_proof::Matrix3 & output)
 {
     using namespace pcov_proof;
     __ESBMC_assert(Calls::transition++ == 0U, "E-PCOV contract: one attitude transition");
@@ -223,7 +223,7 @@ try_attitude_error_transition<contract_proof::Linalg>(contract_proof::Vector3 co
         output = Calls::result->transition;
     return Calls::result->transition_status;
 }
-template <> inline Status try_finish_covariance(pcov_proof::Matrix & candidate, pcov_proof::Matrix & output)
+template <> inline Status finish_covariance(pcov_proof::Matrix & candidate, pcov_proof::Matrix & output)
 {
     using namespace pcov_proof;
     __ESBMC_assert(Calls::finish++ == 0U, "E-PCOV contract: one covariance finalizer");
@@ -240,9 +240,9 @@ template <> inline Status try_finish_covariance(pcov_proof::Matrix & candidate, 
 namespace formal_eskf
 {
 template <>
-inline Status try_discretize_process_noise<contract_proof::Linalg>(pcov_proof::Noise const & noise,
-                                                                   contract_proof::Scalar dt,
-                                                                   pcov_proof::NoiseMatrix & output)
+inline Status discretize_process_noise<contract_proof::Linalg>(pcov_proof::Noise const & noise,
+                                                               contract_proof::Scalar dt,
+                                                               pcov_proof::NoiseMatrix & output)
 {
     using namespace pcov_proof;
     __ESBMC_assert(Calls::noise++ == 0U, "E-PCOV contract: one process noise discretization");
@@ -367,9 +367,9 @@ void verify_predict_covariance(State state, Matrix covariance, Imu imu, Scalar d
 #endif
     auto const before = target;
 #if FORMAL_ESKF_PROOF_INS
-    auto const status = formal_eskf::try_predict_covariance(state, covariance, imu, dt, parameters, target);
+    auto const status = formal_eskf::predict_covariance(state, covariance, imu, dt, parameters, target);
 #else
-    auto const status = formal_eskf::try_predict_covariance(covariance, imu, dt, parameters, target);
+    auto const status = formal_eskf::predict_covariance(covariance, imu, dt, parameters, target);
 #endif
 
     Status expected = parameter_status(dt, parameters_before);

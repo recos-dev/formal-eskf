@@ -190,7 +190,7 @@ void verify_right_jacobian(Vector3 phi, Matrix3 output, Scalar squared, Scalar r
     {
         expected = Status::non_finite_result;
     }
-    auto const actual = formal_eskf::so3::try_right_jacobian(phi, output);
+    auto const actual = formal_eskf::so3::right_jacobian(phi, output);
     __ESBMC_assert(FiniteContract::calls == (candidate_call ? 1U : 0U),
                    "F-JR: final predicate is requested exactly after valid input and scalar results");
     __ESBMC_assert(actual == expected, "F-JR: input, squared-norm, scalar and complete candidate status");
@@ -270,7 +270,7 @@ void verify_right_jacobian_boundaries()
     Vector3 phi;
     Matrix3 output;
     OpaqueMath::prepare(Scalar{0}, Scalar{0}, Scalar{0}, Scalar{0});
-    auto actual = formal_eskf::so3::try_right_jacobian(phi, output);
+    auto actual = formal_eskf::so3::right_jacobian(phi, output);
     __ESBMC_assert(actual == Status::success && OpaqueMath::sqrt.calls == 0U && OpaqueMath::sin.calls == 0U &&
                        OpaqueMath::cos.calls == 0U,
                    "F-JR: zero succeeds without nonlinear scalar calls");
@@ -297,7 +297,7 @@ void verify_right_jacobian_boundaries()
                        "F-JR: adjacent axis inputs reach below, exact and above the Taylor cutoff");
         // Finite dispatch probes, not accuracy witnesses for sin/cos.
         OpaqueMath::prepare(phi(0U), Scalar{0.5}, Scalar{0.5}, Scalar{0});
-        actual = formal_eskf::so3::try_right_jacobian(phi, output);
+        actual = formal_eskf::so3::right_jacobian(phi, output);
         unsigned const calls = side == 2U ? 1U : 0U;
         __ESBMC_assert(actual == Status::success && OpaqueMath::sqrt.calls == calls && OpaqueMath::sin.calls == calls &&
                            OpaqueMath::cos.calls == calls,

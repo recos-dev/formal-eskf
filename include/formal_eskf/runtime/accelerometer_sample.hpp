@@ -95,7 +95,7 @@ Status AccelerometerSample<Linalg, IntervalUs>::integrate(ImuSample<Linalg> cons
         return Status::non_finite_result;
     }
     so3::UnitQuaternion<Linalg> delta_q;
-    auto const status = so3::try_exp<Linalg>(delta_angle, minimum_quaternion_norm, delta_q);
+    auto const status = so3::exp<Linalg>(delta_angle, minimum_quaternion_norm, delta_q);
     if (!succeeded(status))
     {
         return status;

@@ -28,7 +28,7 @@ using TestContext = formal_eskf::test::Context;
 using formal_eskf::Status;
 using formal_eskf::test::near;
 
-template <typename Matrix> [[nodiscard]] bool same_bits(Matrix const & a, Matrix const & b)
+template <typename Matrix> bool same_bits(Matrix const & a, Matrix const & b)
 {
     using bytes_type = std::array<std::byte, sizeof(typename Matrix::value_type)>;
     for (std::size_t row = 0U; row < Matrix::row_count; ++row)
@@ -44,7 +44,7 @@ template <typename Matrix> [[nodiscard]] bool same_bits(Matrix const & a, Matrix
     return true;
 }
 
-template <typename State> [[nodiscard]] bool same_state(State const & a, State const & b)
+template <typename State> bool same_state(State const & a, State const & b)
 {
     bool result = same_bits(a.q_nb.coefficients(), b.q_nb.coefficients());
     if constexpr (requires { a.p_n; })
@@ -74,18 +74,18 @@ template <typename Linalg, typename Configuration> struct AccelerometerFixture
     vector_type g_n = vector_type::from_row_major({value_type{0}, value_type{0}, value_type{2}});
     matrix3_type V = matrix3_type::identity();
 
-    [[nodiscard]] jacobian_type jacobian() const { return formal_eskf::accelerometer_jacobian(state, g_n); }
+    jacobian_type jacobian() const { return formal_eskf::accelerometer_jacobian(state, g_n); }
 
     [[nodiscard]] Status correct(state_type & output, covariance_type & P_output, value_type norm = minimum_norm,
                                  formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {}) const
     {
         if constexpr (size == 3U)
         {
-            return formal_eskf::try_correct_accelerometer(state, P, f_b, g_n, V, norm, output, P_output);
+            return formal_eskf::correct_accelerometer(state, P, f_b, g_n, V, norm, output, P_output);
         }
         else
         {
-            return formal_eskf::try_correct_accelerometer(state, P, f_b, g_n, V, norm, output, P_output, bias_update);
+            return formal_eskf::correct_accelerometer(state, P, f_b, g_n, V, norm, output, P_output, bias_update);
         }
     }
 
@@ -107,7 +107,7 @@ template <typename Linalg, typename Configuration> struct AccelerometerFixture
 // Independent scalar observation oracle: no production rotation, hat, cross,
 // or measurement helper is used. Long double limits finite-difference noise.
 template <typename State, typename Vector>
-[[nodiscard]] std::array<long double, 3U> observation(State const & state, Vector const & g_n)
+std::array<long double, 3U> observation(State const & state, Vector const & g_n)
 {
     long double const w = state.q_nb.q0();
     long double const x = state.q_nb.q1();
@@ -131,9 +131,8 @@ template <typename Fixture> void moving_state(TestContext & test, Fixture & fixt
 {
     using value_type = typename Fixture::value_type;
     using quaternion_type = decltype(fixture.state.q_nb);
-    test.expect(quaternion_type::try_from_coefficients(value_type{0.5}, value_type{0.5}, value_type{0.5},
-                                                       value_type{0.5}, Fixture::minimum_norm,
-                                                       fixture.state.q_nb) == Status::success,
+    test.expect(quaternion_type::from_coefficients(value_type{0.5}, value_type{0.5}, value_type{0.5}, value_type{0.5},
+                                                   Fixture::minimum_norm, fixture.state.q_nb) == Status::success,
                 profile, "cyclic rotation is valid");
     if constexpr (Fixture::size == 15U)
     {
@@ -159,7 +158,7 @@ void test_accelerometer_jacobian(TestContext & test, std::string_view profile)
     test.expect(formal_eskf::linalg::max_abs(fixture.jacobian() - expected) == value_type{0}, profile,
                 "independent Jacobian checks frame, attitude sign and every zero state column");
 
-    test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
+    test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::from_coefficients(
                     value_type{2}, value_type{-1}, value_type{3}, value_type{4}, Fixture::minimum_norm,
                     fixture.state.q_nb) == Status::success,
                 profile, "general attitude is valid");
@@ -176,11 +175,10 @@ void test_accelerometer_jacobian(TestContext & test, std::string_view profile)
         Fixture::perturb(negative, column, -step);
         typename Fixture::state_type plus;
         typename Fixture::state_type minus;
-        test.expect(formal_eskf::try_inject_nominal(fixture.state, positive, Fixture::minimum_norm, plus) ==
-                            Status::success &&
-                        formal_eskf::try_inject_nominal(fixture.state, negative, Fixture::minimum_norm, minus) ==
-                            Status::success,
-                    profile, "finite-difference state injections succeed");
+        test.expect(
+            formal_eskf::inject_nominal(fixture.state, positive, Fixture::minimum_norm, plus) == Status::success &&
+                formal_eskf::inject_nominal(fixture.state, negative, Fixture::minimum_norm, minus) == Status::success,
+            profile, "finite-difference state injections succeed");
         auto const h_plus = observation(plus, fixture.g_n);
         auto const h_minus = observation(minus, fixture.g_n);
         for (std::size_t row = 0U; row < 3U; ++row)
@@ -303,8 +301,8 @@ void test_accelerometer_delegation(TestContext & test, std::string_view profile,
     fixture.V(1U, 0U) = value_type{0.25};
     typename Fixture::state_type expected_state;
     typename Fixture::covariance_type expected_P;
-    test.expect(formal_eskf::try_correct(fixture.state, fixture.P, r, fixture.jacobian(), fixture.V,
-                                         Fixture::minimum_norm, expected_state, expected_P) == Status::success,
+    test.expect(formal_eskf::correct(fixture.state, fixture.P, r, fixture.jacobian(), fixture.V, Fixture::minimum_norm,
+                                     expected_state, expected_P) == Status::success,
                 profile, "generic correction with effective correlated V succeeds");
     if constexpr (Fixture::size == 15U)
     {
@@ -345,9 +343,9 @@ void test_accelerometer_delegation(TestContext & test, std::string_view profile,
                 bias_update.accelerometer[axis] = (permissions & (1U << axis)) != 0U;
                 bias_update.gyroscope[axis] = (permissions & (1U << (3U + axis))) != 0U;
             }
-            test.expect(formal_eskf::try_correct(fixture.state, fixture.P, r, fixture.jacobian(), fixture.V,
-                                                 Fixture::minimum_norm, expected_state, expected_P,
-                                                 bias_update) == Status::success,
+            test.expect(formal_eskf::correct(fixture.state, fixture.P, r, fixture.jacobian(), fixture.V,
+                                             Fixture::minimum_norm, expected_state, expected_P,
+                                             bias_update) == Status::success,
                         profile, "controlled generic correction succeeds");
             for (unsigned aliases = 0U; aliases < 4U; ++aliases)
             {

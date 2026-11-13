@@ -59,7 +59,7 @@ void limit_vertical_innovation(NavigationInnovationCheck<Linalg, Size> & check, 
     using value_type = typename Linalg::value_type;
     using math_type = typename Linalg::scalar_math_type;
     value_type deviation{};
-    check.gate.status = scalar::try_sqrt<math_type>(check.gate.innovation_variance(axis), deviation);
+    check.gate.status = scalar::sqrt<math_type>(check.gate.innovation_variance(axis), deviation);
     if (!succeeded(check.gate.status))
     {
         return;
@@ -91,8 +91,8 @@ template <typename Linalg, std::size_t Size>
         return result;
     }
     auto & fusion = result.fusion;
-    fusion.status = try_correct(state, covariance, check.fusion_innovation, H, V, minimum_quaternion_norm, state_output,
-                                covariance_output, bias_update);
+    fusion.status = correct(state, covariance, check.fusion_innovation, H, V, minimum_quaternion_norm, state_output,
+                            covariance_output, bias_update);
     if (succeeded(fusion.status))
     {
         fusion.decision = FusionDecision::fused;

@@ -104,8 +104,8 @@ template <typename Linalg> void run(formal_eskf::test::Context & test)
         Aiding aiding;
         typename Aiding::state_type state;
         auto P = Aiding::covariance_type::identity() * static_cast<Scalar>(0.0001);
-        test.expect(formal_eskf::so3::try_exp<Linalg>(Vector::from_row_major({static_cast<Scalar>(0.02), 0, 0}),
-                                                      static_cast<Scalar>(1e-6), state.q_nb) == Status::success,
+        test.expect(formal_eskf::so3::exp<Linalg>(Vector::from_row_major({static_cast<Scalar>(0.02), 0, 0}),
+                                                  static_cast<Scalar>(1e-6), state.q_nb) == Status::success,
                     "setup", "tilted prior");
         auto const prior = state.q_nb.coefficients()(1);
         auto first = aiding.update(imu, 5000, 5000, 0, context, gravity, state, P);

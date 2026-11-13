@@ -83,17 +83,17 @@ template <typename Linalg>
         return Status::zero_or_unsafe_divisor;
     }
     MagneticFieldGeometry<value_type> candidate;
-    auto status = scalar::try_sqrt<math_type>(squared_strength, candidate.strength);
+    auto status = scalar::sqrt<math_type>(squared_strength, candidate.strength);
     if (!succeeded(status))
     {
         return status;
     }
-    status = scalar::try_sqrt<math_type>(horizontal_squared, candidate.horizontal);
+    status = scalar::sqrt<math_type>(horizontal_squared, candidate.horizontal);
     if (!succeeded(status))
     {
         return status;
     }
-    status = scalar::try_atan2<math_type>(field(2U), candidate.horizontal, candidate.inclination);
+    status = scalar::atan2<math_type>(field(2U), candidate.horizontal, candidate.inclination);
     if (succeeded(status))
     {
         output = candidate;
@@ -138,12 +138,12 @@ template <typename Linalg>
     using value_type = typename Linalg::value_type;
     using math_type = typename Linalg::scalar_math_type;
     value_type measured_heading{}, reference_heading{};
-    auto status = scalar::try_atan2<math_type>(measured_n(1U), measured_n(0U), measured_heading);
+    auto status = scalar::atan2<math_type>(measured_n(1U), measured_n(0U), measured_heading);
     if (!succeeded(status))
     {
         return status;
     }
-    status = scalar::try_atan2<math_type>(observation_n(1U), observation_n(0U), reference_heading);
+    status = scalar::atan2<math_type>(observation_n(1U), observation_n(0U), reference_heading);
     if (!succeeded(status))
     {
         return status;

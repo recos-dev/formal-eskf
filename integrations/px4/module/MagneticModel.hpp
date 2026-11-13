@@ -37,7 +37,7 @@ public:
                                     std::optional<sample_type> const & model);
 
     /** The adapter calls the host lookup only when this predicate is true. */
-    [[nodiscard]] bool lookup_due(std::uint64_t now_us, bool position_valid, bool origin_updated = false) const
+    bool lookup_due(std::uint64_t now_us, bool position_valid, bool origin_updated = false) const
     {
         return now_us > m_last_lookup_time &&
                (origin_updated || (position_valid && now_us - m_last_lookup_time > 10000000U));
@@ -47,15 +47,15 @@ public:
     [[nodiscard]] result_type update(std::uint64_t now_us, std::optional<sample_type> const & model,
                                      bool position_valid, bool origin_updated = false);
 
-    [[nodiscard]] vector_type const & observation_n() const { return m_observation; }
-    [[nodiscard]] vector_type const & health_n() const { return m_model.state().field_n; }
-    [[nodiscard]] bool available() const { return m_model.state().reference_id != 0U; }
-    [[nodiscard]] std::uint32_t reference_id() const { return m_reference_id; }
-    [[nodiscard]] std::uint32_t model_revision() const { return m_model.state().reference_id; }
-    [[nodiscard]] std::uint64_t lookup_count() const { return m_lookup_count; }
-    [[nodiscard]] std::uint64_t last_lookup_time() const { return m_last_lookup_time; }
-    [[nodiscard]] HeadingSource heading_source() const { return m_heading_source; }
-    [[nodiscard]] value_type declination() const { return m_declination; }
+    vector_type const & observation_n() const { return m_observation; }
+    vector_type const & health_n() const { return m_model.state().field_n; }
+    bool available() const { return m_model.state().reference_id != 0U; }
+    std::uint32_t reference_id() const { return m_reference_id; }
+    std::uint32_t model_revision() const { return m_model.state().reference_id; }
+    std::uint64_t lookup_count() const { return m_lookup_count; }
+    std::uint64_t last_lookup_time() const { return m_last_lookup_time; }
+    HeadingSource heading_source() const { return m_heading_source; }
+    value_type declination() const { return m_declination; }
 
     /** Express a local geographic NED model in the module's fixed origin NED. */
     [[nodiscard]] static Status to_origin_frame(sample_type const & local, double latitude_deg, double longitude_deg,

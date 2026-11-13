@@ -46,7 +46,7 @@ public:
         bool changed = false;
     };
 
-    [[nodiscard]] State const & state() const { return m_state; }
+    State const & state() const { return m_state; }
     void reset() { *this = MagneticReference{}; }
 
     /**
@@ -141,12 +141,12 @@ template <typename Linalg> Status MagneticReference<Linalg>::adopt(Sample const 
         return Status::out_of_range;
     }
     scalar::SinCos<value_type> declination, inclination;
-    auto status = scalar::try_sin_cos<math_type>(sample.declination, declination);
+    auto status = scalar::sin_cos<math_type>(sample.declination, declination);
     if (!succeeded(status))
     {
         return status;
     }
-    status = scalar::try_sin_cos<math_type>(sample.inclination, inclination);
+    status = scalar::sin_cos<math_type>(sample.inclination, inclination);
     if (!succeeded(status))
     {
         return status;

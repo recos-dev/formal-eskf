@@ -29,7 +29,7 @@ using formal_eskf::Status;
 using formal_eskf::linalg::right_solve_spd;
 using formal_eskf::linalg::solve_spd;
 
-template <typename Matrix> [[nodiscard]] bool same_bits(Matrix const & a, Matrix const & b)
+template <typename Matrix> bool same_bits(Matrix const & a, Matrix const & b)
 {
     using bytes_type = std::array<std::byte, sizeof(typename Matrix::value_type)>;
     for (std::size_t row = 0U; row < Matrix::row_count; ++row)
@@ -45,7 +45,7 @@ template <typename Matrix> [[nodiscard]] bool same_bits(Matrix const & a, Matrix
     return true;
 }
 
-template <typename Matrix> [[nodiscard]] bool matrix_near(Matrix const & actual, Matrix const & expected)
+template <typename Matrix> bool matrix_near(Matrix const & actual, Matrix const & expected)
 {
     using value_type = typename Matrix::value_type;
     long double const tolerance = 64.0L * std::numeric_limits<value_type>::epsilon();
@@ -67,7 +67,7 @@ template <typename Matrix> [[nodiscard]] bool matrix_near(Matrix const & actual,
 // Manufacture right-hand sides independently of the backend and the production
 // matrix product. The bounded dyadic fixtures below have exactly representable
 // products/sums, so their known solutions are also independent solve oracles.
-template <typename Left, typename Right> [[nodiscard]] auto reference_product(Left const & a, Right const & b)
+template <typename Left, typename Right> auto reference_product(Left const & a, Right const & b)
 {
     static_assert(Left::column_count == Right::row_count);
     using linalg_type = typename Left::linalg_type;

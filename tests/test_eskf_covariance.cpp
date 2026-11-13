@@ -26,10 +26,10 @@ namespace
 {
 
 using TestContext = formal_eskf::test::Context;
+using formal_eskf::discretize_process_noise;
+using formal_eskf::predict;
+using formal_eskf::predict_covariance;
 using formal_eskf::Status;
-using formal_eskf::try_discretize_process_noise;
-using formal_eskf::try_predict;
-using formal_eskf::try_predict_covariance;
 using formal_eskf::test::near;
 
 template <typename Linalg, typename Configuration> struct CovariancePredictionFixture
@@ -54,7 +54,7 @@ template <typename Linalg, typename Configuration> struct CovariancePredictionFi
         parameters.quaternion_squared_norm_tolerance = value_type{32} * std::numeric_limits<value_type>::epsilon();
     }
 
-    [[nodiscard]] auto noise_groups()
+    auto noise_groups()
     {
         using vector_type = formal_eskf::linalg::Vector<Linalg, 3U>;
         auto & noise = parameters.process_noise;
@@ -84,7 +84,7 @@ template <typename Linalg, typename Configuration> struct CovariancePredictionFi
 };
 
 template <typename Matrix>
-[[nodiscard]] bool matrix_near(Matrix const & actual, Matrix const & expected, typename Matrix::value_type tolerance)
+bool matrix_near(Matrix const & actual, Matrix const & expected, typename Matrix::value_type tolerance)
 {
     for (std::size_t row = 0U; row < Matrix::row_count; ++row)
     {
@@ -99,7 +99,7 @@ template <typename Matrix>
     return true;
 }
 
-template <typename State> [[nodiscard]] bool same_state(State const & actual, State const & expected)
+template <typename State> bool same_state(State const & actual, State const & expected)
 {
     using value_type = typename State::quaternion_type::value_type;
     bool result = formal_eskf::so3::same_coefficients(actual.q_nb, expected.q_nb);
@@ -124,9 +124,9 @@ void test_noise_discretization(TestContext & test, std::string_view profile, typ
     noise_matrix Q_i;
     noise_matrix Q_twice;
     value_type const dt = value_type{0.25};
-    Status status = try_discretize_process_noise(fixture.parameters.process_noise, dt, Q_i);
+    Status status = discretize_process_noise(fixture.parameters.process_noise, dt, Q_i);
     test.expect(status == Status::success, profile, "equation (15) accepts per-axis variance and intensity");
-    status = try_discretize_process_noise(fixture.parameters.process_noise, value_type{2} * dt, Q_twice);
+    status = discretize_process_noise(fixture.parameters.process_noise, value_type{2} * dt, Q_twice);
     test.expect(status == Status::success, profile, "noise is recomputed for the current step length");
     for (std::size_t row = 0U; row < noise_matrix::row_count; ++row)
     {
@@ -159,7 +159,7 @@ void test_noise_discretization(TestContext & test, std::string_view profile, typ
             (*groups[group])(axis) = target / (bias ? fixed_dt : fixed_dt * fixed_dt);
         }
     }
-    status = try_discretize_process_noise(fixture.parameters.process_noise, fixed_dt, Q_i);
+    status = discretize_process_noise(fixture.parameters.process_noise, fixed_dt, Q_i);
     test.expect(status == Status::success, profile,
                 "standalone discretization is independent of application time bounds");
     for (std::size_t row = 0U; row < noise_matrix::row_count; ++row)
@@ -173,11 +173,10 @@ void test_noise_discretization(TestContext & test, std::string_view profile, typ
     }
 
     fixture.parameters.process_noise = {};
-    status = try_discretize_process_noise(fixture.parameters.process_noise, value_type{1}, Q_i);
+    status = discretize_process_noise(fixture.parameters.process_noise, value_type{1}, Q_i);
     test.expect(status == Status::success && formal_eskf::linalg::max_abs(Q_i) == value_type{0}, profile,
                 "zero process noise is valid");
-    status =
-        try_discretize_process_noise(fixture.parameters.process_noise, std::numeric_limits<value_type>::max(), Q_i);
+    status = discretize_process_noise(fixture.parameters.process_noise, std::numeric_limits<value_type>::max(), Q_i);
     test.expect(status == Status::success && formal_eskf::linalg::max_abs(Q_i) == value_type{0}, profile,
                 "zero noise does not spuriously overflow by forming dt squared first");
 }
@@ -196,7 +195,7 @@ void test_noise_failures(TestContext & test, std::string_view profile)
     for (value_type const dt : {value_type{0}, value_type{-1}, nan, inf})
     {
         Status const expected = std::isfinite(dt) ? Status::out_of_range : Status::non_finite_input;
-        Status const status = try_discretize_process_noise(fixture.parameters.process_noise, dt, output);
+        Status const status = discretize_process_noise(fixture.parameters.process_noise, dt, output);
         test.expect(status == expected && matrix_near(output, sentinel, value_type{0}), profile,
                     "invalid noise time step leaves output unchanged");
     }
@@ -208,13 +207,12 @@ void test_noise_failures(TestContext & test, std::string_view profile)
             {
                 (*group)(axis) = invalid;
                 Status const expected = std::isfinite(invalid) ? Status::domain_error : Status::non_finite_input;
-                Status const status =
-                    try_discretize_process_noise(fixture.parameters.process_noise, value_type{1}, output);
+                Status const status = discretize_process_noise(fixture.parameters.process_noise, value_type{1}, output);
                 test.expect(status == expected && matrix_near(output, sentinel, value_type{0}), profile,
                             "every invalid noise coefficient is rejected without partial output");
             }
             (*group)(axis) = std::numeric_limits<value_type>::max();
-            Status const status = try_discretize_process_noise(fixture.parameters.process_noise, value_type{2}, output);
+            Status const status = discretize_process_noise(fixture.parameters.process_noise, value_type{2}, output);
             test.expect(status == Status::non_finite_result && matrix_near(output, sentinel, value_type{0}), profile,
                         "overflow in each discretized noise coefficient leaves output unchanged");
             (*group)(axis) = value_type{0};
@@ -224,7 +222,7 @@ void test_noise_failures(TestContext & test, std::string_view profile)
 
 // Independent Rodrigues oracle for R(Exp(theta))^T, using ordinary arrays and
 // scalar loops rather than production quaternion, hat, block, or sandwich code.
-[[nodiscard]] std::array<double, 9> reference_attitude_transition(std::array<double, 3> const & omega, double dt)
+std::array<double, 9> reference_attitude_transition(std::array<double, 3> const & omega, double dt)
 {
     std::array<double, 9> const W{
         0, -omega[2] * dt, omega[1] * dt, omega[2] * dt, 0, -omega[0] * dt, -omega[1] * dt, omega[0] * dt, 0};
@@ -252,7 +250,7 @@ void test_noise_failures(TestContext & test, std::string_view profile)
 }
 
 template <typename Linalg, typename Configuration>
-[[nodiscard]] auto reference_covariance(CovariancePredictionFixture<Linalg, Configuration> const & fixture, double dt)
+auto reference_covariance(CovariancePredictionFixture<Linalg, Configuration> const & fixture, double dt)
 {
     using fixture_type = CovariancePredictionFixture<Linalg, Configuration>;
     using value_type = typename Linalg::value_type;
@@ -345,8 +343,7 @@ template <typename Linalg, typename Configuration>
     return result;
 }
 
-template <typename Matrix>
-[[nodiscard]] bool representative_psd(Matrix const & covariance, typename Matrix::value_type tolerance)
+template <typename Matrix> bool representative_psd(Matrix const & covariance, typename Matrix::value_type tolerance)
 {
     constexpr int size = static_cast<int>(Matrix::row_count);
     Eigen::Matrix<typename Matrix::value_type, size, size> matrix;
@@ -368,7 +365,7 @@ void test_dense_prediction(TestContext & test, std::string_view profile, typenam
     using value_type = typename Linalg::value_type;
     fixture_type fixture;
     fixture.set_distinct_noise();
-    Status status = formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
+    Status status = formal_eskf::so3::UnitQuaternion<Linalg>::from_coefficients(
         value_type{0.5}, value_type{0.5}, value_type{0.5}, value_type{0.5}, fixture.parameters.minimum_quaternion_norm,
         fixture.state.q_nb);
     test.expect(status == Status::success, profile, "cyclic body-to-navigation rotation fixture is valid");
@@ -400,11 +397,11 @@ void test_dense_prediction(TestContext & test, std::string_view profile, typenam
     auto output = fixture.covariance;
     if constexpr (fixture_type::is_ins)
     {
-        status = try_predict_covariance(fixture.state, fixture.covariance, fixture.imu, dt, fixture.parameters, output);
+        status = predict_covariance(fixture.state, fixture.covariance, fixture.imu, dt, fixture.parameters, output);
     }
     else
     {
-        status = try_predict_covariance(fixture.covariance, fixture.imu, dt, fixture.parameters, output);
+        status = predict_covariance(fixture.covariance, fixture.imu, dt, fixture.parameters, output);
     }
     test.expect(status == Status::success && matrix_near(output, expected, tolerance), profile,
                 "all covariance coefficients match an independent dense equation (18) oracle");
@@ -412,18 +409,18 @@ void test_dense_prediction(TestContext & test, std::string_view profile, typenam
                 profile, "representative propagated covariance is symmetric and numerically PSD");
 
     auto nominal = fixture.state;
-    status = formal_eskf::try_predict_nominal(fixture.state, fixture.imu, dt, fixture.parameters, nominal);
+    status = formal_eskf::predict_nominal(fixture.state, fixture.imu, dt, fixture.parameters, nominal);
     test.expect(status == Status::success, profile, "independent nominal prediction succeeds");
-    status = try_predict(fixture.state, fixture.covariance, fixture.imu, dt, fixture.parameters, fixture.state,
-                         fixture.covariance);
+    status = predict(fixture.state, fixture.covariance, fixture.imu, dt, fixture.parameters, fixture.state,
+                     fixture.covariance);
     test.expect(status == Status::success && same_state(fixture.state, nominal) &&
                     matrix_near(fixture.covariance, expected, tolerance),
                 profile, "atomic in-place prediction linearizes at the old state, not the updated attitude");
 
     auto separate_state = initial.state;
     auto separate_covariance = initial.covariance;
-    status = try_predict(initial.state, initial.covariance, initial.imu, dt, initial.parameters, separate_state,
-                         separate_covariance);
+    status = predict(initial.state, initial.covariance, initial.imu, dt, initial.parameters, separate_state,
+                     separate_covariance);
     test.expect(status == Status::success && same_state(separate_state, fixture.state) &&
                     matrix_near(separate_covariance, fixture.covariance, value_type{0}),
                 profile, "separate and aliased outputs agree");
@@ -432,11 +429,11 @@ void test_dense_prediction(TestContext & test, std::string_view profile, typenam
     negative.q_nb = -negative.q_nb;
     if constexpr (fixture_type::is_ins)
     {
-        status = try_predict_covariance(negative, initial.covariance, initial.imu, dt, initial.parameters, output);
+        status = predict_covariance(negative, initial.covariance, initial.imu, dt, initial.parameters, output);
     }
     else
     {
-        status = try_predict_covariance(initial.covariance, initial.imu, dt, initial.parameters, output);
+        status = predict_covariance(initial.covariance, initial.imu, dt, initial.parameters, output);
     }
     test.expect(status == Status::success && matrix_near(output, expected, tolerance), profile,
                 "covariance prediction is invariant to quaternion sign");
@@ -444,8 +441,8 @@ void test_dense_prediction(TestContext & test, std::string_view profile, typenam
     bool all_succeeded = true;
     for (std::size_t step = 0U; step < 20U; ++step)
     {
-        status = try_predict(fixture.state, fixture.covariance, fixture.imu, value_type{0.125}, fixture.parameters,
-                             fixture.state, fixture.covariance);
+        status = predict(fixture.state, fixture.covariance, fixture.imu, value_type{0.125}, fixture.parameters,
+                         fixture.state, fixture.covariance);
         all_succeeded = all_succeeded && status == Status::success;
     }
     test.expect(all_succeeded && formal_eskf::linalg::is_symmetric(fixture.covariance, value_type{0}) &&
@@ -460,15 +457,15 @@ void test_rotated_noise(TestContext & test, std::string_view profile, typename L
     using value_type = typename Linalg::value_type;
     fixture_type fixture;
     value_type const angle = static_cast<value_type>(std::acos(-1.0) / 8.0);
-    Status status = formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
+    Status status = formal_eskf::so3::UnitQuaternion<Linalg>::from_coefficients(
         std::cos(angle), value_type{0}, value_type{0}, std::sin(angle), fixture.parameters.minimum_quaternion_norm,
         fixture.state.q_nb);
     test.expect(status == Status::success, profile, "45 degree yaw fixture is valid");
     fixture.parameters.process_noise.specific_force_variance(0U) = value_type{1};
     fixture.parameters.process_noise.specific_force_variance(1U) = value_type{3};
     fixture.parameters.process_noise.specific_force_variance(2U) = value_type{5};
-    status = try_predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters,
-                                    fixture.covariance);
+    status = predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters,
+                                fixture.covariance);
     test.expect(status == Status::success && near(fixture.covariance(3U, 3U), value_type{0.5}, tolerance) &&
                     near(fixture.covariance(4U, 4U), value_type{0.5}, tolerance) &&
                     near(fixture.covariance(3U, 4U), value_type{-0.25}, tolerance) &&
@@ -482,8 +479,8 @@ void test_rotated_noise(TestContext & test, std::string_view profile, typename L
     {
         fixture.parameters.process_noise.specific_force_variance(axis) = value_type{4};
     }
-    status = try_predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters,
-                                    fixture.covariance);
+    status = predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters,
+                                fixture.covariance);
     auto const velocity_noise = fixture.covariance.template block<3U, 3U, 3U, 3U>();
     test.expect(status == Status::success &&
                     matrix_near(velocity_noise, decltype(velocity_noise)::identity(), tolerance),
@@ -512,8 +509,8 @@ void test_prediction_failures(TestContext & test, std::string_view profile)
             {
                 (*group)(axis) = invalid;
                 Status const expected = std::isfinite(invalid) ? Status::domain_error : Status::non_finite_input;
-                Status const status = try_predict(fixture.state, fixture.covariance, fixture.imu, value_type{0.5},
-                                                  fixture.parameters, state_output, covariance_output);
+                Status const status = predict(fixture.state, fixture.covariance, fixture.imu, value_type{0.5},
+                                              fixture.parameters, state_output, covariance_output);
                 test.expect(status == expected && same_state(state_output, state_before) &&
                                 matrix_near(covariance_output, sentinel, value_type{0}),
                             profile,
@@ -527,8 +524,8 @@ void test_prediction_failures(TestContext & test, std::string_view profile)
         for (std::size_t column = 0U; column < fixture_type::size; ++column)
         {
             fixture.covariance(row, column) = nan;
-            Status const status = try_predict(fixture.state, fixture.covariance, fixture.imu, value_type{0.5},
-                                              fixture.parameters, state_output, covariance_output);
+            Status const status = predict(fixture.state, fixture.covariance, fixture.imu, value_type{0.5},
+                                          fixture.parameters, state_output, covariance_output);
             test.expect(status == Status::non_finite_input && same_state(state_output, state_before) &&
                             matrix_near(covariance_output, sentinel, value_type{0}),
                         profile, "non-finite covariance at every position rolls back both outputs");
@@ -541,12 +538,12 @@ void test_prediction_failures(TestContext & test, std::string_view profile)
         Status status;
         if constexpr (fixture_type::is_ins)
         {
-            status = try_predict_covariance(fixture.state, fixture.covariance, fixture.imu, dt, fixture.parameters,
-                                            covariance_output);
+            status = predict_covariance(fixture.state, fixture.covariance, fixture.imu, dt, fixture.parameters,
+                                        covariance_output);
         }
         else
         {
-            status = try_predict_covariance(fixture.covariance, fixture.imu, dt, fixture.parameters, covariance_output);
+            status = predict_covariance(fixture.covariance, fixture.imu, dt, fixture.parameters, covariance_output);
         }
         test.expect(status == expected && matrix_near(covariance_output, sentinel, value_type{0}), profile,
                     "covariance prediction enforces finite dt and inclusive application time bounds");
@@ -557,12 +554,11 @@ void test_prediction_failures(TestContext & test, std::string_view profile)
         Status status;
         if constexpr (fixture_type::is_ins)
         {
-            status =
-                try_predict_covariance(fixture.state, fixture.covariance, fixture.imu, dt, fixture.parameters, output);
+            status = predict_covariance(fixture.state, fixture.covariance, fixture.imu, dt, fixture.parameters, output);
         }
         else
         {
-            status = try_predict_covariance(fixture.covariance, fixture.imu, dt, fixture.parameters, output);
+            status = predict_covariance(fixture.covariance, fixture.imu, dt, fixture.parameters, output);
         }
         test.expect(status == Status::success && formal_eskf::linalg::max_abs(output) == value_type{0}, profile,
                     "both inclusive time boundaries accept zero covariance and noise");
@@ -572,13 +568,12 @@ void test_prediction_failures(TestContext & test, std::string_view profile)
     Status status;
     if constexpr (fixture_type::is_ins)
     {
-        status = try_predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, parameters,
-                                        covariance_output);
+        status = predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, parameters,
+                                    covariance_output);
     }
     else
     {
-        status =
-            try_predict_covariance(fixture.covariance, fixture.imu, value_type{0.5}, parameters, covariance_output);
+        status = predict_covariance(fixture.covariance, fixture.imu, value_type{0.5}, parameters, covariance_output);
     }
     test.expect(status == Status::domain_error && matrix_near(covariance_output, sentinel, value_type{0}), profile,
                 "invalid time configuration is rejected");
@@ -588,13 +583,13 @@ void test_prediction_failures(TestContext & test, std::string_view profile)
         imu.angular_rate_b(axis) = inf;
         if constexpr (fixture_type::is_ins)
         {
-            status = try_predict_covariance(fixture.state, fixture.covariance, imu, value_type{0.5}, fixture.parameters,
-                                            covariance_output);
+            status = predict_covariance(fixture.state, fixture.covariance, imu, value_type{0.5}, fixture.parameters,
+                                        covariance_output);
         }
         else
         {
             status =
-                try_predict_covariance(fixture.covariance, imu, value_type{0.5}, fixture.parameters, covariance_output);
+                predict_covariance(fixture.covariance, imu, value_type{0.5}, fixture.parameters, covariance_output);
         }
         test.expect(status == Status::non_finite_input && matrix_near(covariance_output, sentinel, value_type{0}),
                     profile, "non-finite angular rate is rejected by standalone covariance prediction");
@@ -603,12 +598,12 @@ void test_prediction_failures(TestContext & test, std::string_view profile)
     imu.angular_rate_b(0U) = std::numeric_limits<value_type>::max();
     if constexpr (fixture_type::is_ins)
     {
-        status = try_predict_covariance(fixture.state, fixture.covariance, imu, value_type{2}, fixture.parameters,
-                                        covariance_output);
+        status = predict_covariance(fixture.state, fixture.covariance, imu, value_type{2}, fixture.parameters,
+                                    covariance_output);
     }
     else
     {
-        status = try_predict_covariance(fixture.covariance, imu, value_type{2}, fixture.parameters, covariance_output);
+        status = predict_covariance(fixture.covariance, imu, value_type{2}, fixture.parameters, covariance_output);
     }
     test.expect(status == Status::non_finite_result && matrix_near(covariance_output, sentinel, value_type{0}), profile,
                 "overflow in angular increment leaves covariance unchanged");
@@ -617,8 +612,8 @@ void test_prediction_failures(TestContext & test, std::string_view profile)
     fixture.imu.angular_rate_b = {};
     fixture.covariance = covariance_type::identity() * std::numeric_limits<value_type>::max();
     fixture.parameters.process_noise.angular_rate_variance(0U) = std::numeric_limits<value_type>::max();
-    status = try_predict(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters,
-                         state_output, covariance_output);
+    status = predict(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters, state_output,
+                     covariance_output);
     test.expect(status == Status::non_finite_result && same_state(state_output, state_before) &&
                     matrix_near(covariance_output, sentinel, value_type{0}),
                 profile, "late covariance overflow leaves both outputs unchanged");
@@ -627,16 +622,16 @@ void test_prediction_failures(TestContext & test, std::string_view profile)
     fixture.covariance = sentinel;
     fixture.parameters.process_noise.angular_rate_variance(0U) = value_type{-1};
     fixture.imu.angular_rate_b(2U) = value_type{1};
-    status = try_predict(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters,
-                         fixture.state, fixture.covariance);
+    status = predict(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters, fixture.state,
+                     fixture.covariance);
     test.expect(status == Status::domain_error && same_state(fixture.state, state_before) &&
                     matrix_near(fixture.covariance, sentinel, value_type{0}),
                 profile, "in-place prediction failure does not commit nominal state before covariance validation");
 
     fixture.parameters.process_noise = {};
     fixture.imu.angular_rate_b(0U) = nan;
-    status = try_predict(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters,
-                         fixture.state, fixture.covariance);
+    status = predict(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters, fixture.state,
+                     fixture.covariance);
     test.expect(status == Status::non_finite_input && same_state(fixture.state, state_before) &&
                     matrix_near(fixture.covariance, sentinel, value_type{0}),
                 profile, "nominal prediction failure also preserves both outputs");
@@ -662,8 +657,8 @@ template <typename Linalg> void test_ins_input_boundary(TestContext & test, std:
             for (value_type const invalid : {nan, inf})
             {
                 (*field)(axis) = invalid;
-                Status const status = try_predict_covariance(fixture.state, fixture.covariance, fixture.imu,
-                                                             value_type{0.5}, fixture.parameters, output);
+                Status const status = predict_covariance(fixture.state, fixture.covariance, fixture.imu,
+                                                         value_type{0.5}, fixture.parameters, output);
                 test.expect(status == Status::non_finite_input && matrix_near(output, sentinel, value_type{0}), profile,
                             "every consumed INS force and bias coefficient must be finite");
             }
@@ -672,23 +667,23 @@ template <typename Linalg> void test_ins_input_boundary(TestContext & test, std:
     }
     fixture.imu.specific_force_b(0U) = largest;
     fixture.state.b_a(0U) = -largest;
-    Status status = try_predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5},
-                                           fixture.parameters, output);
+    Status status =
+        predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters, output);
     test.expect(status == Status::non_finite_result && matrix_near(output, sentinel, value_type{0}), profile,
                 "overflow in bias-corrected force is distinguished from invalid input");
     fixture.imu.specific_force_b = {};
     fixture.state.b_a = {};
     fixture.imu.angular_rate_b(0U) = largest;
     fixture.state.b_g(0U) = -largest;
-    status = try_predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters,
-                                    output);
+    status =
+        predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters, output);
     test.expect(status == Status::non_finite_result && matrix_near(output, sentinel, value_type{0}), profile,
                 "overflow in bias-corrected angular rate leaves output unchanged");
     fixture.imu.angular_rate_b = {};
     fixture.state.b_g = {};
     fixture.imu.specific_force_b(0U) = largest;
-    status = try_predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{2}, fixture.parameters,
-                                    output);
+    status =
+        predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{2}, fixture.parameters, output);
     test.expect(status == Status::non_finite_result && matrix_near(output, sentinel, value_type{0}), profile,
                 "overflow in the velocity-attitude transition is detected before covariance multiplication");
 
@@ -696,8 +691,8 @@ template <typename Linalg> void test_ins_input_boundary(TestContext & test, std:
     fixture.state.p_n(0U) = nan;
     fixture.state.v_n(1U) = nan;
     fixture.parameters.gravity_n(2U) = nan;
-    status = try_predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters,
-                                    output);
+    status =
+        predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters, output);
     test.expect(status == Status::success && formal_eskf::linalg::max_abs(output) == value_type{0}, profile,
                 "standalone covariance does not consume position, velocity, or gravity");
 }
@@ -714,8 +709,8 @@ void test_prior_rejection(TestContext & test, std::string_view profile)
     value_type const tiny = std::ldexp(value_type{1}, exponent);
     // Public-constructor underflow fixture, with squared norm exactly 1.25.
     auto const construction =
-        quaternion_type::try_from_coefficients(tiny, tiny * value_type{0.5}, value_type{0}, value_type{0},
-                                               std::numeric_limits<value_type>::min(), fixture.state.q_nb);
+        quaternion_type::from_coefficients(tiny, tiny * value_type{0.5}, value_type{0}, value_type{0},
+                                           std::numeric_limits<value_type>::min(), fixture.state.q_nb);
     test.expect(construction == Status::success && fixture.state.q_nb.q0() == value_type{1} &&
                     fixture.state.q_nb.q1() == value_type{0.5},
                 profile, "non-unit prior fixture is constructed");
@@ -723,13 +718,13 @@ void test_prior_rejection(TestContext & test, std::string_view profile)
     Status status;
     if constexpr (fixture_type::is_ins)
     {
-        status = try_predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5},
-                                        fixture.parameters, fixture.covariance);
+        status = predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters,
+                                    fixture.covariance);
     }
     else
     {
-        status = try_predict_covariance(fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters,
-                                        fixture.covariance);
+        status = predict_covariance(fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters,
+                                    fixture.covariance);
     }
     test.expect(status == (fixture_type::is_ins ? Status::invalid_quaternion_norm : Status::success) &&
                     matrix_near(fixture.covariance, initial.covariance, value_type{0}) &&
@@ -749,8 +744,8 @@ void test_prior_rejection(TestContext & test, std::string_view profile)
             auto & covariance_output = covariance_alias ? covariance : separate_covariance;
             auto const state_before = state_output;
             auto const covariance_before = covariance_output;
-            status = try_predict(state, covariance, fixture.imu, value_type{0.5}, fixture.parameters, state_output,
-                                 covariance_output);
+            status = predict(state, covariance, fixture.imu, value_type{0.5}, fixture.parameters, state_output,
+                             covariance_output);
             test.expect(
                 status == Status::invalid_quaternion_norm && same_state(state_output, state_before) &&
                     matrix_near(covariance_output, covariance_before, value_type{0}) &&
@@ -761,13 +756,13 @@ void test_prior_rejection(TestContext & test, std::string_view profile)
     fixture.parameters.quaternion_squared_norm_tolerance = std::numeric_limits<value_type>::quiet_NaN();
     if constexpr (fixture_type::is_ins)
     {
-        status = try_predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5},
-                                        fixture.parameters, fixture.covariance);
+        status = predict_covariance(fixture.state, fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters,
+                                    fixture.covariance);
     }
     else
     {
-        status = try_predict_covariance(fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters,
-                                        fixture.covariance);
+        status = predict_covariance(fixture.covariance, fixture.imu, value_type{0.5}, fixture.parameters,
+                                    fixture.covariance);
     }
     test.expect(status == (fixture_type::is_ins ? Status::non_finite_input : Status::success) &&
                     matrix_near(fixture.covariance, initial.covariance, value_type{0}),
@@ -782,8 +777,8 @@ void test_noise_accumulation(TestContext & test, std::string_view profile, typen
     fixture.parameters.process_noise.specific_force_variance(0U) = value_type{4};
     for (std::size_t step = 0U; step < 2U; ++step)
     {
-        Status const status = try_predict(fixture.state, fixture.covariance, fixture.imu, value_type{0.5},
-                                          fixture.parameters, fixture.state, fixture.covariance);
+        Status const status = predict(fixture.state, fixture.covariance, fixture.imu, value_type{0.5},
+                                      fixture.parameters, fixture.state, fixture.covariance);
         test.expect(status == Status::success, profile, "two-step noise accumulation succeeds");
     }
     test.expect(near(fixture.covariance(0U, 0U), value_type{0.25}, tolerance) &&
@@ -796,8 +791,8 @@ void test_noise_accumulation(TestContext & test, std::string_view profile, typen
     fixture.parameters.process_noise.gyroscope_bias_random_walk_variance_density(1U) = value_type{8};
     for (value_type const dt : {value_type{0.125}, value_type{0.375}, value_type{0.5}})
     {
-        Status const status = try_predict(fixture.state, fixture.covariance, fixture.imu, dt, fixture.parameters,
-                                          fixture.state, fixture.covariance);
+        Status const status = predict(fixture.state, fixture.covariance, fixture.imu, dt, fixture.parameters,
+                                      fixture.state, fixture.covariance);
         test.expect(status == Status::success, profile, "variable-dt bias random walk succeeds");
     }
     test.expect(near(fixture.covariance(9U, 9U), value_type{4}, tolerance) &&
@@ -808,8 +803,8 @@ void test_noise_accumulation(TestContext & test, std::string_view profile, typen
 
     CovariancePredictionFixture<Linalg, formal_eskf::configuration::Ahrs> ahrs;
     ahrs.imu.specific_force_b(0U) = std::numeric_limits<value_type>::quiet_NaN();
-    Status const status = try_predict(ahrs.state, ahrs.covariance, ahrs.imu, value_type{0.5}, ahrs.parameters,
-                                      ahrs.state, ahrs.covariance);
+    Status const status =
+        predict(ahrs.state, ahrs.covariance, ahrs.imu, value_type{0.5}, ahrs.parameters, ahrs.state, ahrs.covariance);
     test.expect(status == Status::success && formal_eskf::linalg::max_abs(ahrs.covariance) == value_type{0}, profile,
                 "rotation-only prediction does not consume accelerometer measurements");
 }

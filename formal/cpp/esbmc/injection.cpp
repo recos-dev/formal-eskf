@@ -50,8 +50,8 @@ struct CompositionContract
 namespace formal_eskf::so3
 {
 template <>
-inline Status try_exp<contract_proof::Linalg>(contract_proof::Vector3 const & theta, contract_proof::Scalar minimum,
-                                              contract_proof::Quaternion & output)
+inline Status exp<contract_proof::Linalg>(contract_proof::Vector3 const & theta, contract_proof::Scalar minimum,
+                                          contract_proof::Quaternion & output)
 {
     using injection_proof::ExpContract;
     __ESBMC_assert(ExpContract::calls == 0U, "E-INJECT contract: one Exp request");
@@ -66,10 +66,10 @@ inline Status try_exp<contract_proof::Linalg>(contract_proof::Vector3 const & th
 }
 
 template <>
-inline Status try_compose_normalized<contract_proof::Linalg>(contract_proof::Quaternion const & q_a,
-                                                             contract_proof::Quaternion const & q_b,
-                                                             contract_proof::Scalar minimum,
-                                                             contract_proof::Quaternion & output)
+inline Status compose_normalized<contract_proof::Linalg>(contract_proof::Quaternion const & q_a,
+                                                         contract_proof::Quaternion const & q_b,
+                                                         contract_proof::Scalar minimum,
+                                                         contract_proof::Quaternion & output)
 {
     using injection_proof::CompositionContract;
     __ESBMC_assert(CompositionContract::calls == 0U && injection_proof::ExpContract::calls == 1U,
@@ -214,7 +214,7 @@ void verify_injection(State state, Error error, Scalar minimum, State output, Qu
 
     // Execute the public overload, its actual attitude helper, finite checks,
     // all twelve INS additions and actual state publication/storage.
-    auto const actual = formal_eskf::try_inject_nominal(state, error, minimum, target);
+    auto const actual = formal_eskf::inject_nominal(state, error, minimum, target);
     __ESBMC_assert(actual == expected,
                    "E-INJECT: validation precedence, Exp status, composition remapping and additive overflow");
     __ESBMC_assert(ExpContract::calls == (call_exp ? 1U : 0U) &&

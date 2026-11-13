@@ -33,7 +33,7 @@ using formal_eskf::test::near;
 // J_r(phi) = sum_{k=0}^infinity (-hat(phi))^k / (k+1)!.
 // The tests using this reference have norm(phi) < 7; 64 terms give an
 // adequate truncation margin, and long double reduces reference roundoff.
-template <typename Vector> [[nodiscard]] auto jacobian_series_reference(Vector const & phi)
+template <typename Vector> auto jacobian_series_reference(Vector const & phi)
 {
     long double const x = static_cast<long double>(phi(0U));
     long double const y = static_cast<long double>(phi(1U));
@@ -99,7 +99,7 @@ void test_jacobian_values(TestContext & test, std::string_view profile, typename
                 phi(2U) = angle * (value_type{6} / value_type{7});
             }
             matrix3_type jacobian;
-            Status const status = formal_eskf::so3::try_right_jacobian(phi, jacobian);
+            Status const status = formal_eskf::so3::right_jacobian(phi, jacobian);
             auto const expected = jacobian_series_reference(phi);
             bool correct = status == Status::success;
             for (std::size_t row = 0U; row < 3U; ++row)
@@ -113,7 +113,7 @@ void test_jacobian_values(TestContext & test, std::string_view profile, typename
             test.expect(correct, profile,
                         "closed form agrees with independent series through zero, cutoff, pi and 2*pi");
             matrix3_type negative;
-            Status const negative_status = formal_eskf::so3::try_right_jacobian(-phi, negative);
+            Status const negative_status = formal_eskf::so3::right_jacobian(-phi, negative);
             test.expect(negative_status == Status::success &&
                             formal_eskf::linalg::max_abs(negative - formal_eskf::linalg::transpose(jacobian)) <=
                                 tolerance,
@@ -125,18 +125,18 @@ void test_jacobian_values(TestContext & test, std::string_view profile, typename
 
     vector3_type phi;
     matrix3_type jacobian;
-    test.expect(formal_eskf::so3::try_right_jacobian(phi, jacobian) == Status::success &&
+    test.expect(formal_eskf::so3::right_jacobian(phi, jacobian) == Status::success &&
                     formal_eskf::linalg::max_abs(jacobian - matrix3_type::identity()) == value_type{0},
                 profile, "zero Jacobian is exactly identity without division by zero");
     phi(0U) = value_type{0.75};
-    test.expect(formal_eskf::so3::try_right_jacobian(phi, jacobian) == Status::success &&
+    test.expect(formal_eskf::so3::right_jacobian(phi, jacobian) == Status::success &&
                     jacobian(1U, 1U) < value_type{0.9375},
                 profile, "closed form is not silently replaced by I-hat(phi)/2");
 
     // Very large but representable squared norms must not form theta^3 or
     // multiply an unscaled hat(phi)^2 by a tiny coefficient.
     phi(0U) = static_cast<value_type>(1.0e10);
-    test.expect(formal_eskf::so3::try_right_jacobian(phi, jacobian) == Status::success &&
+    test.expect(formal_eskf::so3::right_jacobian(phi, jacobian) == Status::success &&
                     formal_eskf::linalg::all_finite(jacobian) && near(jacobian(0U, 0U), value_type{1}, tolerance),
                 profile, "large finite angle uses a bounded unit-axis expression");
 }
@@ -158,8 +158,8 @@ template <typename Linalg> void test_reset_differential(TestContext & test, std:
     phi(2U) = value_type{0.5};
     quaternion_type nominal;
     matrix3_type jacobian;
-    bool correct = formal_eskf::so3::try_exp(phi, minimum_norm, nominal) == Status::success &&
-                   formal_eskf::so3::try_right_jacobian(phi, jacobian) == Status::success;
+    bool correct = formal_eskf::so3::exp(phi, minimum_norm, nominal) == Status::success &&
+                   formal_eskf::so3::right_jacobian(phi, jacobian) == Status::success;
     for (std::size_t column = 0U; column < 3U; ++column)
     {
         auto plus = phi;
@@ -170,10 +170,10 @@ template <typename Linalg> void test_reset_differential(TestContext & test, std:
         quaternion_type q_minus;
         vector3_type log_plus;
         vector3_type log_minus;
-        correct = correct && formal_eskf::so3::try_exp(plus, minimum_norm, q_plus) == Status::success &&
-                  formal_eskf::so3::try_exp(minus, minimum_norm, q_minus) == Status::success &&
-                  formal_eskf::so3::try_log(nominal.inverse() * q_plus, log_plus) == Status::success &&
-                  formal_eskf::so3::try_log(nominal.inverse() * q_minus, log_minus) == Status::success;
+        correct = correct && formal_eskf::so3::exp(plus, minimum_norm, q_plus) == Status::success &&
+                  formal_eskf::so3::exp(minus, minimum_norm, q_minus) == Status::success &&
+                  formal_eskf::so3::log(nominal.inverse() * q_plus, log_plus) == Status::success &&
+                  formal_eskf::so3::log(nominal.inverse() * q_minus, log_minus) == Status::success;
         auto const derivative = (log_plus - log_minus) / (value_type{2} * step);
         for (std::size_t row = 0U; row < 3U; ++row)
         {
@@ -198,7 +198,7 @@ template <typename Linalg> void test_jacobian_failures(TestContext & test, std::
             vector3_type phi;
             phi(axis) = invalid;
             auto output = sentinel;
-            Status const status = formal_eskf::so3::try_right_jacobian(phi, output);
+            Status const status = formal_eskf::so3::right_jacobian(phi, output);
             test.expect(status == Status::non_finite_input &&
                             formal_eskf::linalg::max_abs(output - sentinel) == value_type{0},
                         profile, "non-finite input preserves output");
@@ -206,7 +206,7 @@ template <typename Linalg> void test_jacobian_failures(TestContext & test, std::
         vector3_type phi;
         phi(axis) = std::numeric_limits<value_type>::max();
         auto output = sentinel;
-        Status const status = formal_eskf::so3::try_right_jacobian(phi, output);
+        Status const status = formal_eskf::so3::right_jacobian(phi, output);
         test.expect(status == Status::non_finite_result &&
                         formal_eskf::linalg::max_abs(output - sentinel) == value_type{0},
                     profile, "squared-norm overflow preserves output");

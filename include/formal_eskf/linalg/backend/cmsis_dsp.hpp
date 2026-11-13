@@ -109,15 +109,14 @@ public:
     }
 
     template <std::size_t Rows, std::size_t Columns>
-    [[nodiscard]] static value_type const & coefficient(storage_type<Rows, Columns> const & matrix, std::size_t row,
-                                                        std::size_t column)
+    static value_type const & coefficient(storage_type<Rows, Columns> const & matrix, std::size_t row,
+                                          std::size_t column)
     {
         return matrix.values[row * Columns + column];
     }
 
     template <std::size_t Rows, std::size_t Columns>
-    [[nodiscard]] static value_type & coefficient(storage_type<Rows, Columns> & matrix, std::size_t row,
-                                                  std::size_t column)
+    static value_type & coefficient(storage_type<Rows, Columns> & matrix, std::size_t row, std::size_t column)
     {
         return matrix.values[row * Columns + column];
     }
@@ -163,19 +162,19 @@ public:
     static void transpose(storage_type<Rows, Columns> const & matrix, storage_type<Columns, Rows> & result);
 
     template <std::size_t Size>
-    [[nodiscard]] static value_type dot(storage_type<Size, 1U> const & left, storage_type<Size, 1U> const & right)
+    static value_type dot(storage_type<Size, 1U> const & left, storage_type<Size, 1U> const & right)
     {
         value_type result{0};
         api_type::dot(left.values.data(), right.values.data(), static_cast<std::uint32_t>(Size), &result);
         return result;
     }
 
-    template <std::size_t Size> [[nodiscard]] static value_type squared_norm(storage_type<Size, 1U> const & vector)
+    template <std::size_t Size> static value_type squared_norm(storage_type<Size, 1U> const & vector)
     {
         return dot(vector, vector);
     }
 
-    template <std::size_t Size> [[nodiscard]] static value_type norm(storage_type<Size, 1U> const & vector)
+    template <std::size_t Size> static value_type norm(storage_type<Size, 1U> const & vector)
     {
         return scalar_math_type::sqrt(squared_norm(vector));
     }
@@ -187,13 +186,13 @@ public:
 
 private:
     template <std::size_t Rows, std::size_t Columns>
-    [[nodiscard]] static descriptor_type descriptor(storage_type<Rows, Columns> & matrix)
+    static descriptor_type descriptor(storage_type<Rows, Columns> & matrix)
     {
         return {static_cast<std::uint16_t>(Rows), static_cast<std::uint16_t>(Columns), matrix.values.data()};
     }
 
     template <std::size_t Rows, std::size_t Columns>
-    [[nodiscard]] static descriptor_type descriptor(storage_type<Rows, Columns> const & matrix)
+    static descriptor_type descriptor(storage_type<Rows, Columns> const & matrix)
     {
         // CMSIS input descriptors have shallow constness: pData is Scalar* even
         // for read-only inputs. Only pass this view to the read-only source
@@ -202,8 +201,7 @@ private:
                 const_cast<value_type *>(matrix.values.data())};
     }
 
-    template <std::size_t Rows, std::size_t Columns>
-    [[nodiscard]] static bool finite(storage_type<Rows, Columns> const & matrix);
+    template <std::size_t Rows, std::size_t Columns> static bool finite(storage_type<Rows, Columns> const & matrix);
 
 }; /* end class CmsisDspBackend */
 

@@ -87,12 +87,12 @@ template <typename Linalg> void test_selection(TestContext & test)
         }
         auto selected = fixture.noise;
         auto const original = fixture.noise;
-        test.expect(formal_eskf::runtime::try_inhibit_bias_process_noise(fixture.covariance, fixture.noise, selected) ==
+        test.expect(formal_eskf::runtime::inhibit_bias_process_noise(fixture.covariance, fixture.noise, selected) ==
                             Status::success &&
                         same_noise(selected, expected) && same_noise(fixture.noise, original),
                     profile, "all 64 independent axis choices preserve measurement variances and configured noise");
-        test.expect(formal_eskf::runtime::try_inhibit_bias_process_noise(fixture.covariance, fixture.noise,
-                                                                         fixture.noise) == Status::success &&
+        test.expect(formal_eskf::runtime::inhibit_bias_process_noise(fixture.covariance, fixture.noise,
+                                                                     fixture.noise) == Status::success &&
                         same_noise(fixture.noise, expected),
                     profile, "whole-noise output alias is supported");
     }
@@ -114,7 +114,7 @@ template <typename Linalg> void test_selection(TestContext & test)
             expected.gyroscope_bias_random_walk_variance_density = {};
         }
         auto selected = fixture.noise;
-        test.expect(formal_eskf::runtime::try_inhibit_bias_process_noise(fixture.covariance, fixture.noise, selected) ==
+        test.expect(formal_eskf::runtime::inhibit_bias_process_noise(fixture.covariance, fixture.noise, selected) ==
                             Status::success &&
                         same_noise(selected, expected),
                     profile, "one ULP below selects; exact equality and one ULP above inhibit");
@@ -122,7 +122,7 @@ template <typename Linalg> void test_selection(TestContext & test)
     fixture.noise = {};
     fixture.covariance = {};
     auto selected = fixture.noise;
-    test.expect(formal_eskf::runtime::try_inhibit_bias_process_noise(fixture.covariance, fixture.noise, selected) ==
+    test.expect(formal_eskf::runtime::inhibit_bias_process_noise(fixture.covariance, fixture.noise, selected) ==
                         Status::success &&
                     same_noise(selected, fixture.noise),
                 profile, "zero variances and zero intensities are valid");
@@ -155,13 +155,13 @@ template <typename Linalg> void test_failures(TestContext & test)
                     (*groups[field - 2U])(axis) = invalid;
                 }
                 auto const expected = std::isfinite(invalid) ? Status::domain_error : Status::non_finite_input;
-                test.expect(formal_eskf::runtime::try_inhibit_bias_process_noise(fixture.covariance, fixture.noise,
-                                                                                 output) == expected &&
+                test.expect(formal_eskf::runtime::inhibit_bias_process_noise(fixture.covariance, fixture.noise,
+                                                                             output) == expected &&
                                 same_noise(output, before),
                             profile, "invalid consumed input preserves every output coefficient");
                 auto const input_before = fixture.noise;
-                test.expect(formal_eskf::runtime::try_inhibit_bias_process_noise(fixture.covariance, fixture.noise,
-                                                                                 fixture.noise) == expected &&
+                test.expect(formal_eskf::runtime::inhibit_bias_process_noise(fixture.covariance, fixture.noise,
+                                                                             fixture.noise) == expected &&
                                 same_noise(fixture.noise, input_before),
                             profile, "failure is atomic even with an aliased invalid noise input");
             }
@@ -189,28 +189,28 @@ template <typename Linalg> void test_prediction(TestContext & test)
     fixture.covariance(9U, 9U) = Scalar{1.5};
     fixture.covariance(3U, 9U) = Scalar{1.5};
     fixture.covariance(9U, 3U) = Scalar{1.5};
-    test.expect(formal_eskf::runtime::try_inhibit_bias_process_noise(fixture.covariance, fixture.noise,
-                                                                     parameters.process_noise) == Status::success,
+    test.expect(formal_eskf::runtime::inhibit_bias_process_noise(fixture.covariance, fixture.noise,
+                                                                 parameters.process_noise) == Status::success,
                 profile, "select noise before prediction");
     auto predicted = fixture.covariance;
-    test.expect(formal_eskf::try_predict_covariance(state, fixture.covariance, imu, Scalar{0.125}, parameters,
-                                                    predicted) == Status::success &&
+    test.expect(formal_eskf::predict_covariance(state, fixture.covariance, imu, Scalar{0.125}, parameters, predicted) ==
+                        Status::success &&
                     predicted(9U, 9U) == Scalar{1.5},
                 profile, "inhibited variance above threshold is retained, not clamped; cross-covariance is allowed");
     auto corrected = fixture.covariance;
-    test.expect(formal_eskf::try_correct_horizontal_velocity(
+    test.expect(formal_eskf::correct_horizontal_velocity(
                     state, fixture.covariance, Vector2{}, Matrix2::identity() * Scalar{0.25},
                     parameters.minimum_quaternion_norm, state, corrected) == Status::success &&
                     corrected(9U, 9U) < Scalar{1},
                 profile, "real velocity correction reduces correlated bias uncertainty below its threshold");
-    test.expect(formal_eskf::runtime::try_inhibit_bias_process_noise(corrected, fixture.noise,
-                                                                     parameters.process_noise) == Status::success &&
+    test.expect(formal_eskf::runtime::inhibit_bias_process_noise(corrected, fixture.noise, parameters.process_noise) ==
+                        Status::success &&
                     parameters.process_noise.accelerometer_bias_random_walk_variance_density(0U) == Scalar{0.125},
                 profile, "selection from original configuration restores noise after covariance decreases");
     for (auto dt : {Scalar{0.125}, Scalar{0.25}})
     {
         test.expect(
-            formal_eskf::try_predict_covariance(state, corrected, imu, dt, parameters, predicted) == Status::success &&
+            formal_eskf::predict_covariance(state, corrected, imu, dt, parameters, predicted) == Status::success &&
                 predicted(9U, 9U) == corrected(9U, 9U) + Scalar{0.125} * dt,
             profile, "actual prediction retains intensity times dt, not a squared dt or double-squared variance");
     }
@@ -218,14 +218,14 @@ template <typename Linalg> void test_prediction(TestContext & test)
     fixture.covariance(9U, 9U) = Scalar{0.984375};
     fixture.covariance(3U, 9U) = Scalar{0};
     fixture.covariance(9U, 3U) = Scalar{0};
-    test.expect(formal_eskf::runtime::try_inhibit_bias_process_noise(fixture.covariance, fixture.noise,
-                                                                     parameters.process_noise) == Status::success &&
-                    formal_eskf::try_predict_covariance(state, fixture.covariance, imu, Scalar{0.25}, parameters,
-                                                        predicted) == Status::success &&
+    test.expect(formal_eskf::runtime::inhibit_bias_process_noise(fixture.covariance, fixture.noise,
+                                                                 parameters.process_noise) == Status::success &&
+                    formal_eskf::predict_covariance(state, fixture.covariance, imu, Scalar{0.25}, parameters,
+                                                    predicted) == Status::success &&
                     predicted(9U, 9U) == Scalar{1.015625},
                 profile, "PX4-style pre-increment threshold permits one-step overshoot");
-    test.expect(formal_eskf::runtime::try_inhibit_bias_process_noise(predicted, fixture.noise,
-                                                                     parameters.process_noise) == Status::success &&
+    test.expect(formal_eskf::runtime::inhibit_bias_process_noise(predicted, fixture.noise, parameters.process_noise) ==
+                        Status::success &&
                     parameters.process_noise.accelerometer_bias_random_walk_variance_density(0U) == Scalar{0},
                 profile, "overshoot inhibits the next increment without clipping covariance");
 }

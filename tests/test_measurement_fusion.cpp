@@ -131,8 +131,8 @@ void test_generic_fusion(TestContext & test, std::string_view profile)
     fixture_type const fixture;
     typename fixture_type::state_type expected_state;
     typename fixture_type::covariance_type expected_P;
-    test.expect(formal_eskf::try_correct(fixture.state, fixture.P, fixture.r, fixture.H, fixture.V,
-                                         fixture.minimum_norm, expected_state, expected_P) == Status::success,
+    test.expect(formal_eskf::correct(fixture.state, fixture.P, fixture.r, fixture.H, fixture.V, fixture.minimum_norm,
+                                     expected_state, expected_P) == Status::success,
                 profile, "ungated correction reference succeeds");
     auto const check = formal_eskf::runtime::check_measurement(fixture.state, fixture.P, fixture.r, fixture.H,
                                                                fixture.V, fixture.minimum_norm, fixture.sigma);
@@ -140,8 +140,8 @@ void test_generic_fusion(TestContext & test, std::string_view profile)
                 profile, "standalone gate accepts without correction or source permission");
     formal_eskf::linalg::Matrix<Linalg, fixture_type::size, MeasurementSize> PHt;
     typename fixture_type::noise_type S;
-    test.expect(formal_eskf::try_correction_covariances(fixture.P, fixture.r, fixture.H, fixture.V,
-                                                        fixture.minimum_norm, PHt, S) == Status::success &&
+    test.expect(formal_eskf::correction_covariances(fixture.P, fixture.r, fixture.H, fixture.V, fixture.minimum_norm,
+                                                    PHt, S) == Status::success &&
                     same_matrix_bits(PHt, fixture.P * formal_eskf::linalg::transpose(fixture.H)) &&
                     same_matrix_bits(formal_eskf::linalg::diagonal(S), check.innovation_variance),
                 profile, "core covariance boundary supplies the exact gate covariance");
@@ -370,8 +370,8 @@ void test_gate_and_failures(TestContext & test, std::string_view profile)
         PHt(1U, 0U) = limits_type::quiet_NaN();
         auto const before_cross = PHt;
         auto const before_S = S;
-        auto const status = formal_eskf::try_correction_covariances(source.P, source.r, source.H, source.V,
-                                                                    source.minimum_norm, PHt, S);
+        auto const status =
+            formal_eskf::correction_covariances(source.P, source.r, source.H, source.V, source.minimum_norm, PHt, S);
         test.expect(status == expected && same_matrix_bits(PHt, before_cross) && same_matrix_bits(S, before_S), profile,
                     "covariance preparation preserves both outputs on early or arithmetic failure");
     }
@@ -468,23 +468,23 @@ struct ObservationFusionFixture : FusionFixture<Linalg, formal_eskf::configurati
     {
         if constexpr (Kind == Observation::horizontal_position)
         {
-            return formal_eskf::try_correct_horizontal_position(this->state, this->P, z, this->V, this->minimum_norm,
-                                                                output, output_P, permissions);
+            return formal_eskf::correct_horizontal_position(this->state, this->P, z, this->V, this->minimum_norm,
+                                                            output, output_P, permissions);
         }
         else if constexpr (Kind == Observation::vertical_position)
         {
-            return formal_eskf::try_correct_vertical_position(this->state, this->P, z(0U), this->V(0U, 0U),
-                                                              this->minimum_norm, output, output_P, permissions);
+            return formal_eskf::correct_vertical_position(this->state, this->P, z(0U), this->V(0U, 0U),
+                                                          this->minimum_norm, output, output_P, permissions);
         }
         else if constexpr (Kind == Observation::horizontal_velocity)
         {
-            return formal_eskf::try_correct_horizontal_velocity(this->state, this->P, z, this->V, this->minimum_norm,
-                                                                output, output_P, permissions);
+            return formal_eskf::correct_horizontal_velocity(this->state, this->P, z, this->V, this->minimum_norm,
+                                                            output, output_P, permissions);
         }
         else
         {
-            return formal_eskf::try_correct_velocity(this->state, this->P, z, this->V, this->minimum_norm, output,
-                                                     output_P, permissions);
+            return formal_eskf::correct_velocity(this->state, this->P, z, this->V, this->minimum_norm, output, output_P,
+                                                 permissions);
         }
     }
 };
@@ -581,7 +581,7 @@ template <typename Linalg> void test_sequential_groups(TestContext & test, std::
     auto const velocity = vector3_type::from_row_major({value_type{1.5}, value_type{0}, value_type{0}});
     state_type expected_state;
     covariance_type expected_P;
-    test.expect(formal_eskf::try_correct_velocity(state, P, velocity, V3, minimum_norm, expected_state, expected_P) ==
+    test.expect(formal_eskf::correct_velocity(state, P, velocity, V3, minimum_norm, expected_state, expected_P) ==
                     Status::success,
                 profile, "sequential correction reference succeeds");
     auto const velocity_result =

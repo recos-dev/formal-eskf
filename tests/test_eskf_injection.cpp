@@ -26,13 +26,13 @@ namespace
 {
 
 using TestContext = formal_eskf::test::Context;
+using formal_eskf::inject_and_reset;
+using formal_eskf::inject_nominal;
+using formal_eskf::reset_covariance;
 using formal_eskf::Status;
-using formal_eskf::try_inject_and_reset;
-using formal_eskf::try_inject_nominal;
-using formal_eskf::try_reset_covariance;
 using formal_eskf::test::near;
 
-template <typename Matrix> [[nodiscard]] bool same_bits(Matrix const & a, Matrix const & b)
+template <typename Matrix> bool same_bits(Matrix const & a, Matrix const & b)
 {
     using bytes_type = std::array<std::byte, sizeof(typename Matrix::value_type)>;
     for (std::size_t row = 0U; row < Matrix::row_count; ++row)
@@ -48,7 +48,7 @@ template <typename Matrix> [[nodiscard]] bool same_bits(Matrix const & a, Matrix
     return true;
 }
 
-template <typename State> [[nodiscard]] bool same_state(State const & a, State const & b)
+template <typename State> bool same_state(State const & a, State const & b)
 {
     bool same = same_bits(a.q_nb.coefficients(), b.q_nb.coefficients());
     if constexpr (requires { a.p_n; })
@@ -59,7 +59,7 @@ template <typename State> [[nodiscard]] bool same_state(State const & a, State c
     return same;
 }
 
-template <typename Error> [[nodiscard]] bool same_error(Error const & a, Error const & b)
+template <typename Error> bool same_error(Error const & a, Error const & b)
 {
     bool same = same_bits(a.delta_theta_b, b.delta_theta_b);
     if constexpr (requires { a.delta_p_n; })
@@ -89,7 +89,7 @@ template <typename Linalg, typename Configuration> struct InjectionFixture
 
     InjectionFixture()
     {
-        attitude_status = formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
+        attitude_status = formal_eskf::so3::UnitQuaternion<Linalg>::from_coefficients(
             value_type{0.5}, value_type{0.5}, value_type{0.5}, value_type{0.5}, minimum_norm, state.q_nb);
         error.delta_theta_b(0U) = value_type{0.125};
         error.delta_theta_b(1U) = value_type{-0.0625};
@@ -146,7 +146,7 @@ void test_nominal_injection(TestContext & test, std::string_view profile, typena
         std::array<double, 4U> const expected{(c - a - b - d) / 2.0, (c + a + d - b) / 2.0, (c + b + a - d) / 2.0,
                                               (c + d + b - a) / 2.0};
         auto output = fixture.state;
-        Status const status = try_inject_nominal(fixture.state, error, fixture.minimum_norm, output);
+        Status const status = inject_nominal(fixture.state, error, fixture.minimum_norm, output);
         bool correct = status == Status::success;
         auto const coefficients = output.q_nb.coefficients();
         for (std::size_t index = 0U; index < 4U; ++index)
@@ -166,7 +166,7 @@ void test_nominal_injection(TestContext & test, std::string_view profile, typena
     check_attitude(error); // Nominal Exp is not restricted to the reset approximation's small-angle regime.
 
     auto output = fixture.state;
-    Status const status = try_inject_nominal(fixture.state, fixture.error, fixture.minimum_norm, output);
+    Status const status = inject_nominal(fixture.state, fixture.error, fixture.minimum_norm, output);
     test.expect(status == Status::success, profile, "nominal injection succeeds");
     if constexpr (fixture_type::is_ins)
     {
@@ -178,13 +178,13 @@ void test_nominal_injection(TestContext & test, std::string_view profile, typena
     }
     auto negative = fixture.state;
     negative.q_nb = -negative.q_nb;
-    Status const negative_status = try_inject_nominal(negative, fixture.error, fixture.minimum_norm, negative);
+    Status const negative_status = inject_nominal(negative, fixture.error, fixture.minimum_norm, negative);
     test.expect(negative_status == Status::success &&
                     same_bits(negative.q_nb.coefficients(), -output.q_nb.coefficients()),
                 profile, "in-place injection respects quaternion sign equivalence");
     auto inverse_error = fixture.error;
     inverse_error.delta_theta_b = -inverse_error.delta_theta_b;
-    Status const inverse_status = try_inject_nominal(output, inverse_error, fixture.minimum_norm, output);
+    Status const inverse_status = inject_nominal(output, inverse_error, fixture.minimum_norm, output);
     test.expect(inverse_status == Status::success &&
                     formal_eskf::so3::same_rotation(output.q_nb, fixture.state.q_nb, tolerance),
                 profile, "opposite attitude correction recovers the original rotation");
@@ -232,7 +232,7 @@ void test_covariance_reset(TestContext & test, std::string_view profile, typenam
         }
     }
     auto output = fixture.covariance;
-    Status const status = try_reset_covariance(fixture.error, fixture.covariance, output);
+    Status const status = reset_covariance(fixture.error, fixture.covariance, output);
     bool correct = status == Status::success;
     for (std::size_t row = 0U; row < size; ++row)
     {
@@ -255,10 +255,10 @@ void test_covariance_reset(TestContext & test, std::string_view profile, typenam
     test.expect(!same_bits(output, fixture.covariance), profile, "nonzero correction does not silently use G=I");
 
     auto alias = fixture.covariance;
-    Status const alias_status = try_reset_covariance(fixture.error, alias, alias);
+    Status const alias_status = reset_covariance(fixture.error, alias, alias);
     test.expect(alias_status == Status::success && same_bits(alias, output), profile, "reset supports aliased output");
     typename fixture_type::error_type const zero_error{};
-    Status const zero_status = try_reset_covariance(zero_error, fixture.covariance, output);
+    Status const zero_status = reset_covariance(zero_error, fixture.covariance, output);
     test.expect(zero_status == Status::success && same_bits(output, fixture.covariance), profile,
                 "zero correction preserves covariance rather than clearing it");
 
@@ -272,14 +272,14 @@ void test_covariance_reset(TestContext & test, std::string_view profile, typenam
         }
     }
     auto const large = output;
-    Status const large_status = try_reset_covariance(zero_error, output, output);
+    Status const large_status = reset_covariance(zero_error, output, output);
     test.expect(large_status == Status::success && same_bits(output, large), profile,
                 "symmetry cleanup does not overflow for a finite covariance at zero correction");
 
     auto invalid = fixture.error;
     invalid.delta_theta_b(1U) = std::numeric_limits<value_type>::quiet_NaN();
     auto const saved = output;
-    test.expect(try_reset_covariance(invalid, fixture.covariance, output) == Status::non_finite_input &&
+    test.expect(reset_covariance(invalid, fixture.covariance, output) == Status::non_finite_input &&
                     same_bits(output, saved),
                 profile, "standalone reset rejects invalid attitude error atomically");
 }
@@ -292,9 +292,8 @@ void test_atomic_injection(TestContext & test, std::string_view profile)
     auto expected_state = fixture.state;
     auto expected_covariance = fixture.covariance;
     typename fixture_type::error_type const zero_error{};
-    test.expect(try_inject_nominal(fixture.state, fixture.error, fixture.minimum_norm, expected_state) ==
-                        Status::success &&
-                    try_reset_covariance(fixture.error, fixture.covariance, expected_covariance) == Status::success,
+    test.expect(inject_nominal(fixture.state, fixture.error, fixture.minimum_norm, expected_state) == Status::success &&
+                    reset_covariance(fixture.error, fixture.covariance, expected_covariance) == Status::success,
                 profile, "independent injection and reset steps succeed");
     for (unsigned mask = 0U; mask < 8U; ++mask)
     {
@@ -305,8 +304,8 @@ void test_atomic_injection(TestContext & test, std::string_view profile)
         auto & state = (mask & 1U) != 0U ? input.state : state_output;
         auto & covariance = (mask & 2U) != 0U ? input.covariance : covariance_output;
         auto & error = (mask & 4U) != 0U ? input.error : error_output;
-        Status const status = try_inject_and_reset(input.state, input.covariance, input.error, fixture.minimum_norm,
-                                                   state, covariance, error);
+        Status const status = inject_and_reset(input.state, input.covariance, input.error, fixture.minimum_norm, state,
+                                               covariance, error);
         test.expect(status == Status::success && same_state(state, expected_state) &&
                         same_bits(covariance, expected_covariance) && same_error(error, zero_error),
                     profile, "all eight alias combinations commit state, covariance and zero error mean");
@@ -318,8 +317,8 @@ void test_atomic_injection(TestContext & test, std::string_view profile)
     auto const initial_state = fixture.state;
     auto const initial_covariance = fixture.covariance;
     auto error = zero_error;
-    Status const status = try_inject_and_reset(fixture.state, fixture.covariance, error, fixture.minimum_norm,
-                                               fixture.state, fixture.covariance, error);
+    Status const status = inject_and_reset(fixture.state, fixture.covariance, error, fixture.minimum_norm,
+                                           fixture.state, fixture.covariance, error);
     test.expect(status == Status::success && same_state(fixture.state, initial_state) &&
                     same_bits(fixture.covariance, initial_covariance) && same_error(error, zero_error),
                 profile, "zero-error full step leaves the basis fixture unchanged");
@@ -347,8 +346,8 @@ void test_injection_failures(TestContext & test, std::string_view profile)
             auto & state = (mask & 1U) != 0U ? source.state : output.state;
             auto & covariance = (mask & 2U) != 0U ? source.covariance : output.covariance;
             auto & error = (mask & 4U) != 0U ? source.error : output.error;
-            Status const status = try_inject_and_reset(source.state, source.covariance, source.error, minimum_norm,
-                                                       state, covariance, error);
+            Status const status =
+                inject_and_reset(source.state, source.covariance, source.error, minimum_norm, state, covariance, error);
             test.expect(status == expected && same_state(source.state, input.state) &&
                             same_bits(source.covariance, input.covariance) && same_error(source.error, input.error) &&
                             same_state(output.state, sentinel.state) &&
@@ -398,7 +397,7 @@ void test_injection_failures(TestContext & test, std::string_view profile)
     auto bad_error = fixture.error;
     bad_error.delta_theta_b(0U) = maximum;
     auto output = fixture.state;
-    Status const status = try_inject_nominal(output, bad_error, fixture.minimum_norm, output);
+    Status const status = inject_nominal(output, bad_error, fixture.minimum_norm, output);
     test.expect(status == Status::non_finite_result && same_state(output, fixture.state), profile,
                 "standalone nominal injection rolls back on Exp overflow");
 
@@ -424,7 +423,7 @@ void test_injection_failures(TestContext & test, std::string_view profile)
                 (bad.error.*error_members[group])(axis) = maximum;
                 expect_failure(bad, fixture.minimum_norm, Status::non_finite_result);
                 auto const saved = bad.state;
-                Status const nominal_status = try_inject_nominal(bad.state, bad.error, fixture.minimum_norm, bad.state);
+                Status const nominal_status = inject_nominal(bad.state, bad.error, fixture.minimum_norm, bad.state);
                 test.expect(nominal_status == Status::non_finite_result && same_state(bad.state, saved), profile,
                             "late additive overflow does not partially inject attitude or other INS components");
             }

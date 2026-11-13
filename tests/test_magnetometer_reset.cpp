@@ -85,7 +85,7 @@ template <typename Scalar, typename Configuration> void run_reset_tests(TestCont
     auto exp = [&](Scalar x, Scalar y, Scalar z)
     {
         Quaternion q;
-        test.expect(formal_eskf::so3::try_exp<Linalg>(Vector::from_row_major({x, y, z}), minimum_norm, q) ==
+        test.expect(formal_eskf::so3::exp<Linalg>(Vector::from_row_major({x, y, z}), minimum_norm, q) ==
                         Status::success,
                     profile, "construct finite rotation fixture");
         return q;
@@ -119,9 +119,9 @@ template <typename Scalar, typename Configuration> void run_reset_tests(TestCont
             State output;
             Covariance result;
             Quaternion delta;
-            test.expect(formal_eskf::runtime::try_reset_magnetic_heading(state, P, measurement, reference, Scalar{0},
-                                                                         Scalar{5}, minimum_norm, output, result,
-                                                                         delta) == Status::success,
+            test.expect(formal_eskf::runtime::reset_magnetic_heading(state, P, measurement, reference, Scalar{0},
+                                                                     Scalar{5}, minimum_norm, output, result,
+                                                                     delta) == Status::success,
                         profile, "reset succeeds across heading wrap and vertical Euler singularities");
             test.expect(formal_eskf::so3::same_rotation(output.q_nb, truth, tolerance) &&
                             formal_eskf::so3::same_rotation(delta * state.q_nb, output.q_nb, tolerance) &&
@@ -167,9 +167,9 @@ template <typename Scalar, typename Configuration> void run_reset_tests(TestCont
             negated.q_nb = -state.q_nb;
             Covariance alias_P = P;
             Quaternion alias_delta;
-            test.expect(formal_eskf::runtime::try_reset_magnetic_heading(negated, alias_P, measurement, reference,
-                                                                         Scalar{0}, Scalar{5}, minimum_norm, negated,
-                                                                         alias_P, alias_delta) == Status::success &&
+            test.expect(formal_eskf::runtime::reset_magnetic_heading(negated, alias_P, measurement, reference,
+                                                                     Scalar{0}, Scalar{5}, minimum_norm, negated,
+                                                                     alias_P, alias_delta) == Status::success &&
                             formal_eskf::so3::same_rotation(negated.q_nb, output.q_nb, tolerance) &&
                             formal_eskf::linalg::max_abs(alias_P - result) < tolerance,
                         profile, "q/-q equivalence and in-place state/P reset");
@@ -181,7 +181,7 @@ template <typename Scalar, typename Configuration> void run_reset_tests(TestCont
                 Covariance separate_P;
                 auto & state_result = alias_state ? prior : separate;
                 auto & P_result = alias_state ? separate_P : prior_P;
-                test.expect(formal_eskf::runtime::try_reset_magnetic_heading(
+                test.expect(formal_eskf::runtime::reset_magnetic_heading(
                                 prior, prior_P, measurement, reference, Scalar{0}, Scalar{5}, minimum_norm,
                                 state_result, P_result, alias_delta) == Status::success &&
                                 formal_eskf::so3::same_rotation(state_result.q_nb, output.q_nb, tolerance) &&
@@ -245,8 +245,8 @@ template <typename Scalar, typename Configuration> void run_reset_tests(TestCont
             break;
         }
         auto const before_P = result;
-        auto const status = formal_eskf::runtime::try_reset_magnetic_heading(
-            state, input_P, measurement, field, variance, horizontal, norm, output, result, delta);
+        auto const status = formal_eskf::runtime::reset_magnetic_heading(state, input_P, measurement, field, variance,
+                                                                         horizontal, norm, output, result, delta);
         test.expect(!formal_eskf::succeeded(status) && formal_eskf::so3::same_coefficients(output.q_nb, sentinel) &&
                         formal_eskf::so3::same_coefficients(delta, sentinel) && same_matrix(result, before_P),
                     profile, "invalid inputs/weak field/overflow preserve all outputs");
@@ -260,7 +260,7 @@ template <typename Scalar, typename Configuration> void run_reset_tests(TestCont
         }
     }
     auto const before_P = result;
-    test.expect(formal_eskf::runtime::try_reset_magnetic_heading(
+    test.expect(formal_eskf::runtime::reset_magnetic_heading(
                     state, overflowing_P, Vector::from_row_major({Scalar{20}, Scalar{-20}, Scalar{40}}), reference,
                     Scalar{1}, Scalar{5}, minimum_norm, output, result, delta) == Status::non_finite_result &&
                     formal_eskf::so3::same_coefficients(output.q_nb, sentinel) &&
@@ -270,24 +270,23 @@ template <typename Scalar, typename Configuration> void run_reset_tests(TestCont
     {
         auto invalid_state = state;
         invalid_state.b_a(0U) = std::numeric_limits<Scalar>::quiet_NaN();
-        test.expect(formal_eskf::runtime::try_reset_magnetic_heading(invalid_state, P, reference, reference, Scalar{1},
-                                                                     Scalar{5}, minimum_norm, output, result,
-                                                                     delta) == Status::non_finite_input &&
+        test.expect(formal_eskf::runtime::reset_magnetic_heading(invalid_state, P, reference, reference, Scalar{1},
+                                                                 Scalar{5}, minimum_norm, output, result,
+                                                                 delta) == Status::non_finite_input &&
                         formal_eskf::so3::same_coefficients(output.q_nb, sentinel) && same_matrix(result, before_P),
                     profile, "retained non-finite INS fields cannot pass through reset");
         auto invalid_P = P;
         invalid_P(0U, 0U) = Scalar{-1};
-        test.expect(formal_eskf::runtime::try_reset_magnetic_heading(invalid_state, invalid_P, reference, reference,
-                                                                     Scalar{-1}, Scalar{0}, minimum_norm, output,
-                                                                     result, delta) == Status::non_finite_input &&
+        test.expect(formal_eskf::runtime::reset_magnetic_heading(invalid_state, invalid_P, reference, reference,
+                                                                 Scalar{-1}, Scalar{0}, minimum_norm, output, result,
+                                                                 delta) == Status::non_finite_input &&
                         same_matrix(result, before_P) && formal_eskf::so3::same_coefficients(delta, sentinel) &&
                         formal_eskf::so3::same_coefficients(output.q_nb, sentinel),
                     profile, "non-finite INS fields retain precedence over all common domain failures");
     }
     Scalar const variance = static_cast<Scalar>(0.09);
-    test.expect(formal_eskf::runtime::try_reset_magnetic_heading(state, P, reference, reference, variance, Scalar{5},
-                                                                 minimum_norm, output, result,
-                                                                 delta) == Status::success &&
+    test.expect(formal_eskf::runtime::reset_magnetic_heading(state, P, reference, reference, variance, Scalar{5},
+                                                             minimum_norm, output, result, delta) == Status::success &&
                     std::abs(result(offset + 2U, offset + 2U) - variance) < tolerance,
                 profile, "configured yaw variance above floor is used in radians squared");
 }

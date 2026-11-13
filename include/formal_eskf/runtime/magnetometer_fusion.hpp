@@ -121,7 +121,7 @@ public:
         std::uint64_t last_reset_time_us{}; // Only actual successful reset feedback updates this.
     };
 
-    [[nodiscard]] State const & state() const { return m_state; }
+    State const & state() const { return m_state; }
     /** Reinitialize the timeline; optionally bind the source used by caller's initial heading. */
     void reset(Source const & source = {0U, 0U, 0U})
     {

@@ -26,7 +26,7 @@ struct GnssQualityChecks
     bool vertical_speed = false;
     bool spoofed = false;
 
-    [[nodiscard]] bool any_enabled(GnssQualityChecks const & enabled) const
+    bool any_enabled(GnssQualityChecks const & enabled) const
     {
         return (satellites && enabled.satellites) || (pdop && enabled.pdop) ||
                (horizontal_accuracy && enabled.horizontal_accuracy) ||

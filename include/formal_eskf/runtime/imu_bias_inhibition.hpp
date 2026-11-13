@@ -67,10 +67,9 @@ public:
                                 ImuSample<Linalg> const & imu, Conditions const & conditions);
 
 private:
-    [[nodiscard]] value_type decayed_peak(value_type magnitude, value_type previous_peak, value_type interval) const;
-    [[nodiscard]] configuration::Ins::BiasUpdate learning_permissions(linalg::Matrix<Linalg, 3U, 3U> const & R,
-                                                                      bool high_dynamics,
-                                                                      Conditions const & conditions) const;
+    value_type decayed_peak(value_type magnitude, value_type previous_peak, value_type interval) const;
+    configuration::Ins::BiasUpdate learning_permissions(linalg::Matrix<Linalg, 3U, 3U> const & R, bool high_dynamics,
+                                                        Conditions const & conditions) const;
 
     Parameters m_parameters;
     value_type m_specific_force_peak{};

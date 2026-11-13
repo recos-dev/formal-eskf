@@ -279,8 +279,8 @@ template <typename Linalg> void test_correction_integration(TestContext & test, 
             state_type posterior;
             covariance_type posterior_P;
             test.expect(policy.status == Status::success &&
-                            formal_eskf::try_correct_velocity(prior, P, velocity, V, minimum_norm, posterior,
-                                                              posterior_P, policy.bias_update) == Status::success,
+                            formal_eskf::correct_velocity(prior, P, velocity, V, minimum_norm, posterior, posterior_P,
+                                                          policy.bias_update) == Status::success,
                         profile, "runtime permissions feed the real INS correction API");
             test.expect(formal_eskf::linalg::max_abs(posterior.v_n - prior.v_n) > value_type{0} &&
                             formal_eskf::linalg::max_abs(posterior_P - P) > value_type{0},

@@ -61,7 +61,7 @@ template <typename Backend, typename Configuration> void test_sequence(Context &
     formal_eskf::ImuSample<Backend> imu;
     imu.specific_force_b = -gravity;
     imu.angular_rate_b(2U) = yaw_rate;
-    test.expect(formal_eskf::so3::try_exp(vector3_type::from_row_major(initial_error), minimum_norm, state.q_nb) ==
+    test.expect(formal_eskf::so3::exp(vector3_type::from_row_major(initial_error), minimum_norm, state.q_nb) ==
                     Status::success,
                 profile, "initialize a nonzero attitude error");
     if constexpr (std::is_same_v<Configuration, Ins>)
@@ -82,17 +82,17 @@ template <typename Backend, typename Configuration> void test_sequence(Context &
 
     for (std::size_t step = 1U; step <= steps; ++step)
     {
-        test.expect(formal_eskf::try_predict(state, P, imu, dt, parameters, state, P) == Status::success, profile,
+        test.expect(formal_eskf::predict(state, P, imu, dt, parameters, state, P) == Status::success, profile,
                     "predict state and covariance from the previous corrected posterior");
-        test.expect(formal_eskf::try_correct_accelerometer(state, P, imu.specific_force_b, gravity, observation_noise,
-                                                           minimum_norm, state, P) == Status::success,
+        test.expect(formal_eskf::correct_accelerometer(state, P, imu.specific_force_b, gravity, observation_noise,
+                                                       minimum_norm, state, P) == Status::success,
                     profile, "gravity correction follows prediction");
 
         value_type const yaw = static_cast<value_type>(step) * dt * yaw_rate;
         value_type const magnetic_b_values[] = {std::cos(yaw), -std::sin(yaw), magnetic_n(2U)};
         auto const magnetic_b = vector3_type::from_row_major(magnetic_b_values);
-        test.expect(formal_eskf::try_correct_magnetometer(state, P, magnetic_b, magnetic_n, observation_noise,
-                                                          minimum_norm, state, P) == Status::success,
+        test.expect(formal_eskf::correct_magnetometer(state, P, magnetic_b, magnetic_n, observation_noise, minimum_norm,
+                                                      state, P) == Status::success,
                     profile, "magnetic correction consumes the gravity-corrected posterior");
 
         if constexpr (std::is_same_v<Configuration, Ins>)
@@ -100,14 +100,14 @@ template <typename Backend, typename Configuration> void test_sequence(Context &
             using vector2_type = formal_eskf::linalg::Vector<Backend, 2U>;
             using matrix2_type = formal_eskf::linalg::Matrix<Backend, 2U, 2U>;
             auto const horizontal_noise = matrix2_type::identity() * observation_noise(0U, 0U);
-            test.expect(formal_eskf::try_correct_horizontal_position(state, P, vector2_type{}, horizontal_noise,
-                                                                     minimum_norm, state, P) == Status::success,
+            test.expect(formal_eskf::correct_horizontal_position(state, P, vector2_type{}, horizontal_noise,
+                                                                 minimum_norm, state, P) == Status::success,
                         profile, "horizontal position correction follows attitude corrections");
-            test.expect(formal_eskf::try_correct_vertical_position(state, P, value_type{0}, observation_noise(2U, 2U),
-                                                                   minimum_norm, state, P) == Status::success,
+            test.expect(formal_eskf::correct_vertical_position(state, P, value_type{0}, observation_noise(2U, 2U),
+                                                               minimum_norm, state, P) == Status::success,
                         profile, "vertical position correction uses the updated posterior");
-            test.expect(formal_eskf::try_correct_velocity(state, P, vector3_type{}, observation_noise, minimum_norm,
-                                                          state, P) == Status::success,
+            test.expect(formal_eskf::correct_velocity(state, P, vector3_type{}, observation_noise, minimum_norm, state,
+                                                      P) == Status::success,
                         profile, "velocity correction completes the tick");
         }
         test.expect(formal_eskf::linalg::all_finite(P) && formal_eskf::linalg::is_symmetric(P, value_type{0}), profile,
@@ -136,7 +136,7 @@ template <typename Backend, typename Configuration> void test_sequence(Context &
 
     auto const before = state;
     auto const P_before = P;
-    test.expect(formal_eskf::try_predict(state, P, imu, value_type{0}, parameters, state, P) == Status::out_of_range,
+    test.expect(formal_eskf::predict(state, P, imu, value_type{0}, parameters, state, P) == Status::out_of_range,
                 profile, "an invalid next tick fails after the successful sequence");
     test.expect(formal_eskf::linalg::max_abs(state.q_nb.coefficients() - before.q_nb.coefficients()) == value_type{0} &&
                     formal_eskf::linalg::max_abs(P - P_before) == value_type{0},

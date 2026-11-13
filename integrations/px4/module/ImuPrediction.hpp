@@ -11,18 +11,18 @@ namespace formal_eskf::px4
 {
 
 /** Only an initialized filter may propagate accelerometer-clipped intervals. */
-[[nodiscard]] inline bool imu_clipping_acceptable(std::uint8_t accelerometer, std::uint8_t gyroscope, bool initialized)
+inline bool imu_clipping_acceptable(std::uint8_t accelerometer, std::uint8_t gyroscope, bool initialized)
 {
     return accelerometer <= 7U && gyroscope == 0U && (initialized || accelerometer == 0U);
 }
 
 /** One prediction; gap holds pass zero clipping/false fault and retain configured IMU noise. */
 template <typename Linalg>
-[[nodiscard]] Status try_predict_imu(configuration::Ins::NominalState<Linalg> & state,
-                                     linalg::Matrix<Linalg, 15U, 15U> & covariance, ImuSample<Linalg> const & imu,
-                                     typename Linalg::value_type dt,
-                                     configuration::Ins::Parameters<Linalg> const & parameters,
-                                     std::uint8_t accelerometer_clipping, bool bad_vertical_acceleration)
+[[nodiscard]] Status predict_imu(configuration::Ins::NominalState<Linalg> & state,
+                                 linalg::Matrix<Linalg, 15U, 15U> & covariance, ImuSample<Linalg> const & imu,
+                                 typename Linalg::value_type dt,
+                                 configuration::Ins::Parameters<Linalg> const & parameters,
+                                 std::uint8_t accelerometer_clipping, bool bad_vertical_acceleration)
 {
     using value_type = typename Linalg::value_type;
     if (accelerometer_clipping > 7U)
@@ -38,19 +38,19 @@ template <typename Linalg>
     // Start from configured noise each time; selection must not latch an override.
     auto step_parameters = parameters;
     constexpr value_type fault_variance = static_cast<value_type>(4.9 * 4.9); // m^2/s^4, sampled acceleration.
-    auto status = runtime::try_select_imu_process_noise(parameters.process_noise, conditions, fault_variance,
-                                                        step_parameters.process_noise);
+    auto status = runtime::select_imu_process_noise(parameters.process_noise, conditions, fault_variance,
+                                                    step_parameters.process_noise);
     if (!succeeded(status))
     {
         return status;
     }
-    status = runtime::try_inhibit_bias_process_noise(covariance, step_parameters.process_noise,
-                                                     step_parameters.process_noise);
+    status =
+        runtime::inhibit_bias_process_noise(covariance, step_parameters.process_noise, step_parameters.process_noise);
     if (!succeeded(status))
     {
         return status;
     }
-    return try_predict(state, covariance, imu, dt, step_parameters, state, covariance);
+    return predict(state, covariance, imu, dt, step_parameters, state, covariance);
 }
 
 } /* end namespace formal_eskf::px4 */

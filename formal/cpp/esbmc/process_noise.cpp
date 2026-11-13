@@ -248,7 +248,7 @@ void verify_process_noise(Noise const & noise, Scalar dt, Covariance & output)
         CommitContract::calls = 0U;
     }
 #endif
-    auto const actual = formal_eskf::try_discretize_process_noise(noise, dt, output);
+    auto const actual = formal_eskf::discretize_process_noise(noise, dt, output);
     __ESBMC_assert(actual == expected_status, "E-NOISE: exact input, ordered-group and arithmetic status");
 #if FORMAL_ESKF_PROOF_STORAGE_CONTRACT
     if constexpr (Groups == 4U)

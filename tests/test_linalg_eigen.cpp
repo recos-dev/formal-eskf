@@ -26,7 +26,7 @@ using TestContext = formal_eskf::test::Context;
 using formal_eskf::test::near;
 
 template <typename Matrix>
-[[nodiscard]] bool matrix_near(Matrix const & actual, Matrix const & expected, typename Matrix::value_type tolerance)
+bool matrix_near(Matrix const & actual, Matrix const & expected, typename Matrix::value_type tolerance)
 {
     for (std::size_t row = 0U; row < Matrix::row_count; ++row)
     {
@@ -181,7 +181,7 @@ void test_derived_operations(TestContext & test, std::string_view profile, typen
     constexpr value_type vector_values[2] = {3, 4};
     vector2_type const input = vector2_type::from_row_major(vector_values);
     vector2_type normalized;
-    formal_eskf::Status const status = try_normalize(input, tolerance, normalized);
+    formal_eskf::Status const status = normalize(input, tolerance, normalized);
     test.expect(status == formal_eskf::Status::success &&
                     near(normalized(0U), value_type{3} / value_type{5}, tolerance) &&
                     near(normalized(1U), value_type{4} / value_type{5}, tolerance),

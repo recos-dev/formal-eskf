@@ -17,6 +17,19 @@
  */
 
 #include <cstddef>
+#include <cmath>
+
+// ESBMC 8.4 recognizes user-defined functions named sqrt as intrinsics,
+// bypassing the checked scalar wrapper. Rename the token in proof inputs only.
+// These endpoints forward to the existing std::sqrt boundary; unlike
+// scalar_support.hpp, they do not substitute arbitrary library results.
+// Include cmath first so its declarations and the calls below stay unchanged.
+namespace std
+{
+inline float formal_eskf_proof_sqrt(float value) { return std::sqrt(value); }
+inline double formal_eskf_proof_sqrt(double value) { return std::sqrt(value); }
+} // namespace std
+#define sqrt formal_eskf_proof_sqrt
 
 #include <formal_eskf/linalg/linalg.hpp>
 #include <formal_eskf/scalar/backend/standard.hpp>
@@ -152,15 +165,14 @@ public:
     }
 
     template <std::size_t Rows, std::size_t Columns>
-    [[nodiscard]] static value_type const & coefficient(storage_type<Rows, Columns> const & matrix, std::size_t row,
-                                                        std::size_t column)
+    static value_type const & coefficient(storage_type<Rows, Columns> const & matrix, std::size_t row,
+                                          std::size_t column)
     {
         return matrix.values[row * Columns + column];
     }
 
     template <std::size_t Rows, std::size_t Columns>
-    [[nodiscard]] static value_type & coefficient(storage_type<Rows, Columns> & matrix, std::size_t row,
-                                                  std::size_t column)
+    static value_type & coefficient(storage_type<Rows, Columns> & matrix, std::size_t row, std::size_t column)
     {
         return matrix.values[row * Columns + column];
     }
@@ -218,7 +230,7 @@ public:
     }
 
     template <std::size_t Size>
-    [[nodiscard]] static value_type dot(storage_type<Size, 1U> const & left, storage_type<Size, 1U> const & right)
+    static value_type dot(storage_type<Size, 1U> const & left, storage_type<Size, 1U> const & right)
     {
         value_type result{0};
         for (std::size_t index = 0U; index < Size; ++index)
@@ -228,12 +240,12 @@ public:
         return result;
     }
 
-    template <std::size_t Size> [[nodiscard]] static value_type squared_norm(storage_type<Size, 1U> const & vector)
+    template <std::size_t Size> static value_type squared_norm(storage_type<Size, 1U> const & vector)
     {
         return dot(vector, vector);
     }
 
-    template <std::size_t Size> [[nodiscard]] static value_type norm(storage_type<Size, 1U> const & vector)
+    template <std::size_t Size> static value_type norm(storage_type<Size, 1U> const & vector)
     {
         Observer::template input<Size>(vector.values);
         value_type const result = scalar_math_type::sqrt(squared_norm(vector));
@@ -298,18 +310,18 @@ inline void assume_quaternion(Quaternion const & quaternion)
     assume_scalar(quaternion.q3());
 }
 
-[[nodiscard]] inline bool same_coefficients(Quaternion const & left, Quaternion const & right)
+inline bool same_coefficients(Quaternion const & left, Quaternion const & right)
 {
     return left.q0() == right.q0() && left.q1() == right.q1() && left.q2() == right.q2() && left.q3() == right.q3();
 }
 
-[[nodiscard]] inline bool is_negative_identity(Quaternion const & quaternion)
+inline bool is_negative_identity(Quaternion const & quaternion)
 {
     return quaternion.q0() == Scalar{-1} && quaternion.q1() == Scalar{0} && quaternion.q2() == Scalar{0} &&
            quaternion.q3() == Scalar{0};
 }
 
-[[nodiscard]] inline bool same_vector(Vector3 const & left, Vector3 const & right)
+inline bool same_vector(Vector3 const & left, Vector3 const & right)
 {
     return left(0U) == right(0U) && left(1U) == right(1U) && left(2U) == right(2U);
 }

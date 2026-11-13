@@ -245,8 +245,8 @@ template <typename Linalg> void test_fusion(TestContext & test, std::string_view
     }
     state_type expected;
     covariance_type expected_P;
-    test.expect(formal_eskf::try_correct_accelerometer(state, P, observation.specific_force_b, gravity, V, minimum_norm,
-                                                       expected, expected_P) == Status::success,
+    test.expect(formal_eskf::correct_accelerometer(state, P, observation.specific_force_b, gravity, V, minimum_norm,
+                                                   expected, expected_P) == Status::success,
                 profile, "direct correction oracle uses the interval measurement and agreed V");
     auto const fused = formal_eskf::runtime::fuse_accelerometer(
         state, P, observation.specific_force_b, gravity, V, *conditions, observation.magnitude, minimum_norm, state, P);

@@ -18,8 +18,9 @@ The [C++ portability and constraints specification](docs/spec/cpp-portability-an
 ## Naming
 
 - Use `CamelCase` for classes, structs, enums and template parameters: `UnitQuaternion`, `Linalg`, `Rows`.
-- Use `snake_case` for functions, variables and ordinary constants: `try_normalize`, `minimum_norm`, `row_count`. Reserve `UPPER_CASE` for macros.
+- Use `snake_case` for functions, variables and ordinary constants: `normalize`, `minimum_norm`, `row_count`. Reserve `UPPER_CASE` for macros.
 - Use descriptive type aliases ending in `_type` or `_t`, such as `value_type` and `matrix_type`.
+- Name public operations and internal helpers by their action, without a `try_` prefix. Return types and documented contracts describe failure. Keep `correct_*` for numerical correction and `fuse_*` for operations that also apply fusion policy.
 - Prefix encapsulated data members with `m_`. Plain state and parameter structs keep unprefixed fields.
 - Preserve established mathematical notation when its meaning is clear from the surrounding model, such as `q_nb`, `R`, `H` and `K`. Otherwise, prefer descriptive names.
 

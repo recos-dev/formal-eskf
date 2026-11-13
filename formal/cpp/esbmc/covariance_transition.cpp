@@ -41,8 +41,8 @@ namespace formal_eskf::so3
 // Actual same-type Exp is discharged by maps.cpp and its normalization/math
 // producers. No accuracy/unit-norm/finite-success assumption is made here.
 template <>
-inline Status try_exp<contract_proof::Linalg>(contract_proof::Vector3 const & theta, contract_proof::Scalar minimum,
-                                              contract_proof::Quaternion & output)
+inline Status exp<contract_proof::Linalg>(contract_proof::Vector3 const & theta, contract_proof::Scalar minimum,
+                                          contract_proof::Quaternion & output)
 {
     using transition_proof::ExpContract;
     __ESBMC_assert(ExpContract::calls++ == 0U, "E-PCOV transition contract: one Exp request");
@@ -76,7 +76,7 @@ void verify_covariance_transition(Vector3 omega, Scalar dt, Scalar minimum, Matr
     ExpContract::result = increment;
     ExpContract::status = exp_status;
     RotationContract::result = rotation;
-    auto const status = formal_eskf::detail::try_attitude_error_transition(omega, dt, minimum, output);
+    auto const status = formal_eskf::detail::attitude_error_transition(omega, dt, minimum, output);
     Scalar const x = omega_before(0U) * dt, y = omega_before(1U) * dt, z = omega_before(2U) * dt;
     bool const finite = std::isfinite(x) && std::isfinite(y) && std::isfinite(z);
     Status expected = finite ? Status::success : Status::non_finite_result;

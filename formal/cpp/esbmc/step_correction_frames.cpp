@@ -64,7 +64,7 @@ void verify_correction_injection_frame(State state, Error error, Scalar minimum,
     solve_proof::Math::sqrt.results.head = root;
     // Only Exp's non-Taylor branch uses the positive-pivot root observer.
     // Quaternion norms use the actual standard-sqrt norm<4> implementation.
-    (void)formal_eskf::try_inject_nominal(state, error, minimum, output);
+    (void)formal_eskf::inject_nominal(state, error, minimum, output);
     __ESBMC_assert(solve_proof::Math::sqrt.calls <= 1U && same_state(state, old_state) && same_error(error, old_error),
                    "E-STEP-CORRECT frame: actual injection preserves every nominal and error input coordinate");
 }
@@ -83,7 +83,7 @@ void verify_correction_reset_frame(Error error, Covariance covariance, Covarianc
     ProductResult::calls = 0U;
     solve_proof::Math::sqrt = {};
     solve_proof::Math::sqrt.results.head = root;
-    (void)formal_eskf::try_reset_covariance(error, covariance, output);
+    (void)formal_eskf::reset_covariance(error, covariance, output);
     __ESBMC_assert(solve_proof::Math::sqrt.calls <= 1U && same_error(error, old_error) &&
                        same_matrix(covariance, old_covariance),
                    "E-STEP-CORRECT frame: actual reset preserves every error and prior covariance coordinate");

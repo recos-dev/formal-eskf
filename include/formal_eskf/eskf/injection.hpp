@@ -36,9 +36,9 @@ namespace detail
 
 /** Right-multiply by Exp(delta_theta_b); output is unchanged on failure and may alias q_nb. */
 template <typename Linalg>
-[[nodiscard]] Status try_inject_attitude(so3::UnitQuaternion<Linalg> const & q_nb,
-                                         linalg::Vector<Linalg, 3U> const & delta_theta_b,
-                                         typename Linalg::value_type minimum_norm, so3::UnitQuaternion<Linalg> & output)
+[[nodiscard]] Status inject_attitude(so3::UnitQuaternion<Linalg> const & q_nb,
+                                     linalg::Vector<Linalg, 3U> const & delta_theta_b,
+                                     typename Linalg::value_type minimum_norm, so3::UnitQuaternion<Linalg> & output)
 {
     using value_type = typename Linalg::value_type;
     using scalar_math_type = typename Linalg::scalar_math_type;
@@ -53,19 +53,19 @@ template <typename Linalg>
         return Status::domain_error;
     }
     so3::UnitQuaternion<Linalg> increment;
-    Status const exp_status = so3::try_exp(delta_theta_b, minimum_norm, increment);
+    Status const exp_status = so3::exp(delta_theta_b, minimum_norm, increment);
     if (!succeeded(exp_status))
     {
         return exp_status;
     }
-    Status const status = so3::try_compose_normalized(q_nb, increment, minimum_norm, output);
+    Status const status = so3::compose_normalized(q_nb, increment, minimum_norm, output);
     return status == Status::non_finite_input ? Status::non_finite_result : status;
 }
 
 template <std::size_t AttitudeOffset, typename Linalg, std::size_t Size>
-[[nodiscard]] Status try_reset_error_covariance(linalg::Vector<Linalg, 3U> const & delta_theta_b,
-                                                linalg::Matrix<Linalg, Size, Size> const & covariance,
-                                                linalg::Matrix<Linalg, Size, Size> & output)
+[[nodiscard]] Status reset_error_covariance(linalg::Vector<Linalg, 3U> const & delta_theta_b,
+                                            linalg::Matrix<Linalg, Size, Size> const & covariance,
+                                            linalg::Matrix<Linalg, Size, Size> & output)
 {
     static_assert(AttitudeOffset + 3U <= Size);
     using matrix3_type = linalg::Matrix<Linalg, 3U, 3U>;
@@ -81,7 +81,7 @@ template <std::size_t AttitudeOffset, typename Linalg, std::size_t Size>
 #else
     // The differential of Log(Exp(-a)*Exp(a+epsilon)) at epsilon=0 is J_r(a),
     // from Sola equations (182)--(183), consistent with right-multiplied injection.
-    Status const jacobian_status = so3::try_right_jacobian(delta_theta_b, G_theta);
+    Status const jacobian_status = so3::right_jacobian(delta_theta_b, G_theta);
     if (!succeeded(jacobian_status))
     {
         return jacobian_status;
@@ -90,7 +90,7 @@ template <std::size_t AttitudeOffset, typename Linalg, std::size_t Size>
     auto G = linalg::Matrix<Linalg, Size, Size>::identity();
     G.template set_block<AttitudeOffset, AttitudeOffset>(G_theta);
     auto candidate = linalg::sandwich(G, covariance);
-    return try_finish_covariance(candidate, output);
+    return finish_covariance(candidate, output);
 }
 
 } /* end namespace detail */
@@ -103,18 +103,18 @@ template <std::size_t AttitudeOffset, typename Linalg, std::size_t Size>
  *
  * Consumed inputs must be finite and 0 < minimum_quaternion_norm <= 1.
  * Output may alias state and is unchanged on failure. This operation alone
- * does not reset the error mean or covariance; use try_inject_and_reset for
+ * does not reset the error mean or covariance; use inject_and_reset for
  * an atomic complete injection/reset step.
  *
  * @see https://arxiv.org/abs/1711.02508
  */
 template <typename Linalg>
-[[nodiscard]] Status try_inject_nominal(configuration::Ahrs::NominalState<Linalg> const & state,
-                                        configuration::Ahrs::ErrorState<Linalg> const & error,
-                                        typename Linalg::value_type minimum_quaternion_norm,
-                                        configuration::Ahrs::NominalState<Linalg> & output)
+[[nodiscard]] Status inject_nominal(configuration::Ahrs::NominalState<Linalg> const & state,
+                                    configuration::Ahrs::ErrorState<Linalg> const & error,
+                                    typename Linalg::value_type minimum_quaternion_norm,
+                                    configuration::Ahrs::NominalState<Linalg> & output)
 {
-    return detail::try_inject_attitude(state.q_nb, error.delta_theta_b, minimum_quaternion_norm, output.q_nb);
+    return detail::inject_attitude(state.q_nb, error.delta_theta_b, minimum_quaternion_norm, output.q_nb);
 }
 
 /**
@@ -124,10 +124,10 @@ template <typename Linalg>
  * Preconditions and output atomicity follow the AHRS overload.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_inject_nominal(configuration::Ins::NominalState<Linalg> const & state,
-                                        configuration::Ins::ErrorState<Linalg> const & error,
-                                        typename Linalg::value_type minimum_quaternion_norm,
-                                        configuration::Ins::NominalState<Linalg> & output)
+[[nodiscard]] Status inject_nominal(configuration::Ins::NominalState<Linalg> const & state,
+                                    configuration::Ins::ErrorState<Linalg> const & error,
+                                    typename Linalg::value_type minimum_quaternion_norm,
+                                    configuration::Ins::NominalState<Linalg> & output)
 {
     if (!linalg::all_finite(state.p_n) || !linalg::all_finite(state.v_n) || !linalg::all_finite(state.b_a) ||
         !linalg::all_finite(state.b_g) || !linalg::all_finite(error.delta_p_n) ||
@@ -138,7 +138,7 @@ template <typename Linalg>
     }
     auto candidate = state;
     Status const status =
-        detail::try_inject_attitude(state.q_nb, error.delta_theta_b, minimum_quaternion_norm, candidate.q_nb);
+        detail::inject_attitude(state.q_nb, error.delta_theta_b, minimum_quaternion_norm, candidate.q_nb);
     if (!succeeded(status))
     {
         return status;
@@ -174,11 +174,11 @@ template <typename Linalg>
  * The error input is the estimated correction BEFORE resetting its mean.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_reset_covariance(configuration::Ahrs::ErrorState<Linalg> const & error,
-                                          linalg::Matrix<Linalg, 3U, 3U> const & covariance,
-                                          linalg::Matrix<Linalg, 3U, 3U> & output)
+[[nodiscard]] Status reset_covariance(configuration::Ahrs::ErrorState<Linalg> const & error,
+                                      linalg::Matrix<Linalg, 3U, 3U> const & covariance,
+                                      linalg::Matrix<Linalg, 3U, 3U> & output)
 {
-    return detail::try_reset_error_covariance<0U>(error.delta_theta_b, covariance, output);
+    return detail::reset_error_covariance<0U>(error.delta_theta_b, covariance, output);
 }
 
 /**
@@ -188,37 +188,37 @@ template <typename Linalg>
  * reset derivatives. Other preconditions follow the AHRS overload.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_reset_covariance(configuration::Ins::ErrorState<Linalg> const & error,
-                                          linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-                                          linalg::Matrix<Linalg, 15U, 15U> & output)
+[[nodiscard]] Status reset_covariance(configuration::Ins::ErrorState<Linalg> const & error,
+                                      linalg::Matrix<Linalg, 15U, 15U> const & covariance,
+                                      linalg::Matrix<Linalg, 15U, 15U> & output)
 {
-    return detail::try_reset_error_covariance<6U>(error.delta_theta_b, covariance, output);
+    return detail::reset_error_covariance<6U>(error.delta_theta_b, covariance, output);
 }
 
 /**
  * Atomically inject the estimated error, reset covariance, and zero the error
  * MEAN (Sola equation (285)), not covariance or the unknown true error.
- * Preconditions are the union of try_inject_nominal and try_reset_covariance.
+ * Preconditions are the union of inject_nominal and reset_covariance.
  * All three outputs commit only on success and may alias their respective
  * inputs. Separate inputs are unchanged. No measurements or solves are used.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_inject_and_reset(configuration::Ahrs::NominalState<Linalg> const & state,
-                                          linalg::Matrix<Linalg, 3U, 3U> const & covariance,
-                                          configuration::Ahrs::ErrorState<Linalg> const & error,
-                                          typename Linalg::value_type minimum_quaternion_norm,
-                                          configuration::Ahrs::NominalState<Linalg> & state_output,
-                                          linalg::Matrix<Linalg, 3U, 3U> & covariance_output,
-                                          configuration::Ahrs::ErrorState<Linalg> & error_output)
+[[nodiscard]] Status inject_and_reset(configuration::Ahrs::NominalState<Linalg> const & state,
+                                      linalg::Matrix<Linalg, 3U, 3U> const & covariance,
+                                      configuration::Ahrs::ErrorState<Linalg> const & error,
+                                      typename Linalg::value_type minimum_quaternion_norm,
+                                      configuration::Ahrs::NominalState<Linalg> & state_output,
+                                      linalg::Matrix<Linalg, 3U, 3U> & covariance_output,
+                                      configuration::Ahrs::ErrorState<Linalg> & error_output)
 {
     configuration::Ahrs::NominalState<Linalg> state_candidate;
-    Status const nominal_status = try_inject_nominal(state, error, minimum_quaternion_norm, state_candidate);
+    Status const nominal_status = inject_nominal(state, error, minimum_quaternion_norm, state_candidate);
     if (!succeeded(nominal_status))
     {
         return nominal_status;
     }
     linalg::Matrix<Linalg, 3U, 3U> covariance_candidate;
-    Status const covariance_status = try_reset_covariance(error, covariance, covariance_candidate);
+    Status const covariance_status = reset_covariance(error, covariance, covariance_candidate);
     if (!succeeded(covariance_status))
     {
         return covariance_status;
@@ -231,22 +231,22 @@ template <typename Linalg>
 
 /** INS overload of the atomic injection/reset step. */
 template <typename Linalg>
-[[nodiscard]] Status try_inject_and_reset(configuration::Ins::NominalState<Linalg> const & state,
-                                          linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-                                          configuration::Ins::ErrorState<Linalg> const & error,
-                                          typename Linalg::value_type minimum_quaternion_norm,
-                                          configuration::Ins::NominalState<Linalg> & state_output,
-                                          linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                                          configuration::Ins::ErrorState<Linalg> & error_output)
+[[nodiscard]] Status inject_and_reset(configuration::Ins::NominalState<Linalg> const & state,
+                                      linalg::Matrix<Linalg, 15U, 15U> const & covariance,
+                                      configuration::Ins::ErrorState<Linalg> const & error,
+                                      typename Linalg::value_type minimum_quaternion_norm,
+                                      configuration::Ins::NominalState<Linalg> & state_output,
+                                      linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
+                                      configuration::Ins::ErrorState<Linalg> & error_output)
 {
     configuration::Ins::NominalState<Linalg> state_candidate;
-    Status const nominal_status = try_inject_nominal(state, error, minimum_quaternion_norm, state_candidate);
+    Status const nominal_status = inject_nominal(state, error, minimum_quaternion_norm, state_candidate);
     if (!succeeded(nominal_status))
     {
         return nominal_status;
     }
     linalg::Matrix<Linalg, 15U, 15U> covariance_candidate;
-    Status const covariance_status = try_reset_covariance(error, covariance, covariance_candidate);
+    Status const covariance_status = reset_covariance(error, covariance, covariance_candidate);
     if (!succeeded(covariance_status))
     {
         return covariance_status;

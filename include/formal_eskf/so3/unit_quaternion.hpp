@@ -45,24 +45,24 @@ public:
 
     constexpr UnitQuaternion() = default;
 
-    [[nodiscard]] static constexpr UnitQuaternion identity() { return UnitQuaternion(); }
+    static constexpr UnitQuaternion identity() { return UnitQuaternion(); }
 
-    [[nodiscard]] static Status try_from_coefficients(value_type q0, value_type q1, value_type q2, value_type q3,
-                                                      value_type minimum_norm, UnitQuaternion & output);
+    [[nodiscard]] static Status from_coefficients(value_type q0, value_type q1, value_type q2, value_type q3,
+                                                  value_type minimum_norm, UnitQuaternion & output);
 
-    [[nodiscard]] static Status try_from_coefficients(vector4_type const & coefficients, value_type minimum_norm,
-                                                      UnitQuaternion & output);
+    [[nodiscard]] static Status from_coefficients(vector4_type const & coefficients, value_type minimum_norm,
+                                                  UnitQuaternion & output);
 
-    [[nodiscard]] constexpr value_type q0() const { return m_q0; }
-    [[nodiscard]] constexpr value_type q1() const { return m_q1; }
-    [[nodiscard]] constexpr value_type q2() const { return m_q2; }
-    [[nodiscard]] constexpr value_type q3() const { return m_q3; }
+    constexpr value_type q0() const { return m_q0; }
+    constexpr value_type q1() const { return m_q1; }
+    constexpr value_type q2() const { return m_q2; }
+    constexpr value_type q3() const { return m_q3; }
 
-    [[nodiscard]] vector4_type coefficients() const;
+    vector4_type coefficients() const;
 
-    [[nodiscard]] constexpr UnitQuaternion operator-() const { return UnitQuaternion(-m_q0, -m_q1, -m_q2, -m_q3); }
-    [[nodiscard]] constexpr UnitQuaternion operator*(UnitQuaternion const & other) const;
-    [[nodiscard]] constexpr UnitQuaternion inverse() const { return UnitQuaternion(m_q0, -m_q1, -m_q2, -m_q3); }
+    constexpr UnitQuaternion operator-() const { return UnitQuaternion(-m_q0, -m_q1, -m_q2, -m_q3); }
+    constexpr UnitQuaternion operator*(UnitQuaternion const & other) const;
+    constexpr UnitQuaternion inverse() const { return UnitQuaternion(m_q0, -m_q1, -m_q2, -m_q3); }
 
 private:
     // Only member operations may construct directly from coefficients.
@@ -78,15 +78,15 @@ private:
 }; /* end class UnitQuaternion */
 
 template <typename Linalg>
-Status UnitQuaternion<Linalg>::try_from_coefficients(value_type q0, value_type q1, value_type q2, value_type q3,
-                                                     value_type minimum_norm, UnitQuaternion & output)
+Status UnitQuaternion<Linalg>::from_coefficients(value_type q0, value_type q1, value_type q2, value_type q3,
+                                                 value_type minimum_norm, UnitQuaternion & output)
 {
-    return try_from_coefficients(vector4_type::from_row_major({q0, q1, q2, q3}), minimum_norm, output);
+    return from_coefficients(vector4_type::from_row_major({q0, q1, q2, q3}), minimum_norm, output);
 }
 
 template <typename Linalg>
-Status UnitQuaternion<Linalg>::try_from_coefficients(vector4_type const & coefficients, value_type minimum_norm,
-                                                     UnitQuaternion & output)
+Status UnitQuaternion<Linalg>::from_coefficients(vector4_type const & coefficients, value_type minimum_norm,
+                                                 UnitQuaternion & output)
 {
     if (!scalar::is_finite<scalar_math_type>(minimum_norm))
     {
@@ -98,7 +98,7 @@ Status UnitQuaternion<Linalg>::try_from_coefficients(vector4_type const & coeffi
     }
 
     vector4_type normalized;
-    Status const status = linalg::try_normalize(coefficients, minimum_norm, normalized);
+    Status const status = linalg::normalize(coefficients, minimum_norm, normalized);
     if (status == Status::zero_or_unsafe_divisor)
     {
         return Status::invalid_quaternion_norm;

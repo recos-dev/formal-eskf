@@ -39,22 +39,22 @@ public:
     /** Call only after actual horizontal position/velocity correction succeeds. */
     void record_horizontal_fusion(std::uint64_t time_us) { m_last_horizontal_fusion_us = time_us; }
 
-    [[nodiscard]] bool horizontal_aiding(std::uint64_t now_us) const
+    bool horizontal_aiding(std::uint64_t now_us) const
     {
         // A future timestamp is not a reason to release gravity aiding.
         return m_last_horizontal_fusion_us != 0U &&
                (now_us < m_last_horizontal_fusion_us || now_us - m_last_horizontal_fusion_us < horizontal_timeout_us);
     }
-    [[nodiscard]] bool tilt_aligned() const { return m_tilt.aligned(); }
-    [[nodiscard]] value_type tilt_variance() const { return m_tilt.variance(); }
+    bool tilt_aligned() const { return m_tilt.aligned(); }
+    value_type tilt_variance() const { return m_tilt.variance(); }
 
     /**
      * -1 means unavailable. Unknown rest disables only its override; unknown
      * clipping cannot authorize a sample, so no complete conditions are returned.
      * enabled requests gravity aiding, not permission to run correction here.
      */
-    [[nodiscard]] std::optional<runtime::AccelerometerFusionConditions> conditions(std::uint64_t now_us, bool enabled,
-                                                                                   int at_rest, int clipping_mask) const
+    std::optional<runtime::AccelerometerFusionConditions> conditions(std::uint64_t now_us, bool enabled, int at_rest,
+                                                                     int clipping_mask) const
     {
         if (now_us == 0U || now_us < m_last_horizontal_fusion_us || at_rest < -1 || at_rest > 1 || clipping_mask < 0 ||
             clipping_mask > 7)

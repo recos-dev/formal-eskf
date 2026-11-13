@@ -40,7 +40,7 @@ public:
         bool consistent = false; // Retained through low excitation until inconsistency is observed.
     };
 
-    [[nodiscard]] State const & state() const { return m_state; }
+    State const & state() const { return m_state; }
     void reset() { *this = MagneticHeading{}; }
     /** Missing IMU intervals provide no maneuver evidence. Preserve the heading latch. */
     void reset_acceleration()
@@ -101,7 +101,7 @@ Status MagneticHeading<Linalg>::update_acceleration(vector_type const & accelera
         return Status::non_finite_result;
     }
     value_type magnitude{};
-    auto const status = scalar::try_sqrt<math_type>(squared_norm, magnitude);
+    auto const status = scalar::sqrt<math_type>(squared_norm, magnitude);
     if (succeeded(status))
     {
         m_acceleration = candidate;

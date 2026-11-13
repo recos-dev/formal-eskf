@@ -38,8 +38,8 @@ public:
     /** Clear history on source/calibration/frame changes; next valid sample seeds the filter. */
     void reset() { *this = AccelerometerMagnitude{}; }
 
-    [[nodiscard]] bool initialized() const { return m_initialized; }
-    [[nodiscard]] vector_type const & filtered_specific_force_b() const { return m_filtered_specific_force_b; }
+    bool initialized() const { return m_initialized; }
+    vector_type const & filtered_specific_force_b() const { return m_filtered_specific_force_b; }
 
     /** First valid sample seeds all axes. Failure preserves history and returns no valid diagnostics. */
     [[nodiscard]] Result update(vector_type const & specific_force_b);

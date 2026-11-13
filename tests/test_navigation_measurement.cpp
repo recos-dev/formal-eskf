@@ -176,18 +176,18 @@ template <typename Linalg> void test_correction_contract(Context & test)
                 Status status{};
                 if (height)
                 {
-                    status = formal_eskf::try_correct(
-                        fixture.state, fixture.P,
-                        formal_eskf::linalg::Vector<Linalg, 1U>::from_row_major({expected_r(2U)}),
-                        formal_eskf::vertical_position_jacobian<Linalg>(),
-                        formal_eskf::linalg::Matrix<Linalg, 1U, 1U>::identity(), fixture.minimum_norm, expected,
-                        expected_P, permissions);
+                    status =
+                        formal_eskf::correct(fixture.state, fixture.P,
+                                             formal_eskf::linalg::Vector<Linalg, 1U>::from_row_major({expected_r(2U)}),
+                                             formal_eskf::vertical_position_jacobian<Linalg>(),
+                                             formal_eskf::linalg::Matrix<Linalg, 1U, 1U>::identity(),
+                                             fixture.minimum_norm, expected, expected_P, permissions);
                 }
                 else
                 {
-                    status = formal_eskf::try_correct(fixture.state, fixture.P, expected_r,
-                                                      formal_eskf::velocity_jacobian<Linalg>(), fixture.V,
-                                                      fixture.minimum_norm, expected, expected_P, permissions);
+                    status = formal_eskf::correct(fixture.state, fixture.P, expected_r,
+                                                  formal_eskf::velocity_jacobian<Linalg>(), fixture.V,
+                                                  fixture.minimum_norm, expected, expected_P, permissions);
                 }
                 auto output = fixture.state;
                 auto output_P = fixture.P;

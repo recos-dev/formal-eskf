@@ -28,11 +28,11 @@ namespace
 {
 
 using TestContext = formal_eskf::test::Context;
+using formal_eskf::correct;
 using formal_eskf::Status;
-using formal_eskf::try_correct;
 using formal_eskf::test::near;
 
-template <typename Matrix> [[nodiscard]] bool same_bits(Matrix const & a, Matrix const & b)
+template <typename Matrix> bool same_bits(Matrix const & a, Matrix const & b)
 {
     using bytes_type = std::array<std::byte, sizeof(typename Matrix::value_type)>;
     for (std::size_t row = 0U; row < Matrix::row_count; ++row)
@@ -48,7 +48,7 @@ template <typename Matrix> [[nodiscard]] bool same_bits(Matrix const & a, Matrix
     return true;
 }
 
-template <typename State> [[nodiscard]] bool same_state(State const & a, State const & b)
+template <typename State> bool same_state(State const & a, State const & b)
 {
     bool same = same_bits(a.q_nb.coefficients(), b.q_nb.coefficients());
     if constexpr (requires { a.p_n; })
@@ -82,7 +82,7 @@ template <typename Linalg, typename Configuration, std::size_t MeasurementSize> 
 
     CorrectionFixture()
     {
-        attitude_status = formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
+        attitude_status = formal_eskf::so3::UnitQuaternion<Linalg>::from_coefficients(
             value_type{0.5}, value_type{0.5}, value_type{0.5}, value_type{0.5}, minimum_norm, state.q_nb);
         if constexpr (is_ins)
         {
@@ -128,7 +128,7 @@ template <typename Linalg, typename Configuration, std::size_t MeasurementSize> 
 template <std::size_t Rows, std::size_t Columns> using Dense = std::array<std::array<long double, Columns>, Rows>;
 
 template <std::size_t Rows, std::size_t Inner, std::size_t Columns>
-[[nodiscard]] Dense<Rows, Columns> product(Dense<Rows, Inner> const & a, Dense<Inner, Columns> const & b)
+Dense<Rows, Columns> product(Dense<Rows, Inner> const & a, Dense<Inner, Columns> const & b)
 {
     Dense<Rows, Columns> output{};
     for (std::size_t row = 0U; row < Rows; ++row)
@@ -144,8 +144,7 @@ template <std::size_t Rows, std::size_t Inner, std::size_t Columns>
     return output;
 }
 
-template <std::size_t Rows, std::size_t Columns>
-[[nodiscard]] Dense<Columns, Rows> transposed(Dense<Rows, Columns> const & a)
+template <std::size_t Rows, std::size_t Columns> Dense<Columns, Rows> transposed(Dense<Rows, Columns> const & a)
 {
     Dense<Columns, Rows> output{};
     for (std::size_t row = 0U; row < Rows; ++row)
@@ -158,7 +157,7 @@ template <std::size_t Rows, std::size_t Columns>
     return output;
 }
 
-template <typename Matrix> [[nodiscard]] Dense<Matrix::row_count, Matrix::column_count> copied(Matrix const & a)
+template <typename Matrix> Dense<Matrix::row_count, Matrix::column_count> copied(Matrix const & a)
 {
     Dense<Matrix::row_count, Matrix::column_count> output{};
     for (std::size_t row = 0U; row < Matrix::row_count; ++row)
@@ -180,7 +179,7 @@ template <std::size_t Size> struct ReferenceCorrection
 };
 
 template <typename Fixture>
-[[nodiscard]] ReferenceCorrection<Fixture::size>
+ReferenceCorrection<Fixture::size>
 reference_correction(Fixture const & fixture, formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {})
 {
     constexpr std::size_t n = Fixture::size;
@@ -316,10 +315,9 @@ reference_correction(Fixture const & fixture, formal_eskf::configuration::Ins::B
 }
 
 template <typename Fixture>
-[[nodiscard]] bool matches_reference(Fixture const & fixture, ReferenceCorrection<Fixture::size> const & reference,
-                                     typename Fixture::state_type const & state,
-                                     typename Fixture::covariance_type const & covariance,
-                                     typename Fixture::value_type tolerance)
+bool matches_reference(Fixture const & fixture, ReferenceCorrection<Fixture::size> const & reference,
+                       typename Fixture::state_type const & state, typename Fixture::covariance_type const & covariance,
+                       typename Fixture::value_type tolerance)
 {
     using value_type = typename Fixture::value_type;
     constexpr std::size_t offset = Fixture::attitude_offset;
@@ -384,12 +382,12 @@ void check_success(TestContext & test, std::string_view profile, Fixture const &
     typename Fixture::correction_type delta;
     typename Fixture::covariance_type joseph;
     typename Fixture::gain_type K;
-    Status linear_status = formal_eskf::detail::try_compute_correction_gain(fixture.P, fixture.r, fixture.H, fixture.V,
-                                                                            Fixture::minimum_norm, K);
+    Status linear_status = formal_eskf::detail::compute_correction_gain(fixture.P, fixture.r, fixture.H, fixture.V,
+                                                                        Fixture::minimum_norm, K);
     if (linear_status == Status::success)
     {
-        linear_status = formal_eskf::detail::try_apply_correction_gain(fixture.P, fixture.r, fixture.H, fixture.V, K,
-                                                                       delta, joseph);
+        linear_status =
+            formal_eskf::detail::apply_correction_gain(fixture.P, fixture.r, fixture.H, fixture.V, K, delta, joseph);
     }
     bool linear_matches = linear_status == Status::success;
     for (std::size_t row = 0U; row < Fixture::size; ++row)
@@ -409,12 +407,12 @@ void check_success(TestContext & test, std::string_view profile, Fixture const &
     auto const saved_delta = delta;
     auto const saved_joseph = joseph;
     auto const saved_gain = K;
-    Status rejected = formal_eskf::detail::try_compute_correction_gain(fixture.P, fixture.r, fixture.H, fixture.V,
-                                                                       typename Fixture::value_type{0}, K);
+    Status rejected = formal_eskf::detail::compute_correction_gain(fixture.P, fixture.r, fixture.H, fixture.V,
+                                                                   typename Fixture::value_type{0}, K);
     if (rejected == Status::success)
     {
-        rejected = formal_eskf::detail::try_apply_correction_gain(fixture.P, fixture.r, fixture.H, fixture.V, K, delta,
-                                                                  joseph);
+        rejected =
+            formal_eskf::detail::apply_correction_gain(fixture.P, fixture.r, fixture.H, fixture.V, K, delta, joseph);
     }
     test.expect(rejected == Status::domain_error && same_bits(K, saved_gain) && same_bits(delta, saved_delta) &&
                     same_bits(joseph, saved_joseph),
@@ -426,8 +424,8 @@ void check_success(TestContext & test, std::string_view profile, Fixture const &
         auto separate_covariance = Fixture::covariance_type::identity();
         auto & state_output = (aliases & 1U) != 0U ? input.state : separate_state;
         auto & covariance_output = (aliases & 2U) != 0U ? input.P : separate_covariance;
-        Status const status = try_correct(input.state, input.P, input.r, input.H, input.V, Fixture::minimum_norm,
-                                          state_output, covariance_output);
+        Status const status = correct(input.state, input.P, input.r, input.H, input.V, Fixture::minimum_norm,
+                                      state_output, covariance_output);
         test.expect(status == Status::success &&
                         matches_reference(fixture, reference, state_output, covariance_output, tolerance),
                     profile, "correction agrees with independent gain/Joseph/Exp/reset oracle for every output alias");
@@ -490,8 +488,8 @@ void test_repeated_scalar_correction(TestContext & test, std::string_view profil
     // the independent closed form p_k = 1 / (1 + k / v).
     for (std::size_t count = 1U; count <= 100U; ++count)
     {
-        Status const status = try_correct(fixture.state, fixture.P, fixture.r, fixture.H, fixture.V,
-                                          fixture_type::minimum_norm, fixture.state, fixture.P);
+        Status const status = correct(fixture.state, fixture.P, fixture.r, fixture.H, fixture.V,
+                                      fixture_type::minimum_norm, fixture.state, fixture.P);
         value_type const expected = value_type{1} / (value_type{1} + value_type{4} * static_cast<value_type>(count));
         bool correct = status == Status::success && same_state(fixture.state, prior_state);
         for (std::size_t row = 0U; row < fixture_type::size; ++row)
@@ -521,7 +519,7 @@ void check_failure(TestContext & test, std::string_view profile, Fixture const &
         auto & state_output = (aliases & 1U) != 0U ? input.state : separate_state;
         auto & covariance_output = (aliases & 2U) != 0U ? input.P : separate_covariance;
         Status const status =
-            try_correct(input.state, input.P, input.r, input.H, input.V, minimum_norm, state_output, covariance_output);
+            correct(input.state, input.P, input.r, input.H, input.V, minimum_norm, state_output, covariance_output);
         bool const unchanged = same_state(input.state, bad.state) && same_bits(input.P, bad.P) &&
                                same_bits(input.r, bad.r) && same_bits(input.H, bad.H) && same_bits(input.V, bad.V) &&
                                same_state(separate_state, saved_state) &&
@@ -545,8 +543,8 @@ void test_joseph_cancellation(TestContext & test, std::string_view profile)
     fixture.V(0U, 0U) = variance;
     // S rounds to 1 and K to 1. The simplified (I-KH)P would lose the
     // remaining variance entirely; Joseph retains it through K V K^T.
-    Status const status = try_correct(fixture.state, fixture.P, fixture.r, fixture.H, fixture.V,
-                                      fixture_type::minimum_norm, fixture.state, fixture.P);
+    Status const status = correct(fixture.state, fixture.P, fixture.r, fixture.H, fixture.V, fixture_type::minimum_norm,
+                                  fixture.state, fixture.P);
     value_type const posterior = fixture.P(fixture_type::attitude_offset, fixture_type::attitude_offset);
     long double const v = static_cast<long double>(variance);
     value_type const expected = static_cast<value_type>(v / (1.0L + v));
@@ -688,13 +686,13 @@ void test_bias_update(TestContext & test, std::string_view profile, typename Lin
     fixture_type fixture;
     typename fixture_type::state_type unrestricted_state;
     typename fixture_type::covariance_type unrestricted_covariance;
-    test.expect(try_correct(fixture.state, fixture.P, fixture.r, fixture.H, fixture.V, fixture_type::minimum_norm,
-                            unrestricted_state, unrestricted_covariance) == Status::success,
+    test.expect(correct(fixture.state, fixture.P, fixture.r, fixture.H, fixture.V, fixture_type::minimum_norm,
+                        unrestricted_state, unrestricted_covariance) == Status::success,
                 profile, "unrestricted bias-update baseline");
     typename fixture_type::state_type default_state;
     typename fixture_type::covariance_type default_covariance;
-    test.expect(try_correct(fixture.state, fixture.P, fixture.r, fixture.H, fixture.V, fixture_type::minimum_norm,
-                            default_state, default_covariance, Ins::BiasUpdate{}) == Status::success &&
+    test.expect(correct(fixture.state, fixture.P, fixture.r, fixture.H, fixture.V, fixture_type::minimum_norm,
+                        default_state, default_covariance, Ins::BiasUpdate{}) == Status::success &&
                     same_state(default_state, unrestricted_state) &&
                     same_bits(default_covariance, unrestricted_covariance),
                 profile, "explicit default bias permissions equal the omitted argument");
@@ -716,8 +714,8 @@ void test_bias_update(TestContext & test, std::string_view profile, typename Lin
             typename fixture_type::covariance_type separate_covariance;
             auto & state_output = (aliases & 1U) != 0U ? input.state : separate_state;
             auto & covariance_output = (aliases & 2U) != 0U ? input.P : separate_covariance;
-            Status const status = try_correct(input.state, input.P, input.r, input.H, input.V,
-                                              fixture_type::minimum_norm, state_output, covariance_output, bias_update);
+            Status const status = correct(input.state, input.P, input.r, input.H, input.V, fixture_type::minimum_norm,
+                                          state_output, covariance_output, bias_update);
             test.expect(status == Status::success &&
                             matches_reference(fixture, reference, state_output, covariance_output, tolerance),
                         profile, "all bias permissions and aliases match independent constrained-gain/Joseph oracle");
@@ -767,8 +765,8 @@ template <typename Linalg> void test_bias_update_failures(TestContext & test, st
             auto separate_covariance = fixture.P;
             auto & state_output = (aliases & 1U) != 0U ? input.state : separate_state;
             auto & covariance_output = (aliases & 2U) != 0U ? input.P : separate_covariance;
-            Status const status = try_correct(input.state, input.P, input.r, input.H, input.V,
-                                              fixture_type::minimum_norm, state_output, covariance_output, bias_update);
+            Status const status = correct(input.state, input.P, input.r, input.H, input.V, fixture_type::minimum_norm,
+                                          state_output, covariance_output, bias_update);
             test.expect(status == expected && same_state(input.state, bad.state) && same_bits(input.P, bad.P) &&
                             same_bits(input.r, bad.r) && same_bits(input.H, bad.H) && same_bits(input.V, bad.V) &&
                             same_state(separate_state, fixture.state) && same_bits(separate_covariance, fixture.P),

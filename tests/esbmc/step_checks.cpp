@@ -24,8 +24,8 @@ template <unsigned Aliases> void step_fixture(Status nominal_status, Status cova
     Parameters parameters{};
     state_output.q_nb = -state.q_nb;
     OpaqueMath::prepare(Scalar{1}, Scalar{0}, Scalar{1}, Scalar{0});
-    auto const initialization = Quaternion::try_from_coefficients(Scalar{0}, Scalar{1}, Scalar{0}, Scalar{0},
-                                                                  Scalar{0.125}, results.nominal.q_nb);
+    auto const initialization =
+        Quaternion::from_coefficients(Scalar{0}, Scalar{1}, Scalar{0}, Scalar{0}, Scalar{0.125}, results.nominal.q_nb);
     __ESBMC_assert(initialization == Status::success, "E-STEP regression: construct distinct nominal output");
     for (std::size_t i = 0U; i < 3U; ++i)
     {

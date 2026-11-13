@@ -37,18 +37,18 @@ template <typename Scalar> class StandardMath
 public:
     using value_type = Scalar;
 
-    [[nodiscard]] static constexpr value_type pi() { return std::numbers::pi_v<value_type>; }
+    static constexpr value_type pi() { return std::numbers::pi_v<value_type>; }
 
-    [[nodiscard]] static bool is_finite(value_type value) { return std::isfinite(value); }
+    static bool is_finite(value_type value) { return std::isfinite(value); }
 
-    [[nodiscard]] static value_type absolute(value_type value) { return std::abs(value); }
+    static value_type absolute(value_type value) { return std::abs(value); }
 
     /**
      * Return quiet NaN for negative inputs without invoking libm's domain-error
      * path. errno and floating-point exception flags are not this adapter's
-     * error interface; checked callers use scalar::try_sqrt for a Status.
+     * error interface; checked callers use scalar::sqrt for a Status.
      */
-    [[nodiscard]] static value_type sqrt(value_type value)
+    static value_type sqrt(value_type value)
     {
         if (value >= value_type{0})
         {
@@ -57,11 +57,11 @@ public:
         return std::numeric_limits<value_type>::quiet_NaN();
     }
 
-    [[nodiscard]] static value_type sin(value_type value) { return std::sin(value); }
+    static value_type sin(value_type value) { return std::sin(value); }
 
-    [[nodiscard]] static value_type cos(value_type value) { return std::cos(value); }
+    static value_type cos(value_type value) { return std::cos(value); }
 
-    [[nodiscard]] static value_type atan2(value_type y, value_type x) { return std::atan2(y, x); }
+    static value_type atan2(value_type y, value_type x) { return std::atan2(y, x); }
 
 }; /* end class StandardMath */
 

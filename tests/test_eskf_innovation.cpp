@@ -27,7 +27,7 @@ namespace
 using formal_eskf::Status;
 using TestContext = formal_eskf::test::Context;
 
-template <typename Vector> [[nodiscard]] bool same_bits(Vector const & a, Vector const & b)
+template <typename Vector> bool same_bits(Vector const & a, Vector const & b)
 {
     using bytes_type = std::array<std::byte, sizeof(typename Vector::value_type)>;
     for (std::size_t axis = 0U; axis < Vector::row_count; ++axis)
@@ -54,7 +54,7 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
         variance(axis) = value_type{4};
     }
     check_type result;
-    context.expect(formal_eskf::try_check_innovation(innovation, variance, value_type{2}, result) == Status::success &&
+    context.expect(formal_eskf::check_innovation(innovation, variance, value_type{2}, result) == Status::success &&
                        !result.rejected,
                    profile, "zero innovation passes");
     for (std::size_t axis = 0U; axis < Size; ++axis)
@@ -72,7 +72,7 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
             {
                 innovation = vector_type::zero();
                 innovation(axis) = sign * boundary;
-                auto const status = formal_eskf::try_check_innovation(innovation, variance, value_type{2}, result);
+                auto const status = formal_eskf::check_innovation(innovation, variance, value_type{2}, result);
                 context.expect(status == Status::success && result.rejected == (boundary > value_type{4}), profile,
                                "below/equal/above boundary, either residual sign");
                 context.expect(result.test_ratio(axis) == (boundary * boundary) / value_type{16}, profile,
@@ -86,7 +86,7 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
     {
         innovation(axis) = axis == 0U ? value_type{8} : value_type{-2};
     }
-    context.expect(formal_eskf::try_check_innovation(innovation, variance, value_type{2}, result) == Status::success &&
+    context.expect(formal_eskf::check_innovation(innovation, variance, value_type{2}, result) == Status::success &&
                        result.rejected,
                    profile, "one outlier rejects the group, not the calculation");
     for (std::size_t axis = 0U; axis < Size; ++axis)
@@ -96,8 +96,7 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
     }
     innovation = vector_type::zero();
     innovation(0U) = value_type{0.5};
-    context.expect(formal_eskf::try_check_innovation(innovation, variance, value_type{0.25}, result) ==
-                           Status::success &&
+    context.expect(formal_eskf::check_innovation(innovation, variance, value_type{0.25}, result) == Status::success &&
                        !result.rejected && result.test_ratio(0U) == value_type{1},
                    profile, "sub-unit sigma is not clamped; a fresh accepted call clears rejection");
 
@@ -110,7 +109,7 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
             innovation(axis) = static_cast<value_type>(sample) / value_type{3};
             variance(axis) = static_cast<value_type>(axis + 1U) / value_type{2};
         }
-        auto const status = formal_eskf::try_check_innovation(innovation, variance, value_type{2}, result);
+        auto const status = formal_eskf::check_innovation(innovation, variance, value_type{2}, result);
         context.expect(status == Status::success, profile, "moderate-domain evaluation succeeds");
         for (std::size_t axis = 0U; axis < Size; ++axis)
         {
@@ -154,7 +153,7 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
                 auto const before = output;
                 auto const & r = alias == 1U ? output.test_ratio : residual;
                 auto const & S_diagonal = alias == 2U ? output.test_ratio : variances;
-                auto const status = formal_eskf::try_check_innovation(r, S_diagonal, sigma, output);
+                auto const status = formal_eskf::check_innovation(r, S_diagonal, sigma, output);
                 context.expect(status == expected, profile, description);
                 context.expect(output.rejected == before.rejected && same_bits(output.test_ratio, before.test_ratio),
                                profile, "failure preserves all old diagnostics with each legal alias");
@@ -249,16 +248,16 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
     }
 
     innovation(0U) = std::sqrt(limits_type::min());
-    context.expect(formal_eskf::try_check_innovation(innovation, variance, std::sqrt(limits_type::min()), result) ==
+    context.expect(formal_eskf::check_innovation(innovation, variance, std::sqrt(limits_type::min()), result) ==
                            Status::success &&
                        !result.rejected && result.test_ratio(0U) == value_type{1},
                    profile, "minimum normal squared sigma is inclusive");
     variance(0U) = limits_type::min();
-    context.expect(formal_eskf::try_check_innovation(innovation, variance, value_type{1}, result) == Status::success &&
+    context.expect(formal_eskf::check_innovation(innovation, variance, value_type{1}, result) == Status::success &&
                        !result.rejected && result.test_ratio(0U) == value_type{1},
                    profile, "minimum normal denominator is inclusive");
     innovation(0U) = limits_type::min();
-    context.expect(formal_eskf::try_check_innovation(innovation, variance, value_type{1}, result) == Status::success &&
+    context.expect(formal_eskf::check_innovation(innovation, variance, value_type{1}, result) == Status::success &&
                        !result.rejected && result.test_ratio(0U) == value_type{0},
                    profile, "tiny innovation may square to zero");
 
@@ -277,8 +276,8 @@ template <typename Linalg, std::size_t Size> void run_conformance(TestContext & 
             auto const & variances = alias_variance ? result.test_ratio : variance;
             check_type expected;
             context.expect(
-                formal_eskf::try_check_innovation(residual, variances, value_type{1}, expected) == Status::success &&
-                    formal_eskf::try_check_innovation(residual, variances, value_type{1}, result) == Status::success &&
+                formal_eskf::check_innovation(residual, variances, value_type{1}, expected) == Status::success &&
+                    formal_eskf::check_innovation(residual, variances, value_type{1}, result) == Status::success &&
                     result.rejected == rejected && same_bits(result.test_ratio, expected.test_ratio),
                 profile, "complete input/output alias publishes both accepted and rejected diagnostics");
         }

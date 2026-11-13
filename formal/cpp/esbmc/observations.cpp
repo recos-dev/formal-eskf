@@ -43,7 +43,7 @@ namespace formal_eskf
 // F-SOLVE and E-STEP-CORRECT. Only public success publication, failure atomicity
 // and distinct-input purity are used here; no numerical result is assumed.
 template <>
-inline Status try_correct<observation_proof::backend_type, observation_proof::measurement_size>(
+inline Status correct<observation_proof::backend_type, observation_proof::measurement_size>(
     observation_proof::state_type const & state, observation_proof::covariance_type const & covariance,
     observation_proof::residual_type const & r, observation_proof::jacobian_type const & H,
     observation_proof::noise_type const & V, observation_proof::value_type minimum,
@@ -172,23 +172,23 @@ void verify_observation(state_type state, covariance_type covariance, residual_t
     Call::count = 0U;
 
 #if FORMAL_ESKF_PROOF_OBSERVATION == 0
-    Status const status = formal_eskf::try_correct_horizontal_position(state, covariance, measurement, V, minimum,
-                                                                       *state_pointer, *covariance_pointer);
+    Status const status = formal_eskf::correct_horizontal_position(state, covariance, measurement, V, minimum,
+                                                                   *state_pointer, *covariance_pointer);
 #elif FORMAL_ESKF_PROOF_OBSERVATION == 1
-    Status const status = formal_eskf::try_correct_vertical_position(state, covariance, measurement(0U), V(0U, 0U),
-                                                                     minimum, *state_pointer, *covariance_pointer);
-#elif FORMAL_ESKF_PROOF_OBSERVATION == 2
-    Status const status = formal_eskf::try_correct_horizontal_velocity(state, covariance, measurement, V, minimum,
-                                                                       *state_pointer, *covariance_pointer);
-#elif FORMAL_ESKF_PROOF_OBSERVATION == 3
-    Status const status = formal_eskf::try_correct_velocity(state, covariance, measurement, V, minimum, *state_pointer,
-                                                            *covariance_pointer);
-#elif FORMAL_ESKF_PROOF_OBSERVATION == 4 || FORMAL_ESKF_PROOF_OBSERVATION == 5
-    Status const status = formal_eskf::try_correct_magnetometer(state, covariance, measurement, reference, V, minimum,
-                                                                *state_pointer, *covariance_pointer);
-#else
-    Status const status = formal_eskf::try_correct_accelerometer(state, covariance, measurement, reference, V, minimum,
+    Status const status = formal_eskf::correct_vertical_position(state, covariance, measurement(0U), V(0U, 0U), minimum,
                                                                  *state_pointer, *covariance_pointer);
+#elif FORMAL_ESKF_PROOF_OBSERVATION == 2
+    Status const status = formal_eskf::correct_horizontal_velocity(state, covariance, measurement, V, minimum,
+                                                                   *state_pointer, *covariance_pointer);
+#elif FORMAL_ESKF_PROOF_OBSERVATION == 3
+    Status const status =
+        formal_eskf::correct_velocity(state, covariance, measurement, V, minimum, *state_pointer, *covariance_pointer);
+#elif FORMAL_ESKF_PROOF_OBSERVATION == 4 || FORMAL_ESKF_PROOF_OBSERVATION == 5
+    Status const status = formal_eskf::correct_magnetometer(state, covariance, measurement, reference, V, minimum,
+                                                            *state_pointer, *covariance_pointer);
+#else
+    Status const status = formal_eskf::correct_accelerometer(state, covariance, measurement, reference, V, minimum,
+                                                             *state_pointer, *covariance_pointer);
 #endif
     __ESBMC_assert(status == (prefix == Status::success ? result.status : prefix),
                    "E-OBS: exact validation failure or unchanged correction status");

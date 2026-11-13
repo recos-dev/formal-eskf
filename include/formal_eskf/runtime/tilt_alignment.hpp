@@ -27,8 +27,8 @@ public:
     [[nodiscard]] Status update(so3::UnitQuaternion<Linalg> const & q_nb,
                                 linalg::Matrix<Linalg, 3U, 3U> const & P_theta_b);
 
-    [[nodiscard]] bool aligned() const { return m_aligned; }
-    [[nodiscard]] value_type variance() const { return m_variance; }
+    bool aligned() const { return m_aligned; }
+    value_type variance() const { return m_variance; }
 
 private:
     value_type m_variance{};

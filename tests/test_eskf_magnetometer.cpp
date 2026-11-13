@@ -25,11 +25,11 @@ namespace
 {
 
 using TestContext = formal_eskf::test::Context;
+using formal_eskf::correct_magnetometer;
 using formal_eskf::Status;
-using formal_eskf::try_correct_magnetometer;
 using formal_eskf::test::near;
 
-template <typename Matrix> [[nodiscard]] bool same_bits(Matrix const & a, Matrix const & b)
+template <typename Matrix> bool same_bits(Matrix const & a, Matrix const & b)
 {
     using bytes_type = std::array<std::byte, sizeof(typename Matrix::value_type)>;
     for (std::size_t row = 0U; row < Matrix::row_count; ++row)
@@ -45,7 +45,7 @@ template <typename Matrix> [[nodiscard]] bool same_bits(Matrix const & a, Matrix
     return true;
 }
 
-template <typename State> [[nodiscard]] bool same_state(State const & a, State const & b)
+template <typename State> bool same_state(State const & a, State const & b)
 {
     bool result = same_bits(a.q_nb.coefficients(), b.q_nb.coefficients());
     if constexpr (requires { a.p_n; })
@@ -79,11 +79,11 @@ template <typename Linalg, typename Configuration> struct MagnetometerFixture
     {
         if constexpr (std::is_same_v<Configuration, formal_eskf::configuration::Ins>)
         {
-            return try_correct_magnetometer(state, P, m_b, m_n, V, minimum_norm, output, P_output, bias_update);
+            return correct_magnetometer(state, P, m_b, m_n, V, minimum_norm, output, P_output, bias_update);
         }
         else
         {
-            return try_correct_magnetometer(state, P, m_b, m_n, V, minimum_norm, output, P_output);
+            return correct_magnetometer(state, P, m_b, m_n, V, minimum_norm, output, P_output);
         }
     }
 
@@ -108,7 +108,7 @@ void test_magnetometer_jacobian(TestContext & test, std::string_view profile)
     using value_type = typename Linalg::value_type;
     using Fixture = MagnetometerFixture<Linalg, Configuration>;
     Fixture fixture;
-    test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
+    test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::from_coefficients(
                     value_type{0.5}, value_type{0.5}, value_type{0.5}, value_type{0.5}, Fixture::minimum_norm,
                     fixture.state.q_nb) == Status::success,
                 profile, "cyclic rotation is valid");
@@ -127,7 +127,7 @@ void test_magnetometer_jacobian(TestContext & test, std::string_view profile)
                         "Jacobian has correct rotation direction, sign, scale and state columns");
         }
     }
-    test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
+    test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::from_coefficients(
                     value_type{2}, value_type{-1}, value_type{3}, value_type{4}, Fixture::minimum_norm,
                     fixture.state.q_nb) == Status::success,
                 profile, "tilted attitude is valid");
@@ -143,11 +143,10 @@ void test_magnetometer_jacobian(TestContext & test, std::string_view profile)
         Fixture::perturb(negative, column, -step);
         typename Fixture::state_type plus;
         typename Fixture::state_type minus;
-        test.expect(formal_eskf::try_inject_nominal(fixture.state, positive, Fixture::minimum_norm, plus) ==
-                            Status::success &&
-                        formal_eskf::try_inject_nominal(fixture.state, negative, Fixture::minimum_norm, minus) ==
-                            Status::success,
-                    profile, "finite-difference injections succeed");
+        test.expect(
+            formal_eskf::inject_nominal(fixture.state, positive, Fixture::minimum_norm, plus) == Status::success &&
+                formal_eskf::inject_nominal(fixture.state, negative, Fixture::minimum_norm, minus) == Status::success,
+            profile, "finite-difference injections succeed");
         auto const h_plus = formal_eskf::so3::inverse_rotate(plus.q_nb, fixture.m_n);
         auto const h_minus = formal_eskf::so3::inverse_rotate(minus.q_nb, fixture.m_n);
         for (std::size_t row = 0U; row < 3U; ++row)
@@ -169,8 +168,8 @@ void test_magnetometer_analytic(TestContext & test, std::string_view profile, ty
     fixture.m_b = fixture.m_n;
     typename Fixture::state_type output;
     typename Fixture::covariance_type P_output;
-    test.expect(try_correct_magnetometer(fixture.state, fixture.P, fixture.m_b, fixture.m_n, fixture.V,
-                                         Fixture::minimum_norm, output, P_output) == Status::success,
+    test.expect(correct_magnetometer(fixture.state, fixture.P, fixture.m_b, fixture.m_n, fixture.V,
+                                     Fixture::minimum_norm, output, P_output) == Status::success,
                 profile, "zero residual succeeds");
     test.expect(same_state(output, fixture.state), profile, "zero residual leaves nominal state unchanged");
     // H^T H = diag(0,4,4). Protection retains only the heading gain row.
@@ -187,8 +186,8 @@ void test_magnetometer_analytic(TestContext & test, std::string_view profile, ty
         }
     }
     fixture.m_b(2U) = value_type{0.125};
-    test.expect(try_correct_magnetometer(fixture.state, fixture.P, fixture.m_b, fixture.m_n, fixture.V,
-                                         Fixture::minimum_norm, output, P_output) == Status::success,
+    test.expect(correct_magnetometer(fixture.state, fixture.P, fixture.m_b, fixture.m_n, fixture.V,
+                                     Fixture::minimum_norm, output, P_output) == Status::success,
                 profile, "nonzero magnetic residual succeeds");
     constexpr long double angle = 0.05L;
 #if !ESKF_MAG_TILT
@@ -252,7 +251,7 @@ void test_magnetometer_delegation(TestContext & test, std::string_view profile, 
     using value_type = typename Linalg::value_type;
     using Fixture = MagnetometerFixture<Linalg, Configuration>;
     Fixture fixture;
-    test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
+    test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::from_coefficients(
                     value_type{0.5}, value_type{0.5}, value_type{0.5}, value_type{0.5}, Fixture::minimum_norm,
                     fixture.state.q_nb) == Status::success,
                 profile, "delegation prior is valid");
@@ -276,8 +275,8 @@ void test_magnetometer_delegation(TestContext & test, std::string_view profile, 
          value_type{1}, value_type{0}}));
     typename Fixture::state_type expected_state;
     typename Fixture::covariance_type expected_P;
-    test.expect(formal_eskf::try_correct(fixture.state, fixture.P, residual, H, fixture.V, Fixture::minimum_norm,
-                                         expected_state, expected_P) == Status::success,
+    test.expect(formal_eskf::correct(fixture.state, fixture.P, residual, H, fixture.V, Fixture::minimum_norm,
+                                     expected_state, expected_P) == Status::success,
                 profile, "generic full-covariance correction succeeds");
     if constexpr (Fixture::size == 15U)
     {
@@ -293,8 +292,8 @@ void test_magnetometer_delegation(TestContext & test, std::string_view profile, 
         typename Fixture::covariance_type separate_P;
         auto & state_output = (aliases & 1U) != 0U ? input.state : separate_state;
         auto & P_output = (aliases & 2U) != 0U ? input.P : separate_P;
-        test.expect(try_correct_magnetometer(input.state, input.P, input.m_b, input.m_n, input.V, Fixture::minimum_norm,
-                                             state_output, P_output) == Status::success,
+        test.expect(correct_magnetometer(input.state, input.P, input.m_b, input.m_n, input.V, Fixture::minimum_norm,
+                                         state_output, P_output) == Status::success,
                     profile, "all output-alias combinations succeed");
         test.expect(same_state(state_output, expected_state) && same_bits(P_output, expected_P), profile,
                     "wrapper retains the complete generic correction, including reset");
@@ -307,16 +306,16 @@ void test_magnetometer_delegation(TestContext & test, std::string_view profile, 
     scaled.m_b = fixture.m_b * value_type{2};
     scaled.m_n = fixture.m_n * value_type{2};
     scaled.V = fixture.V * value_type{4};
-    test.expect(try_correct_magnetometer(scaled.state, scaled.P, scaled.m_b, scaled.m_n, scaled.V,
-                                         Fixture::minimum_norm, scaled.state, scaled.P) == Status::success,
+    test.expect(correct_magnetometer(scaled.state, scaled.P, scaled.m_b, scaled.m_n, scaled.V, Fixture::minimum_norm,
+                                     scaled.state, scaled.P) == Status::success,
                 profile, "consistent field and noise rescaling succeeds");
     test.expect(formal_eskf::so3::same_rotation(scaled.state.q_nb, expected_state.q_nb, tolerance) &&
                     formal_eskf::linalg::max_abs(scaled.P - expected_P) <= tolerance,
                 profile, "physical field scaling with squared covariance scaling preserves the update");
     auto opposite = fixture;
     opposite.state.q_nb = -fixture.state.q_nb;
-    test.expect(try_correct_magnetometer(opposite.state, opposite.P, opposite.m_b, opposite.m_n, opposite.V,
-                                         Fixture::minimum_norm, opposite.state, opposite.P) == Status::success,
+    test.expect(correct_magnetometer(opposite.state, opposite.P, opposite.m_b, opposite.m_n, opposite.V,
+                                     Fixture::minimum_norm, opposite.state, opposite.P) == Status::success,
                 profile, "opposite quaternion sign succeeds");
     test.expect(formal_eskf::so3::same_rotation(opposite.state.q_nb, expected_state.q_nb, tolerance) &&
                     formal_eskf::linalg::max_abs(opposite.P - expected_P) <= tolerance,
@@ -332,9 +331,8 @@ void test_magnetometer_delegation(TestContext & test, std::string_view profile, 
                 bias_update.accelerometer[axis] = (permissions & (1U << axis)) != 0U;
                 bias_update.gyroscope[axis] = (permissions & (1U << (3U + axis))) != 0U;
             }
-            test.expect(formal_eskf::try_correct(fixture.state, fixture.P, residual, H, fixture.V,
-                                                 Fixture::minimum_norm, expected_state, expected_P,
-                                                 bias_update) == Status::success,
+            test.expect(formal_eskf::correct(fixture.state, fixture.P, residual, H, fixture.V, Fixture::minimum_norm,
+                                             expected_state, expected_P, bias_update) == Status::success,
                         profile, "controlled generic correction succeeds");
             for (unsigned aliases = 0U; aliases < 4U; ++aliases)
             {
@@ -343,9 +341,9 @@ void test_magnetometer_delegation(TestContext & test, std::string_view profile, 
                 typename Fixture::covariance_type separate_P;
                 auto & state_output = (aliases & 1U) != 0U ? input.state : separate_state;
                 auto & P_output = (aliases & 2U) != 0U ? input.P : separate_P;
-                test.expect(try_correct_magnetometer(input.state, input.P, input.m_b, input.m_n, input.V,
-                                                     Fixture::minimum_norm, state_output, P_output,
-                                                     bias_update) == Status::success &&
+                test.expect(correct_magnetometer(input.state, input.P, input.m_b, input.m_n, input.V,
+                                                 Fixture::minimum_norm, state_output, P_output,
+                                                 bias_update) == Status::success &&
                                 same_state(state_output, expected_state) && same_bits(P_output, expected_P),
                             profile, "all bias permissions and aliases match controlled generic correction");
                 test.expect(((aliases & 1U) != 0U || same_state(input.state, fixture.state)) &&
@@ -355,8 +353,8 @@ void test_magnetometer_delegation(TestContext & test, std::string_view profile, 
                             profile, "controlled correction preserves non-output inputs");
                 auto const state_before = state_output;
                 auto const P_before = P_output;
-                test.expect(try_correct_magnetometer(input.state, input.P, input.m_b, input.m_n, input.V, value_type{0},
-                                                     state_output, P_output, bias_update) == Status::domain_error &&
+                test.expect(correct_magnetometer(input.state, input.P, input.m_b, input.m_n, input.V, value_type{0},
+                                                 state_output, P_output, bias_update) == Status::domain_error &&
                                 same_state(state_output, state_before) && same_bits(P_output, P_before),
                             profile, "controlled correction preserves both outputs on downstream failure");
             }
@@ -382,8 +380,8 @@ void test_magnetometer_failures(TestContext & test, std::string_view profile)
             auto & P_output = (aliases & 2U) != 0U ? input.P : separate_P;
             auto const state_before = state_output;
             auto const P_before = P_output;
-            auto const status = try_correct_magnetometer(input.state, input.P, input.m_b, input.m_n, input.V,
-                                                         minimum_norm, state_output, P_output);
+            auto const status = correct_magnetometer(input.state, input.P, input.m_b, input.m_n, input.V, minimum_norm,
+                                                     state_output, P_output);
             test.expect(status == expected && same_state(state_output, state_before) && same_bits(P_output, P_before),
                         profile, description);
             test.expect(same_state(input.state, bad.state) && same_bits(input.P, bad.P) &&
@@ -415,9 +413,9 @@ void test_magnetometer_failures(TestContext & test, std::string_view profile)
     bad.m_n(0U) = -std::numeric_limits<value_type>::max();
     bad.m_b(0U) = std::numeric_limits<value_type>::max();
     fail(bad, Fixture::minimum_norm, Status::non_finite_result, "finite residual overflow rolls back");
-    test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
-                    value_type{2}, value_type{0}, value_type{1}, value_type{0}, Fixture::minimum_norm,
-                    bad.state.q_nb) == Status::success,
+    test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::from_coefficients(value_type{2}, value_type{0}, value_type{1},
+                                                                            value_type{0}, Fixture::minimum_norm,
+                                                                            bad.state.q_nb) == Status::success,
                 profile, "overflow-test quaternion is valid");
     bad.m_n(2U) = std::numeric_limits<value_type>::max();
     fail(bad, Fixture::minimum_norm, Status::non_finite_result, "finite rotation overflow rolls back");
@@ -460,7 +458,7 @@ void test_magnetometer_failures(TestContext & test, std::string_view profile)
     gain(Fixture::attitude_offset, 0U) = std::numeric_limits<value_type>::max();
     gain(Fixture::attitude_offset + 1U, 0U) = std::numeric_limits<value_type>::max();
     auto const gain_before = gain;
-    test.expect(formal_eskf::detail::try_project_magnetic_gain<Fixture::attitude_offset>(projector, gain) ==
+    test.expect(formal_eskf::detail::project_magnetic_gain<Fixture::attitude_offset>(projector, gain) ==
                         Status::non_finite_result &&
                     same_bits(gain, gain_before),
                 profile, "finite projection overflow is reported without publishing a partial gain block");
@@ -640,7 +638,7 @@ void test_magnetometer_tilt(TestContext & test, std::string_view profile, typena
     for (auto const & coefficients : rotations)
     {
         Fixture fixture;
-        test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
+        test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::from_coefficients(
                         static_cast<value_type>(coefficients[0]), static_cast<value_type>(coefficients[1]),
                         static_cast<value_type>(coefficients[2]), static_cast<value_type>(coefficients[3]),
                         Fixture::minimum_norm, fixture.state.q_nb) == Status::success,
@@ -671,8 +669,8 @@ void test_magnetometer_tilt(TestContext & test, std::string_view profile, typena
             typename Fixture::covariance_type P_corrected, expected_P;
             typename Fixture::state_type expected_state;
             projected_correction_oracle(fixture, bias_update, error, P_corrected);
-            test.expect(formal_eskf::try_inject_and_reset(fixture.state, P_corrected, error, Fixture::minimum_norm,
-                                                          expected_state, expected_P, reset_error) == Status::success,
+            test.expect(formal_eskf::inject_and_reset(fixture.state, P_corrected, error, Fixture::minimum_norm,
+                                                      expected_state, expected_P, reset_error) == Status::success,
                         profile, "independent projected-gain/Joseph oracle feeds existing injection and reset");
             for (unsigned aliases = 0U; aliases < 4U; ++aliases)
             {

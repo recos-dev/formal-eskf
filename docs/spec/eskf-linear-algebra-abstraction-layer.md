@@ -131,7 +131,7 @@ This replaces direct matrix inversion and covers the LLT-based solve used by the
 These operations are required by the ESKF, but should be implemented once on top of the backend primitives rather than independently in every backend.
 
 ~~~text
-try_normalize(v)
+normalize(v)
 cross(a, b)
 trace(A)
 diagonal(A)

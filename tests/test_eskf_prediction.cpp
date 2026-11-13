@@ -22,19 +22,19 @@ namespace
 {
 
 using TestContext = formal_eskf::test::Context;
+using formal_eskf::predict_nominal;
 using formal_eskf::Status;
-using formal_eskf::try_predict_nominal;
 using formal_eskf::test::near;
 
 template <typename Linalg>
-[[nodiscard]] auto vector3(typename Linalg::value_type x, typename Linalg::value_type y, typename Linalg::value_type z)
+auto vector3(typename Linalg::value_type x, typename Linalg::value_type y, typename Linalg::value_type z)
 {
     typename Linalg::value_type const values[3] = {x, y, z};
     return formal_eskf::linalg::Vector<Linalg, 3U>::from_row_major(values);
 }
 
 template <typename Vector>
-[[nodiscard]] bool vector_near(Vector const & actual, Vector const & expected, typename Vector::value_type tolerance)
+bool vector_near(Vector const & actual, Vector const & expected, typename Vector::value_type tolerance)
 {
     for (std::size_t index = 0U; index < Vector::row_count; ++index)
     {
@@ -70,7 +70,7 @@ template <typename Linalg, typename Configuration> struct NominalPredictionFixtu
     }
 };
 
-template <typename State> [[nodiscard]] bool same_state(State const & left, State const & right)
+template <typename State> bool same_state(State const & left, State const & right)
 {
     using value_type = typename State::quaternion_type::value_type;
     bool same = formal_eskf::so3::same_coefficients(left.q_nb, right.q_nb);
@@ -83,7 +83,7 @@ template <typename State> [[nodiscard]] bool same_state(State const & left, Stat
     return same;
 }
 
-template <typename Scalar> [[nodiscard]] Scalar integrated_angle(Scalar angle)
+template <typename Scalar> Scalar integrated_angle(Scalar angle)
 {
 #if ESKF_QUAT_APPROX
     // Independent oracle: normalized Euler rotates by 2*atan(theta/2).
@@ -100,12 +100,12 @@ void test_attitude_prediction(TestContext & test, std::string_view profile, type
     NominalPredictionFixture<Linalg, Configuration> fixture;
 
     auto const initial = fixture.state;
-    Status status = try_predict_nominal(fixture.state, fixture.imu, value_type{0.5}, fixture.parameters, fixture.state);
+    Status status = predict_nominal(fixture.state, fixture.imu, value_type{0.5}, fixture.parameters, fixture.state);
     test.expect(status == Status::success && same_state(fixture.state, initial), profile,
                 "stationary prediction preserves the initial state in place");
 
     value_type const half_sqrt_two = std::sqrt(value_type{0.5});
-    status = formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
+    status = formal_eskf::so3::UnitQuaternion<Linalg>::from_coefficients(
         half_sqrt_two, half_sqrt_two, value_type{0}, value_type{0}, fixture.parameters.minimum_quaternion_norm,
         fixture.state.q_nb);
     test.expect(status == Status::success, profile, "non-identity attitude fixture is valid");
@@ -116,7 +116,7 @@ void test_attitude_prediction(TestContext & test, std::string_view profile, type
     }
     fixture.imu.angular_rate_b = vector3<Linalg>(0, 1, 0);
     auto output = fixture.state;
-    status = try_predict_nominal(fixture.state, fixture.imu, value_type{1}, fixture.parameters, output);
+    status = predict_nominal(fixture.state, fixture.imu, value_type{1}, fixture.parameters, output);
     value_type const half_angle = integrated_angle(value_type{1}) / value_type{2};
     value_type const c = half_sqrt_two * std::cos(half_angle);
     value_type const s = half_sqrt_two * std::sin(half_angle);
@@ -127,7 +127,7 @@ void test_attitude_prediction(TestContext & test, std::string_view profile, type
 
     auto negative = fixture.state;
     negative.q_nb = -negative.q_nb;
-    status = try_predict_nominal(negative, fixture.imu, value_type{1}, fixture.parameters, negative);
+    status = predict_nominal(negative, fixture.imu, value_type{1}, fixture.parameters, negative);
     test.expect(status == Status::success &&
                     vector_near(negative.q_nb.coefficients(), -output.q_nb.coefficients(), tolerance),
                 profile, "prediction preserves quaternion sign equivalence");
@@ -139,18 +139,18 @@ void test_attitude_prediction(TestContext & test, std::string_view profile, type
     value_type const rate_norm = std::sqrt(value_type{14});
     value_type const angle = integrated_angle(rate_norm * dt);
     value_type const scale = std::sin(angle / value_type{2}) / rate_norm;
-    status = try_predict_nominal(mixed.state, mixed.imu, dt, mixed.parameters, mixed.state);
+    status = predict_nominal(mixed.state, mixed.imu, dt, mixed.parameters, mixed.state);
     test.expect(status == Status::success && near(mixed.state.q_nb.q0(), std::cos(angle / value_type{2}), tolerance) &&
                     near(mixed.state.q_nb.q1(), scale, tolerance) &&
                     near(mixed.state.q_nb.q2(), value_type{-2} * scale, tolerance) &&
                     near(mixed.state.q_nb.q3(), value_type{3} * scale, tolerance),
                 profile, "mixed-axis prediction matches an independent axis-angle oracle");
 
-    status = formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
+    status = formal_eskf::so3::UnitQuaternion<Linalg>::from_coefficients(
         value_type{0.5}, value_type{0.5}, value_type{0.5}, value_type{0.5}, mixed.parameters.minimum_quaternion_norm,
         mixed.state.q_nb);
     test.expect(status == Status::success, profile, "four-nonzero-coefficient attitude fixture is valid");
-    status = try_predict_nominal(mixed.state, mixed.imu, dt, mixed.parameters, mixed.state);
+    status = predict_nominal(mixed.state, mixed.imu, dt, mixed.parameters, mixed.state);
     value_type const half_c = value_type{0.5} * std::cos(angle / value_type{2});
     test.expect(status == Status::success && near(mixed.state.q_nb.q0(), half_c - scale, tolerance) &&
                     near(mixed.state.q_nb.q1(), half_c + value_type{3} * scale, tolerance) &&
@@ -164,7 +164,7 @@ void test_attitude_prediction(TestContext & test, std::string_view profile, type
     bool all_succeeded = true;
     for (std::size_t index = 0U; index < 100U; ++index)
     {
-        status = try_predict_nominal(repeated.state, repeated.imu, step, repeated.parameters, repeated.state);
+        status = predict_nominal(repeated.state, repeated.imu, step, repeated.parameters, repeated.state);
         all_succeeded = all_succeeded && status == Status::success;
     }
     value_type const total_half_angle = value_type{50} * integrated_angle(step);
@@ -189,7 +189,7 @@ void test_ins_translation(TestContext & test, std::string_view profile, typename
     auto const initial = fixture.state;
     auto output = initial;
 
-    Status status = try_predict_nominal(initial, fixture.imu, value_type{0.5}, fixture.parameters, output);
+    Status status = predict_nominal(initial, fixture.imu, value_type{0.5}, fixture.parameters, output);
     test.expect(
         status == Status::success && vector_near(output.p_n, vector3<Linalg>(3, value_type{4.5}, 6), tolerance) &&
             vector_near(output.v_n, initial.v_n, tolerance) &&
@@ -198,25 +198,25 @@ void test_ins_translation(TestContext & test, std::string_view profile, typename
         profile, "INS removes both biases, cancels NED gravity, and preserves constant velocity");
 
     fixture.imu.specific_force_b = vector3<Linalg>(3, 2, -7);
-    status = try_predict_nominal(initial, fixture.imu, value_type{0.5}, fixture.parameters, output);
+    status = predict_nominal(initial, fixture.imu, value_type{0.5}, fixture.parameters, output);
     test.expect(status == Status::success &&
                     vector_near(output.p_n, vector3<Linalg>(value_type{3.25}, value_type{4.5}, 6), tolerance) &&
                     vector_near(output.v_n, vector3<Linalg>(5, 5, 6), tolerance),
                 profile, "constant acceleration updates position from old velocity with the one-half term");
     auto alias = initial;
-    status = try_predict_nominal(alias, fixture.imu, value_type{0.5}, fixture.parameters, alias);
+    status = predict_nominal(alias, fixture.imu, value_type{0.5}, fixture.parameters, alias);
     test.expect(status == Status::success && same_state(alias, output) && same_state(fixture.state, initial), profile,
                 "aliased and separate outputs agree, while separate input remains unchanged");
 
     NominalPredictionFixture<Linalg, formal_eskf::configuration::Ins> tilted;
     value_type const h = std::sqrt(value_type{0.5});
-    status = formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
+    status = formal_eskf::so3::UnitQuaternion<Linalg>::from_coefficients(
         h, value_type{0}, h, value_type{0}, tilted.parameters.minimum_quaternion_norm, tilted.state.q_nb);
     test.expect(status == Status::success, profile, "tilted INS fixture is valid");
     tilted.imu.specific_force_b = vector3<Linalg>(10, 0, 0);
     tilted.imu.angular_rate_b = vector3<Linalg>(0, 1, 0);
     auto const old_attitude = tilted.state.q_nb;
-    status = try_predict_nominal(tilted.state, tilted.imu, value_type{0.5}, tilted.parameters, tilted.state);
+    status = predict_nominal(tilted.state, tilted.imu, value_type{0.5}, tilted.parameters, tilted.state);
     test.expect(status == Status::success && vector_near(tilted.state.p_n, vector3<Linalg>(0, 0, 0), tolerance) &&
                     vector_near(tilted.state.v_n, vector3<Linalg>(0, 0, 0), tolerance) &&
                     !formal_eskf::so3::same_rotation(tilted.state.q_nb, old_attitude, tolerance),
@@ -235,15 +235,15 @@ void test_prediction_validation(TestContext & test, std::string_view profile)
     for (value_type const dt : {fixture.parameters.dt_min, fixture.parameters.dt_max})
     {
         auto output = initial;
-        test.expect(try_predict_nominal(initial, fixture.imu, dt, fixture.parameters, output) == Status::success,
-                    profile, "both time interval boundaries are inclusive");
+        test.expect(predict_nominal(initial, fixture.imu, dt, fixture.parameters, output) == Status::success, profile,
+                    "both time interval boundaries are inclusive");
     }
     for (value_type const dt :
          {value_type{0}, value_type{-1}, fixture.parameters.dt_min / value_type{2}, value_type{2}, infinity, nan})
     {
         auto alias = initial;
         Status const expected = std::isfinite(dt) ? Status::out_of_range : Status::non_finite_input;
-        Status const status = try_predict_nominal(alias, fixture.imu, dt, fixture.parameters, alias);
+        Status const status = predict_nominal(alias, fixture.imu, dt, fixture.parameters, alias);
         test.expect(status == expected && same_state(alias, initial), profile,
                     "invalid dt is rejected without modifying aliased state");
     }
@@ -253,7 +253,7 @@ void test_prediction_validation(TestContext & test, std::string_view profile)
         auto output = initial;
         output.q_nb = -output.q_nb;
         auto const sentinel = output;
-        Status const status = try_predict_nominal(input, imu, value_type{0.5}, parameters, output);
+        Status const status = predict_nominal(input, imu, value_type{0.5}, parameters, output);
         test.expect(status == expected && same_state(output, sentinel), profile,
                     "invalid input or arithmetic failure preserves separate output");
     };
@@ -316,8 +316,7 @@ void test_prediction_validation(TestContext & test, std::string_view profile)
         imu = fixture.imu;
         imu.angular_rate_b = vector3<Linalg>(0, 0, 1);
         auto const saved = overflow_state;
-        Status const status =
-            try_predict_nominal(overflow_state, imu, value_type{0.5}, fixture.parameters, overflow_state);
+        Status const status = predict_nominal(overflow_state, imu, value_type{0.5}, fixture.parameters, overflow_state);
         test.expect(status == Status::non_finite_result && same_state(overflow_state, saved), profile,
                     "late translation overflow rolls back attitude, position, velocity, and biases");
 
@@ -334,7 +333,7 @@ void test_prediction_validation(TestContext & test, std::string_view profile)
         parameters = fixture.parameters;
         parameters.process_noise.angular_rate_variance = vector3<Linalg>(nan, nan, nan);
         auto output = initial;
-        test.expect(try_predict_nominal(initial, imu, value_type{0.5}, parameters, output) == Status::success, profile,
+        test.expect(predict_nominal(initial, imu, value_type{0.5}, parameters, output) == Status::success, profile,
                     "AHRS nominal prediction ignores unused specific force and process noise");
     }
 }
@@ -351,7 +350,7 @@ void test_prior_validation(TestContext & test, std::string_view profile)
     int const exponent = (std::numeric_limits<value_type>::min_exponent - std::numeric_limits<value_type>::digits) / 2;
     value_type const tiny = std::ldexp(value_type{1}, exponent);
     quaternion_type non_unit;
-    auto const construction = quaternion_type::try_from_coefficients(
+    auto const construction = quaternion_type::from_coefficients(
         tiny, tiny * value_type{0.5}, value_type{0}, value_type{0}, std::numeric_limits<value_type>::min(), non_unit);
     test.expect(construction == Status::success && non_unit.q0() == value_type{1} && non_unit.q1() == value_type{0.5},
                 profile, "public construction exposes a non-unit IEEE fixture");
@@ -367,7 +366,7 @@ void test_prior_validation(TestContext & test, std::string_view profile)
             separate.q_nb = -separate.q_nb;
             auto & output = alias ? state : separate;
             auto const before = output;
-            auto const status = try_predict_nominal(state, fixture.imu, value_type{0.5}, fixture.parameters, output);
+            auto const status = predict_nominal(state, fixture.imu, value_type{0.5}, fixture.parameters, output);
             test.expect(status == Status::invalid_quaternion_norm && same_state(output, before) &&
                             same_state(state, prior),
                         profile, "non-unit priors of either sign are rejected atomically");
@@ -380,7 +379,7 @@ void test_prior_validation(TestContext & test, std::string_view profile)
         auto parameters = fixture.parameters;
         parameters.quaternion_squared_norm_tolerance = bound;
         auto output = fixture.state;
-        auto const status = try_predict_nominal(output, fixture.imu, value_type{0.5}, parameters, output);
+        auto const status = predict_nominal(output, fixture.imu, value_type{0.5}, parameters, output);
         test.expect(status == (std::isfinite(bound) ? Status::domain_error : Status::non_finite_input) &&
                         same_state(output, fixture.state),
                     profile, "invalid unit tolerance is rejected without repair");
@@ -393,7 +392,7 @@ void test_prior_validation(TestContext & test, std::string_view profile)
     // suggested deployment tolerance. The accepted old state is not repaired.
     parameters.quaternion_squared_norm_tolerance = value_type{0.25};
     auto output = fixture.state;
-    auto status = try_predict_nominal(prior, fixture.imu, value_type{0.5}, parameters, output);
+    auto status = predict_nominal(prior, fixture.imu, value_type{0.5}, parameters, output);
     test.expect(status == Status::success && formal_eskf::so3::same_coefficients(prior.q_nb, non_unit), profile,
                 "the exact residual boundary is inclusive and does not mutate the prior");
     if constexpr (std::is_same_v<Configuration, formal_eskf::configuration::Ins>)
@@ -403,7 +402,7 @@ void test_prior_validation(TestContext & test, std::string_view profile)
     }
     parameters.quaternion_squared_norm_tolerance = std::nextafter(value_type{0.25}, value_type{0});
     output = fixture.state;
-    status = try_predict_nominal(prior, fixture.imu, value_type{0.5}, parameters, output);
+    status = predict_nominal(prior, fixture.imu, value_type{0.5}, parameters, output);
     test.expect(status == Status::invalid_quaternion_norm && same_state(output, fixture.state), profile,
                 "a residual just outside the tolerance is rejected");
 
@@ -418,12 +417,12 @@ void test_prior_validation(TestContext & test, std::string_view profile)
                 profile, "finite quaternion fixture overflows only its squared norm");
     prior.q_nb = large;
     auto const before = prior;
-    status = try_predict_nominal(prior, fixture.imu, value_type{0.5}, fixture.parameters, prior);
+    status = predict_nominal(prior, fixture.imu, value_type{0.5}, fixture.parameters, prior);
     test.expect(status == Status::non_finite_result && same_state(prior, before), profile,
                 "prior norm overflow preserves in-place output");
     prior.q_nb = large * large;
     output = fixture.state;
-    status = try_predict_nominal(prior, fixture.imu, value_type{0.5}, fixture.parameters, output);
+    status = predict_nominal(prior, fixture.imu, value_type{0.5}, fixture.parameters, output);
     test.expect(status == Status::non_finite_input && same_state(output, fixture.state), profile,
                 "non-finite prior coefficients are rejected before arithmetic");
 }

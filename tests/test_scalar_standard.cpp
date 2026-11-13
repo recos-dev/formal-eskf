@@ -86,12 +86,12 @@ template <typename Math> void test_ieee_edges(TestContext & test, std::string_vi
         for (value_type x : {value_type{0}, -value_type{0}})
         {
             value_type output{7};
-            auto const status = formal_eskf::scalar::try_atan2<Math>(y, x, output);
+            auto const status = formal_eskf::scalar::atan2<Math>(y, x, output);
             test.expect(status == formal_eskf::Status::domain_error && output == value_type{7}, profile,
                         "atan2 rejects all four signed-zero origins without publication");
         }
         value_type output{7};
-        auto const status = formal_eskf::scalar::try_atan2<Math>(y, value_type{-1}, output);
+        auto const status = formal_eskf::scalar::atan2<Math>(y, value_type{-1}, output);
         test.expect(status == formal_eskf::Status::success && std::signbit(output) == std::signbit(y) &&
                         Math::absolute(output) == Math::pi(),
                     profile, "native atan2 preserves both sides of the negative-axis branch cut");
@@ -103,20 +103,20 @@ template <typename Math> void test_aliases(TestContext & test, std::string_view 
     using value_type = typename Math::value_type;
     using pair_type = formal_eskf::scalar::SinCos<value_type>;
     value_type root{4};
-    auto status = formal_eskf::scalar::try_sqrt<Math>(root, root);
+    auto status = formal_eskf::scalar::sqrt<Math>(root, root);
     test.expect(status == formal_eskf::Status::success && root == value_type{2}, profile, "in-place sqrt");
     root = -value_type{0};
-    status = formal_eskf::scalar::try_sqrt<Math>(root, root);
+    status = formal_eskf::scalar::sqrt<Math>(root, root);
     test.expect(status == formal_eskf::Status::success && std::signbit(root), profile, "in-place negative-zero sqrt");
     root = value_type{-1};
-    status = formal_eskf::scalar::try_sqrt<Math>(root, root);
+    status = formal_eskf::scalar::sqrt<Math>(root, root);
     test.expect(status == formal_eskf::Status::domain_error && root == value_type{-1}, profile,
                 "failed in-place sqrt preserves input");
     for (bool sine_alias : {false, true})
     {
         pair_type output{value_type{1}, value_type{2}};
         value_type const input = sine_alias ? output.sine : output.cosine;
-        status = formal_eskf::scalar::try_sin_cos<Math>(sine_alias ? output.sine : output.cosine, output);
+        status = formal_eskf::scalar::sin_cos<Math>(sine_alias ? output.sine : output.cosine, output);
         test.expect(status == formal_eskf::Status::success && output.sine == Math::sin(input) &&
                         output.cosine == Math::cos(input),
                     profile, "sincos copies an aliased angle before publishing either component");
@@ -125,13 +125,13 @@ template <typename Math> void test_aliases(TestContext & test, std::string_view 
     {
         value_type y{1}, x{-2};
         value_type const expected = Math::atan2(y, x);
-        status = formal_eskf::scalar::try_atan2<Math>(y, x, y_alias ? y : x);
+        status = formal_eskf::scalar::atan2<Math>(y, x, y_alias ? y : x);
         test.expect(status == formal_eskf::Status::success && (y_alias ? y : x) == expected &&
                         (y_alias ? x == value_type{-2} : y == value_type{1}),
                     profile, "atan2 can publish to either input while preserving the other");
     }
     value_type shared{1};
-    status = formal_eskf::scalar::try_atan2<Math>(shared, shared, shared);
+    status = formal_eskf::scalar::atan2<Math>(shared, shared, shared);
     test.expect(status == formal_eskf::Status::success && shared == Math::atan2(value_type{1}, value_type{1}), profile,
                 "atan2 permits both inputs and output to share one object");
 }
@@ -142,17 +142,17 @@ void test_checked_sqrt(TestContext & test, std::string_view profile, typename Ma
     using value_type = typename Math::value_type;
 
     value_type output{9};
-    formal_eskf::Status const success = formal_eskf::scalar::try_sqrt<Math>(value_type{4}, output);
+    formal_eskf::Status const success = formal_eskf::scalar::sqrt<Math>(value_type{4}, output);
     test.expect(success == formal_eskf::Status::success && near(output, value_type{2}, tolerance), profile,
                 "sqrt succeeds on its domain");
 
     output = value_type{9};
-    formal_eskf::Status const negative = formal_eskf::scalar::try_sqrt<Math>(value_type{-1}, output);
+    formal_eskf::Status const negative = formal_eskf::scalar::sqrt<Math>(value_type{-1}, output);
     test.expect(negative == formal_eskf::Status::domain_error && output == value_type{9}, profile,
                 "negative sqrt fails without changing output");
 
     formal_eskf::Status const non_finite =
-        formal_eskf::scalar::try_sqrt<Math>(std::numeric_limits<value_type>::infinity(), output);
+        formal_eskf::scalar::sqrt<Math>(std::numeric_limits<value_type>::infinity(), output);
     test.expect(non_finite == formal_eskf::Status::non_finite_input && output == value_type{9}, profile,
                 "non-finite sqrt input fails without changing output");
 }
@@ -165,26 +165,25 @@ void test_checked_trigonometry(TestContext & test, std::string_view profile, typ
 
     value_type const pi_value = formal_eskf::scalar::pi<Math>();
     sin_cos_type sin_cos{value_type{7}, value_type{8}};
-    formal_eskf::Status const sin_cos_status =
-        formal_eskf::scalar::try_sin_cos<Math>(pi_value / value_type{6}, sin_cos);
+    formal_eskf::Status const sin_cos_status = formal_eskf::scalar::sin_cos<Math>(pi_value / value_type{6}, sin_cos);
     test.expect(sin_cos_status == formal_eskf::Status::success && near(sin_cos.sine, value_type{0.5}, tolerance) &&
                     near(sin_cos.cosine, static_cast<value_type>(0.86602540378443864676), tolerance),
                 profile, "sine and cosine succeed together");
 
     sin_cos = sin_cos_type{value_type{7}, value_type{8}};
     formal_eskf::Status const non_finite_sin_cos =
-        formal_eskf::scalar::try_sin_cos<Math>(std::numeric_limits<value_type>::quiet_NaN(), sin_cos);
+        formal_eskf::scalar::sin_cos<Math>(std::numeric_limits<value_type>::quiet_NaN(), sin_cos);
     test.expect(non_finite_sin_cos == formal_eskf::Status::non_finite_input && sin_cos.sine == value_type{7} &&
                     sin_cos.cosine == value_type{8},
                 profile, "non-finite angle fails without changing output");
 
     value_type angle{7};
-    formal_eskf::Status const atan2_status = formal_eskf::scalar::try_atan2<Math>(value_type{1}, value_type{0}, angle);
+    formal_eskf::Status const atan2_status = formal_eskf::scalar::atan2<Math>(value_type{1}, value_type{0}, angle);
     test.expect(atan2_status == formal_eskf::Status::success && near(angle, pi_value / value_type{2}, tolerance),
                 profile, "atan2 preserves quadrant");
 
     angle = value_type{7};
-    formal_eskf::Status const undefined = formal_eskf::scalar::try_atan2<Math>(value_type{0}, value_type{0}, angle);
+    formal_eskf::Status const undefined = formal_eskf::scalar::atan2<Math>(value_type{0}, value_type{0}, angle);
     test.expect(undefined == formal_eskf::Status::domain_error && angle == value_type{7}, profile,
                 "atan2 at the zero pair fails without changing output");
 }
@@ -194,20 +193,17 @@ template <typename Scalar, bool CosineFails = false> class NonFiniteResultMath
 public:
     using value_type = Scalar;
 
-    [[nodiscard]] static bool is_finite(value_type value) { return std::isfinite(value); }
-    [[nodiscard]] static value_type sqrt(value_type) { return std::numeric_limits<value_type>::quiet_NaN(); }
-    [[nodiscard]] static value_type sin(value_type)
+    static bool is_finite(value_type value) { return std::isfinite(value); }
+    static value_type sqrt(value_type) { return std::numeric_limits<value_type>::quiet_NaN(); }
+    static value_type sin(value_type)
     {
         return CosineFails ? value_type{1} : std::numeric_limits<value_type>::quiet_NaN();
     }
-    [[nodiscard]] static value_type cos(value_type)
+    static value_type cos(value_type)
     {
         return CosineFails ? std::numeric_limits<value_type>::quiet_NaN() : value_type{1};
     }
-    [[nodiscard]] static value_type atan2(value_type, value_type)
-    {
-        return std::numeric_limits<value_type>::quiet_NaN();
-    }
+    static value_type atan2(value_type, value_type) { return std::numeric_limits<value_type>::quiet_NaN(); }
 };
 
 void test_non_finite_results(TestContext & test)
@@ -215,17 +211,17 @@ void test_non_finite_results(TestContext & test)
     using math_type = NonFiniteResultMath<double>;
 
     double scalar_output = 7.0;
-    formal_eskf::Status const sqrt_status = formal_eskf::scalar::try_sqrt<math_type>(4.0, scalar_output);
+    formal_eskf::Status const sqrt_status = formal_eskf::scalar::sqrt<math_type>(4.0, scalar_output);
     test.expect(sqrt_status == formal_eskf::Status::non_finite_result && scalar_output == 7.0, "fault math",
                 "sqrt rejects a non-finite math result");
 
     formal_eskf::scalar::SinCos<double> sin_cos{7.0, 8.0};
-    formal_eskf::Status const sin_cos_status = formal_eskf::scalar::try_sin_cos<math_type>(1.0, sin_cos);
+    formal_eskf::Status const sin_cos_status = formal_eskf::scalar::sin_cos<math_type>(1.0, sin_cos);
     test.expect(sin_cos_status == formal_eskf::Status::non_finite_result && sin_cos.sine == 7.0 &&
                     sin_cos.cosine == 8.0,
                 "fault math", "sine and cosine reject a non-finite math result");
 
-    formal_eskf::Status const atan2_status = formal_eskf::scalar::try_atan2<math_type>(1.0, 1.0, scalar_output);
+    formal_eskf::Status const atan2_status = formal_eskf::scalar::atan2<math_type>(1.0, 1.0, scalar_output);
     test.expect(atan2_status == formal_eskf::Status::non_finite_result && scalar_output == 7.0, "fault math",
                 "atan2 rejects a non-finite math result");
 }
@@ -241,7 +237,7 @@ void run_conformance_tests(TestContext & test, std::string_view profile, typenam
     test_checked_trigonometry<Math>(test, profile, tolerance);
     using value_type = typename Math::value_type;
     formal_eskf::scalar::SinCos<value_type> output{value_type{1}, value_type{2}};
-    auto const status = formal_eskf::scalar::try_sin_cos<NonFiniteResultMath<value_type, true>>(output.sine, output);
+    auto const status = formal_eskf::scalar::sin_cos<NonFiniteResultMath<value_type, true>>(output.sine, output);
     test.expect(status == formal_eskf::Status::non_finite_result && output.sine == value_type{1} &&
                     output.cosine == value_type{2},
                 profile, "failed cosine preserves the entire pair even when the angle aliases its sine");

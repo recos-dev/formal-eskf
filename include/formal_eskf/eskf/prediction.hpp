@@ -20,7 +20,7 @@
 #include <formal_eskf/so3/rotation_vector.hpp>
 
 // Keep this setting identical in every translation unit of an application.
-// It selects nominal and covariance attitude prediction, not so3::try_exp().
+// It selects nominal and covariance attitude prediction, not so3::exp().
 #ifndef ESKF_QUAT_APPROX
 #define ESKF_QUAT_APPROX 0
 #endif
@@ -91,10 +91,9 @@ template <typename Linalg>
 }
 
 template <typename Linalg>
-[[nodiscard]] Status try_predict_attitude(so3::UnitQuaternion<Linalg> const & q_nb,
-                                          linalg::Vector<Linalg, 3U> const & angular_rate_b,
-                                          typename Linalg::value_type dt, typename Linalg::value_type minimum_norm,
-                                          so3::UnitQuaternion<Linalg> & output)
+[[nodiscard]] Status predict_attitude(so3::UnitQuaternion<Linalg> const & q_nb,
+                                      linalg::Vector<Linalg, 3U> const & angular_rate_b, typename Linalg::value_type dt,
+                                      typename Linalg::value_type minimum_norm, so3::UnitQuaternion<Linalg> & output)
 {
     if (!linalg::all_finite(q_nb.coefficients()) || !linalg::all_finite(angular_rate_b))
     {
@@ -131,15 +130,15 @@ template <typename Linalg>
     {
         return Status::non_finite_result;
     }
-    return so3::UnitQuaternion<Linalg>::try_from_coefficients(candidate, minimum_norm, output);
+    return so3::UnitQuaternion<Linalg>::from_coefficients(candidate, minimum_norm, output);
 #else
     so3::UnitQuaternion<Linalg> increment;
-    Status const status = so3::try_exp(rotation_vector, minimum_norm, increment);
+    Status const status = so3::exp(rotation_vector, minimum_norm, increment);
     if (!succeeded(status))
     {
         return status;
     }
-    Status const compose_status = so3::try_compose_normalized(q_nb, increment, minimum_norm, output);
+    Status const compose_status = so3::compose_normalized(q_nb, increment, minimum_norm, output);
     return compose_status == Status::non_finite_input ? Status::non_finite_result : compose_status;
 #endif
 }
@@ -164,10 +163,10 @@ template <typename Linalg>
  * Output may alias state and remains unchanged on failure.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_predict_nominal(configuration::Ahrs::NominalState<Linalg> const & state,
-                                         ImuSample<Linalg> const & imu, typename Linalg::value_type dt,
-                                         configuration::Ahrs::Parameters<Linalg> const & parameters,
-                                         configuration::Ahrs::NominalState<Linalg> & output)
+[[nodiscard]] Status predict_nominal(configuration::Ahrs::NominalState<Linalg> const & state,
+                                     ImuSample<Linalg> const & imu, typename Linalg::value_type dt,
+                                     configuration::Ahrs::Parameters<Linalg> const & parameters,
+                                     configuration::Ahrs::NominalState<Linalg> & output)
 {
     Status const parameter_status = detail::validate_prediction_parameters<typename Linalg::scalar_math_type>(
         dt, parameters.dt_min, parameters.dt_max, parameters.minimum_quaternion_norm);
@@ -184,8 +183,8 @@ template <typename Linalg>
     }
 
     auto candidate = state;
-    Status const status = detail::try_predict_attitude(state.q_nb, imu.angular_rate_b, dt,
-                                                       parameters.minimum_quaternion_norm, candidate.q_nb);
+    Status const status = detail::predict_attitude(state.q_nb, imu.angular_rate_b, dt,
+                                                   parameters.minimum_quaternion_norm, candidate.q_nb);
     if (!succeeded(status))
     {
         return status;
@@ -211,10 +210,10 @@ template <typename Linalg>
  * Parameter validation and output atomicity follow the AHRS overload.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_predict_nominal(configuration::Ins::NominalState<Linalg> const & state,
-                                         ImuSample<Linalg> const & imu, typename Linalg::value_type dt,
-                                         configuration::Ins::Parameters<Linalg> const & parameters,
-                                         configuration::Ins::NominalState<Linalg> & output)
+[[nodiscard]] Status predict_nominal(configuration::Ins::NominalState<Linalg> const & state,
+                                     ImuSample<Linalg> const & imu, typename Linalg::value_type dt,
+                                     configuration::Ins::Parameters<Linalg> const & parameters,
+                                     configuration::Ins::NominalState<Linalg> & output)
 {
     using value_type = typename Linalg::value_type;
 
@@ -245,8 +244,8 @@ template <typename Linalg>
     }
 
     auto candidate = state;
-    Status const status = detail::try_predict_attitude(state.q_nb, angular_rate_b, dt,
-                                                       parameters.minimum_quaternion_norm, candidate.q_nb);
+    Status const status =
+        detail::predict_attitude(state.q_nb, angular_rate_b, dt, parameters.minimum_quaternion_norm, candidate.q_nb);
     if (!succeeded(status))
     {
         return status;

@@ -16,7 +16,7 @@ namespace formal_eskf::runtime
 
 /**
  * Gated 3D velocity, using the core's NED observation and Jacobian.
- * Frames, units, covariance premises and aliases follow try_correct_velocity.
+ * Frames, units, covariance premises and aliases follow correct_velocity.
  * All three axes form one rejection group, independent of position calls.
  * Use this OR fuse_horizontal_velocity for a sample, never both.
  */

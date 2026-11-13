@@ -61,8 +61,8 @@ template <typename Linalg> void test_tilt_alignment(TestContext & test, std::str
                 "variance-sum overflow cannot align");
 
     quaternion_type pitch;
-    test.expect(quaternion_type::try_from_coefficients(value_type{1}, value_type{0}, value_type{1}, value_type{0},
-                                                       static_cast<value_type>(1e-6), pitch) == Status::success,
+    test.expect(quaternion_type::from_coefficients(value_type{1}, value_type{0}, value_type{1}, value_type{0},
+                                                   static_cast<value_type>(1e-6), pitch) == Status::success,
                 profile, "90-degree pitch fixture is normalized");
     P = {};
     P(0U, 0U) = value_type{9};

@@ -65,8 +65,8 @@ Matrix<contract_proof::Linalg, 4U, 1U>::operator/(value_type divisor) const
 namespace formal_eskf::linalg
 {
 template <>
-inline Status try_normalize(contract_proof::Vector4 const & input, contract_proof::Scalar minimum,
-                            contract_proof::Vector4 & output)
+inline Status normalize(contract_proof::Vector4 const & input, contract_proof::Scalar minimum,
+                        contract_proof::Vector4 & output)
 {
     using normalization_proof::NormalizeContract;
     __ESBMC_assert(NormalizeContract::calls == 0U, "normalization contract: one checked-vector request");
@@ -138,7 +138,7 @@ void verify_checked_normalization(Vector4 input, Scalar minimum, Vector4 output,
                             : !divide                   ? Status::zero_or_unsafe_divisor
                             : !finite_vector(candidate) ? Status::non_finite_result
                                                         : Status::success;
-    auto const actual = formal_eskf::linalg::try_normalize(input, minimum, target);
+    auto const actual = formal_eskf::linalg::normalize(input, minimum, target);
     __ESBMC_assert(actual == expected, "Q-NORMALIZE: vector status precedence and inclusive minimum boundary");
     __ESBMC_assert(NormContract::calls == (inputs_ok ? 1U : 0U) && CandidateContract::calls == (divide ? 1U : 0U),
                    "Q-NORMALIZE: dependencies called exactly after their checks");
@@ -179,9 +179,9 @@ void verify_constructor(Vector4 input, Scalar minimum, Quaternion output, Vector
     {
         output = before;
         NormalizeContract::calls = 0U;
-        auto const actual = overload == 0U ? Quaternion::try_from_coefficients(input, minimum, output)
-                                           : Quaternion::try_from_coefficients(input(0U), input(1U), input(2U),
-                                                                               input(3U), minimum, output);
+        auto const actual =
+            overload == 0U ? Quaternion::from_coefficients(input, minimum, output)
+                           : Quaternion::from_coefficients(input(0U), input(1U), input(2U), input(3U), minimum, output);
         __ESBMC_assert(actual == expected && NormalizeContract::calls == (delegate ? 1U : 0U),
                        "Q-NORMALIZE: both constructors validate threshold first and translate divisor failure");
         if (delegate)
@@ -213,7 +213,7 @@ void verify_normalize_wrapper(Quaternion q, Scalar minimum, Quaternion output, Q
     auto & target = output;
 #endif
     ConstructorContract::prepare(result, status);
-    auto const actual = formal_eskf::so3::try_normalize(q, minimum, target);
+    auto const actual = formal_eskf::so3::normalize(q, minimum, target);
     __ESBMC_assert(ConstructorContract::calls == 1U &&
                        same_vector(ConstructorContract::received, q_before.coefficients()) &&
                        same(ConstructorContract::minimum, minimum) && actual == status,
@@ -254,7 +254,7 @@ void verify_composition_general(Quaternion a, Quaternion b, Scalar minimum, Quat
     auto const before = target;
     auto const product = a * operand_b; // actual producer is independently proved by verify_product
     ConstructorContract::prepare(result, status);
-    auto const actual = formal_eskf::so3::try_compose_normalized(a, operand_b, minimum, target);
+    auto const actual = formal_eskf::so3::compose_normalized(a, operand_b, minimum, target);
     __ESBMC_assert(ConstructorContract::calls == 1U &&
                        same_vector(ConstructorContract::received, product.coefficients()) &&
                        same(ConstructorContract::minimum, minimum) && actual == status,

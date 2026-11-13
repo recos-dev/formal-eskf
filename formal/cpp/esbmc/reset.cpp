@@ -136,8 +136,8 @@ template <> inline bool all_finite(reset_proof::Matrix const & matrix)
 namespace formal_eskf::so3
 {
 template <>
-inline Status try_right_jacobian<contract_proof::Linalg>(contract_proof::Vector3 const & input,
-                                                         reset_proof::Matrix3 & output)
+inline Status right_jacobian<contract_proof::Linalg>(contract_proof::Vector3 const & input,
+                                                     reset_proof::Matrix3 & output)
 {
     using reset_proof::JacobianContract;
     __ESBMC_assert(JacobianContract::calls == 0U, "E-RESET contract: at most one right Jacobian");
@@ -167,7 +167,7 @@ inline reset_proof::Matrix sandwich(reset_proof::Matrix const & transform, reset
 
 namespace formal_eskf::detail
 {
-template <> inline Status try_finish_covariance(reset_proof::Matrix & candidate, reset_proof::Matrix & output)
+template <> inline Status finish_covariance(reset_proof::Matrix & candidate, reset_proof::Matrix & output)
 {
     using reset_proof::FinishContract;
     __ESBMC_assert(FinishContract::calls == 0U && reset_proof::SandwichContract::calls == 1U,
@@ -272,7 +272,7 @@ void verify_reset(Error error, Matrix covariance, Matrix output, Matrix3 jacobia
     FiniteContract::result = covariance_finite;
     FiniteContract::calls = 0U;
 
-    auto const actual = formal_eskf::try_reset_covariance(error, covariance, target);
+    auto const actual = formal_eskf::reset_covariance(error, covariance, target);
     __ESBMC_assert(actual == expected, "E-RESET: consumed-input validation and complete callee status propagation");
     __ESBMC_assert(FiniteContract::calls == (call_finite ? 1U : 0U),
                    "E-RESET: covariance is classified exactly after the consumed attitude error");
@@ -532,7 +532,7 @@ void verify_finish_case(Matrix candidate, Matrix output, bool finite)
     auto const before = target;
     FiniteContract::result = finite;
     FiniteContract::calls = 0U;
-    auto const actual = formal_eskf::detail::try_finish_covariance(candidate, target);
+    auto const actual = formal_eskf::detail::finish_covariance(candidate, target);
     __ESBMC_assert(FiniteContract::calls == 1U && same_matrix(FiniteContract::received, candidate_before),
                    "E-RESET finalizer: the complete original candidate is checked before any mutation");
     __ESBMC_assert(actual == (finite ? Status::success : Status::non_finite_result),

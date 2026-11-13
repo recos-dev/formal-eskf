@@ -106,9 +106,8 @@ public:
                                 Acceleration const & acceleration = {false, {0U, 0U}});
 
     /** Inspect one sensor session; source must be barometer or gnss. */
-    [[nodiscard]] Session const & session(Source source) const { return m_sessions[index(source)]; }
-    [[nodiscard]] typename runtime::VerticalAccelerationHealth<Linalg>::Innovation
-    vertical_innovation(Source source) const
+    Session const & session(Source source) const { return m_sessions[index(source)]; }
+    typename runtime::VerticalAccelerationHealth<Linalg>::Innovation vertical_innovation(Source source) const
     {
         auto const & aid = session(source);
         if (!aid.active || aid.fusion_reset || !aid.fusion.diagnostics_valid)
@@ -117,27 +116,26 @@ public:
         }
         return {true, -aid.fusion_innovation, aid.fusion.innovation_variance(0U)};
     }
-    [[nodiscard]] Source reference() const { return m_reference; }
-    [[nodiscard]] std::uint64_t progress_time() const { return m_last_height_progress; }
-    [[nodiscard]] std::uint8_t reset_counter() const { return m_reset_counter; }
-    [[nodiscard]] value_type reset_delta() const { return m_reset_delta; }
-    [[nodiscard]] bool reset_required(std::uint64_t now_us,
-                                      runtime::GnssFusion::VerticalAccelerationTimes const & acceleration = {0U,
-                                                                                                             0U}) const
+    Source reference() const { return m_reference; }
+    std::uint64_t progress_time() const { return m_last_height_progress; }
+    std::uint8_t reset_counter() const { return m_reset_counter; }
+    value_type reset_delta() const { return m_reset_delta; }
+    bool reset_required(std::uint64_t now_us,
+                        runtime::GnssFusion::VerticalAccelerationTimes const & acceleration = {0U, 0U}) const
     {
         auto const progress = m_last_height_progress == 0U ? m_started : m_last_height_progress;
         return acceleration.reset_required(now_us) ||
                (progress != 0U && now_us > progress && now_us - progress > fusion_timeout_us);
     }
-    [[nodiscard]] bool valid(std::uint64_t now_us) const
+    bool valid(std::uint64_t now_us) const
     {
         return m_last_height_progress != 0U && now_us >= m_last_height_progress &&
                now_us - m_last_height_progress <= fusion_timeout_us;
     }
 
 private:
-    [[nodiscard]] static constexpr std::size_t index(Source source) { return source == Source::barometer ? 0U : 1U; }
-    [[nodiscard]] static bool valid_altitude(value_type altitude)
+    static constexpr std::size_t index(Source source) { return source == Source::barometer ? 0U : 1U; }
+    static bool valid_altitude(value_type altitude)
     {
         return std::isfinite(altitude) && altitude > value_type{-12000} && altitude < value_type{100000};
     }
@@ -174,8 +172,8 @@ void HeightAiding<Linalg>::reset_height(Source source, std::uint64_t now_us, val
 {
     value_type delta{};
     // The existing checked primitive replaces one Down coordinate regardless of sensor origin.
-    result.status = runtime::try_reset_vertical_position(state, covariance, m_origin_altitude - altitude, variance,
-                                                         state, covariance, delta);
+    result.status = runtime::reset_vertical_position(state, covariance, m_origin_altitude - altitude, variance, state,
+                                                     covariance, delta);
     if (!succeeded(result.status))
     {
         return;
@@ -312,7 +310,7 @@ void HeightAiding<Linalg>::process(Source source, std::uint64_t now_us, Sample c
     }
     if (aid.fusion.decision == runtime::FusionDecision::fused)
     {
-        result.status = try_limit_imu_bias(state);
+        result.status = limit_imu_bias(state);
         if (!succeeded(result.status))
         {
             return;
@@ -335,8 +333,8 @@ void HeightAiding<Linalg>::process(Source source, std::uint64_t now_us, Sample c
         aid.bias.value = (barometer ? m_barometer_lpf : sample.altitude) - (m_origin_altitude - state.p_n(2U));
         if (barometer && !vertical_velocity_aiding)
         {
-            result.status = runtime::try_reset_vertical_velocity(state, covariance, value_type{0}, value_type{10},
-                                                                 state, covariance, result.velocity_delta);
+            result.status = runtime::reset_vertical_velocity(state, covariance, value_type{0}, value_type{10}, state,
+                                                             covariance, result.velocity_delta);
             if (succeeded(result.status))
             {
                 ++result.velocity_resets;

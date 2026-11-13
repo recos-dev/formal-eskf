@@ -35,7 +35,7 @@ Requirement IDs remain stable when documentation is reorganized. Child clauses r
 
 ### E-PRED: nominal prediction requirements
 
-These child IDs refine the mapped `E-PRED` requirement; they are not additional passing requirements. The scope is one call to either INS or AHRS `try_predict_nominal`, not covariance propagation or repeated-step stability. Deployment tolerances and numerical error bounds remain separate obligations.
+These child IDs refine the mapped `E-PRED` requirement; they are not additional passing requirements. The scope is one call to either INS or AHRS `predict_nominal`, not covariance propagation or repeated-step stability. Deployment tolerances and numerical error bounds remain separate obligations.
 
 #### Sources and interpretation
 
@@ -171,10 +171,10 @@ Keep these boundaries explicit:
 
 These clauses refine `E-STEP`; they are not additional requirement families. They concern sequential calls on valid C++ objects, not concurrency, exception recovery or a new predict-plus-correct API. Numerical validity remains owned by the component and numerical requirements.
 
-- **E-STEP-PRED** — `try_predict` calls nominal prediction first. Only if that succeeds, covariance prediction receives the old covariance and the same IMU, `dt` and parameters. INS covariance also receives the **old** nominal state; AHRS covariance does not consume nominal state. Publish both component results unchanged only after both succeed; otherwise return the first failure and preserve both outputs.
-- **E-STEP-INJECT-RESET** — `try_inject_and_reset` injects the complete supplied error first. Only if that succeeds, covariance reset receives the original covariance and the error **before zeroing**. Publish the nominal result, reset covariance and zero in every error-mean coordinate only after both succeed. Either failure preserves all three outputs and returns that failure.
+- **E-STEP-PRED** — `predict` calls nominal prediction first. Only if that succeeds, covariance prediction receives the old covariance and the same IMU, `dt` and parameters. INS covariance also receives the **old** nominal state; AHRS covariance does not consume nominal state. Publish both component results unchanged only after both succeed; otherwise return the first failure and preserve both outputs.
+- **E-STEP-INJECT-RESET** — `inject_and_reset` injects the complete supplied error first. Only if that succeeds, covariance reset receives the original covariance and the error **before zeroing**. Publish the nominal result, reset covariance and zero in every error-mean coordinate only after both succeed. Either failure preserves all three outputs and returns that failure.
 - **E-STEP-FRAME** — Each output may independently alias its respective complete input object; all other input/output storage is disjoint. Cover all four prediction and eight injection/reset arrangements. Distinct inputs, unused output objects, IMU and parameters are unchanged. Do not publish caller outputs before the last required callee succeeds. Initial outputs and scalar fields are arbitrary, including non-finite values. Preservation concerns values, signed zero and NaN classification, not padding or NaN payloads.
-- **E-STEP-CORRECT** — `try_correct` must propagate solve, covariance-finalization and injection/reset failures without publishing either output. Its complete composition must use the component preconditions and result relations established by `E-CORRECT`, `F-SOLVE`, `E-INJECT` and `E-RESET`. Proving the two earlier combined APIs alone does not discharge this clause.
+- **E-STEP-CORRECT** — `correct` must propagate solve, covariance-finalization and injection/reset failures without publishing either output. Its complete composition must use the component preconditions and result relations established by `E-CORRECT`, `F-SOLVE`, `E-INJECT` and `E-RESET`. Proving the two earlier combined APIs alone does not discharge this clause.
 
 Compositional caller proofs may abstract a callee's result and status, but must check its arguments and call order, use separate scratch outputs, and identify matching input-purity evidence. A summary may even overwrite its scratch output on failure: transaction rollback must not depend on successful or unchanged scratch data. A callee declaration or a proof using an incompatible backend instantiation is not sufficient evidence. INS/AHRS, binary32/binary64 and each applicable prediction/reset mode must be accounted for.
 
@@ -200,7 +200,7 @@ The columns are `[delta_p_n, delta_v_n, delta_theta_b, delta_b_a, delta_b_g]`, u
 
 ### E-BIAS-UPDATE: INS bias-update control
 
-INS `try_correct` accepts an optional trailing `Ins::BiasUpdate` with three body-axis permissions each for accelerometer and gyroscope biases. Every permission defaults to `true`; omitting the argument retains unrestricted correction. AHRS has no bias states and does not accept this control.
+INS `correct` accepts an optional trailing `Ins::BiasUpdate` with three body-axis permissions each for accelerometer and gyroscope biases. Every permission defaults to `true`; omitting the argument retains unrestricted correction. AHRS has no bias states and does not accept this control.
 
 INS horizontal/vertical position, horizontal/3D velocity, magnetometer and accelerometer correction APIs accept the same optional trailing permissions and forward them unchanged. Magnetic tilt protection is selected separately by the build-wide `ESKF_MAG_TILT` macro. Their observation models and Jacobians remain unchanged.
 
@@ -340,7 +340,7 @@ externally supplied model remain separate obligations.
 
 - Check finite nominal fields, then apply `R-MAGNETIC-FIELD` to this prior. The optional health-reference pointer forwards independent health geometry; only `m_n` reaches the innovation, correction and attitude protection. Supplying the observation reference for both roles retains the same correction behavior. A field error returns `failed` with its status; a field rejection returns `rejected` with `success`. Neither runs the innovation gate or correction. Innovation diagnostics remain invalid; rejection does not certify unused covariance or later-stage parameters.
 - After field acceptance, form the existing magnetic residual `r=m_b-R(q_nb)^T m_n` and `magnetometer_jacobian(state,m_n)`. Gate using `diag(H P H^T + V)` through the existing same-prior gate stage. Any component ratio above one rejects the entire three-axis group. The gate uses the full observation model, not a projected H or measurement-noise-only variance, in both tilt configurations.
-- After gate acceptance, call `try_correct_magnetometer` with identical inputs, full V, normalization threshold and INS bias permissions. Do not call generic correction and bypass `ESKF_MAG_TILT`. The existing projection, constrained-gain Joseph update and injection/reset remain unchanged.
+- After gate acceptance, call `correct_magnetometer` with identical inputs, full V, normalization threshold and INS bias permissions. Do not call generic correction and bypass `ESKF_MAG_TILT`. The existing projection, constrained-gain Joseph update and injection/reset remain unchanged.
 - Only `fusion.decision=fused` publishes state and covariance. Rejection/failure preserves both outputs, including all four independent whole-prior alias arrangements. Field diagnostics remain valid if a later stage fails; innovation diagnostics remain valid after gate success even if correction subsequently fails. Before the relevant stage succeeds, its diagnostics are invalid placeholders. Preserve the downstream failure status.
 
 This is one stateless observation transaction, not full sensor health qualification, fusion lifecycle, persistent-rejection recovery, yaw initialization or adapter wiring. Native tests cover both configurations and scalar formats, full correlated covariance, all 64 INS bias masks, legal aliases and stage failures. Lean/ESBMC evidence remains pending; existing ungated observation/correction proofs do not discharge these two runtime requirements.
@@ -564,7 +564,7 @@ progress timestamps as EKF2. Replay's single timestamp timeline does not model
 PX4 buffer-push recency or sensor delay.
 
 Ordinary stops restart automatically. A timeout reset waits for accepted field
-health and uses `try_reset_magnetic_heading` with `MagnetometerFilter::field_b()`;
+health and uses `reset_magnetic_heading` with `MagnetometerFilter::field_b()`;
 it does not replace the reference with the observed field. Replay uses an explicit
 heading standard deviation from the heading parameters above, independent of
 vector observation noise. Successful resets and their applied left quaternion deltas
@@ -744,7 +744,7 @@ its own and does not establish bitwise equivalence or a calibrated cutoff.
 
 ### R-MAGNETOMETER-RESET: fixed-field heading and covariance reset
 
-`runtime::try_reset_magnetic_heading` supports AHRS and INS independently of the
+`runtime::reset_magnetic_heading` supports AHRS and INS independently of the
 lifecycle. Given a calibrated body field `m_b`, trusted fixed NED `m_n` and an
 aligned prior tilt, rotate only about navigation Down to align the horizontal
 direction of `R_before*m_b` with `m_n`. Fields are in microtesla. Wrap the heading
@@ -904,10 +904,10 @@ and [velocity reset](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534
 
 | Operation | Nominal state | Covariance |
 |---|---|---|
-| `try_reset_gnss_horizontal_position` | Set `p_N,p_E` to the supplied 2-vector; leave `p_D` and all other state fields unchanged | Clear rows/columns 0 and 1, then set both diagonals to `max(variance_N + variance_E, 0.01^2)` in m^2 |
-| `try_reset_vertical_position` | Set only `p_D` to the supplied scalar; leave velocity, horizontal position, attitude and biases unchanged | Clear off-diagonal entries in row/column 2; set `P(2,2) = max(variance_D, 0.01^2)` in m^2; preserve every other entry |
-| `try_reset_vertical_velocity` | Set only `v_D` to the supplied scalar in m/s; preserve all other nominal fields | Clear off-diagonal entries in rows/columns 2 and 5; retain `P(2,2)`; set `P(5,5) = max(variance_D, 0.01^2)` in m^2/s^2; preserve every other entry |
-| `try_reset_velocity` | Set all three components of `v_n`; leave position, attitude and biases unchanged | Clear off-diagonal entries in rows/columns 0..5. Preserve position diagonals 0..2; set velocity diagonals 3..5 to `max(variance_i, 0.01^2)` in m^2/s^2 |
+| `reset_gnss_horizontal_position` | Set `p_N,p_E` to the supplied 2-vector; leave `p_D` and all other state fields unchanged | Clear rows/columns 0 and 1, then set both diagonals to `max(variance_N + variance_E, 0.01^2)` in m^2 |
+| `reset_vertical_position` | Set only `p_D` to the supplied scalar; leave velocity, horizontal position, attitude and biases unchanged | Clear off-diagonal entries in row/column 2; set `P(2,2) = max(variance_D, 0.01^2)` in m^2; preserve every other entry |
+| `reset_vertical_velocity` | Set only `v_D` to the supplied scalar in m/s; preserve all other nominal fields | Clear off-diagonal entries in rows/columns 2 and 5; retain `P(2,2)`; set `P(5,5) = max(variance_D, 0.01^2)` in m^2/s^2; preserve every other entry |
+| `reset_velocity` | Set all three components of `v_n`; leave position, attitude and biases unchanged | Clear off-diagonal entries in rows/columns 0..5. Preserve position diagonals 0..2; set velocity diagonals 3..5 to `max(variance_i, 0.01^2)` in m^2/s^2 |
 
 Vertical position and velocity resets are source-independent numerical operations.
 The GNSS prefix is retained only for horizontal position, whose variance-sum
@@ -1200,11 +1200,11 @@ sequential gates and numerical models are retained.
 
 ### R-MEASUREMENT-FUSION: gated correction of one observation group
 
-`runtime::fuse_measurement` supports INS/AHRS and accepts `r = z - h(state)`, `H`, full measurement covariance `V`, an explicit sigma threshold and the existing normalization threshold. The caller supplies one prior, zero error mean, valid frames/time, unit quaternion, symmetric PSD `P` and symmetric SPD `V`, as for `try_correct`. INS additionally accepts the same optional per-axis bias permissions.
+`runtime::fuse_measurement` supports INS/AHRS and accepts `r = z - h(state)`, `H`, full measurement covariance `V`, an explicit sigma threshold and the existing normalization threshold. The caller supplies one prior, zero error mean, valid frames/time, unit quaternion, symmetric PSD `P` and symmetric SPD `V`, as for `correct`. INS additionally accepts the same optional per-axis bias permissions.
 
 `runtime::check_measurement` evaluates the same gate without attempting correction. Its `MeasurementCheck` reports status, diagnostic validity and rejection; `passed()` requires successful, valid, non-rejected evidence. It owns no history and grants neither source permission nor permission to reuse a prior linearization after the estimate changes.
 
-- Check finite nominal fields and sigma, then call the numerical core's `try_correction_covariances`. This operation checks the correction inputs in their existing order and publishes `PHt` and `S` together only on success; its outputs are disjoint from each other and from inputs. It does not inspect nominal state, solve for gain or perform injection. Compute `PHt = P * transpose(H)`, then `S = H * PHt + V`, with the same finite checks and symmetry cleanup as correction. Gate with `r` and `diag(S)`, never `diag(V)`. Rejection is componentwise, not a joint NIS test; gate errors retain `E-INNOV` statuses.
+- Check finite nominal fields and sigma, then call the numerical core's `correction_covariances`. This operation checks the correction inputs in their existing order and publishes `PHt` and `S` together only on success; its outputs are disjoint from each other and from inputs. It does not inspect nominal state, solve for gain or perform injection. Compute `PHt = P * transpose(H)`, then `S = H * PHt + V`, with the same finite checks and symmetry cleanup as correction. Gate with `r` and `diag(S)`, never `diag(V)`. Rejection is componentwise, not a joint NIS test; gate errors retain `E-INNOV` statuses.
 - Return a fresh `FusionResult` with `decision = fused`, `rejected` or `failed`. Only `fused` publishes both state and covariance. `rejected` has `status = success`; any numerical/input failure has `decision = failed` and its failing status. Neither rejection nor failure modifies either output. Each complete output may independently alias its respective prior; all other input/output storage is disjoint.
 - Only after the gate succeeds, publish `innovation`, `innovation_variance` and `test_ratio` with `diagnostics_valid = true`, including rejected observations. These diagnostics describe the call's prior and remain valid if correction later fails. Before gate success, diagnostics are invalid zero placeholders; never reuse a prior call's diagnostics.
 - If any ratio exceeds one, reject this whole observation group without correction, LLT or injection. Otherwise call the existing correction with the identical state, `P`, `r`, `H`, `V`, normalization threshold and bias permissions. The gate and correction use the same covariance implementation. Accepted calls intentionally recompute the products: correction remains independently checked, without a retained workspace or caller-supplied cached gain. GNSS may use a limited residual, and magnetic correction retains its own projection/check order. Equations and validation order are unchanged. A gate pass does not certify full covariance validity, conditioning or prior quaternion norm. Rejection does not certify estimator health.
@@ -1730,7 +1730,7 @@ correction tests and SITL are empirical evidence; Lean/ESBMC and physical distur
 
 ### R-IMU-PROCESS-NOISE: fault-dependent sampled IMU variance
 
-`runtime::try_select_imu_process_noise(configured_noise, conditions,
+`runtime::select_imu_process_noise(configured_noise, conditions,
 fault_variance, output)` selects body-axis accelerometer measurement variances
 before INS prediction. Conditions contain the preceding vertical-health fault
 and known clipping flags for the current IMU interval.
@@ -1777,7 +1777,7 @@ ticks. Summary records the fault standard deviation, per-axis override counts
 and unavailable predictions (including gap holds). Override counts describe
 selection, even if configured and replacement variances happen to be equal.
 
-The PX4 module uses `px4::try_predict_imu` for actual accepted IMU intervals.
+The PX4 module uses `px4::predict_imu` for actual accepted IMU intervals.
 It copies configured parameters, selects noise with fixed `4.9^2` fault variance,
 applies `R-BIAS-PROCESS-NOISE`, then calls atomic INS prediction in place.
 Configured noise and gyro variance are preserved. Selection/prediction failure
@@ -1803,7 +1803,7 @@ remain pending; normal-flight SITL does not establish clipped-flight accuracy.
 
 ### R-BIAS-PROCESS-NOISE: variance-dependent bias driving noise
 
-`runtime::try_inhibit_bias_process_noise(P, step_noise, output_noise)`
+`runtime::inhibit_bias_process_noise(P, step_noise, output_noise)`
 selects INS process noise for one prediction. Its rule follows PX4 v1.16.2
 [covariance prediction](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/covariance.cpp#L145):
 
@@ -1857,7 +1857,7 @@ floating-point increment changed P. Native backend, threshold, rollback,
 correction/recovery and replay tests support the rule; new Lean/ESBMC evidence
 remains pending. Full PX4 covariance constraints remain separate work.
 
-The PX4 module applies the same production selector through `px4::try_predict_imu`
+The PX4 module applies the same production selector through `px4::predict_imu`
 before real and synthetic gap-hold predictions. Real intervals first select
 fault/clipping-dependent IMU variance; gap holds use configured IMU variance.
 Both use the prior covariance and start from configured intensities on every
@@ -1869,7 +1869,7 @@ failure rollback; new formal evidence remains pending.
 
 ### R-BIAS-LIMITS: per-axis bias-value limits
 
-`runtime::try_limit_bias(state, limits)` explicitly limits each body-axis INS
+`runtime::limit_bias(state, limits)` explicitly limits each body-axis INS
 accelerometer bias to `[-limits.accelerometer, +limits.accelerometer]` (m/s²)
 and gyro bias to `[-limits.gyroscope, +limits.gyroscope]` (rad/s).
 
@@ -1904,7 +1904,7 @@ not agree. Clamping does not prove posterior covariance consistency or physical
 bias accuracy. Native boundary, failure, correction and replay tests cover this
 feature; Lean/ESBMC evidence remains pending.
 
-The module uses `px4::try_limit_imu_bias` with fixed bounds 0.4 m/s² and
+The module uses `px4::limit_imu_bias` with fixed bounds 0.4 m/s² and
 0.15 rad/s; published sensor-bias limits use the same constants. It limits startup biases and each successful GNSS velocity/horizontal
 position, GNSS/barometer height and magnetic correction group before the next
 operation. Rejections and resets do not invoke limiting. Each height source is

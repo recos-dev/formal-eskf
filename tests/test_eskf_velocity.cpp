@@ -28,7 +28,7 @@ using TestContext = formal_eskf::test::Context;
 using formal_eskf::Status;
 using formal_eskf::test::near;
 
-template <typename Matrix> [[nodiscard]] bool same_bits(Matrix const & a, Matrix const & b)
+template <typename Matrix> bool same_bits(Matrix const & a, Matrix const & b)
 {
     using bytes_type = std::array<std::byte, sizeof(typename Matrix::value_type)>;
     for (std::size_t row = 0U; row < Matrix::row_count; ++row)
@@ -44,7 +44,7 @@ template <typename Matrix> [[nodiscard]] bool same_bits(Matrix const & a, Matrix
     return true;
 }
 
-template <typename State> [[nodiscard]] bool same_state(State const & a, State const & b)
+template <typename State> bool same_state(State const & a, State const & b)
 {
     return same_bits(a.v_n, b.v_n) && same_bits(a.p_n, b.p_n) && same_bits(a.b_a, b.b_a) && same_bits(a.b_g, b.b_g) &&
            same_bits(a.q_nb.coefficients(), b.q_nb.coefficients());
@@ -85,9 +85,9 @@ template <typename Linalg> struct HorizontalVelocityFixture
         }
     }
 
-    [[nodiscard]] static jacobian_type jacobian() { return formal_eskf::horizontal_velocity_jacobian<Linalg>(); }
+    static jacobian_type jacobian() { return formal_eskf::horizontal_velocity_jacobian<Linalg>(); }
 
-    [[nodiscard]] static constexpr bool observes_axis(std::size_t axis) { return axis < 2U; }
+    static constexpr bool observes_axis(std::size_t axis) { return axis < 2U; }
 
     [[nodiscard]] static Status correct(state_type const & prior, covariance_type const & covariance,
                                         measurement_type const & observation, measurement_covariance_type const & noise,
@@ -95,8 +95,8 @@ template <typename Linalg> struct HorizontalVelocityFixture
                                         covariance_type & posterior_covariance,
                                         formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {})
     {
-        return formal_eskf::try_correct_horizontal_velocity(prior, covariance, observation, noise, norm_bound,
-                                                            posterior, posterior_covariance, bias_update);
+        return formal_eskf::correct_horizontal_velocity(prior, covariance, observation, noise, norm_bound, posterior,
+                                                        posterior_covariance, bias_update);
     }
 };
 
@@ -135,9 +135,9 @@ template <typename Linalg> struct VelocityFixture
         }
     }
 
-    [[nodiscard]] static jacobian_type jacobian() { return formal_eskf::velocity_jacobian<Linalg>(); }
+    static jacobian_type jacobian() { return formal_eskf::velocity_jacobian<Linalg>(); }
 
-    [[nodiscard]] static constexpr bool observes_axis(std::size_t axis) { return axis < 3U; }
+    static constexpr bool observes_axis(std::size_t axis) { return axis < 3U; }
 
     [[nodiscard]] static Status correct(state_type const & prior, covariance_type const & covariance,
                                         measurement_type const & observation, measurement_covariance_type const & noise,
@@ -145,8 +145,8 @@ template <typename Linalg> struct VelocityFixture
                                         covariance_type & posterior_covariance,
                                         formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {})
     {
-        return formal_eskf::try_correct_velocity(prior, covariance, observation, noise, norm_bound, posterior,
-                                                 posterior_covariance, bias_update);
+        return formal_eskf::correct_velocity(prior, covariance, observation, noise, norm_bound, posterior,
+                                             posterior_covariance, bias_update);
     }
 };
 
@@ -154,14 +154,14 @@ template <typename Linalg, typename State, typename Covariance, std::size_t Size
 concept SupportsHorizontalVelocity = requires(State state, Covariance P, formal_eskf::linalg::Vector<Linalg, Size> z,
                                               formal_eskf::linalg::Matrix<Linalg, Size, Size> V)
 {
-    formal_eskf::try_correct_horizontal_velocity(state, P, z, V, typename Linalg::value_type{1}, state, P);
+    formal_eskf::correct_horizontal_velocity(state, P, z, V, typename Linalg::value_type{1}, state, P);
 };
 
 template <typename Linalg, typename State, typename Covariance, std::size_t Size>
 concept SupportsVelocity = requires(State state, Covariance P, formal_eskf::linalg::Vector<Linalg, Size> z,
                                     formal_eskf::linalg::Matrix<Linalg, Size, Size> V)
 {
-    formal_eskf::try_correct_velocity(state, P, z, V, typename Linalg::value_type{1}, state, P);
+    formal_eskf::correct_velocity(state, P, z, V, typename Linalg::value_type{1}, state, P);
 };
 
 template <typename Fixture>
@@ -201,11 +201,10 @@ void test_velocity_jacobian(TestContext & test, std::string_view profile, typena
         (*negative_blocks[column / 3U])(column % 3U) = -step;
         typename Fixture::state_type plus;
         typename Fixture::state_type minus;
-        test.expect(formal_eskf::try_inject_nominal(fixture.state, positive, Fixture::minimum_norm, plus) ==
-                            Status::success &&
-                        formal_eskf::try_inject_nominal(fixture.state, negative, Fixture::minimum_norm, minus) ==
-                            Status::success,
-                    profile, "finite-difference perturbations succeed");
+        test.expect(
+            formal_eskf::inject_nominal(fixture.state, positive, Fixture::minimum_norm, plus) == Status::success &&
+                formal_eskf::inject_nominal(fixture.state, negative, Fixture::minimum_norm, minus) == Status::success,
+            profile, "finite-difference perturbations succeed");
         for (std::size_t row = 0U; row < measurement_size; ++row)
         {
             value_type const expected = row + 3U == column ? value_type{1} : value_type{0};
@@ -311,7 +310,7 @@ template <typename Fixture> void test_velocity_delegation(TestContext & test, st
     }
     fixture.V(0U, 1U) = value_type{0.25};
     fixture.V(1U, 0U) = value_type{0.25};
-    test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
+    test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::from_coefficients(
                     value_type{0.5}, value_type{0.5}, value_type{0.5}, value_type{0.5}, Fixture::minimum_norm,
                     fixture.state.q_nb) == Status::success,
                 profile, "non-identity prior attitude is valid");
@@ -323,8 +322,8 @@ template <typename Fixture> void test_velocity_delegation(TestContext & test, st
     auto const r = fixture.z - fixture.state.v_n.template segment<Fixture::axis_offset, measurement_size>();
     typename Fixture::state_type expected_state;
     typename Fixture::covariance_type expected_P;
-    test.expect(formal_eskf::try_correct(fixture.state, fixture.P, r, H, fixture.V, Fixture::minimum_norm,
-                                         expected_state, expected_P) == Status::success,
+    test.expect(formal_eskf::correct(fixture.state, fixture.P, r, H, fixture.V, Fixture::minimum_norm, expected_state,
+                                     expected_P) == Status::success,
                 profile, "generic correction reference succeeds");
     test.expect(!same_bits(expected_state.q_nb.coefficients(), fixture.state.q_nb.coefficients()), profile,
                 "velocity-attitude cross covariance produces an attitude correction");
@@ -363,8 +362,8 @@ template <typename Fixture> void test_velocity_delegation(TestContext & test, st
             bias_update.accelerometer[axis] = (permissions & (1U << axis)) != 0U;
             bias_update.gyroscope[axis] = (permissions & (1U << (3U + axis))) != 0U;
         }
-        test.expect(formal_eskf::try_correct(fixture.state, fixture.P, r, H, fixture.V, Fixture::minimum_norm,
-                                             expected_state, expected_P, bias_update) == Status::success,
+        test.expect(formal_eskf::correct(fixture.state, fixture.P, r, H, fixture.V, Fixture::minimum_norm,
+                                         expected_state, expected_P, bias_update) == Status::success,
                     profile, "controlled generic correction reference succeeds");
         for (unsigned aliases = 0U; aliases < 4U; ++aliases)
         {
@@ -581,7 +580,7 @@ void test_velocity_sequence(TestContext & test, std::string_view profile, typena
         {
             reference[axis].correct(z(axis), V(axis, axis));
         }
-        Status const predict_status = formal_eskf::try_predict(state, P, imu, dt, parameters, state, P);
+        Status const predict_status = formal_eskf::predict(state, P, imu, dt, parameters, state, P);
         Status const correct_status = Fixture::correct(state, P, z, V, Fixture::minimum_norm, state, P);
         test.expect(predict_status == Status::success && correct_status == Status::success, profile,
                     "repeated in-place predict and velocity correct succeed");

@@ -41,11 +41,11 @@ of performing the selected algorithm.
 
 ```cpp
 // AHRS
-try_correct_magnetometer(state, P, m_b, m_n, V, minimum_norm,
+correct_magnetometer(state, P, m_b, m_n, V, minimum_norm,
                          state_output, P_output);
 
 // INS: retain the existing per-axis bias permissions.
-try_correct_magnetometer(state, P, m_b, m_n, V, minimum_norm,
+correct_magnetometer(state, P, m_b, m_n, V, minimum_norm,
                          state_output, P_output, bias_update);
 ```
 
@@ -220,7 +220,7 @@ check_magnetic_field -> lifecycle.update (every tick, also without data)
                               |
                   reset_allowed (timeout recovery)
                               |
-                try_reset_magnetic_heading -> record_reset(actual success)
+                reset_magnetic_heading -> record_reset(actual success)
 ```
 
 Feed the field check's successful, valid acceptance into `Sample::field_accepted`;
@@ -265,7 +265,7 @@ were reviewed at PX4 v1.16.2, `54f0455ffcd755534539a7cf33a09a20bf71d29d`:
   state/filter history. We detect the supplied identity/version changes and
   revoke permission; actual alignment/state/P repair remains outside this class.
 
-`try_reset_magnetic_heading` left-multiplies a rotation about navigation Down,
+`reset_magnetic_heading` left-multiplies a rotation about navigation Down,
 preserving tilt. Its covariance reset removes navigation yaw correlations and
 sets yaw variance, transformed back to our local attitude coordinates using
 both the prior and new rotations. This avoids confusing body Z with navigation

@@ -18,7 +18,7 @@
 namespace formal_eskf
 {
 
-/** Diagnostics are valid only after a successful try_check_innovation call. */
+/** Diagnostics are valid only after a successful check_innovation call. */
 template <typename Linalg, std::size_t Size> struct InnovationCheck
 {
     linalg::Vector<Linalg, Size> test_ratio{};
@@ -37,10 +37,9 @@ template <typename Linalg, std::size_t Size> struct InnovationCheck
  * See E-INNOV for numerical bounds and failure semantics.
  */
 template <typename Linalg, std::size_t Size>
-[[nodiscard]] Status try_check_innovation(linalg::Vector<Linalg, Size> const & innovation,
-                                          linalg::Vector<Linalg, Size> const & innovation_variance,
-                                          typename Linalg::value_type gate_sigma,
-                                          InnovationCheck<Linalg, Size> & output)
+[[nodiscard]] Status check_innovation(linalg::Vector<Linalg, Size> const & innovation,
+                                      linalg::Vector<Linalg, Size> const & innovation_variance,
+                                      typename Linalg::value_type gate_sigma, InnovationCheck<Linalg, Size> & output)
 {
     using value_type = typename Linalg::value_type;
     using math_type = typename Linalg::scalar_math_type;

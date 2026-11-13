@@ -64,7 +64,7 @@ void verify_squared_norm_producer(Vector3 value)
                    "SO3-SMALL-ANGLE: regular side is reachable");
 }
 
-// Pure producer equations also cover calls outside try_log's reachable domain.
+// Pure producer equations also cover calls outside log's reachable domain.
 // These retain and extend the old restricted scale/coefficient checks.
 void verify_log_arithmetic(Scalar q0, Scalar q0_squared, Scalar squared, Scalar norm, Scalar angle, Vector3 qv,
                            Scalar scale)
@@ -92,7 +92,7 @@ void verify_scalar_wrappers(Scalar x, Scalar y, Scalar output, Scalar old_sine, 
 {
     Scalar const before = output;
     OpaqueMath::prepare(root, sine, cosine, angle);
-    auto actual = formal_eskf::scalar::try_sqrt<OpaqueMath>(x, output);
+    auto actual = formal_eskf::scalar::sqrt<OpaqueMath>(x, output);
     Status expected = !std::isfinite(x)      ? Status::non_finite_input
                       : x < Scalar{0}        ? Status::domain_error
                       : !std::isfinite(root) ? Status::non_finite_result
@@ -105,7 +105,7 @@ void verify_scalar_wrappers(Scalar x, Scalar y, Scalar output, Scalar old_sine, 
 
     formal_eskf::scalar::SinCos<Scalar> pair{old_sine, old_cosine};
     auto const pair_before = pair;
-    actual = formal_eskf::scalar::try_sin_cos<OpaqueMath>(x, pair);
+    actual = formal_eskf::scalar::sin_cos<OpaqueMath>(x, pair);
     expected = !std::isfinite(x)                                 ? Status::non_finite_input
                : !(std::isfinite(sine) && std::isfinite(cosine)) ? Status::non_finite_result
                                                                  : Status::success;
@@ -118,7 +118,7 @@ void verify_scalar_wrappers(Scalar x, Scalar y, Scalar output, Scalar old_sine, 
                    "F-SCALAR: both trig calls receive the same angle");
 
     output = before;
-    actual = formal_eskf::scalar::try_atan2<OpaqueMath>(y, x, output);
+    actual = formal_eskf::scalar::atan2<OpaqueMath>(y, x, output);
     bool const finite = std::isfinite(x) && std::isfinite(y);
     bool const origin = x == Scalar{0} && y == Scalar{0};
     expected = !finite                 ? Status::non_finite_input
@@ -148,7 +148,7 @@ void verify_exp_behavior(Vector3 theta, Scalar minimum, Quaternion output, Quate
     maps_proof::SquaredNormContract::calls = 0U;
     ConstructorContract::prepare(normalized, constructor_status);
     OpaqueMath::prepare(root, sine, cosine, Scalar{0});
-    auto const actual = formal_eskf::so3::try_exp(theta, minimum, output);
+    auto const actual = formal_eskf::so3::exp(theta, minimum, output);
 
     Status expected = Status::success;
     bool root_call = false;
@@ -254,7 +254,7 @@ void verify_log_behavior(Quaternion q, Vector3 output, Scalar root, Scalar half_
     auto const q_before = q.coefficients();
     auto const before = output;
     OpaqueMath::prepare(root, Scalar{0}, Scalar{0}, half_angle);
-    auto const actual = formal_eskf::so3::try_log(q, output);
+    auto const actual = formal_eskf::so3::log(q, output);
     Scalar const sign = q_before(0U) < Scalar{0} ? Scalar{-1} : Scalar{1};
     Scalar const q0 = sign * q_before(0U);
     Vector3 qv;

@@ -42,7 +42,7 @@ template <typename Scalar> struct HeightBias
         negative_time = residual > Scalar{0} ? negative_time + dt : Scalar{0};
     }
 
-    [[nodiscard]] bool finite() const
+    bool finite() const
     {
         return std::isfinite(value) && std::isfinite(variance) && std::isfinite(signed_ratio) &&
                std::isfinite(positive_time) && std::isfinite(negative_time);

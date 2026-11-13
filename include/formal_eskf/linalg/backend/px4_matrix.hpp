@@ -51,15 +51,14 @@ public:
     }
 
     template <std::size_t Rows, std::size_t Columns>
-    [[nodiscard]] static value_type const & coefficient(storage_type<Rows, Columns> const & matrix, std::size_t row,
-                                                        std::size_t column)
+    static value_type const & coefficient(storage_type<Rows, Columns> const & matrix, std::size_t row,
+                                          std::size_t column)
     {
         return matrix(row, column);
     }
 
     template <std::size_t Rows, std::size_t Columns>
-    [[nodiscard]] static value_type & coefficient(storage_type<Rows, Columns> & matrix, std::size_t row,
-                                                  std::size_t column)
+    static value_type & coefficient(storage_type<Rows, Columns> & matrix, std::size_t row, std::size_t column)
     {
         return matrix(row, column);
     }
@@ -109,17 +108,17 @@ public:
     }
 
     template <std::size_t Size>
-    [[nodiscard]] static value_type dot(storage_type<Size, 1U> const & left, storage_type<Size, 1U> const & right)
+    static value_type dot(storage_type<Size, 1U> const & left, storage_type<Size, 1U> const & right)
     {
         return ::matrix::Vector<value_type, Size>(left).dot(right);
     }
 
-    template <std::size_t Size> [[nodiscard]] static value_type squared_norm(storage_type<Size, 1U> const & vector)
+    template <std::size_t Size> static value_type squared_norm(storage_type<Size, 1U> const & vector)
     {
         return ::matrix::Vector<value_type, Size>(vector).norm_squared();
     }
 
-    template <std::size_t Size> [[nodiscard]] static value_type norm(storage_type<Size, 1U> const & vector)
+    template <std::size_t Size> static value_type norm(storage_type<Size, 1U> const & vector)
     {
         return ::matrix::Vector<value_type, Size>(vector).norm();
     }

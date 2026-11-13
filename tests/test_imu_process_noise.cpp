@@ -84,17 +84,17 @@ template <typename Linalg> void test_selection(TestContext & test)
                 }
             }
             auto output = configured;
-            test.expect(formal_eskf::runtime::try_select_imu_process_noise(configured, conditions, Scalar{16},
-                                                                           output) == Status::success &&
+            test.expect(formal_eskf::runtime::select_imu_process_noise(configured, conditions, Scalar{16}, output) ==
+                                Status::success &&
                             same_noise(output, expected),
                         profile,
                         "all 16 fault/clipping combinations; replace even a larger baseline; preserve other fields");
             auto alias = configured;
-            test.expect(formal_eskf::runtime::try_select_imu_process_noise(alias, conditions, Scalar{16}, alias) ==
+            test.expect(formal_eskf::runtime::select_imu_process_noise(alias, conditions, Scalar{16}, alias) ==
                                 Status::success &&
                             same_noise(alias, expected),
                         profile, "whole-noise alias produces the same selection");
-            test.expect(formal_eskf::runtime::try_select_imu_process_noise(configured, {}, Scalar{16}, output) ==
+            test.expect(formal_eskf::runtime::select_imu_process_noise(configured, {}, Scalar{16}, output) ==
                                 Status::success &&
                             same_noise(output, configured),
                         profile, "clear conditions restore configured variances immediately");
@@ -105,8 +105,8 @@ template <typename Linalg> void test_selection(TestContext & test)
         auto output = configured;
         auto expected = configured;
         expected.specific_force_variance(0U) = variance;
-        test.expect(formal_eskf::runtime::try_select_imu_process_noise(configured, {false, {true, false, false}},
-                                                                       variance, output) == Status::success &&
+        test.expect(formal_eskf::runtime::select_imu_process_noise(configured, {false, {true, false, false}}, variance,
+                                                                   output) == Status::success &&
                         same_noise(output, expected),
                     profile, "finite nonnegative variance is copied without squaring or overflow");
     }
@@ -125,12 +125,10 @@ template <typename Linalg> void test_failures(TestContext & test)
             auto noise = configured_noise<Linalg>();
             auto output = noise;
             auto const before = output;
-            test.expect(formal_eskf::runtime::try_select_imu_process_noise(noise, conditions, invalid, output) ==
-                                status &&
+            test.expect(formal_eskf::runtime::select_imu_process_noise(noise, conditions, invalid, output) == status &&
                             same_noise(output, before),
                         profile, "invalid fault variance fails even when unselected and preserves output");
-            test.expect(formal_eskf::runtime::try_select_imu_process_noise(noise, conditions, invalid, noise) ==
-                                status &&
+            test.expect(formal_eskf::runtime::select_imu_process_noise(noise, conditions, invalid, noise) == status &&
                             same_noise(noise, before),
                         profile, "invalid parameter preserves aliased noise");
             for (std::size_t field = 0U; field < 4U; ++field)
@@ -141,13 +139,13 @@ template <typename Linalg> void test_failures(TestContext & test)
                     (*noise_vectors(noise)[field])(axis) = invalid;
                     auto const original = noise;
                     output = before;
-                    test.expect(formal_eskf::runtime::try_select_imu_process_noise(noise, conditions, Scalar{16},
-                                                                                   output) == status &&
+                    test.expect(formal_eskf::runtime::select_imu_process_noise(noise, conditions, Scalar{16}, output) ==
+                                        status &&
                                     same_noise(output, before) && same_noise(noise, original),
                                 profile,
                                 "invalid configuration cannot be hidden by replacement; inputs and output preserved");
-                    test.expect(formal_eskf::runtime::try_select_imu_process_noise(noise, conditions, Scalar{16},
-                                                                                   noise) == status &&
+                    test.expect(formal_eskf::runtime::select_imu_process_noise(noise, conditions, Scalar{16}, noise) ==
+                                        status &&
                                     same_noise(noise, original),
                                 profile, "invalid aliased input is preserved coefficient by coefficient");
                 }
@@ -165,14 +163,13 @@ template <typename Linalg> void test_prediction(TestContext & test)
     configured.specific_force_variance = Vector::from_row_major({Scalar{1}, Scalar{2}, Scalar{4}});
     auto selected = configured;
     auto covariance = Covariance::identity() * Scalar{2};
-    test.expect(formal_eskf::runtime::try_inhibit_bias_process_noise(covariance, configured, selected) ==
-                        Status::success &&
+    test.expect(formal_eskf::runtime::inhibit_bias_process_noise(covariance, configured, selected) == Status::success &&
                     selected.accelerometer_bias_random_walk_variance_density(0U) == Scalar{0},
                 profile, "healthy variance suppresses above-threshold bias noise");
     test.expect(
-        formal_eskf::runtime::try_select_imu_process_noise(configured, {false, {true, false, false}}, Scalar{16},
-                                                           selected) == Status::success &&
-            formal_eskf::runtime::try_inhibit_bias_process_noise(covariance, selected, selected) == Status::success &&
+        formal_eskf::runtime::select_imu_process_noise(configured, {false, {true, false, false}}, Scalar{16},
+                                                       selected) == Status::success &&
+            formal_eskf::runtime::inhibit_bias_process_noise(covariance, selected, selected) == Status::success &&
             selected.accelerometer_bias_random_walk_variance_density(0U) ==
                 configured.accelerometer_bias_random_walk_variance_density(0U) &&
             selected.accelerometer_bias_random_walk_variance_density(1U) == Scalar{0} &&
@@ -181,8 +178,8 @@ template <typename Linalg> void test_prediction(TestContext & test)
 
     Ins::NominalState<Linalg> state, output;
     // Exact cyclic body-to-navigation rotation: body X -> NED Y, Y -> Z, Z -> X.
-    test.expect(decltype(state.q_nb)::try_from_coefficients(Scalar{0.5}, Scalar{0.5}, Scalar{0.5}, Scalar{0.5},
-                                                            Scalar{0.125}, state.q_nb) == Status::success,
+    test.expect(decltype(state.q_nb)::from_coefficients(Scalar{0.5}, Scalar{0.5}, Scalar{0.5}, Scalar{0.5},
+                                                        Scalar{0.125}, state.q_nb) == Status::success,
                 profile, "prepare rotated nominal state");
     Ins::Parameters<Linalg> parameters;
     parameters.minimum_quaternion_norm = Scalar{0.125};
@@ -190,13 +187,12 @@ template <typename Linalg> void test_prediction(TestContext & test)
     parameters.dt_min = Scalar{0.125};
     parameters.dt_max = Scalar{0.125};
     parameters.process_noise.specific_force_variance = configured.specific_force_variance;
-    test.expect(formal_eskf::runtime::try_select_imu_process_noise(parameters.process_noise,
-                                                                   {false, {true, false, false}}, Scalar{16},
-                                                                   parameters.process_noise) == Status::success,
+    test.expect(formal_eskf::runtime::select_imu_process_noise(parameters.process_noise, {false, {true, false, false}},
+                                                               Scalar{16}, parameters.process_noise) == Status::success,
                 profile, "select only body-X measurement noise");
     Covariance result;
-    test.expect(formal_eskf::try_predict(state, Covariance{}, formal_eskf::ImuSample<Linalg>{}, Scalar{0.125},
-                                         parameters, output, result) == Status::success,
+    test.expect(formal_eskf::predict(state, Covariance{}, formal_eskf::ImuSample<Linalg>{}, Scalar{0.125}, parameters,
+                                     output, result) == Status::success,
                 profile, "actual covariance prediction consumes selected noise");
     std::array<Scalar, 3U> const expected{Scalar{4} / Scalar{64}, Scalar{16} / Scalar{64}, Scalar{2} / Scalar{64}};
     for (std::size_t row = 0U; row < 3U; ++row)

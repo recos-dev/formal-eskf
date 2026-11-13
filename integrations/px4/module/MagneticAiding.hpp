@@ -83,17 +83,17 @@ public:
         return m_heading.update_acceleration(acceleration_n, dt);
     }
     void reset_acceleration() { m_heading.reset_acceleration(); }
-    [[nodiscard]] auto const & lifecycle() const { return m_lifecycle.state(); }
-    [[nodiscard]] auto const & heading() const { return m_heading.state(); }
-    [[nodiscard]] auto const & observation() const { return m_observation; }
-    [[nodiscard]] bool aligned() const { return m_aligned; }
-    [[nodiscard]] quaternion_type const & reset_delta() const { return m_reset_delta; }
-    [[nodiscard]] std::uint8_t reset_counter() const { return m_reset_counter; }
-    [[nodiscard]] std::uint64_t progress_time() const
+    auto const & lifecycle() const { return m_lifecycle.state(); }
+    auto const & heading() const { return m_heading.state(); }
+    auto const & observation() const { return m_observation; }
+    bool aligned() const { return m_aligned; }
+    quaternion_type const & reset_delta() const { return m_reset_delta; }
+    std::uint8_t reset_counter() const { return m_reset_counter; }
+    std::uint64_t progress_time() const
     {
         return std::max(lifecycle().last_fuse_time_us, lifecycle().last_reset_time_us);
     }
-    [[nodiscard]] bool heading_aiding() const
+    bool heading_aiding() const
     {
         return lifecycle().active && m_aligned && m_observation.field.accepted &&
                (!m_horizontal_aiding || heading().consistent);
@@ -233,7 +233,7 @@ MagneticAiding<Linalg>::update(std::uint64_t now_us, Sample const & sample, Cont
         }
         if (result.fused)
         {
-            result.status = try_limit_imu_bias(state);
+            result.status = limit_imu_bias(state);
             if (!succeeded(result.status))
             {
                 return result;
@@ -243,7 +243,7 @@ MagneticAiding<Linalg>::update(std::uint64_t now_us, Sample const & sample, Cont
     if (lifecycle().action == runtime::MagnetometerFusion::Action::reset)
     {
         quaternion_type delta;
-        auto const reset_status = runtime::try_reset_magnetic_heading(
+        auto const reset_status = runtime::reset_magnetic_heading(
             state, covariance, m_filter.field_b(), reference.observation_n,
             heading_parameters.heading_noise * heading_parameters.heading_noise,
             field_parameters.minimum_horizontal_field, minimum_norm, state, covariance, delta);

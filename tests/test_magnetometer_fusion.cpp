@@ -248,7 +248,7 @@ template <typename Linalg> void test_field_frames(TestContext & test, std::strin
     {
         quaternion_type q;
         test.expect(
-            quaternion_type::try_from_coefficients(
+            quaternion_type::from_coefficients(
                 coefficients_type::from_row_major({coefficients[0], coefficients[1], coefficients[2], coefficients[3]}),
                 static_cast<value_type>(1e-6), q) == Status::success,
             profile, "test orientation constructed");
@@ -416,13 +416,12 @@ template <typename Linalg, typename Configuration> struct FusionFixture
     {
         if constexpr (std::is_same_v<Configuration, Ins>)
         {
-            return formal_eskf::try_correct_magnetometer(state, P, sample, reference, V, minimum_norm, output, output_P,
-                                                         bias_update);
+            return formal_eskf::correct_magnetometer(state, P, sample, reference, V, minimum_norm, output, output_P,
+                                                     bias_update);
         }
         else
         {
-            return formal_eskf::try_correct_magnetometer(state, P, sample, reference, V, minimum_norm, output,
-                                                         output_P);
+            return formal_eskf::correct_magnetometer(state, P, sample, reference, V, minimum_norm, output, output_P);
         }
     }
 };
@@ -666,8 +665,8 @@ void test_fusion_boundaries(TestContext & test, std::string_view profile)
     // while the independent field-direction check operates in NED.
     fixture = fixture_type{};
     using quaternion_type = formal_eskf::so3::UnitQuaternion<Linalg>;
-    test.expect(quaternion_type::try_from_coefficients(value_type{4}, value_type{1}, value_type{-2}, value_type{2},
-                                                       fixture.minimum_norm, fixture.state.q_nb) == Status::success,
+    test.expect(quaternion_type::from_coefficients(value_type{4}, value_type{1}, value_type{-2}, value_type{2},
+                                                   fixture.minimum_norm, fixture.state.q_nb) == Status::success,
                 profile, "tilted fusion prior constructed");
     fixture.sample = formal_eskf::so3::inverse_rotate(fixture.state.q_nb, fixture.reference);
     fixture.sample(1U) += value_type{0.5};

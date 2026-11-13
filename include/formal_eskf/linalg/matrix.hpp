@@ -51,49 +51,47 @@ public:
     ~Matrix() = default;
 
     /** Return a zero matrix. */
-    [[nodiscard]] static Matrix zero() { return Matrix(); }
+    static Matrix zero() { return Matrix(); }
 
     /** Return an identity matrix.  This function is available only for square matrices. */
-    [[nodiscard]] static Matrix identity();
+    static Matrix identity();
 
     /** Construct a matrix from coefficients in row-major mathematical order. */
-    [[nodiscard]] static Matrix from_row_major(value_type const (&coefficients)[Rows * Columns]);
+    static Matrix from_row_major(value_type const (&coefficients)[Rows * Columns]);
 
     /** Access a coefficient.  The caller must prove row < Rows and column < Columns. */
-    [[nodiscard]] value_type operator()(std::size_t row, std::size_t column) const
+    value_type operator()(std::size_t row, std::size_t column) const
     {
         return Linalg::template coefficient<Rows, Columns>(m_storage, row, column);
     }
-    [[nodiscard]] value_type & operator()(std::size_t row, std::size_t column)
+    value_type & operator()(std::size_t row, std::size_t column)
     {
         return Linalg::template coefficient<Rows, Columns>(m_storage, row, column);
     }
 
     /** Access a vector coefficient.  This overload is available only when Columns is one. */
-    [[nodiscard]] value_type operator()(std::size_t index) const;
-    [[nodiscard]] value_type & operator()(std::size_t index);
+    value_type operator()(std::size_t index) const;
+    value_type & operator()(std::size_t index);
 
-    [[nodiscard]] Matrix operator+(Matrix const & other) const;
-    [[nodiscard]] Matrix operator-(Matrix const & other) const;
-    [[nodiscard]] Matrix operator-() const;
-    [[nodiscard]] Matrix operator*(value_type scalar) const;
-    [[nodiscard]] Matrix operator/(value_type scalar) const;
+    Matrix operator+(Matrix const & other) const;
+    Matrix operator-(Matrix const & other) const;
+    Matrix operator-() const;
+    Matrix operator*(value_type scalar) const;
+    Matrix operator/(value_type scalar) const;
 
     template <std::size_t OtherColumns>
-    [[nodiscard]] Matrix<Linalg, Rows, OtherColumns>
-    operator*(Matrix<Linalg, Columns, OtherColumns> const & other) const;
+    Matrix<Linalg, Rows, OtherColumns> operator*(Matrix<Linalg, Columns, OtherColumns> const & other) const;
 
     /** Return a compile-time-positioned block. */
     template <std::size_t StartRow, std::size_t StartColumn, std::size_t BlockRows, std::size_t BlockColumns>
-    [[nodiscard]] Matrix<Linalg, BlockRows, BlockColumns> block() const;
+    Matrix<Linalg, BlockRows, BlockColumns> block() const;
 
     /** Replace a compile-time-positioned block.  The block dimensions are deduced. */
     template <std::size_t StartRow, std::size_t StartColumn, std::size_t BlockRows, std::size_t BlockColumns>
     void set_block(Matrix<Linalg, BlockRows, BlockColumns> const & source);
 
     /** Return a compile-time-positioned vector segment. */
-    template <std::size_t Offset, std::size_t SegmentSize>
-    [[nodiscard]] Matrix<Linalg, SegmentSize, 1U> segment() const;
+    template <std::size_t Offset, std::size_t SegmentSize> Matrix<Linalg, SegmentSize, 1U> segment() const;
 
     /** Replace a compile-time-positioned vector segment.  Its size is deduced. */
     template <std::size_t Offset, std::size_t SegmentSize>
@@ -120,13 +118,13 @@ class MatrixAccess
 {
 public:
     template <typename Linalg, std::size_t Rows, std::size_t Columns>
-    [[nodiscard]] static auto const & storage(Matrix<Linalg, Rows, Columns> const & matrix)
+    static auto const & storage(Matrix<Linalg, Rows, Columns> const & matrix)
     {
         return matrix.m_storage;
     }
 
     template <typename Linalg, std::size_t Rows, std::size_t Columns>
-    [[nodiscard]] static auto & storage(Matrix<Linalg, Rows, Columns> & matrix)
+    static auto & storage(Matrix<Linalg, Rows, Columns> & matrix)
     {
         return matrix.m_storage;
     }
@@ -274,8 +272,8 @@ void Matrix<Linalg, Rows, Columns>::set_segment(Matrix<Linalg, SegmentSize, 1U> 
 }
 
 template <typename Linalg, std::size_t Rows, std::size_t Columns>
-[[nodiscard]] Matrix<Linalg, Rows, Columns> operator*(typename Matrix<Linalg, Rows, Columns>::value_type scalar,
-                                                      Matrix<Linalg, Rows, Columns> const & matrix)
+Matrix<Linalg, Rows, Columns> operator*(typename Matrix<Linalg, Rows, Columns>::value_type scalar,
+                                        Matrix<Linalg, Rows, Columns> const & matrix)
 {
     return matrix * scalar;
 }

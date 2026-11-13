@@ -124,12 +124,12 @@ template <typename Linalg, typename Configuration> struct FusionFixture
     {
         if constexpr (std::is_same_v<Configuration, Ins>)
         {
-            return formal_eskf::try_correct_accelerometer(state, P, sample, gravity, V, minimum_norm, output, output_P,
-                                                          bias_update);
+            return formal_eskf::correct_accelerometer(state, P, sample, gravity, V, minimum_norm, output, output_P,
+                                                      bias_update);
         }
         else
         {
-            return formal_eskf::try_correct_accelerometer(state, P, sample, gravity, V, minimum_norm, output, output_P);
+            return formal_eskf::correct_accelerometer(state, P, sample, gravity, V, minimum_norm, output, output_P);
         }
     }
 };

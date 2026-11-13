@@ -25,7 +25,7 @@ using TestContext = formal_eskf::test::Context;
 using formal_eskf::test::near;
 
 template <typename Vector>
-[[nodiscard]] bool vector_near(Vector const & actual, Vector const & expected, typename Vector::value_type tolerance)
+bool vector_near(Vector const & actual, Vector const & expected, typename Vector::value_type tolerance)
 {
     for (std::size_t index = 0U; index < Vector::row_count; ++index)
     {

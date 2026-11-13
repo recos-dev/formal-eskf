@@ -111,7 +111,7 @@ private:
         }
         else if (result.decision == formal_eskf::runtime::FusionDecision::fused)
         {
-            if (!check(formal_eskf::px4::try_limit_imu_bias(m_state)))
+            if (!check(formal_eskf::px4::limit_imu_bias(m_state)))
             {
                 return false;
             }

@@ -104,7 +104,7 @@ template <typename Scalar> void run_tests(TestContext & test)
 
     // Tilt-compensated heading is equivalent to yaw minus zero-yaw magnetic heading.
     Quaternion q;
-    test.expect(formal_eskf::so3::try_exp<Linalg>(
+    test.expect(formal_eskf::so3::exp<Linalg>(
                     Vector::from_row_major({static_cast<Scalar>(0.4), static_cast<Scalar>(-0.3), Scalar{1}}),
                     static_cast<Scalar>(1e-6), q) == Status::success,
                 profile, "tilted quaternion fixture");
@@ -118,7 +118,7 @@ template <typename Scalar> void run_tests(TestContext & test)
                     near(monitor.state().innovation, expected),
                 profile, "tilted attitude uses the same heading innovation as the zero-yaw construction");
     Quaternion opposite;
-    test.expect(Quaternion::try_from_coefficients(q.coefficients() * Scalar{-1}, static_cast<Scalar>(1e-6), opposite) ==
+    test.expect(Quaternion::from_coefficients(q.coefficients() * Scalar{-1}, static_cast<Scalar>(1e-6), opposite) ==
                         Status::success &&
                     monitor.update(opposite, east, north, parameters, true, true) == Status::success &&
                     near(monitor.state().innovation, expected),

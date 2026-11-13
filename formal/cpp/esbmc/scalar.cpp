@@ -64,7 +64,7 @@ void verify_scalar_sqrt(Scalar input, Scalar output, Scalar root)
     Scalar const before = *destination;
     Scalar const unused_output = output;
     Libm::prepare(root, Scalar{0}, Scalar{0}, Scalar{0});
-    auto const actual = scalar::try_sqrt<Math>(input, *destination);
+    auto const actual = scalar::sqrt<Math>(input, *destination);
     auto const expected = sqrt_status(argument, root);
     bool const calls_root = scalar_proof::finite(argument) && !negative(argument);
     __ESBMC_assert(actual == expected && same(*destination, expected == Status::success ? root : before),
@@ -92,7 +92,7 @@ void verify_scalar_sin_cos(Scalar input, Pair output, Scalar sine, Scalar cosine
     Pair const before = output;
     Pair const candidate{sine, cosine};
     Libm::prepare(Scalar{0}, sine, cosine, Scalar{0});
-    auto const actual = scalar::try_sin_cos<Math>(*source, output);
+    auto const actual = scalar::sin_cos<Math>(*source, output);
     auto const expected = sin_cos_status(argument, candidate);
     bool const calls_pair = scalar_proof::finite(argument);
     __ESBMC_assert(actual == expected, "F-SCALAR: sincos validates the input and both library results in order");
@@ -125,7 +125,7 @@ void verify_scalar_atan2(Scalar y, Scalar x, Scalar output, Scalar angle)
     Scalar const old_y = y, old_x = x, old_output = output;
     Scalar const first = y, second = *x_source, before = *destination;
     Libm::prepare(Scalar{0}, Scalar{0}, Scalar{0}, angle);
-    auto const actual = scalar::try_atan2<Math>(y, *x_source, *destination);
+    auto const actual = scalar::atan2<Math>(y, *x_source, *destination);
     auto const expected = atan2_status(first, second, angle);
     bool const calls_angle =
         scalar_proof::finite(first) && scalar_proof::finite(second) && !(zero(first) && zero(second));

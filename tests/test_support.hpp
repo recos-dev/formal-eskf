@@ -27,13 +27,13 @@ public:
         }
     }
 
-    [[nodiscard]] int failures() const { return m_failures; }
+    int failures() const { return m_failures; }
 
 private:
     int m_failures = 0;
 };
 
-template <typename T> [[nodiscard]] bool near(T actual, T expected, T tolerance)
+template <typename T> bool near(T actual, T expected, T tolerance)
 {
     using std::abs;
     return abs(actual - expected) <= tolerance;

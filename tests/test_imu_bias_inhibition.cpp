@@ -180,8 +180,8 @@ template <typename Linalg> void test_policy(TestContext & test)
     }
     result = policy.update(Scalar{0.125}, Scalar{0.125}, state, imu, {});
     test.expect(result.bias_update.accelerometer == all, profile, "clipping release has no extra recovery timer");
-    test.expect(State::quaternion_type::try_from_coefficients(Scalar{1}, Scalar{0}, Scalar{1}, Scalar{0},
-                                                              static_cast<Scalar>(1e-6), state.q_nb) == Status::success,
+    test.expect(State::quaternion_type::from_coefficients(Scalar{1}, Scalar{0}, Scalar{1}, Scalar{0},
+                                                          static_cast<Scalar>(1e-6), state.q_nb) == Status::success,
                 profile, "90-degree pitch fixture");
     result = policy.update(Scalar{0.125}, Scalar{0.125}, state, imu, {false, false, true, false, 0});
     test.expect(result.bias_update.accelerometer == std::array<bool, 3U>{true, false, false}, profile,
@@ -258,8 +258,7 @@ template <typename Linalg> void test_permissions(TestContext & test)
     {
         typename Policy::state_type state;
         auto const & q = attitudes[down_axis];
-        test.expect(Quaternion::try_from_coefficients(q[0], q[1], q[2], q[3], Scalar{0.125}, state.q_nb) ==
-                        Status::success,
+        test.expect(Quaternion::from_coefficients(q[0], q[1], q[2], q[3], Scalar{0.125}, state.q_nb) == Status::success,
                     profile, "exact axis-aligned attitude fixture");
         for (unsigned flags = 0U; flags < 128U; ++flags)
         {

@@ -24,7 +24,7 @@ namespace formal_eskf
  * [delta_p_n, delta_v_n, delta_theta_b, delta_b_a, delta_b_g].
  * No vertical position observation is introduced.
  */
-template <typename Linalg> [[nodiscard]] linalg::Matrix<Linalg, 2U, 15U> horizontal_position_jacobian()
+template <typename Linalg> linalg::Matrix<Linalg, 2U, 15U> horizontal_position_jacobian()
 {
     linalg::Matrix<Linalg, 2U, 15U> H;
     H.template set_block<0U, 0U>(linalg::Matrix<Linalg, 2U, 2U>::identity());
@@ -36,7 +36,7 @@ template <typename Linalg> [[nodiscard]] linalg::Matrix<Linalg, 2U, 15U> horizon
  * Vertical position is positive down, not positive-up altitude or distance
  * above terrain. Both position observation Jacobians are constant and exact.
  */
-template <typename Linalg> [[nodiscard]] linalg::Matrix<Linalg, 1U, 15U> vertical_position_jacobian()
+template <typename Linalg> linalg::Matrix<Linalg, 1U, 15U> vertical_position_jacobian()
 {
     linalg::Matrix<Linalg, 1U, 15U> H;
     H(0U, 2U) = typename Linalg::value_type{1};
@@ -52,20 +52,20 @@ template <typename Linalg> [[nodiscard]] linalg::Matrix<Linalg, 1U, 15U> vertica
  * responsibilities; this operation cannot check them.
  *
  * Forms r = z_p_ne - state.p_n.segment<0, 2>(), then delegates to
- * try_correct for Cholesky, Joseph update, error injection and covariance reset.
+ * correct for Cholesky, Joseph update, error injection and covariance reset.
  * Full V, including cross-axis correlations, is passed through unchanged.
  * Position can correct other state components through prior cross-covariances.
- * Optional bias-update permissions are forwarded to try_correct unchanged.
+ * Optional bias-update permissions are forwarded to correct unchanged.
  *
  * P must be symmetric PSD, V symmetric SPD, and the prior error mean zero, as
- * required by try_correct. Its input checks and failure statuses apply here.
+ * required by correct. Its input checks and failure statuses apply here.
  * Non-finite position inputs return non_finite_input; a non-finite residual
  * computed from finite positions returns non_finite_result. All outputs remain
  * unchanged on failure and may alias their respective state/covariance inputs.
  * No innovation gating, delayed fusion or dynamic allocation is introduced.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_correct_horizontal_position(
+[[nodiscard]] Status correct_horizontal_position(
     configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
     linalg::Vector<Linalg, 2U> const & z_p_ne, linalg::Matrix<Linalg, 2U, 2U> const & V,
     typename Linalg::value_type minimum_quaternion_norm, configuration::Ins::NominalState<Linalg> & state_output,
@@ -80,8 +80,8 @@ template <typename Linalg>
     {
         return Status::non_finite_result;
     }
-    return try_correct(state, covariance, r, horizontal_position_jacobian<Linalg>(), V, minimum_quaternion_norm,
-                       state_output, covariance_output, bias_update);
+    return correct(state, covariance, r, horizontal_position_jacobian<Linalg>(), V, minimum_quaternion_norm,
+                   state_output, covariance_output, bias_update);
 }
 
 /**
@@ -91,7 +91,7 @@ template <typename Linalg>
  * or vertical velocity measurement is required.
  *
  * Forms r = z_p_d - state.p_n(2), then uses the same full-state correction as
- * try_correct_horizontal_position. In particular, position/velocity cross-
+ * correct_horizontal_position. In particular, position/velocity cross-
  * covariance can correct vertical velocity without a velocity observation.
  * Covariance preconditions, failure statuses and output aliasing follow that
  * operation. The variance must be finite and strictly positive.
@@ -102,11 +102,13 @@ template <typename Linalg>
  * Separate observation calls do not represent cross-source noise correlations.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_correct_vertical_position(
-    configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-    typename Linalg::value_type z_p_d, typename Linalg::value_type variance,
-    typename Linalg::value_type minimum_quaternion_norm, configuration::Ins::NominalState<Linalg> & state_output,
-    linalg::Matrix<Linalg, 15U, 15U> & covariance_output, configuration::Ins::BiasUpdate const & bias_update = {})
+[[nodiscard]] Status correct_vertical_position(configuration::Ins::NominalState<Linalg> const & state,
+                                               linalg::Matrix<Linalg, 15U, 15U> const & covariance,
+                                               typename Linalg::value_type z_p_d, typename Linalg::value_type variance,
+                                               typename Linalg::value_type minimum_quaternion_norm,
+                                               configuration::Ins::NominalState<Linalg> & state_output,
+                                               linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
+                                               configuration::Ins::BiasUpdate const & bias_update = {})
 {
     using scalar_math_type = typename Linalg::scalar_math_type;
     if (!linalg::all_finite(state.p_n) || !scalar::is_finite<scalar_math_type>(z_p_d) ||
@@ -120,8 +122,8 @@ template <typename Linalg>
         return Status::non_finite_result;
     }
     auto const V = linalg::Matrix<Linalg, 1U, 1U>::from_row_major({variance});
-    return try_correct(state, covariance, r, vertical_position_jacobian<Linalg>(), V, minimum_quaternion_norm,
-                       state_output, covariance_output, bias_update);
+    return correct(state, covariance, r, vertical_position_jacobian<Linalg>(), V, minimum_quaternion_norm, state_output,
+                   covariance_output, bias_update);
 }
 
 } /* end namespace formal_eskf */

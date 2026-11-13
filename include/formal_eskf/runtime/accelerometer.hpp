@@ -64,8 +64,8 @@ template <typename Linalg>
         result.decision = FusionDecision::rejected;
         return result;
     }
-    result.status = try_correct_accelerometer(state, covariance, specific_force_b, gravity_n, V,
-                                              minimum_quaternion_norm, state_output, covariance_output);
+    result.status = correct_accelerometer(state, covariance, specific_force_b, gravity_n, V, minimum_quaternion_norm,
+                                          state_output, covariance_output);
     if (succeeded(result.status))
     {
         result.decision = FusionDecision::fused;
@@ -95,8 +95,8 @@ template <typename Linalg>
         result.decision = FusionDecision::rejected;
         return result;
     }
-    result.status = try_correct_accelerometer(state, covariance, specific_force_b, gravity_n, V,
-                                              minimum_quaternion_norm, state_output, covariance_output, bias_update);
+    result.status = correct_accelerometer(state, covariance, specific_force_b, gravity_n, V, minimum_quaternion_norm,
+                                          state_output, covariance_output, bias_update);
     if (succeeded(result.status))
     {
         result.decision = FusionDecision::fused;

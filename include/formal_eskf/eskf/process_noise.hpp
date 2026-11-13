@@ -60,9 +60,8 @@ template <typename Math> [[nodiscard]] Status validate_noise_step(typename Math:
  * This operation does not enforce application-specific dt_min/dt_max.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_discretize_process_noise(configuration::Ahrs::ProcessNoise<Linalg> const & noise,
-                                                  typename Linalg::value_type dt,
-                                                  linalg::Matrix<Linalg, 3U, 3U> & output)
+[[nodiscard]] Status discretize_process_noise(configuration::Ahrs::ProcessNoise<Linalg> const & noise,
+                                              typename Linalg::value_type dt, linalg::Matrix<Linalg, 3U, 3U> & output)
 {
     Status const step_status = detail::validate_noise_step<typename Linalg::scalar_math_type>(dt);
     if (!succeeded(step_status))
@@ -107,9 +106,8 @@ template <typename Linalg>
  * @see https://arxiv.org/pdf/1711.02508#page=93
  */
 template <typename Linalg>
-[[nodiscard]] Status try_discretize_process_noise(configuration::Ins::ProcessNoise<Linalg> const & noise,
-                                                  typename Linalg::value_type dt,
-                                                  linalg::Matrix<Linalg, 12U, 12U> & output)
+[[nodiscard]] Status discretize_process_noise(configuration::Ins::ProcessNoise<Linalg> const & noise,
+                                              typename Linalg::value_type dt, linalg::Matrix<Linalg, 12U, 12U> & output)
 {
     Status const step_status = detail::validate_noise_step<typename Linalg::scalar_math_type>(dt);
     if (!succeeded(step_status))

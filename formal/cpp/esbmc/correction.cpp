@@ -423,7 +423,7 @@ validate_correction_inputs<correction_proof::Backend, correction_proof::state_si
 #endif
 #define CORRECTION_FINISH(N)                                                                                           \
     template <>                                                                                                        \
-    inline Status try_finish_covariance<correction_proof::Backend, N>(                                                 \
+    inline Status finish_covariance<correction_proof::Backend, N>(                                                     \
         linalg::Matrix<correction_proof::Backend, N, N> & candidate,                                                   \
         linalg::Matrix<correction_proof::Backend, N, N> & output)                                                      \
     {                                                                                                                  \
@@ -555,14 +555,14 @@ void verify_correction(Covariance prior, Residual residual, Jacobian H, Noise V,
                             : !joseph_reached     ? Status::non_finite_result
                                                   : results.covariance_status;
     auto const gain_before = gain;
-    Status const gain_status = formal_eskf::detail::try_compute_correction_gain(prior, residual, H, V, minimum, gain);
+    Status const gain_status = formal_eskf::detail::compute_correction_gain(prior, residual, H, V, minimum, gain);
     __ESBMC_assert(gain_status == Status::success ? matches(gain, results.gain) : matches(gain, gain_before),
                    "E-CORRECT: gain publishes the solve result only on success");
     Status actual = gain_status;
     if (gain_status == Status::success)
     {
-        actual = formal_eskf::detail::try_apply_correction_gain(prior, residual, H, V, gain, correction_output,
-                                                                covariance_output);
+        actual = formal_eskf::detail::apply_correction_gain(prior, residual, H, V, gain, correction_output,
+                                                            covariance_output);
     }
     __ESBMC_assert(actual == expected, "E-CORRECT: exact validation, arithmetic-failure and callee-status precedence");
     __ESBMC_assert(Calls::validations == 1U && Calls::symmetries == 0U &&

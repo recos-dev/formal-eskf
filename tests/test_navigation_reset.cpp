@@ -112,8 +112,8 @@ template <typename Scalar, ResetGroup Group> struct Fixture
     {
         if constexpr (Group == ResetGroup::horizontal_position)
         {
-            return formal_eskf::runtime::try_reset_gnss_horizontal_position(
-                state, P, observation, variances, state_output, covariance_output, delta_output);
+            return formal_eskf::runtime::reset_gnss_horizontal_position(state, P, observation, variances, state_output,
+                                                                        covariance_output, delta_output);
         }
         else if constexpr (vertical)
         {
@@ -121,13 +121,13 @@ template <typename Scalar, ResetGroup Group> struct Fixture
             Status status{};
             if constexpr (velocity)
             {
-                status = formal_eskf::runtime::try_reset_vertical_velocity(state, P, observation(0U), variances(0U),
-                                                                           state_output, covariance_output, delta);
+                status = formal_eskf::runtime::reset_vertical_velocity(state, P, observation(0U), variances(0U),
+                                                                       state_output, covariance_output, delta);
             }
             else
             {
-                status = formal_eskf::runtime::try_reset_vertical_position(state, P, observation(0U), variances(0U),
-                                                                           state_output, covariance_output, delta);
+                status = formal_eskf::runtime::reset_vertical_position(state, P, observation(0U), variances(0U),
+                                                                       state_output, covariance_output, delta);
             }
             // Forward even on failure: rollback checks must see the actual scalar output.
             delta_output(0U) = delta;
@@ -135,8 +135,8 @@ template <typename Scalar, ResetGroup Group> struct Fixture
         }
         else
         {
-            return formal_eskf::runtime::try_reset_velocity(state, P, observation, variances, state_output,
-                                                            covariance_output, delta_output);
+            return formal_eskf::runtime::reset_velocity(state, P, observation, variances, state_output,
+                                                        covariance_output, delta_output);
         }
     }
 };
@@ -249,9 +249,8 @@ template <typename Scalar, ResetGroup Group> void run_conformance(TestContext & 
 {
     using F = Fixture<Scalar, Group>;
     F fixture;
-    test.expect(F::state_type::quaternion_type::try_from_coefficients(Scalar{0.5}, Scalar{-0.5}, Scalar{0.5},
-                                                                      Scalar{-0.5}, Scalar{0.125},
-                                                                      fixture.state.q_nb) == Status::success,
+    test.expect(F::state_type::quaternion_type::from_coefficients(Scalar{0.5}, Scalar{-0.5}, Scalar{0.5}, Scalar{-0.5},
+                                                                  Scalar{0.125}, fixture.state.q_nb) == Status::success,
                 profile, "non-identity attitude fixture is valid");
     check_success(test, fixture, profile);
     if constexpr (F::vertical)

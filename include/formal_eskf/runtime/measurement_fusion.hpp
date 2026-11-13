@@ -31,7 +31,7 @@ template <typename Linalg, std::size_t Size> struct MeasurementCheck
     linalg::Vector<Linalg, Size> innovation_variance{};
     linalg::Vector<Linalg, Size> test_ratio{};
 
-    [[nodiscard]] bool passed() const { return succeeded(status) && diagnostics_valid && !rejected; }
+    bool passed() const { return succeeded(status) && diagnostics_valid && !rejected; }
 };
 
 /** A fresh per-call result; only fused means state/covariance were published. */
@@ -60,14 +60,12 @@ template <typename Linalg, std::size_t Size> struct FusionResult
 namespace detail
 {
 
-template <typename Linalg>
-[[nodiscard]] bool finite_fusion_state(configuration::Ahrs::NominalState<Linalg> const & state)
+template <typename Linalg> bool finite_fusion_state(configuration::Ahrs::NominalState<Linalg> const & state)
 {
     return linalg::all_finite(state.q_nb.coefficients());
 }
 
-template <typename Linalg>
-[[nodiscard]] bool finite_fusion_state(configuration::Ins::NominalState<Linalg> const & state)
+template <typename Linalg> bool finite_fusion_state(configuration::Ins::NominalState<Linalg> const & state)
 {
     return linalg::all_finite(state.q_nb.coefficients()) && linalg::all_finite(state.p_n) &&
            linalg::all_finite(state.v_n) && linalg::all_finite(state.b_a) && linalg::all_finite(state.b_g);
@@ -89,14 +87,14 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
     }
     linalg::Matrix<Linalg, Size, MeasurementSize> PHt;
     linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> S;
-    result.status = try_correction_covariances(covariance, r, H, V, minimum_quaternion_norm, PHt, S);
+    result.status = correction_covariances(covariance, r, H, V, minimum_quaternion_norm, PHt, S);
     if (!succeeded(result.status))
     {
         return result;
     }
     auto const variance = linalg::diagonal(S);
     InnovationCheck<Linalg, MeasurementSize> gate;
-    result.status = try_check_innovation(r, variance, gate_sigma, gate);
+    result.status = check_innovation(r, variance, gate_sigma, gate);
     if (!succeeded(result.status))
     {
         return result;
@@ -181,7 +179,7 @@ template <typename Linalg, std::size_t MeasurementSize>
     {
         return result;
     }
-    result.status = try_correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output);
+    result.status = correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output);
     if (succeeded(result.status))
     {
         result.decision = FusionDecision::fused;
@@ -206,7 +204,7 @@ template <typename Linalg, std::size_t MeasurementSize>
         return result;
     }
     result.status =
-        try_correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output, bias_update);
+        correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output, bias_update);
     if (succeeded(result.status))
     {
         result.decision = FusionDecision::fused;

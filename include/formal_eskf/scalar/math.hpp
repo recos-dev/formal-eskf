@@ -24,21 +24,17 @@ template <typename Scalar> struct SinCos
     Scalar cosine{};
 };
 
-template <typename Math> [[nodiscard]] constexpr typename Math::value_type pi() { return Math::pi(); }
+template <typename Math> constexpr typename Math::value_type pi() { return Math::pi(); }
 
-template <typename Math> [[nodiscard]] bool is_finite(typename Math::value_type value)
-{
-    return Math::is_finite(value);
-}
+template <typename Math> bool is_finite(typename Math::value_type value) { return Math::is_finite(value); }
 
-template <typename Math> [[nodiscard]] typename Math::value_type absolute(typename Math::value_type value)
+template <typename Math> typename Math::value_type absolute(typename Math::value_type value)
 {
     return Math::absolute(value);
 }
 
 /** Compute a square root without changing output on failure. */
-template <typename Math>
-[[nodiscard]] Status try_sqrt(typename Math::value_type input, typename Math::value_type & output)
+template <typename Math> [[nodiscard]] Status sqrt(typename Math::value_type input, typename Math::value_type & output)
 {
     using value_type = typename Math::value_type;
 
@@ -63,7 +59,7 @@ template <typename Math>
 
 /** Compute sine and cosine together without changing output on failure. */
 template <typename Math>
-[[nodiscard]] Status try_sin_cos(typename Math::value_type angle, SinCos<typename Math::value_type> & output)
+[[nodiscard]] Status sin_cos(typename Math::value_type angle, SinCos<typename Math::value_type> & output)
 {
     using value_type = typename Math::value_type;
 
@@ -84,8 +80,7 @@ template <typename Math>
 
 /** Compute atan2(y, x) without changing output on failure. */
 template <typename Math>
-[[nodiscard]] Status try_atan2(typename Math::value_type y, typename Math::value_type x,
-                               typename Math::value_type & output)
+[[nodiscard]] Status atan2(typename Math::value_type y, typename Math::value_type x, typename Math::value_type & output)
 {
     using value_type = typename Math::value_type;
 

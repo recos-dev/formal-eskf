@@ -38,7 +38,7 @@ namespace formal_eskf::so3
  * @see https://arxiv.org/abs/1711.02508
  */
 template <typename Linalg>
-[[nodiscard]] Status try_right_jacobian(linalg::Vector<Linalg, 3U> const & phi, linalg::Matrix<Linalg, 3U, 3U> & output)
+[[nodiscard]] Status right_jacobian(linalg::Vector<Linalg, 3U> const & phi, linalg::Matrix<Linalg, 3U, 3U> & output)
 {
     using value_type = typename Linalg::value_type;
     using scalar_math_type = typename Linalg::scalar_math_type;
@@ -82,13 +82,13 @@ template <typename Linalg>
     else
     {
         value_type theta;
-        Status const sqrt_status = scalar::try_sqrt<scalar_math_type>(theta_squared, theta);
+        Status const sqrt_status = scalar::sqrt<scalar_math_type>(theta_squared, theta);
         if (!succeeded(sqrt_status))
         {
             return sqrt_status;
         }
         scalar::SinCos<value_type> half_angle;
-        Status const sin_cos_status = scalar::try_sin_cos<scalar_math_type>(theta * value_type{0.5}, half_angle);
+        Status const sin_cos_status = scalar::sin_cos<scalar_math_type>(theta * value_type{0.5}, half_angle);
         if (!succeeded(sin_cos_status))
         {
             return sin_cos_status;

@@ -21,23 +21,23 @@ namespace formal_eskf::so3
 {
 
 template <typename Linalg>
-[[nodiscard]] Status try_normalize(UnitQuaternion<Linalg> const & quaternion, typename Linalg::value_type minimum_norm,
-                                   UnitQuaternion<Linalg> & output)
+[[nodiscard]] Status normalize(UnitQuaternion<Linalg> const & quaternion, typename Linalg::value_type minimum_norm,
+                               UnitQuaternion<Linalg> & output)
 {
-    return UnitQuaternion<Linalg>::try_from_coefficients(quaternion.coefficients(), minimum_norm, output);
+    return UnitQuaternion<Linalg>::from_coefficients(quaternion.coefficients(), minimum_norm, output);
 }
 
 /** Compose two rotations and normalize the finite-precision result. */
 template <typename Linalg>
-[[nodiscard]] Status try_compose_normalized(UnitQuaternion<Linalg> const & q_a, UnitQuaternion<Linalg> const & q_b,
-                                            typename Linalg::value_type minimum_norm, UnitQuaternion<Linalg> & output)
+[[nodiscard]] Status compose_normalized(UnitQuaternion<Linalg> const & q_a, UnitQuaternion<Linalg> const & q_b,
+                                        typename Linalg::value_type minimum_norm, UnitQuaternion<Linalg> & output)
 {
     UnitQuaternion<Linalg> const product = q_a * q_b;
-    return try_normalize(product, minimum_norm, output);
+    return normalize(product, minimum_norm, output);
 }
 
 template <typename Linalg>
-[[nodiscard]] bool same_coefficients(UnitQuaternion<Linalg> const & q_a, UnitQuaternion<Linalg> const & q_b)
+bool same_coefficients(UnitQuaternion<Linalg> const & q_a, UnitQuaternion<Linalg> const & q_b)
 {
     return q_a.q0() == q_b.q0() && q_a.q1() == q_b.q1() && q_a.q2() == q_b.q2() && q_a.q3() == q_b.q3();
 }
@@ -48,8 +48,8 @@ template <typename Linalg>
  * Tolerance is the maximum absolute coefficient residual for either sign.
  */
 template <typename Linalg>
-[[nodiscard]] bool same_rotation(UnitQuaternion<Linalg> const & q_a, UnitQuaternion<Linalg> const & q_b,
-                                 typename Linalg::value_type tolerance)
+bool same_rotation(UnitQuaternion<Linalg> const & q_a, UnitQuaternion<Linalg> const & q_b,
+                   typename Linalg::value_type tolerance)
 {
     using scalar_math_type = typename Linalg::scalar_math_type;
     using value_type = typename Linalg::value_type;
@@ -72,8 +72,7 @@ template <typename Linalg>
  *
  * @see https://arxiv.org/abs/1711.02508
  */
-template <typename Linalg>
-[[nodiscard]] linalg::Matrix<Linalg, 3U, 3U> to_rotation_matrix(UnitQuaternion<Linalg> const & quaternion)
+template <typename Linalg> linalg::Matrix<Linalg, 3U, 3U> to_rotation_matrix(UnitQuaternion<Linalg> const & quaternion)
 {
     using matrix3_type = linalg::Matrix<Linalg, 3U, 3U>;
     using value_type = typename Linalg::value_type;
@@ -108,21 +107,20 @@ template <typename Linalg>
 }
 
 template <typename Linalg>
-[[nodiscard]] linalg::Vector<Linalg, 3U> rotate(UnitQuaternion<Linalg> const & quaternion,
-                                                linalg::Vector<Linalg, 3U> const & vector)
+linalg::Vector<Linalg, 3U> rotate(UnitQuaternion<Linalg> const & quaternion, linalg::Vector<Linalg, 3U> const & vector)
 {
     return to_rotation_matrix(quaternion) * vector;
 }
 
 template <typename Linalg>
-[[nodiscard]] linalg::Vector<Linalg, 3U> inverse_rotate(UnitQuaternion<Linalg> const & quaternion,
-                                                        linalg::Vector<Linalg, 3U> const & vector)
+linalg::Vector<Linalg, 3U> inverse_rotate(UnitQuaternion<Linalg> const & quaternion,
+                                          linalg::Vector<Linalg, 3U> const & vector)
 {
     return linalg::transpose(to_rotation_matrix(quaternion)) * vector;
 }
 
 /** Cross-product matrix from Sola equations (20) and (21). */
-template <typename Linalg> [[nodiscard]] linalg::Matrix<Linalg, 3U, 3U> hat(linalg::Vector<Linalg, 3U> const & vector)
+template <typename Linalg> linalg::Matrix<Linalg, 3U, 3U> hat(linalg::Vector<Linalg, 3U> const & vector)
 {
     using matrix3_type = linalg::Matrix<Linalg, 3U, 3U>;
     using value_type = typename Linalg::value_type;

@@ -32,7 +32,7 @@ template <typename Matrix> bool equal(Matrix const & a, Matrix const & b)
 template <typename Linalg> void run(Context & test)
 {
     using Scalar = typename Linalg::value_type;
-    using Vector = typename Linalg::template vector_type<3>;
+    using Vector = formal_eskf::linalg::Vector<Linalg, 3>;
     using Covariance = formal_eskf::linalg::Matrix<Linalg, 15, 15>;
     using Health = formal_eskf::runtime::VerticalAccelerationHealth<Linalg>;
     using Bias = formal_eskf::runtime::ImuBiasInhibition<Linalg>;
@@ -109,7 +109,7 @@ template <typename Linalg> void run(Context & test)
         std::array<Scalar, 6> const prior{1, 3, Scalar{2.5}, 4, Scalar{4.5}, 7};
         for (std::size_t axis = 0; axis < prior.size(); ++axis)
         {
-            P.set(9 + axis, 9 + axis, prior[axis]);
+            P(9 + axis, 9 + axis) = prior[axis];
         }
         test.expect(try_predict_imu(state, P, imu, dt, parameters, clipping, false) == Status::success, "bias noise",
                     "module and gap-hold predictions select bias driving noise");
@@ -119,7 +119,7 @@ template <typename Linalg> void run(Context & test)
             test.expect(P(9 + axis, 9 + axis) == prior[axis] + increment[axis], "bias noise",
                         "strict threshold uses selected IMU variance; intensity scales by dt without clamping P");
         }
-        P.set(9, 9, Scalar{0.5});
+        P(9, 9) = Scalar{0.5};
         test.expect(try_predict_imu(state, P, imu, dt, parameters, 0, false) == Status::success &&
                         P(9, 9) == Scalar{0.5} + dt,
                     "bias noise", "lower prior variance restores configured driving noise on a later prediction");
@@ -132,13 +132,13 @@ template <typename Linalg> void run(Context & test)
         Covariance P = Covariance::identity();
         if (failure == 3)
         {
-            P.set(9, 9, Scalar{-1});
+            P(9, 9) = Scalar{-1};
         }
         auto const before_P = P;
         auto invalid = parameters;
         if (failure == 0)
         {
-            invalid.process_noise.specific_force_variance.set(0, std::numeric_limits<Scalar>::quiet_NaN());
+            invalid.process_noise.specific_force_variance(0) = std::numeric_limits<Scalar>::quiet_NaN();
         }
         test.expect(try_predict_imu(state, P, imu, failure == 1 ? -dt : dt, invalid, failure == 2 ? 8 : 1, false) !=
                         Status::success,

@@ -48,8 +48,8 @@ template <typename Scalar> struct ImuDynamicsResult
  */
 template <typename Linalg>
 [[nodiscard]] ImuDynamicsResult<typename Linalg::value_type>
-check_imu_dynamics(ImuSample<Linalg> const & imu, linalg::Matrix<Linalg, 3U, 1U> const & accelerometer_bias_b,
-                   linalg::Matrix<Linalg, 3U, 1U> const & gyroscope_bias_b,
+check_imu_dynamics(ImuSample<Linalg> const & imu, linalg::Vector<Linalg, 3U> const & accelerometer_bias_b,
+                   linalg::Vector<Linalg, 3U> const & gyroscope_bias_b,
                    ImuDynamicsParameters<typename Linalg::value_type> const & parameters) noexcept
 {
     using value_type = typename Linalg::value_type;

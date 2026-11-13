@@ -73,7 +73,7 @@ template <typename Linalg>
     {
         if (conditions.bad_vertical_acceleration || conditions.accelerometer_clipped[axis])
         {
-            candidate.specific_force_variance.set(axis, fault_variance);
+            candidate.specific_force_variance(axis) = fault_variance;
         }
     }
     output = candidate;

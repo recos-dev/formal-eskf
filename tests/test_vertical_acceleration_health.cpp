@@ -24,6 +24,15 @@ namespace
 using formal_eskf::Status;
 using TestContext = formal_eskf::test::Context;
 
+enum class Reference
+{
+    pressure,
+    gnss,
+    ground,
+};
+constexpr std::array<Reference, 6U> references{Reference::pressure, Reference::gnss,   Reference::gnss,
+                                               Reference::ground,   Reference::ground, Reference::ground};
+
 template <typename Linalg> struct VerticalHealthFixture
 {
     using monitor_type = formal_eskf::runtime::VerticalAccelerationHealth<Linalg>;
@@ -56,16 +65,15 @@ template <typename Linalg> void test_likelihood(TestContext & test, std::string_
     using Likelihood = typename VerticalHealthFixture<Linalg>::monitor_type::Likelihood;
     // Every named source can supply either piece of evidence; GNSS pairs and
     // all range/vision pairs must remain one family even with two observations.
-    constexpr std::array<unsigned, 6U> families{0U, 1U, 1U, 2U, 2U, 2U};
-    for (std::size_t first = 0U; first < families.size(); ++first)
+    for (std::size_t first = 0U; first < references.size(); ++first)
     {
-        for (std::size_t second = 0U; second < families.size(); ++second)
+        for (std::size_t second = 0U; second < references.size(); ++second)
         {
             VerticalHealthFixture<Linalg> fixture;
             auto const inputs = fixture.inputs();
             *inputs[second] = {true, Scalar{2}, Scalar{1}};
             *inputs[first] = {true, Scalar{4}, Scalar{1}};
-            bool const independent = families[first] != families[second];
+            bool const independent = references[first] != references[second];
             test.expect(fixture.update() == Status::success &&
                             fixture.monitor.state().likelihood ==
                                 (independent ? Likelihood::high : Likelihood::medium) &&
@@ -101,6 +109,54 @@ template <typename Linalg> void test_likelihood(TestContext & test, std::string_
         test.expect(fixture.update() == Status::success &&
                         fixture.monitor.state().likelihood == (variance < floor ? Likelihood::low : Likelihood::medium),
                     profile, "the reference FLT_EPSILON floor applies to both scalar formats, including equality");
+    }
+}
+
+template <typename Linalg> void test_combined_evidence(TestContext & test, std::string_view profile)
+{
+    using Scalar = typename Linalg::value_type;
+    using Monitor = typename VerticalHealthFixture<Linalg>::monitor_type;
+    using Likelihood = typename Monitor::Likelihood;
+    struct EvidenceCase
+    {
+        typename Monitor::Innovation observation{};
+        bool above_minimum = false;
+        bool above_limit = false;
+    };
+    std::array<EvidenceCase, 4U> const cases{
+        {{{false, std::numeric_limits<Scalar>::quiet_NaN(), Scalar{-1}}, false, false},
+         {{true, Scalar{-4}, Scalar{1}}, false, false},
+         {{true, Scalar{2}, Scalar{1}}, true, false},
+         {{true, Scalar{4}, Scalar{1}}, true, true}}};
+    // All 4^6 assignments: unlike the production grouping, the oracle compares
+    // individual source pairs to find independent corroboration.
+    for (std::size_t assignment = 0U; assignment < 4096U; ++assignment)
+    {
+        VerticalHealthFixture<Linalg> fixture;
+        auto const inputs = fixture.inputs();
+        std::array<std::size_t, 6U> selected{};
+        auto remaining = assignment;
+        for (std::size_t source = 0U; source < inputs.size(); ++source)
+        {
+            selected[source] = remaining % cases.size();
+            remaining /= cases.size();
+            *inputs[source] = cases[selected[source]].observation;
+        }
+        bool medium = false;
+        bool high = false;
+        for (std::size_t first = 0U; first < inputs.size(); ++first)
+        {
+            medium = medium || cases[selected[first]].above_limit;
+            for (std::size_t second = 0U; second < inputs.size(); ++second)
+            {
+                high = high || (references[first] != references[second] && cases[selected[first]].above_limit &&
+                                cases[selected[second]].above_minimum);
+            }
+        }
+        auto const expected = high ? Likelihood::high : medium ? Likelihood::medium : Likelihood::low;
+        test.expect(fixture.update() == Status::success && fixture.monitor.state().likelihood == expected &&
+                        fixture.monitor.state().bad_sample == high,
+                    profile, "all source combinations retain independent-reference and inactive-input semantics");
     }
 }
 
@@ -281,11 +337,11 @@ template <typename Linalg> void test_failures(TestContext & test, std::string_vi
 template <typename Linalg> void test_core_residual(TestContext & test, std::string_view profile)
 {
     using Scalar = typename Linalg::value_type;
-    using Vector = typename Linalg::template vector_type<3U>;
-    using Covariance = typename Linalg::template matrix_type<15U, 15U>;
-    using Matrix3 = typename Linalg::template matrix_type<3U, 3U>;
+    using Vector = formal_eskf::linalg::Vector<Linalg, 3U>;
+    using Covariance = formal_eskf::linalg::Matrix<Linalg, 15U, 15U>;
+    using Matrix3 = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
     formal_eskf::configuration::Ins::NominalState<Linalg> state;
-    state.v_n.set(2U, Scalar{8}); // INS thinks it is falling; GNSS observes zero Down speed.
+    state.v_n(2U) = Scalar{8}; // INS thinks it is falling; GNSS observes zero Down speed.
     auto covariance = Covariance::identity();
     auto const result = formal_eskf::runtime::fuse_velocity(state, covariance, Vector{}, Matrix3::identity(),
                                                             Scalar{0.125}, Scalar{1}, state, covariance);
@@ -300,12 +356,58 @@ template <typename Linalg> void test_core_residual(TestContext & test, std::stri
                 "negating the production residual connects its convention to falling detection");
 }
 
+template <typename Linalg> void test_failure_order(TestContext & test, std::string_view profile)
+{
+    using Scalar = typename Linalg::value_type;
+    using Monitor = typename VerticalHealthFixture<Linalg>::monitor_type;
+    typename Monitor::Innovation const negative_variance{true, Scalar{1}, Scalar{-1}};
+    typename Monitor::Innovation const non_finite{true, std::numeric_limits<Scalar>::quiet_NaN(), Scalar{1}};
+    VerticalHealthFixture<Linalg> fixture;
+    fixture.observations.barometer_height = {true, Scalar{4}, Scalar{1}};
+    fixture.observations.gnss_height = {true, Scalar{2}, Scalar{1}};
+    fixture.sample.clipped = {true, true, true};
+    test.expect(fixture.update() == Status::success, profile, "seed history for competing failures");
+    auto const before = fixture.monitor.state();
+    ++fixture.sample.time_us;
+    auto const inputs = fixture.inputs();
+    for (std::size_t first = 0U; first < inputs.size(); ++first)
+    {
+        for (std::size_t second = first + 1U; second < inputs.size(); ++second)
+        {
+            for (bool negative_variance_first : {false, true})
+            {
+                fixture.observations = {};
+                *inputs[first] = negative_variance_first ? negative_variance : non_finite;
+                *inputs[second] = negative_variance_first ? non_finite : negative_variance;
+                auto const expected = negative_variance_first ? Status::domain_error : Status::non_finite_input;
+                test.expect(fixture.update() == expected && same_state(before, fixture.monitor.state()), profile,
+                            "first invalid source determines status, with all history preserved");
+            }
+        }
+    }
+    fixture.observations = {};
+    fixture.observations.barometer_height = {true, Scalar{4}, Scalar{1}};
+    fixture.observations.gnss_height = {true, Scalar{2}, Scalar{1}};
+    fixture.observations.vision_velocity_down = {true, Scalar{0}, Scalar{-1}};
+    test.expect(fixture.update() == Status::domain_error && same_state(before, fixture.monitor.state()), profile,
+                "high likelihood from early sources cannot skip validation of the final source");
+    fixture.sample.clipping_available = false;
+    fixture.sample.average_interval_s = std::numeric_limits<Scalar>::quiet_NaN();
+    test.expect(fixture.update() == Status::non_finite_input && same_state(before, fixture.monitor.state()), profile,
+                "interval validation precedes unknown clipping and invalid observations");
+    fixture.sample.time_us = before.last_update_time_us;
+    test.expect(fixture.update() == Status::out_of_range && same_state(before, fixture.monitor.state()), profile,
+                "time validation precedes all consumed values");
+}
+
 template <typename Linalg> void run_conformance(TestContext & test, std::string_view profile)
 {
     test_likelihood<Linalg>(test, profile);
+    test_combined_evidence<Linalg>(test, profile);
     test_clipping<Linalg>(test, profile);
     test_recovery<Linalg>(test, profile);
     test_failures<Linalg>(test, profile);
+    test_failure_order<Linalg>(test, profile);
     test_core_residual<Linalg>(test, profile);
 }
 

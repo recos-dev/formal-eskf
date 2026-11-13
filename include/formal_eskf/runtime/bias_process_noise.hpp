@@ -60,11 +60,11 @@ template <typename Linalg>
     {
         if (covariance(9U + axis, 9U + axis) >= noise.specific_force_variance(axis))
         {
-            candidate.accelerometer_bias_random_walk_variance_density.set(axis, value_type{0});
+            candidate.accelerometer_bias_random_walk_variance_density(axis) = value_type{0};
         }
         if (covariance(12U + axis, 12U + axis) >= noise.angular_rate_variance(axis))
         {
-            candidate.gyroscope_bias_random_walk_variance_density.set(axis, value_type{0});
+            candidate.gyroscope_bias_random_walk_variance_density(axis) = value_type{0};
         }
     }
     output = candidate;

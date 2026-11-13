@@ -32,7 +32,7 @@ using TestContext = formal_eskf::test::Context;
 template <typename Linalg> struct ImuDynamicsFixture
 {
     using value_type = typename Linalg::value_type;
-    using vector_type = formal_eskf::linalg::Matrix<Linalg, 3U, 1U>;
+    using vector_type = formal_eskf::linalg::Vector<Linalg, 3U>;
     formal_eskf::ImuSample<Linalg> imu{};
     vector_type b_a{};
     vector_type b_g{};
@@ -107,7 +107,7 @@ template <typename Linalg> void test_magnitudes(TestContext & test, std::string_
 
     fixture = {};
     fixture.parameters = {value_type{25}, value_type{3}};
-    fixture.imu.specific_force_b.set(2U, -static_cast<value_type>(9.80665));
+    fixture.imu.specific_force_b(2U) = -static_cast<value_type>(9.80665);
     result = fixture.check();
     auto const gravity = static_cast<value_type>(9.80665);
     test.expect(result.status == Status::success && !result.high_dynamics &&
@@ -138,8 +138,7 @@ template <typename Linalg> void test_boundaries(TestContext & test, std::string_
                     auto const magnitude =
                         direction == 0 ? limit
                                        : std::nextafter(limit, direction < 0 ? value_type{0} : limits_type::infinity());
-                    (sensor == 0U ? fixture.imu.specific_force_b : fixture.imu.angular_rate_b)
-                        .set(axis, sign * magnitude);
+                    (sensor == 0U ? fixture.imu.specific_force_b : fixture.imu.angular_rate_b)(axis) = sign * magnitude;
                     auto const result = fixture.check();
                     test.expect(result.status == Status::success && result.high_dynamics == (direction > 0), profile,
                                 "below/equal/above each scalar threshold on either sign and every body axis");
@@ -150,16 +149,16 @@ template <typename Linalg> void test_boundaries(TestContext & test, std::string_
     ImuDynamicsFixture<Linalg> small;
     auto const minimum_limit = std::ldexp(value_type{1}, (limits_type::min_exponent - 1) / 2);
     small.parameters = {minimum_limit, minimum_limit};
-    small.imu.specific_force_b.set(0U, minimum_limit);
+    small.imu.specific_force_b(0U) = minimum_limit;
     auto result = small.check();
     test.expect(result.status == Status::success && !result.high_dynamics &&
                     result.specific_force_squared_norm == limits_type::min(),
                 profile, "smallest normal squared threshold and its equality are valid");
-    small.imu.specific_force_b.set(0U, std::nextafter(minimum_limit, limits_type::infinity()));
+    small.imu.specific_force_b(0U) = std::nextafter(minimum_limit, limits_type::infinity());
     result = small.check();
     test.expect(result.status == Status::success && result.high_dynamics, profile,
                 "safe lower threshold still detects the next larger value");
-    small.imu.specific_force_b.set(0U, limits_type::min());
+    small.imu.specific_force_b(0U) = limits_type::min();
     result = small.check();
     test.expect(result.status == Status::success && !result.high_dynamics, profile,
                 "squared-norm underflow far below a valid threshold cannot create a high classification");
@@ -191,7 +190,7 @@ template <typename Linalg> void test_failures(TestContext & test, std::string_vi
             {
                 std::array<typename ImuDynamicsFixture<Linalg>::vector_type *, 4U> vectors{
                     &fixture.imu.specific_force_b, &fixture.imu.angular_rate_b, &fixture.b_a, &fixture.b_g};
-                vectors[field / 3U]->set(field % 3U, invalid);
+                (*vectors[field / 3U])(field % 3U) = invalid;
             }
             else
             {
@@ -216,28 +215,31 @@ template <typename Linalg> void test_failures(TestContext & test, std::string_vi
         for (std::size_t axis = 0U; axis < 3U; ++axis)
         {
             ImuDynamicsFixture<Linalg> fixture;
+            // Coefficient writes below require the non-const matrix operator().
+            // cppcheck-suppress constVariableReference
             auto & measurement = sensor == 0U ? fixture.imu.specific_force_b : fixture.imu.angular_rate_b;
+            // cppcheck-suppress constVariableReference
             auto & bias = sensor == 0U ? fixture.b_a : fixture.b_g;
-            measurement.set(axis, limits_type::max());
-            bias.set(axis, -limits_type::max());
+            measurement(axis) = limits_type::max();
+            bias(axis) = -limits_type::max();
             fail(fixture, Status::non_finite_result); // Subtraction overflows.
-            bias.set(axis, value_type{0});
+            bias(axis) = value_type{0};
             fail(fixture, Status::non_finite_result); // Individual square overflows.
             auto const component = std::ldexp(value_type{1.5}, limits_type::max_exponent / 2 - 1);
             for (std::size_t entry = 0U; entry < 3U; ++entry)
             {
-                measurement.set(entry, component);
+                measurement(entry) = component;
             }
             fail(fixture, Status::non_finite_result); // Finite squares overflow when summed.
         }
     }
     ImuDynamicsFixture<Linalg> competing;
-    competing.imu.specific_force_b.set(0U, value_type{10}); // Already above threshold.
-    competing.imu.angular_rate_b.set(2U, limits_type::quiet_NaN());
+    competing.imu.specific_force_b(0U) = value_type{10}; // Already above threshold.
+    competing.imu.angular_rate_b(2U) = limits_type::quiet_NaN();
     fail(competing, Status::non_finite_input);
     competing.parameters.maximum_specific_force = value_type{0};
     fail(competing, Status::non_finite_input); // Non-finite inputs precede domain errors.
-    competing.imu.angular_rate_b.set(2U, limits_type::max());
+    competing.imu.angular_rate_b(2U) = limits_type::max();
     competing.parameters.maximum_specific_force = value_type{4};
     fail(competing, Status::non_finite_result); // No short circuit after a high force reading.
     competing.parameters = {};
@@ -308,18 +310,18 @@ template <typename Linalg> void test_learning_pipeline(TestContext & test, std::
     step(1U, disabled);
     step(6U, disabled);
     step(11U, enabled);
-    fixture.imu.specific_force_b.set(0U, value_type{5});
+    fixture.imu.specific_force_b(0U) = value_type{5};
     step(12U, gyro_only);
-    fixture.imu.specific_force_b.set(0U, value_type{0});
+    fixture.imu.specific_force_b(0U) = value_type{0};
     step(13U, gyro_only);
     step(18U, gyro_only);
     step(22U, gyro_only);
     step(23U, enabled);
-    fixture.imu.angular_rate_b.set(1U, value_type{3});
+    fixture.imu.angular_rate_b(1U) = value_type{3};
     step(24U, gyro_only);
-    fixture.imu.angular_rate_b.set(1U, std::numeric_limits<value_type>::quiet_NaN());
+    fixture.imu.angular_rate_b(1U) = std::numeric_limits<value_type>::quiet_NaN();
     step(25U, disabled, Status::non_finite_input);
-    fixture.imu.angular_rate_b.set(1U, value_type{0});
+    fixture.imu.angular_rate_b(1U) = value_type{0};
     step(26U, disabled);
     step(31U, disabled);
     step(36U, enabled);

@@ -83,14 +83,10 @@ public:
     [[nodiscard]] Status update(Sample const & sample, Observations const & observations) noexcept;
 
 private:
-    enum class Reference
-    {
-        pressure,
-        gnss,
-        ground,
-    };
-
     [[nodiscard]] static Status falling_likelihood(Observations const & observations, Likelihood & output) noexcept;
+    /** Advance clipping history and return the evidence used by medium likelihood. */
+    [[nodiscard]] static bool update_clipping(std::array<bool, 3U> const & clipped, std::uint16_t limit,
+                                              State & candidate) noexcept;
 
     State m_state{};
 }; /* end class VerticalAccelerationHealth */
@@ -100,15 +96,28 @@ Status VerticalAccelerationHealth<Linalg>::falling_likelihood(Observations const
                                                               Likelihood & output) noexcept
 {
     using math_type = typename Linalg::scalar_math_type;
-    std::array<Innovation const *, 6U> const inputs{
-        &observations.barometer_height, &observations.gnss_height,   &observations.gnss_velocity_down,
-        &observations.range_height,     &observations.vision_height, &observations.vision_velocity_down};
-    constexpr std::array<Reference, 6U> references{Reference::pressure, Reference::gnss,   Reference::gnss,
-                                                   Reference::ground,   Reference::ground, Reference::ground};
-    std::array<bool, 3U> above_minimum{}, above_limit{};
-    for (std::size_t index = 0U; index < inputs.size(); ++index)
+    struct Evidence
     {
-        auto const & input = *inputs[index];
+        bool above_minimum = false;
+        bool above_limit = false;
+    };
+    Evidence pressure, gnss, ground;
+    struct Check
+    {
+        Innovation const & observation;
+        Evidence & reference;
+    };
+    // Pair each source with its reference directly; this order also determines
+    // the first reported failure. Validate every active source before deciding.
+    std::array<Check, 6U> const checks{{{observations.barometer_height, pressure},
+                                        {observations.gnss_height, gnss},
+                                        {observations.gnss_velocity_down, gnss},
+                                        {observations.range_height, ground},
+                                        {observations.vision_height, ground},
+                                        {observations.vision_velocity_down, ground}}};
+    for (auto const & check : checks)
+    {
+        auto const & input = check.observation;
         if (!input.active)
         {
             continue;
@@ -137,27 +146,50 @@ Status VerticalAccelerationHealth<Linalg>::falling_likelihood(Observations const
         {
             return Status::non_finite_result;
         }
-        auto const reference = static_cast<std::size_t>(references[index]);
-        above_minimum[reference] = above_minimum[reference] || ratio > value_type{1};
-        above_limit[reference] = above_limit[reference] || ratio > value_type{3};
+        check.reference.above_minimum = check.reference.above_minimum || ratio > value_type{1};
+        check.reference.above_limit = check.reference.above_limit || ratio > value_type{3};
     }
-    output = Likelihood::low;
-    for (std::size_t reference = 0U; reference < above_limit.size(); ++reference)
+
+    if ((pressure.above_limit && (gnss.above_minimum || ground.above_minimum)) ||
+        (gnss.above_limit && (pressure.above_minimum || ground.above_minimum)) ||
+        (ground.above_limit && (pressure.above_minimum || gnss.above_minimum)))
     {
-        if (above_limit[reference])
-        {
-            output = Likelihood::medium;
-            for (std::size_t other = 0U; other < above_minimum.size(); ++other)
-            {
-                if (reference != other && above_minimum[other])
-                {
-                    output = Likelihood::high;
-                    return Status::success;
-                }
-            }
-        }
+        output = Likelihood::high;
+    }
+    else if (pressure.above_limit || gnss.above_limit || ground.above_limit)
+    {
+        output = Likelihood::medium;
+    }
+    else
+    {
+        output = Likelihood::low;
     }
     return Status::success;
+}
+
+template <typename Linalg>
+bool VerticalAccelerationHealth<Linalg>::update_clipping(std::array<bool, 3U> const & clipped, std::uint16_t limit,
+                                                         State & candidate) noexcept
+{
+    std::array<bool, 3U> warning{};
+    bool critical = false;
+    for (std::size_t axis = 0U; axis < candidate.clip_count.size(); ++axis)
+    {
+        auto & count = candidate.clip_count[axis];
+        if (clipped[axis] && count < limit)
+        {
+            ++count;
+        }
+        else if (count > 0U)
+        {
+            // Also decrements at the limit with clipping still present.
+            --count;
+        }
+        warning[axis] = count >= limit / 2U;
+        critical = critical || count >= limit;
+    }
+    candidate.bad_clipping = critical || (warning[0U] && warning[1U] && warning[2U]);
+    return warning[2U] || candidate.bad_clipping;
 }
 
 template <typename Linalg>
@@ -193,25 +225,7 @@ Status VerticalAccelerationHealth<Linalg>::update(Sample const & sample, Observa
     {
         return status;
     }
-    std::array<bool, 3U> warning{};
-    bool critical = false;
-    for (std::size_t axis = 0U; axis < candidate.clip_count.size(); ++axis)
-    {
-        auto & count = candidate.clip_count[axis];
-        if (sample.clipped[axis] && count < limit)
-        {
-            ++count;
-        }
-        else if (count > 0U)
-        {
-            // Also decrements at the limit with clipping still present.
-            --count;
-        }
-        warning[axis] = count >= limit / 2U;
-        critical = critical || count >= limit;
-    }
-    candidate.bad_clipping = critical || (warning[0U] && warning[1U] && warning[2U]);
-    bool const frequent_clipping = warning[2U] || candidate.bad_clipping;
+    bool const frequent_clipping = update_clipping(sample.clipped, limit, candidate);
     candidate.bad_sample =
         candidate.likelihood == Likelihood::high || (candidate.likelihood == Likelihood::medium && frequent_clipping);
     if (candidate.bad_sample)

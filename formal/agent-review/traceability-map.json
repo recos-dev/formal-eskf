@@ -3804,6 +3804,10 @@
           },
           {
             "file": "include/formal_eskf/runtime/vertical_acceleration_health.hpp",
+            "symbol": "bool VerticalAccelerationHealth<Linalg>::update_clipping("
+          },
+          {
+            "file": "include/formal_eskf/runtime/vertical_acceleration_health.hpp",
             "symbol": "Status VerticalAccelerationHealth<Linalg>::update("
           },
           {

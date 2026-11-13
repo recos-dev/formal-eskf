@@ -1928,7 +1928,10 @@ no independent freshness timeout and does not treat rejection as deactivation.
   floor. Non-finite input returns `non_finite_input`, negative variance returns
   `domain_error`, and non-finite computed ratio returns `non_finite_result`.
   Inactive observation coefficients are not consumed. Scalar-root failures
-  propagate. Validate all sources before publishing counters or timestamps.
+  propagate. Source validation follows slot order: barometer height, GNSS height,
+  GNSS Down velocity, range height, vision height, vision Down velocity. Return
+  the first failure; already sufficient falling evidence must not skip later
+  active sources. Validate all sources before publishing counters or timestamps.
 - Failure preserves every stored field. The stored state then belongs to the
   previous successful timestamp and is not a verdict for the failed sample.
   Unknown clipping must not be converted to clear. Reset clears all history;

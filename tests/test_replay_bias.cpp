@@ -30,7 +30,7 @@ template <typename Linalg> void test_policy(TestContext & test)
     using Scalar = typename Linalg::value_type;
     using Policy = formal_eskf::example::ReplayBiasLearning<Linalg>;
     using State = typename Policy::state_type;
-    using Vector = formal_eskf::linalg::Matrix<Linalg, 3U, 1U>;
+    using Vector = formal_eskf::linalg::Vector<Linalg, 3U>;
     typename Policy::Parameters const parameters{Scalar{25}, Scalar{3}, Scalar{0.5}, true, true};
     State state;
     formal_eskf::ImuSample<Linalg> imu;
@@ -39,8 +39,8 @@ template <typename Linalg> void test_policy(TestContext & test)
     {
         Policy separate_periods(parameters);
         auto spike = imu;
-        spike.specific_force_b.set(2U, Scalar{-50});
-        spike.angular_rate_b.set(0U, Scalar{6});
+        spike.specific_force_b(2U) = Scalar{-50};
+        spike.angular_rate_b(0U) = Scalar{6};
         (void)separate_periods.update(Scalar{0.125}, Scalar{0.25}, state, spike, {});
         auto result = separate_periods.update(Scalar{0.125}, Scalar{0.25}, state, imu, {});
         test.expect(result.specific_force_peak == Scalar{25} && result.angular_rate_peak == Scalar{4.5} &&
@@ -80,8 +80,8 @@ template <typename Linalg> void test_policy(TestContext & test)
                 profile, "no fixed startup qualification delay");
 
     auto spike = imu;
-    spike.specific_force_b.set(2U, Scalar{-50});
-    spike.angular_rate_b.set(0U, Scalar{6});
+    spike.specific_force_b(2U) = Scalar{-50};
+    spike.angular_rate_b(0U) = Scalar{6};
     result = policy.update(Scalar{0.125}, state, spike, {});
     test.expect(result.high_dynamics && result.specific_force_peak == Scalar{50} &&
                     result.angular_rate_peak == Scalar{6} && result.bias_update.accelerometer == none &&
@@ -112,11 +112,11 @@ template <typename Linalg> void test_policy(TestContext & test)
         auto disturbed = imu;
         if (rate_spike)
         {
-            disturbed.angular_rate_b.set(0U, Scalar{4});
+            disturbed.angular_rate_b(0U) = Scalar{4};
         }
         else
         {
-            disturbed.specific_force_b.set(2U, Scalar{-26});
+            disturbed.specific_force_b(2U) = Scalar{-26};
         }
         result = independent.update(Scalar{0.125}, state, disturbed, {true, false, false, false, 0});
         test.expect(result.high_dynamics && result.bias_update.accelerometer == none &&
@@ -185,8 +185,8 @@ template <typename Linalg> void test_policy(TestContext & test)
     result = policy.update(Scalar{0.125}, state, imu, {false, false, true, false, 0});
     test.expect(result.bias_update.accelerometer == std::array<bool, 3U>{true, false, false}, profile,
                 "fake-position observability follows navigation Down in the body frame");
-    state.b_a.set(2U, Scalar{-25});
-    state.b_g.set(0U, Scalar{3});
+    state.b_a(2U) = Scalar{-25};
+    state.b_g(0U) = Scalar{3};
     result = policy.update(Scalar{0.5}, state, spike, {});
     test.expect(result.specific_force_peak == Scalar{25} && result.angular_rate_peak == Scalar{3} &&
                     !result.high_dynamics && result.bias_update.accelerometer == all,
@@ -200,11 +200,11 @@ template <typename Linalg> void test_failures(TestContext & test)
     typename Policy::Parameters const parameters{Scalar{25}, Scalar{3}, Scalar{0.5}, true, true};
     typename Policy::state_type state;
     formal_eskf::ImuSample<Linalg> imu;
-    imu.specific_force_b.set(2U, Scalar{-50});
+    imu.specific_force_b(2U) = Scalar{-50};
     Policy policy(parameters);
     (void)policy.update(Scalar{0.125}, state, imu, {});
     auto bad = imu;
-    bad.angular_rate_b.set(0U, std::numeric_limits<Scalar>::quiet_NaN());
+    bad.angular_rate_b(0U) = std::numeric_limits<Scalar>::quiet_NaN();
     auto result = policy.update(Scalar{0.125}, state, bad, {});
     test.expect(result.status == Status::non_finite_input && result.bias_update.accelerometer == none &&
                     result.bias_update.gyroscope == none,
@@ -220,10 +220,10 @@ template <typename Linalg> void test_failures(TestContext & test)
         test.expect(result.status == Status::domain_error, profile, "adapter must resolve missing or invalid clipping");
     }
     bad = imu;
-    bad.specific_force_b.set(0U, std::numeric_limits<Scalar>::max());
+    bad.specific_force_b(0U) = std::numeric_limits<Scalar>::max();
     result = policy.update(Scalar{0.125}, state, bad, {});
     test.expect(result.status == Status::non_finite_result, profile, "magnitude overflow rejected");
-    imu.specific_force_b.set(2U, Scalar{-10});
+    imu.specific_force_b(2U) = Scalar{-10};
     result = policy.update(Scalar{0.125}, state, imu, {});
     test.expect(result.specific_force_peak == Scalar{37.5} && result.high_dynamics, profile,
                 "all failed evaluations preserve the last measured peak");

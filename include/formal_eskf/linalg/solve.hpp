@@ -40,7 +40,7 @@ namespace formal_eskf::linalg
 template <typename Linalg, std::size_t Size, std::size_t RightColumns>
 [[nodiscard]] Status solve_spd(Matrix<Linalg, Size, Size> const & system,
                                Matrix<Linalg, Size, RightColumns> const & right_hand_side,
-                               Matrix<Linalg, Size, RightColumns> & solution) noexcept
+                               Matrix<Linalg, Size, RightColumns> & solution)
 {
     using value_type = typename Linalg::value_type;
 
@@ -77,8 +77,7 @@ template <typename Linalg, std::size_t Size, std::size_t RightColumns>
  */
 template <typename Linalg, std::size_t Rows, std::size_t Size>
 [[nodiscard]] Status right_solve_spd(Matrix<Linalg, Rows, Size> const & right_hand_side,
-                                     Matrix<Linalg, Size, Size> const & system,
-                                     Matrix<Linalg, Rows, Size> & solution) noexcept
+                                     Matrix<Linalg, Size, Size> const & system, Matrix<Linalg, Rows, Size> & solution)
 {
     Matrix<Linalg, Size, Rows> const transposed_right_hand_side = transpose(right_hand_side);
     Matrix<Linalg, Size, Rows> transposed_solution;

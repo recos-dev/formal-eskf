@@ -25,10 +25,10 @@ public:
 
     /** Unit q_nb and symmetric PSD body-local attitude covariance are caller premises. */
     [[nodiscard]] Status update(so3::UnitQuaternion<Linalg> const & q_nb,
-                                linalg::Matrix<Linalg, 3U, 3U> const & P_theta_b) noexcept;
+                                linalg::Matrix<Linalg, 3U, 3U> const & P_theta_b);
 
-    [[nodiscard]] bool aligned() const noexcept { return m_aligned; }
-    [[nodiscard]] value_type variance() const noexcept { return m_variance; }
+    [[nodiscard]] bool aligned() const { return m_aligned; }
+    [[nodiscard]] value_type variance() const { return m_variance; }
 
 private:
     value_type m_variance{};
@@ -37,7 +37,7 @@ private:
 
 template <typename Linalg>
 Status TiltAlignment<Linalg>::update(so3::UnitQuaternion<Linalg> const & q_nb,
-                                     linalg::Matrix<Linalg, 3U, 3U> const & P_theta_b) noexcept
+                                     linalg::Matrix<Linalg, 3U, 3U> const & P_theta_b)
 {
     if (!linalg::all_finite(q_nb.coefficients()) || !linalg::all_finite(P_theta_b))
     {

@@ -26,7 +26,7 @@ namespace detail
 /** Apply INS bias permissions after the solve, before error and Joseph updates. */
 template <typename Linalg, std::size_t MeasurementSize>
 void constrain_bias_gain(configuration::Ins::BiasUpdate const & bias_update,
-                         linalg::Matrix<Linalg, 15U, MeasurementSize> & K) noexcept
+                         linalg::Matrix<Linalg, 15U, MeasurementSize> & K)
 {
     using value_type = typename Linalg::value_type;
     for (std::size_t axis = 0U; axis < 3U; ++axis)
@@ -46,15 +46,13 @@ void constrain_bias_gain(configuration::Ins::BiasUpdate const & bias_update,
 }
 
 template <typename Linalg>
-void unpack_correction(linalg::Vector<Linalg, 3U> const & delta_x,
-                       configuration::Ahrs::ErrorState<Linalg> & error) noexcept
+void unpack_correction(linalg::Vector<Linalg, 3U> const & delta_x, configuration::Ahrs::ErrorState<Linalg> & error)
 {
     error.delta_theta_b = delta_x;
 }
 
 template <typename Linalg>
-void unpack_correction(linalg::Vector<Linalg, 15U> const & delta_x,
-                       configuration::Ins::ErrorState<Linalg> & error) noexcept
+void unpack_correction(linalg::Vector<Linalg, 15U> const & delta_x, configuration::Ins::ErrorState<Linalg> & error)
 {
     error.delta_p_n = delta_x.template segment<0U, 3U>();
     error.delta_v_n = delta_x.template segment<3U, 3U>();
@@ -69,7 +67,7 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
                                                 linalg::Vector<Linalg, MeasurementSize> const & r,
                                                 linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
                                                 linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
-                                                typename Linalg::value_type minimum_quaternion_norm) noexcept
+                                                typename Linalg::value_type minimum_quaternion_norm)
 {
     using value_type = typename Linalg::value_type;
     using scalar_math_type = typename Linalg::scalar_math_type;
@@ -118,13 +116,14 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
  * permission. Correction remains independently checked when subsequently called.
  */
 template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
-[[nodiscard]] Status try_correction_covariances(
-    linalg::Matrix<Linalg, Size, Size> const & covariance, linalg::Vector<Linalg, MeasurementSize> const & r,
-    linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
-    linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
-    typename Linalg::value_type minimum_quaternion_norm,
-    linalg::Matrix<Linalg, Size, MeasurementSize> & cross_covariance_output,
-    linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> & innovation_covariance_output) noexcept
+[[nodiscard]] Status
+try_correction_covariances(linalg::Matrix<Linalg, Size, Size> const & covariance,
+                           linalg::Vector<Linalg, MeasurementSize> const & r,
+                           linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
+                           linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
+                           typename Linalg::value_type minimum_quaternion_norm,
+                           linalg::Matrix<Linalg, Size, MeasurementSize> & cross_covariance_output,
+                           linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> & innovation_covariance_output)
 {
     Status const input_status = detail::validate_correction_inputs(covariance, r, H, V, minimum_quaternion_norm);
     if (!succeeded(input_status))
@@ -158,7 +157,7 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
                                                  linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
                                                  linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
                                                  typename Linalg::value_type minimum_quaternion_norm,
-                                                 linalg::Matrix<Linalg, Size, MeasurementSize> & gain_output) noexcept
+                                                 linalg::Matrix<Linalg, Size, MeasurementSize> & gain_output)
 {
     linalg::Matrix<Linalg, Size, MeasurementSize> PHt;
     linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> S;
@@ -192,7 +191,7 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
                                                linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
                                                linalg::Matrix<Linalg, Size, MeasurementSize> const & K,
                                                linalg::Vector<Linalg, Size> & correction_output,
-                                               linalg::Matrix<Linalg, Size, Size> & covariance_output) noexcept
+                                               linalg::Matrix<Linalg, Size, Size> & covariance_output)
 {
     using covariance_type = linalg::Matrix<Linalg, Size, Size>;
     // Sola (275): the prior error mean is zero after the previous reset.
@@ -255,7 +254,7 @@ try_correct(configuration::Ahrs::NominalState<Linalg> const & state, linalg::Mat
             linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
             typename Linalg::value_type minimum_quaternion_norm,
             configuration::Ahrs::NominalState<Linalg> & state_output,
-            linalg::Matrix<Linalg, 3U, 3U> & covariance_output) noexcept
+            linalg::Matrix<Linalg, 3U, 3U> & covariance_output)
 {
     linalg::Matrix<Linalg, 3U, MeasurementSize> K;
     Status const gain_status = detail::try_compute_correction_gain(covariance, r, H, V, minimum_quaternion_norm, K);
@@ -288,14 +287,12 @@ try_correct(configuration::Ahrs::NominalState<Linalg> const & state, linalg::Mat
  * This does not freeze prediction's bias random walk or decide IMU health.
  */
 template <typename Linalg, std::size_t MeasurementSize>
-[[nodiscard]] Status
-try_correct(configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-            linalg::Vector<Linalg, MeasurementSize> const & r, linalg::Matrix<Linalg, MeasurementSize, 15U> const & H,
-            linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
-            typename Linalg::value_type minimum_quaternion_norm,
-            configuration::Ins::NominalState<Linalg> & state_output,
-            linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-            configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+[[nodiscard]] Status try_correct(
+    configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
+    linalg::Vector<Linalg, MeasurementSize> const & r, linalg::Matrix<Linalg, MeasurementSize, 15U> const & H,
+    linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
+    typename Linalg::value_type minimum_quaternion_norm, configuration::Ins::NominalState<Linalg> & state_output,
+    linalg::Matrix<Linalg, 15U, 15U> & covariance_output, configuration::Ins::BiasUpdate const & bias_update = {})
 {
     linalg::Matrix<Linalg, 15U, MeasurementSize> K;
     Status const gain_status = detail::try_compute_correction_gain(covariance, r, H, V, minimum_quaternion_norm, K);

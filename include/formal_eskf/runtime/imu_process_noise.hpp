@@ -39,7 +39,7 @@ template <typename Linalg>
 [[nodiscard]] Status try_select_imu_process_noise(configuration::Ins::ProcessNoise<Linalg> const & noise,
                                                   ImuNoiseConditions const & conditions,
                                                   typename Linalg::value_type fault_variance,
-                                                  configuration::Ins::ProcessNoise<Linalg> & output) noexcept
+                                                  configuration::Ins::ProcessNoise<Linalg> & output)
 {
     using value_type = typename Linalg::value_type;
     using math_type = typename Linalg::scalar_math_type;

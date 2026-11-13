@@ -34,10 +34,10 @@ public:
 
     /** Seed after tilt alignment, before yaw alignment; level_field is in microtesla. */
     [[nodiscard]] Status initialize(std::uint64_t now_us, Settings const & settings, vector_type const & level_field,
-                                    std::optional<sample_type> const & model) noexcept;
+                                    std::optional<sample_type> const & model);
 
     /** The adapter calls the host lookup only when this predicate is true. */
-    [[nodiscard]] bool lookup_due(std::uint64_t now_us, bool position_valid, bool origin_updated = false) const noexcept
+    [[nodiscard]] bool lookup_due(std::uint64_t now_us, bool position_valid, bool origin_updated = false) const
     {
         return now_us > m_last_lookup_time &&
                (origin_updated || (position_valid && now_us - m_last_lookup_time > 10000000U));
@@ -45,22 +45,22 @@ public:
 
     /** Missing/invalid candidates retain the adopted model; attempts are rate-limited too. */
     [[nodiscard]] result_type update(std::uint64_t now_us, std::optional<sample_type> const & model,
-                                     bool position_valid, bool origin_updated = false) noexcept;
+                                     bool position_valid, bool origin_updated = false);
 
-    [[nodiscard]] vector_type const & observation_n() const noexcept { return m_observation; }
-    [[nodiscard]] vector_type const & health_n() const noexcept { return m_model.state().field_n; }
-    [[nodiscard]] bool available() const noexcept { return m_model.state().reference_id != 0U; }
-    [[nodiscard]] std::uint32_t reference_id() const noexcept { return m_reference_id; }
-    [[nodiscard]] std::uint32_t model_revision() const noexcept { return m_model.state().reference_id; }
-    [[nodiscard]] std::uint64_t lookup_count() const noexcept { return m_lookup_count; }
-    [[nodiscard]] std::uint64_t last_lookup_time() const noexcept { return m_last_lookup_time; }
-    [[nodiscard]] HeadingSource heading_source() const noexcept { return m_heading_source; }
-    [[nodiscard]] value_type declination() const noexcept { return m_declination; }
+    [[nodiscard]] vector_type const & observation_n() const { return m_observation; }
+    [[nodiscard]] vector_type const & health_n() const { return m_model.state().field_n; }
+    [[nodiscard]] bool available() const { return m_model.state().reference_id != 0U; }
+    [[nodiscard]] std::uint32_t reference_id() const { return m_reference_id; }
+    [[nodiscard]] std::uint32_t model_revision() const { return m_model.state().reference_id; }
+    [[nodiscard]] std::uint64_t lookup_count() const { return m_lookup_count; }
+    [[nodiscard]] std::uint64_t last_lookup_time() const { return m_last_lookup_time; }
+    [[nodiscard]] HeadingSource heading_source() const { return m_heading_source; }
+    [[nodiscard]] value_type declination() const { return m_declination; }
 
     /** Express a local geographic NED model in the module's fixed origin NED. */
     [[nodiscard]] static Status to_origin_frame(sample_type const & local, double latitude_deg, double longitude_deg,
                                                 double origin_latitude_deg, double origin_longitude_deg,
-                                                sample_type & output) noexcept;
+                                                sample_type & output);
 
 private:
     model_type m_model{};
@@ -74,8 +74,7 @@ private:
 
 template <typename Linalg>
 Status MagneticModel<Linalg>::initialize(std::uint64_t now_us, Settings const & settings,
-                                         vector_type const & level_field,
-                                         std::optional<sample_type> const & model) noexcept
+                                         vector_type const & level_field, std::optional<sample_type> const & model)
 {
     using math_type = typename Linalg::scalar_math_type;
     auto const pi = scalar::pi<math_type>();
@@ -126,9 +125,9 @@ Status MagneticModel<Linalg>::initialize(std::uint64_t now_us, Settings const & 
 }
 
 template <typename Linalg>
-typename MagneticModel<Linalg>::result_type
-MagneticModel<Linalg>::update(std::uint64_t now_us, std::optional<sample_type> const & model, bool position_valid,
-                              bool origin_updated) noexcept
+typename MagneticModel<Linalg>::result_type MagneticModel<Linalg>::update(std::uint64_t now_us,
+                                                                          std::optional<sample_type> const & model,
+                                                                          bool position_valid, bool origin_updated)
 {
     result_type result;
     if (m_reference_id == 0U || now_us <= m_last_lookup_time)
@@ -173,7 +172,7 @@ MagneticModel<Linalg>::update(std::uint64_t now_us, std::optional<sample_type> c
 template <typename Linalg>
 Status MagneticModel<Linalg>::to_origin_frame(sample_type const & local, double latitude_deg, double longitude_deg,
                                               double origin_latitude_deg, double origin_longitude_deg,
-                                              sample_type & output) noexcept
+                                              sample_type & output)
 {
     auto valid = [](double latitude, double longitude)
     {

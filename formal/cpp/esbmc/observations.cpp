@@ -52,7 +52,7 @@ inline Status try_correct<observation_proof::backend_type, observation_proof::me
     ,
     configuration::Ins::BiasUpdate const & bias_update
 #endif
-    ) noexcept
+)
 {
     using namespace observation_proof;
 #if FORMAL_ESKF_PROOF_STATE_SIZE == 15

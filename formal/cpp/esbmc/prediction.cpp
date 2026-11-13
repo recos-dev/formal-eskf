@@ -383,7 +383,7 @@ namespace formal_eskf::so3
 {
 template <>
 Status try_exp<prediction_proof::Linalg>(prediction_proof::Vector const & theta, prediction_proof::Scalar minimum,
-                                         prediction_proof::Quaternion & output) noexcept
+                                         prediction_proof::Quaternion & output)
 {
     using namespace prediction_proof;
     __ESBMC_assert(ExpContract::enabled && !ExpContract::called,
@@ -409,7 +409,7 @@ template <>
 Status try_predict_attitude<prediction_proof::Linalg>(prediction_proof::Quaternion const & q,
                                                       prediction_proof::Vector const & rate,
                                                       prediction_proof::Scalar dt, prediction_proof::Scalar minimum,
-                                                      prediction_proof::Quaternion & output) noexcept
+                                                      prediction_proof::Quaternion & output)
 {
     using namespace prediction_proof;
     __ESBMC_assert(AttitudeContract::enabled, "Runner error: attitude summary requires an explicit caller harness");

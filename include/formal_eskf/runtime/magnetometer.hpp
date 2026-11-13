@@ -32,7 +32,7 @@ check_magnetic_observation(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Vec
                            linalg::Vector<Linalg, 3U> const & m_n, linalg::Vector<Linalg, 3U> const * field_reference_n,
                            MagneticFieldParameters<typename Linalg::value_type> const & field_parameters,
                            bool heading_observable, MagneticFieldChecks const & field_checks,
-                           linalg::Vector<Linalg, 3U> & residual_output) noexcept
+                           linalg::Vector<Linalg, 3U> & residual_output)
 {
     MagnetometerFusionResult<Linalg> result;
     result.field =
@@ -74,14 +74,15 @@ check_magnetic_observation(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Vec
  * No lifecycle, recovery timer, yaw reset, magnetic states or implicit tuning.
  */
 template <typename Linalg>
-[[nodiscard]] MagnetometerFusionResult<Linalg> fuse_magnetometer(
-    configuration::Ahrs::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 3U, 3U> const & covariance,
-    linalg::Vector<Linalg, 3U> const & m_b, linalg::Vector<Linalg, 3U> const & m_n,
-    linalg::Vector<Linalg, 3U> const * field_reference_n, linalg::Matrix<Linalg, 3U, 3U> const & V,
-    MagneticFieldParameters<typename Linalg::value_type> const & field_parameters, bool heading_observable,
-    typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
-    configuration::Ahrs::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 3U, 3U> & covariance_output,
-    MagneticFieldChecks const & field_checks = {}) noexcept
+[[nodiscard]] MagnetometerFusionResult<Linalg>
+fuse_magnetometer(configuration::Ahrs::NominalState<Linalg> const & state,
+                  linalg::Matrix<Linalg, 3U, 3U> const & covariance, linalg::Vector<Linalg, 3U> const & m_b,
+                  linalg::Vector<Linalg, 3U> const & m_n, linalg::Vector<Linalg, 3U> const * field_reference_n,
+                  linalg::Matrix<Linalg, 3U, 3U> const & V,
+                  MagneticFieldParameters<typename Linalg::value_type> const & field_parameters,
+                  bool heading_observable, typename Linalg::value_type minimum_quaternion_norm,
+                  typename Linalg::value_type gate_sigma, configuration::Ahrs::NominalState<Linalg> & state_output,
+                  linalg::Matrix<Linalg, 3U, 3U> & covariance_output, MagneticFieldChecks const & field_checks = {})
 {
     if (!detail::finite_fusion_state(state))
     {
@@ -127,7 +128,7 @@ template <typename Linalg>
     MagneticFieldParameters<typename Linalg::value_type> const & field_parameters, bool heading_observable,
     typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
     configuration::Ins::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-    configuration::Ins::BiasUpdate const & bias_update = {}, MagneticFieldChecks const & field_checks = {}) noexcept
+    configuration::Ins::BiasUpdate const & bias_update = {}, MagneticFieldChecks const & field_checks = {})
 {
     if (!detail::finite_fusion_state(state))
     {

@@ -64,14 +64,13 @@ public:
      * starts with zero peaks; missing IMU intervals never erase a measured peak.
      */
     [[nodiscard]] Result update(value_type angular_interval, value_type force_interval, state_type const & state,
-                                ImuSample<Linalg> const & imu, Conditions const & conditions) noexcept;
+                                ImuSample<Linalg> const & imu, Conditions const & conditions);
 
 private:
-    [[nodiscard]] value_type decayed_peak(value_type magnitude, value_type previous_peak,
-                                          value_type interval) const noexcept;
+    [[nodiscard]] value_type decayed_peak(value_type magnitude, value_type previous_peak, value_type interval) const;
     [[nodiscard]] configuration::Ins::BiasUpdate learning_permissions(linalg::Matrix<Linalg, 3U, 3U> const & R,
                                                                       bool high_dynamics,
-                                                                      Conditions const & conditions) const noexcept;
+                                                                      Conditions const & conditions) const;
 
     Parameters m_parameters;
     value_type m_specific_force_peak{};
@@ -80,8 +79,7 @@ private:
 
 template <typename Linalg>
 typename ImuBiasInhibition<Linalg>::value_type
-ImuBiasInhibition<Linalg>::decayed_peak(value_type magnitude, value_type previous_peak,
-                                        value_type interval) const noexcept
+ImuBiasInhibition<Linalg>::decayed_peak(value_type magnitude, value_type previous_peak, value_type interval) const
 {
     // Validated positive intervals/tau: avoid overflowing interval / tau.
     auto const decay = interval >= m_parameters.decay_time_constant
@@ -91,9 +89,9 @@ ImuBiasInhibition<Linalg>::decayed_peak(value_type magnitude, value_type previou
 }
 
 template <typename Linalg>
-configuration::Ins::BiasUpdate
-ImuBiasInhibition<Linalg>::learning_permissions(linalg::Matrix<Linalg, 3U, 3U> const & R, bool high_dynamics,
-                                                Conditions const & conditions) const noexcept
+configuration::Ins::BiasUpdate ImuBiasInhibition<Linalg>::learning_permissions(linalg::Matrix<Linalg, 3U, 3U> const & R,
+                                                                               bool high_dynamics,
+                                                                               Conditions const & conditions) const
 {
     configuration::Ins::BiasUpdate permissions;
     bool const accel_enabled =
@@ -123,7 +121,7 @@ ImuBiasInhibition<Linalg>::learning_permissions(linalg::Matrix<Linalg, 3U, 3U> c
 template <typename Linalg>
 typename ImuBiasInhibition<Linalg>::Result
 ImuBiasInhibition<Linalg>::update(value_type angular_interval, value_type force_interval, state_type const & state,
-                                  ImuSample<Linalg> const & imu, Conditions const & conditions) noexcept
+                                  ImuSample<Linalg> const & imu, Conditions const & conditions)
 {
     Result result;
     if (!scalar::is_finite<math_type>(angular_interval) || !scalar::is_finite<math_type>(force_interval) ||

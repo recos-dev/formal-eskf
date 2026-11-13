@@ -51,7 +51,7 @@ namespace formal_eskf::so3
 {
 template <>
 inline Status try_exp<contract_proof::Linalg>(contract_proof::Vector3 const & theta, contract_proof::Scalar minimum,
-                                              contract_proof::Quaternion & output) noexcept
+                                              contract_proof::Quaternion & output)
 {
     using injection_proof::ExpContract;
     __ESBMC_assert(ExpContract::calls == 0U, "E-INJECT contract: one Exp request");
@@ -69,7 +69,7 @@ template <>
 inline Status try_compose_normalized<contract_proof::Linalg>(contract_proof::Quaternion const & q_a,
                                                              contract_proof::Quaternion const & q_b,
                                                              contract_proof::Scalar minimum,
-                                                             contract_proof::Quaternion & output) noexcept
+                                                             contract_proof::Quaternion & output)
 {
     using injection_proof::CompositionContract;
     __ESBMC_assert(CompositionContract::calls == 0U && injection_proof::ExpContract::calls == 1U,

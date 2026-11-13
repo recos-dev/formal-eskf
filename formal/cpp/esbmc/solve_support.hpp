@@ -74,7 +74,7 @@ class Backend
 public:
     template <std::size_t Size, std::size_t Columns>
     static Status solve_spd(storage_type<Size, Size> const & system, storage_type<Size, Columns> const & rhs,
-                            storage_type<Size, Columns> & output) noexcept
+                            storage_type<Size, Columns> & output)
     {
         return formal_eskf::linalg::Cholesky<Backend>::template solve<Size, Columns>(system, rhs, output);
     }

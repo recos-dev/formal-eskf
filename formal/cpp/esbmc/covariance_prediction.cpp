@@ -182,7 +182,7 @@ namespace formal_eskf::verification
 template <>
 template <>
 inline void FixedArrayLinalg<contract_proof::Scalar, NoNormObserver<contract_proof::Scalar>,
-                             contract_proof::OpaqueMath>::set_zero<12U, 12U>(storage_type<12U, 12U> & matrix) noexcept
+                             contract_proof::OpaqueMath>::set_zero<12U, 12U>(storage_type<12U, 12U> & matrix)
 {
     matrix = {};
 }
@@ -193,7 +193,7 @@ namespace formal_eskf::detail
 {
 template <>
 inline Status validate_prediction_quaternion<contract_proof::Linalg>(contract_proof::Quaternion const & q,
-                                                                     contract_proof::Scalar tolerance) noexcept
+                                                                     contract_proof::Scalar tolerance)
 {
     using namespace pcov_proof;
     __ESBMC_assert(Calls::quaternion++ == 0U, "E-PCOV contract: one prior quaternion check");
@@ -203,10 +203,9 @@ inline Status validate_prediction_quaternion<contract_proof::Linalg>(contract_pr
     return Calls::result->quaternion_status;
 }
 template <>
-inline Status try_attitude_error_transition<contract_proof::Linalg>(contract_proof::Vector3 const & omega,
-                                                                    contract_proof::Scalar dt,
-                                                                    contract_proof::Scalar minimum,
-                                                                    pcov_proof::Matrix3 & output) noexcept
+inline Status
+try_attitude_error_transition<contract_proof::Linalg>(contract_proof::Vector3 const & omega, contract_proof::Scalar dt,
+                                                      contract_proof::Scalar minimum, pcov_proof::Matrix3 & output)
 {
     using namespace pcov_proof;
     __ESBMC_assert(Calls::transition++ == 0U, "E-PCOV contract: one attitude transition");
@@ -224,7 +223,7 @@ inline Status try_attitude_error_transition<contract_proof::Linalg>(contract_pro
         output = Calls::result->transition;
     return Calls::result->transition_status;
 }
-template <> inline Status try_finish_covariance(pcov_proof::Matrix & candidate, pcov_proof::Matrix & output) noexcept
+template <> inline Status try_finish_covariance(pcov_proof::Matrix & candidate, pcov_proof::Matrix & output)
 {
     using namespace pcov_proof;
     __ESBMC_assert(Calls::finish++ == 0U, "E-PCOV contract: one covariance finalizer");
@@ -243,7 +242,7 @@ namespace formal_eskf
 template <>
 inline Status try_discretize_process_noise<contract_proof::Linalg>(pcov_proof::Noise const & noise,
                                                                    contract_proof::Scalar dt,
-                                                                   pcov_proof::NoiseMatrix & output) noexcept
+                                                                   pcov_proof::NoiseMatrix & output)
 {
     using namespace pcov_proof;
     __ESBMC_assert(Calls::noise++ == 0U, "E-PCOV contract: one process noise discretization");
@@ -257,7 +256,7 @@ inline Status try_discretize_process_noise<contract_proof::Linalg>(pcov_proof::N
 
 namespace formal_eskf::so3
 {
-template <> inline pcov_proof::Matrix3 to_rotation_matrix(contract_proof::Quaternion const & q) noexcept
+template <> inline pcov_proof::Matrix3 to_rotation_matrix(contract_proof::Quaternion const & q)
 {
     using namespace pcov_proof;
     __ESBMC_assert(Calls::rotation++ == 0U, "E-PCOV contract: one old-state rotation");
@@ -269,7 +268,7 @@ template <> inline pcov_proof::Matrix3 to_rotation_matrix(contract_proof::Quater
 
 namespace formal_eskf::linalg
 {
-template <> inline bool all_finite(pcov_proof::Matrix const & matrix) noexcept
+template <> inline bool all_finite(pcov_proof::Matrix const & matrix)
 {
     using namespace pcov_proof;
     __ESBMC_assert(Calls::finite < (FORMAL_ESKF_PROOF_INS ? 2U : 1U),
@@ -288,7 +287,7 @@ template <> inline bool all_finite(pcov_proof::Matrix const & matrix) noexcept
 template <>
 template <>
 inline pcov_proof::Matrix3 Matrix<contract_proof::Linalg, 3U, 3U>::operator*
-    <3U>([[maybe_unused]] pcov_proof::Matrix3 const & right) const noexcept
+    <3U>([[maybe_unused]] pcov_proof::Matrix3 const & right) const
 {
     using namespace pcov_proof;
     __ESBMC_assert(Calls::product++ == 0U, "E-PCOV contract: one force Jacobian product");
@@ -307,8 +306,7 @@ inline pcov_proof::Matrix3 Matrix<contract_proof::Linalg, 3U, 3U>::operator*
 #endif
     return Calls::result->force_product;
 }
-template <>
-inline pcov_proof::Matrix sandwich(pcov_proof::Matrix const & transform, pcov_proof::Matrix const & p) noexcept
+template <> inline pcov_proof::Matrix sandwich(pcov_proof::Matrix const & transform, pcov_proof::Matrix const & p)
 {
     using namespace pcov_proof;
     __ESBMC_assert(Calls::sandwich++ == 0U, "E-PCOV contract: one complete covariance sandwich");
@@ -322,8 +320,7 @@ inline pcov_proof::Matrix sandwich(pcov_proof::Matrix const & transform, pcov_pr
     return Calls::result->propagated;
 }
 #if FORMAL_ESKF_PROOF_INS
-template <>
-inline pcov_proof::Matrix3 sandwich(pcov_proof::Matrix3 const & transform, pcov_proof::Matrix3 const & p) noexcept
+template <> inline pcov_proof::Matrix3 sandwich(pcov_proof::Matrix3 const & transform, pcov_proof::Matrix3 const & p)
 {
     using namespace pcov_proof;
     __ESBMC_assert(Calls::noise_sandwich++ == 0U, "E-PCOV contract: one complete anisotropic noise sandwich");

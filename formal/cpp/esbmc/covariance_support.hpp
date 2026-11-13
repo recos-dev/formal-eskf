@@ -194,7 +194,7 @@ namespace formal_eskf::linalg
 {
 template <>
 inline contract_proof::Scalar dot(formal_eskf::linalg::Vector<contract_proof::Linalg, 15U> const & left,
-                                  formal_eskf::linalg::Vector<contract_proof::Linalg, 15U> const & right) noexcept
+                                  formal_eskf::linalg::Vector<contract_proof::Linalg, 15U> const & right)
 {
     using verification::CovarianceDotContract;
     __ESBMC_assert(CovarianceDotContract::calls == 0U, "E-RESET dot contract: exactly one ordered dot product");
@@ -236,11 +236,10 @@ inline contract_proof::Scalar covariance_product_entry(CovarianceCells<contract_
 
 template <>
 template <>
-inline void
-FixedArrayLinalg<contract_proof::Scalar, NoNormObserver<contract_proof::Scalar>,
-                 contract_proof::OpaqueMath>::multiply<15U, 15U, 15U>(storage_type<15U, 15U> const & left,
-                                                                      storage_type<15U, 15U> const & right,
-                                                                      storage_type<15U, 15U> & result) noexcept
+inline void FixedArrayLinalg<contract_proof::Scalar, NoNormObserver<contract_proof::Scalar>,
+                             contract_proof::OpaqueMath>::multiply<15U, 15U, 15U>(storage_type<15U, 15U> const & left,
+                                                                                  storage_type<15U, 15U> const & right,
+                                                                                  storage_type<15U, 15U> & result)
 {
     for (std::size_t row = 0U; row < 15U; ++row)
     {

@@ -95,7 +95,7 @@ namespace formal_eskf::linalg
 template <>
 template <>
 inline Status Cholesky<solve_proof::Backend>::factorize<solve_proof::size>(solve_proof::Factor const & system,
-                                                                           solve_proof::Factor & factor) noexcept
+                                                                           solve_proof::Factor & factor)
 {
     using namespace solve_proof;
     __ESBMC_assert(Flow::factor_calls == 0U && Flow::calls == 0U,
@@ -112,8 +112,7 @@ inline Status Cholesky<solve_proof::Backend>::factorize<solve_proof::size>(solve
 template <>
 template <>
 inline Status Cholesky<solve_proof::Backend>::forward_substitute<solve_proof::size, solve_proof::columns>(
-    solve_proof::Factor const & factor, solve_proof::Right const & rhs, solve_proof::Right & output,
-    std::size_t column) noexcept
+    solve_proof::Factor const & factor, solve_proof::Right const & rhs, solve_proof::Right & output, std::size_t column)
 {
     using namespace solve_proof;
     __ESBMC_assert(equal_cells(rhs.values, Flow::rhs.values), "F-SOLVE: forward receives original RHS");
@@ -124,7 +123,7 @@ inline Status Cholesky<solve_proof::Backend>::forward_substitute<solve_proof::si
 template <>
 template <>
 inline Status Cholesky<solve_proof::Backend>::backward_substitute<solve_proof::size, solve_proof::columns>(
-    solve_proof::Factor const & factor, solve_proof::Right & output, std::size_t column) noexcept
+    solve_proof::Factor const & factor, solve_proof::Right & output, std::size_t column)
 {
     return solve_proof::Flow::substitute(factor, output, column, false);
 }
@@ -135,7 +134,7 @@ namespace formal_eskf::linalg
 template <>
 template <>
 inline Status Cholesky<solve_proof::Backend>::solve<solve_proof::size, solve_proof::columns>(
-    solve_proof::Factor const & system, solve_proof::Right const & rhs, solve_proof::Right & output) noexcept
+    solve_proof::Factor const & system, solve_proof::Right const & rhs, solve_proof::Right & output)
 {
     using namespace solve_proof;
     __ESBMC_assert(SolveContract::calls == 0U && SymmetryContract::calls == 1U && SymmetryContract::result,
@@ -151,7 +150,7 @@ inline Status Cholesky<solve_proof::Backend>::solve<solve_proof::size, solve_pro
 }
 template <>
 inline bool is_symmetric<solve_proof::Backend, solve_proof::size>(solve_proof::SystemMatrix const & input,
-                                                                  solve_proof::Scalar tolerance) noexcept
+                                                                  solve_proof::Scalar tolerance)
 {
     using namespace solve_proof;
     __ESBMC_assert(SymmetryContract::calls == 0U && equal_matrix(input, SymmetryContract::input) &&
@@ -165,10 +164,8 @@ inline bool is_symmetric<solve_proof::Backend, solve_proof::size>(solve_proof::S
 namespace formal_eskf::linalg
 {
 template <>
-inline Status
-solve_spd<solve_proof::Backend, solve_proof::size, solve_proof::columns>(solve_proof::SystemMatrix const & system,
-                                                                         solve_proof::LeftMatrix const & rhs,
-                                                                         solve_proof::LeftMatrix & output) noexcept
+inline Status solve_spd<solve_proof::Backend, solve_proof::size, solve_proof::columns>(
+    solve_proof::SystemMatrix const & system, solve_proof::LeftMatrix const & rhs, solve_proof::LeftMatrix & output)
 {
     using namespace solve_proof;
     __ESBMC_assert(SolveContract::calls == 0U, "F-SOLVE: right solve delegates once");

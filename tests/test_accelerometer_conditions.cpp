@@ -62,7 +62,6 @@ template <typename Linalg> void test_truth_table(TestContext & test, std::string
     }
     constexpr typename Magnitude::Result magnitude{Status::success, true, {}};
     constexpr auto disabled = check_accelerometer_fusion_conditions<Linalg>({}, magnitude);
-    static_assert(noexcept(check_accelerometer_fusion_conditions<Linalg>({}, magnitude)));
     static_assert(disabled.status == Status::success && !disabled.active && !disabled.sample_eligible);
 }
 

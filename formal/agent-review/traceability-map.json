@@ -115,7 +115,7 @@
           },
           {
             "file": "include/formal_eskf/eskf/velocity.hpp",
-            "symbol": "linalg::Matrix<Linalg, 3U, 15U> velocity_jacobian() noexcept"
+            "symbol": "linalg::Matrix<Linalg, 3U, 15U> velocity_jacobian()"
           },
           {
             "file": "include/formal_eskf/eskf/velocity.hpp",
@@ -1865,7 +1865,7 @@
           },
           {
             "file": "include/formal_eskf/eskf/covariance_prediction.hpp",
-            "symbol": "Status try_attitude_error_transition"
+            "symbol": "try_attitude_error_transition(linalg::Vector<Linalg, 3U> const & angular_rate_b"
           },
           {
             "file": "include/formal_eskf/eskf/prediction.hpp",
@@ -2193,7 +2193,7 @@
           },
           {
             "file": "include/formal_eskf/eskf/correction.hpp",
-            "symbol": "try_correct(configuration::Ins::NominalState"
+            "symbol": "[[nodiscard]] Status try_correct("
           }
         ],
         "esbmc": [
@@ -2723,7 +2723,7 @@
         "cpp": [
           {
             "file": "include/formal_eskf/eskf/correction.hpp",
-            "symbol": "Status try_correction_covariances("
+            "symbol": "try_correction_covariances(linalg::Matrix<Linalg, Size, Size> const & covariance"
           },
           {
             "file": "include/formal_eskf/eskf/correction.hpp",
@@ -2747,7 +2747,7 @@
           },
           {
             "file": "include/formal_eskf/eskf/correction.hpp",
-            "symbol": "try_correct(configuration::Ins::NominalState"
+            "symbol": "[[nodiscard]] Status try_correct("
           },
           {
             "file": "include/formal_eskf/eskf/covariance.hpp",
@@ -3396,7 +3396,7 @@
           },
           {
             "file": "include/formal_eskf/eskf/correction.hpp",
-            "symbol": "Status try_correction_covariances("
+            "symbol": "try_correction_covariances(linalg::Matrix<Linalg, Size, Size> const & covariance"
           },
           {
             "file": "include/formal_eskf/runtime/measurement_fusion.hpp",
@@ -3996,7 +3996,7 @@
           },
           {
             "file": "include/formal_eskf/runtime/navigation_reset.hpp",
-            "symbol": "Status try_reset_velocity("
+            "symbol": "try_reset_velocity(configuration::Ins::NominalState<Linalg> const & state"
           },
           {
             "file": "integrations/px4/module/FormalEskf.cpp",
@@ -4092,7 +4092,7 @@
           },
           {
             "file": "include/formal_eskf/runtime/gnss_quality.hpp",
-            "symbol": "void restart_health() noexcept"
+            "symbol": "void restart_health()"
           },
           {
             "file": "examples/replay_ins.cpp",

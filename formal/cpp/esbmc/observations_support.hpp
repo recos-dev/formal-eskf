@@ -241,7 +241,7 @@ namespace formal_eskf::so3
 {
 template <>
 inline observation_proof::rotation_type
-to_rotation_matrix<observation_proof::backend_type>(observation_proof::quaternion_type const & q) noexcept
+to_rotation_matrix<observation_proof::backend_type>(observation_proof::quaternion_type const & q)
 {
     using namespace observation_proof;
     __ESBMC_assert(RotationCall::count++ == 0U && same_matrix(q.coefficients(), RotationCall::argument.coefficients()),

@@ -46,8 +46,8 @@ public:
         bool changed = false;
     };
 
-    [[nodiscard]] State const & state() const noexcept { return m_state; }
-    void reset() noexcept { *this = MagneticReference{}; }
+    [[nodiscard]] State const & state() const { return m_state; }
+    void reset() { *this = MagneticReference{}; }
 
     /**
      * Call on increasing fusion timestamps. An origin update requests an
@@ -63,20 +63,19 @@ public:
      * lookup trigger, not authorization to change the estimator coordinate frame.
      */
     [[nodiscard]] Result update(std::uint64_t now_us, Sample const & sample, bool position_valid,
-                                bool origin_updated = false) noexcept;
+                                bool origin_updated = false);
 
 private:
-    [[nodiscard]] static Status validate_sample(Sample const & sample) noexcept;
-    [[nodiscard]] Status adopt(Sample const & sample) noexcept;
+    [[nodiscard]] static Status validate_sample(Sample const & sample);
+    [[nodiscard]] Status adopt(Sample const & sample);
 
     State m_state{};
     std::uint64_t m_update_time_us{};
 }; /* end class MagneticReference */
 
 template <typename Linalg>
-typename MagneticReference<Linalg>::Result MagneticReference<Linalg>::update(std::uint64_t now_us,
-                                                                             Sample const & sample, bool position_valid,
-                                                                             bool origin_updated) noexcept
+typename MagneticReference<Linalg>::Result
+MagneticReference<Linalg>::update(std::uint64_t now_us, Sample const & sample, bool position_valid, bool origin_updated)
 {
     using math_type = typename Linalg::scalar_math_type;
     Result result;
@@ -116,7 +115,7 @@ typename MagneticReference<Linalg>::Result MagneticReference<Linalg>::update(std
     return result;
 }
 
-template <typename Linalg> Status MagneticReference<Linalg>::validate_sample(Sample const & sample) noexcept
+template <typename Linalg> Status MagneticReference<Linalg>::validate_sample(Sample const & sample)
 {
     using math_type = typename Linalg::scalar_math_type;
     if (!scalar::is_finite<math_type>(sample.declination) || !scalar::is_finite<math_type>(sample.inclination) ||
@@ -134,7 +133,7 @@ template <typename Linalg> Status MagneticReference<Linalg>::validate_sample(Sam
     return Status::success;
 }
 
-template <typename Linalg> Status MagneticReference<Linalg>::adopt(Sample const & sample) noexcept
+template <typename Linalg> Status MagneticReference<Linalg>::adopt(Sample const & sample)
 {
     using math_type = typename Linalg::scalar_math_type;
     if (m_state.reference_id == std::numeric_limits<std::uint32_t>::max())

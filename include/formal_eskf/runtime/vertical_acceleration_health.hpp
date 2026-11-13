@@ -69,8 +69,8 @@ public:
     };
 
     /** Also required when restarting after missing IMU data or changing source/calibration/frame. */
-    void reset() noexcept { m_state = {}; }
-    [[nodiscard]] State const & state() const noexcept { return m_state; }
+    void reset() { m_state = {}; }
+    [[nodiscard]] State const & state() const { return m_state; }
 
     /**
      * Evaluate once per actual estimator IMU update. The caller owns source
@@ -80,20 +80,19 @@ public:
      * Failure preserves history, which is then NOT a verdict for this sample.
      * This monitor does not change ESKF state, noise, fusion gates or bias learning.
      */
-    [[nodiscard]] Status update(Sample const & sample, Observations const & observations) noexcept;
+    [[nodiscard]] Status update(Sample const & sample, Observations const & observations);
 
 private:
-    [[nodiscard]] static Status falling_likelihood(Observations const & observations, Likelihood & output) noexcept;
+    [[nodiscard]] static Status falling_likelihood(Observations const & observations, Likelihood & output);
     /** Advance clipping history and return the evidence used by medium likelihood. */
     [[nodiscard]] static bool update_clipping(std::array<bool, 3U> const & clipped, std::uint16_t limit,
-                                              State & candidate) noexcept;
+                                              State & candidate);
 
     State m_state{};
 }; /* end class VerticalAccelerationHealth */
 
 template <typename Linalg>
-Status VerticalAccelerationHealth<Linalg>::falling_likelihood(Observations const & observations,
-                                                              Likelihood & output) noexcept
+Status VerticalAccelerationHealth<Linalg>::falling_likelihood(Observations const & observations, Likelihood & output)
 {
     using math_type = typename Linalg::scalar_math_type;
     struct Evidence
@@ -169,7 +168,7 @@ Status VerticalAccelerationHealth<Linalg>::falling_likelihood(Observations const
 
 template <typename Linalg>
 bool VerticalAccelerationHealth<Linalg>::update_clipping(std::array<bool, 3U> const & clipped, std::uint16_t limit,
-                                                         State & candidate) noexcept
+                                                         State & candidate)
 {
     std::array<bool, 3U> warning{};
     bool critical = false;
@@ -193,7 +192,7 @@ bool VerticalAccelerationHealth<Linalg>::update_clipping(std::array<bool, 3U> co
 }
 
 template <typename Linalg>
-Status VerticalAccelerationHealth<Linalg>::update(Sample const & sample, Observations const & observations) noexcept
+Status VerticalAccelerationHealth<Linalg>::update(Sample const & sample, Observations const & observations)
 {
     using math_type = typename Linalg::scalar_math_type;
     if (sample.time_us == 0U || sample.time_us <= m_state.last_update_time_us)

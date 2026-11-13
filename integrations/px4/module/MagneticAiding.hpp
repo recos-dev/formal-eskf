@@ -68,7 +68,7 @@ public:
     static constexpr value_type minimum_norm = static_cast<value_type>(1e-6);
 
     /** Bind the source of an actual successful initial alignment; invent no fusion time. */
-    void initialize(source_type const & source, std::uint64_t sample_time_us) noexcept
+    void initialize(source_type const & source, std::uint64_t sample_time_us)
     {
         *this = MagneticAiding{};
         m_source = source;
@@ -78,22 +78,22 @@ public:
         m_aligned = true;
     }
 
-    [[nodiscard]] Status update_acceleration(vector_type const & acceleration_n, value_type dt) noexcept
+    [[nodiscard]] Status update_acceleration(vector_type const & acceleration_n, value_type dt)
     {
         return m_heading.update_acceleration(acceleration_n, dt);
     }
-    void reset_acceleration() noexcept { m_heading.reset_acceleration(); }
-    [[nodiscard]] auto const & lifecycle() const noexcept { return m_lifecycle.state(); }
-    [[nodiscard]] auto const & heading() const noexcept { return m_heading.state(); }
-    [[nodiscard]] auto const & observation() const noexcept { return m_observation; }
-    [[nodiscard]] bool aligned() const noexcept { return m_aligned; }
-    [[nodiscard]] quaternion_type const & reset_delta() const noexcept { return m_reset_delta; }
-    [[nodiscard]] std::uint8_t reset_counter() const noexcept { return m_reset_counter; }
-    [[nodiscard]] std::uint64_t progress_time() const noexcept
+    void reset_acceleration() { m_heading.reset_acceleration(); }
+    [[nodiscard]] auto const & lifecycle() const { return m_lifecycle.state(); }
+    [[nodiscard]] auto const & heading() const { return m_heading.state(); }
+    [[nodiscard]] auto const & observation() const { return m_observation; }
+    [[nodiscard]] bool aligned() const { return m_aligned; }
+    [[nodiscard]] quaternion_type const & reset_delta() const { return m_reset_delta; }
+    [[nodiscard]] std::uint8_t reset_counter() const { return m_reset_counter; }
+    [[nodiscard]] std::uint64_t progress_time() const
     {
         return std::max(lifecycle().last_fuse_time_us, lifecycle().last_reset_time_us);
     }
-    [[nodiscard]] bool heading_aiding() const noexcept
+    [[nodiscard]] bool heading_aiding() const
     {
         return lifecycle().active && m_aligned && m_observation.field.accepted &&
                (!m_horizontal_aiding || heading().consistent);
@@ -102,7 +102,7 @@ public:
     /** Every real estimator tick; a zero timestamp denotes no new observation. */
     [[nodiscard]] Result update(std::uint64_t now_us, Sample const & sample, Context const & context,
                                 Reference const & reference, state_type & state, covariance_type & covariance,
-                                configuration::Ins::BiasUpdate const & bias_update = {}) noexcept;
+                                configuration::Ins::BiasUpdate const & bias_update = {});
 
 private:
     runtime::MagneticHeading<Linalg> m_heading{};
@@ -121,7 +121,7 @@ template <typename Linalg>
 typename MagneticAiding<Linalg>::Result
 MagneticAiding<Linalg>::update(std::uint64_t now_us, Sample const & sample, Context const & context,
                                Reference const & reference, state_type & state, covariance_type & covariance,
-                               configuration::Ins::BiasUpdate const & bias_update) noexcept
+                               configuration::Ins::BiasUpdate const & bias_update)
 {
     Result result;
     auto const previous = lifecycle();

@@ -26,19 +26,19 @@ public:
     using value_type = typename Linalg::value_type;
     using vector_type = linalg::Vector<Linalg, 3U>;
 
-    [[nodiscard]] bool initialized() const noexcept { return m_initialized; }
-    [[nodiscard]] vector_type const & field_b() const noexcept { return m_field_b; }
-    void reset() noexcept { *this = MagnetometerFilter{}; }
+    [[nodiscard]] bool initialized() const { return m_initialized; }
+    [[nodiscard]] vector_type const & field_b() const { return m_field_b; }
+    void reset() { *this = MagnetometerFilter{}; }
 
     /** Invalid input/arithmetic preserves history, including a requested reseed. */
-    [[nodiscard]] Status update(vector_type const & sample, bool reseed = false) noexcept;
+    [[nodiscard]] Status update(vector_type const & sample, bool reseed = false);
 
 private:
     vector_type m_field_b{};
     bool m_initialized = false;
 }; /* end class MagnetometerFilter */
 
-template <typename Linalg> Status MagnetometerFilter<Linalg>::update(vector_type const & sample, bool reseed) noexcept
+template <typename Linalg> Status MagnetometerFilter<Linalg>::update(vector_type const & sample, bool reseed)
 {
     if (!linalg::all_finite(sample))
     {

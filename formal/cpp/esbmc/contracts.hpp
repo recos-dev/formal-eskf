@@ -148,7 +148,7 @@ namespace formal_eskf::so3
 template <>
 inline Status UnitQuaternion<contract_proof::Linalg>::try_from_coefficients(vector4_type const & coefficients,
                                                                             value_type minimum_norm,
-                                                                            UnitQuaternion & output) noexcept
+                                                                            UnitQuaternion & output)
 {
     using contract_proof::ConstructorContract;
     __ESBMC_assert(ConstructorContract::calls == 0U, "constructor contract: at most one request");

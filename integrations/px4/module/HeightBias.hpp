@@ -15,7 +15,7 @@ template <typename Scalar> struct HeightBias
     Scalar signed_ratio{}, positive_time{}, negative_time{};
     Scalar dt = static_cast<Scalar>(0.01);
 
-    void predict(Scalar interval) noexcept
+    void predict(Scalar interval)
     {
         dt = interval;
         bool const offset = std::abs(signed_ratio) > static_cast<Scalar>(0.2) || positive_time > Scalar{10} ||
@@ -24,7 +24,7 @@ template <typename Scalar> struct HeightBias
                               static_cast<Scalar>(1e-8), maximum_variance);
     }
 
-    void fuse(Scalar measurement, Scalar measurement_variance, Scalar sensor_variance) noexcept
+    void fuse(Scalar measurement, Scalar measurement_variance, Scalar sensor_variance)
     {
         maximum_variance = std::max(sensor_variance, static_cast<Scalar>(1e-4));
         Scalar const residual = measurement - value;
@@ -42,7 +42,7 @@ template <typename Scalar> struct HeightBias
         negative_time = residual > Scalar{0} ? negative_time + dt : Scalar{0};
     }
 
-    [[nodiscard]] bool finite() const noexcept
+    [[nodiscard]] bool finite() const
     {
         return std::isfinite(value) && std::isfinite(variance) && std::isfinite(signed_ratio) &&
                std::isfinite(positive_time) && std::isfinite(negative_time);

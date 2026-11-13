@@ -38,10 +38,7 @@ template <typename Linalg> struct ImuDynamicsFixture
     vector_type b_g{};
     formal_eskf::runtime::ImuDynamicsParameters<value_type> parameters{value_type{4}, value_type{2}};
 
-    [[nodiscard]] auto check() const noexcept
-    {
-        return formal_eskf::runtime::check_imu_dynamics(imu, b_a, b_g, parameters);
-    }
+    [[nodiscard]] auto check() const { return formal_eskf::runtime::check_imu_dynamics(imu, b_a, b_g, parameters); }
 };
 
 template <typename Matrix> bool same_bits(Matrix const & a, Matrix const & b)
@@ -62,7 +59,6 @@ template <typename Linalg> void test_magnitudes(TestContext & test, std::string_
     using value_type = typename Linalg::value_type;
     using vector_type = typename ImuDynamicsFixture<Linalg>::vector_type;
     ImuDynamicsFixture<Linalg> fixture;
-    static_assert(noexcept(fixture.check()));
     fixture.b_a = vector_type::from_row_major({value_type{1}, value_type{-2}, value_type{0.5}});
     fixture.b_g = vector_type::from_row_major({value_type{0.125}, value_type{-0.25}, value_type{0.5}});
     fixture.imu.specific_force_b = vector_type::from_row_major({value_type{4}, value_type{2}, value_type{12.5}});

@@ -84,7 +84,7 @@ template <>
 template <>
 inline void
 FixedArrayLinalg<noise_proof::Scalar, NoNormObserver<noise_proof::Scalar>, noise_proof::Math>::set_zero<12U, 12U>(
-    storage_type<12U, 12U> & matrix) noexcept
+    storage_type<12U, 12U> & matrix)
 {
     matrix = {};
 }

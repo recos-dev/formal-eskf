@@ -36,9 +36,9 @@ namespace detail
 
 /** Right-multiply by Exp(delta_theta_b); output is unchanged on failure and may alias q_nb. */
 template <typename Linalg>
-[[nodiscard]] Status
-try_inject_attitude(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Vector<Linalg, 3U> const & delta_theta_b,
-                    typename Linalg::value_type minimum_norm, so3::UnitQuaternion<Linalg> & output) noexcept
+[[nodiscard]] Status try_inject_attitude(so3::UnitQuaternion<Linalg> const & q_nb,
+                                         linalg::Vector<Linalg, 3U> const & delta_theta_b,
+                                         typename Linalg::value_type minimum_norm, so3::UnitQuaternion<Linalg> & output)
 {
     using value_type = typename Linalg::value_type;
     using scalar_math_type = typename Linalg::scalar_math_type;
@@ -65,7 +65,7 @@ try_inject_attitude(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Vector<Lin
 template <std::size_t AttitudeOffset, typename Linalg, std::size_t Size>
 [[nodiscard]] Status try_reset_error_covariance(linalg::Vector<Linalg, 3U> const & delta_theta_b,
                                                 linalg::Matrix<Linalg, Size, Size> const & covariance,
-                                                linalg::Matrix<Linalg, Size, Size> & output) noexcept
+                                                linalg::Matrix<Linalg, Size, Size> & output)
 {
     static_assert(AttitudeOffset + 3U <= Size);
     using matrix3_type = linalg::Matrix<Linalg, 3U, 3U>;
@@ -112,7 +112,7 @@ template <typename Linalg>
 [[nodiscard]] Status try_inject_nominal(configuration::Ahrs::NominalState<Linalg> const & state,
                                         configuration::Ahrs::ErrorState<Linalg> const & error,
                                         typename Linalg::value_type minimum_quaternion_norm,
-                                        configuration::Ahrs::NominalState<Linalg> & output) noexcept
+                                        configuration::Ahrs::NominalState<Linalg> & output)
 {
     return detail::try_inject_attitude(state.q_nb, error.delta_theta_b, minimum_quaternion_norm, output.q_nb);
 }
@@ -127,7 +127,7 @@ template <typename Linalg>
 [[nodiscard]] Status try_inject_nominal(configuration::Ins::NominalState<Linalg> const & state,
                                         configuration::Ins::ErrorState<Linalg> const & error,
                                         typename Linalg::value_type minimum_quaternion_norm,
-                                        configuration::Ins::NominalState<Linalg> & output) noexcept
+                                        configuration::Ins::NominalState<Linalg> & output)
 {
     if (!linalg::all_finite(state.p_n) || !linalg::all_finite(state.v_n) || !linalg::all_finite(state.b_a) ||
         !linalg::all_finite(state.b_g) || !linalg::all_finite(error.delta_p_n) ||
@@ -176,7 +176,7 @@ template <typename Linalg>
 template <typename Linalg>
 [[nodiscard]] Status try_reset_covariance(configuration::Ahrs::ErrorState<Linalg> const & error,
                                           linalg::Matrix<Linalg, 3U, 3U> const & covariance,
-                                          linalg::Matrix<Linalg, 3U, 3U> & output) noexcept
+                                          linalg::Matrix<Linalg, 3U, 3U> & output)
 {
     return detail::try_reset_error_covariance<0U>(error.delta_theta_b, covariance, output);
 }
@@ -190,7 +190,7 @@ template <typename Linalg>
 template <typename Linalg>
 [[nodiscard]] Status try_reset_covariance(configuration::Ins::ErrorState<Linalg> const & error,
                                           linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-                                          linalg::Matrix<Linalg, 15U, 15U> & output) noexcept
+                                          linalg::Matrix<Linalg, 15U, 15U> & output)
 {
     return detail::try_reset_error_covariance<6U>(error.delta_theta_b, covariance, output);
 }
@@ -209,7 +209,7 @@ template <typename Linalg>
                                           typename Linalg::value_type minimum_quaternion_norm,
                                           configuration::Ahrs::NominalState<Linalg> & state_output,
                                           linalg::Matrix<Linalg, 3U, 3U> & covariance_output,
-                                          configuration::Ahrs::ErrorState<Linalg> & error_output) noexcept
+                                          configuration::Ahrs::ErrorState<Linalg> & error_output)
 {
     configuration::Ahrs::NominalState<Linalg> state_candidate;
     Status const nominal_status = try_inject_nominal(state, error, minimum_quaternion_norm, state_candidate);
@@ -237,7 +237,7 @@ template <typename Linalg>
                                           typename Linalg::value_type minimum_quaternion_norm,
                                           configuration::Ins::NominalState<Linalg> & state_output,
                                           linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                                          configuration::Ins::ErrorState<Linalg> & error_output) noexcept
+                                          configuration::Ins::ErrorState<Linalg> & error_output)
 {
     configuration::Ins::NominalState<Linalg> state_candidate;
     Status const nominal_status = try_inject_nominal(state, error, minimum_quaternion_norm, state_candidate);

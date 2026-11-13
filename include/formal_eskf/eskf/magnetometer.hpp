@@ -32,7 +32,7 @@ namespace detail
 /** Project body-frame attitude gain onto navigation Down; preserve all other rows. */
 template <std::size_t AttitudeOffset, typename Linalg, std::size_t Size, std::size_t MeasurementSize>
 [[nodiscard]] Status try_project_magnetic_gain(linalg::Matrix<Linalg, 3U, 3U> const & projector,
-                                               linalg::Matrix<Linalg, Size, MeasurementSize> & gain) noexcept
+                                               linalg::Matrix<Linalg, Size, MeasurementSize> & gain)
 {
     static_assert(AttitudeOffset + 3U <= Size);
     auto const attitude_gain = projector * gain.template block<AttitudeOffset, 0U, 3U, MeasurementSize>();
@@ -50,7 +50,7 @@ template <typename Linalg>
 [[nodiscard]] Status
 try_magnetometer_residual(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Vector<Linalg, 3U> const & m_b,
                           linalg::Vector<Linalg, 3U> const & m_n, linalg::Vector<Linalg, 3U> & prediction_output,
-                          linalg::Vector<Linalg, 3U> & residual_output) noexcept
+                          linalg::Vector<Linalg, 3U> & residual_output)
 {
     using value_type = typename Linalg::value_type;
     if (!linalg::all_finite(q_nb.coefficients()) || !linalg::all_finite(m_b) || !linalg::all_finite(m_n))
@@ -82,7 +82,7 @@ try_magnetometer_residual(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Vect
 /** Construct the navigation-Down projector before constraining attitude gain rows. */
 template <typename Linalg>
 [[nodiscard]] Status try_magnetic_tilt_projector(so3::UnitQuaternion<Linalg> const & q_nb,
-                                                 linalg::Matrix<Linalg, 3U, 3U> & projector_output) noexcept
+                                                 linalg::Matrix<Linalg, 3U, 3U> & projector_output)
 {
     using value_type = typename Linalg::value_type;
     using vector_type = linalg::Vector<Linalg, 3U>;
@@ -116,8 +116,7 @@ template <typename Linalg>
  */
 template <typename Linalg>
 [[nodiscard]] linalg::Matrix<Linalg, 3U, 3U>
-magnetometer_jacobian(configuration::Ahrs::NominalState<Linalg> const & state,
-                      linalg::Vector<Linalg, 3U> const & m_n) noexcept
+magnetometer_jacobian(configuration::Ahrs::NominalState<Linalg> const & state, linalg::Vector<Linalg, 3U> const & m_n)
 {
     return so3::hat<Linalg>(so3::inverse_rotate(state.q_nb, m_n));
 }
@@ -129,8 +128,7 @@ magnetometer_jacobian(configuration::Ahrs::NominalState<Linalg> const & state,
  */
 template <typename Linalg>
 [[nodiscard]] linalg::Matrix<Linalg, 3U, 15U>
-magnetometer_jacobian(configuration::Ins::NominalState<Linalg> const & state,
-                      linalg::Vector<Linalg, 3U> const & m_n) noexcept
+magnetometer_jacobian(configuration::Ins::NominalState<Linalg> const & state, linalg::Vector<Linalg, 3U> const & m_n)
 {
     linalg::Matrix<Linalg, 3U, 15U> H;
     H.template set_block<0U, 6U>(so3::hat<Linalg>(so3::inverse_rotate(state.q_nb, m_n)));
@@ -170,13 +168,11 @@ magnetometer_jacobian(configuration::Ins::NominalState<Linalg> const & state,
  * @see https://doi.org/10.1109/TIM.2010.2047157
  */
 template <typename Linalg>
-[[nodiscard]] Status
-try_correct_magnetometer(configuration::Ahrs::NominalState<Linalg> const & state,
-                         linalg::Matrix<Linalg, 3U, 3U> const & covariance, linalg::Vector<Linalg, 3U> const & m_b,
-                         linalg::Vector<Linalg, 3U> const & m_n, linalg::Matrix<Linalg, 3U, 3U> const & V,
-                         typename Linalg::value_type minimum_quaternion_norm,
-                         configuration::Ahrs::NominalState<Linalg> & state_output,
-                         linalg::Matrix<Linalg, 3U, 3U> & covariance_output) noexcept
+[[nodiscard]] Status try_correct_magnetometer(
+    configuration::Ahrs::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 3U, 3U> const & covariance,
+    linalg::Vector<Linalg, 3U> const & m_b, linalg::Vector<Linalg, 3U> const & m_n,
+    linalg::Matrix<Linalg, 3U, 3U> const & V, typename Linalg::value_type minimum_quaternion_norm,
+    configuration::Ahrs::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 3U, 3U> & covariance_output)
 {
     linalg::Vector<Linalg, 3U> h_m_b, r;
     Status const observation_status = detail::try_magnetometer_residual(state.q_nb, m_b, m_n, h_m_b, r);
@@ -235,7 +231,7 @@ template <typename Linalg>
     linalg::Vector<Linalg, 3U> const & m_b, linalg::Vector<Linalg, 3U> const & m_n,
     linalg::Matrix<Linalg, 3U, 3U> const & V, typename Linalg::value_type minimum_quaternion_norm,
     configuration::Ins::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-    configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+    configuration::Ins::BiasUpdate const & bias_update = {})
 {
     linalg::Vector<Linalg, 3U> h_m_b, r;
     Status const observation_status = detail::try_magnetometer_residual(state.q_nb, m_b, m_n, h_m_b, r);

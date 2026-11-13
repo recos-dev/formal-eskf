@@ -44,19 +44,19 @@ public:
         typename magnitude_type::Result magnitude{};
     };
 
-    AccelerometerSample() noexcept { clear_interval(); }
+    AccelerometerSample() { clear_interval(); }
 
     /** Discard partial increments AND LPF history, without fabricating an observation. */
-    void reset() noexcept { *this = AccelerometerSample{}; }
+    void reset() { *this = AccelerometerSample{}; }
 
     /** Failure preserves all history; only ready results contain a new LPF evaluation. */
     [[nodiscard]] Result update(ImuSample<Linalg> const & imu, std::uint64_t period_us, int clipping_mask,
-                                value_type minimum_quaternion_norm) noexcept;
+                                value_type minimum_quaternion_norm);
 
 private:
     [[nodiscard]] Status integrate(ImuSample<Linalg> const & imu, value_type dt, value_type minimum_quaternion_norm,
-                                   vector_type & accumulated) const noexcept;
-    void clear_interval() noexcept;
+                                   vector_type & accumulated) const;
+    void clear_interval();
 
     magnitude_type m_magnitude{};
     vector_type m_delta_velocity{};
@@ -69,8 +69,7 @@ private:
     double m_minimum_period_us = 0.0;
 }; /* end class AccelerometerSample */
 
-template <typename Linalg, std::uint64_t IntervalUs>
-void AccelerometerSample<Linalg, IntervalUs>::clear_interval() noexcept
+template <typename Linalg, std::uint64_t IntervalUs> void AccelerometerSample<Linalg, IntervalUs>::clear_interval()
 {
     m_delta_velocity = {};
     m_interval_us = 0U;
@@ -87,7 +86,7 @@ void AccelerometerSample<Linalg, IntervalUs>::clear_interval() noexcept
 template <typename Linalg, std::uint64_t IntervalUs>
 Status AccelerometerSample<Linalg, IntervalUs>::integrate(ImuSample<Linalg> const & imu, value_type dt,
                                                           value_type minimum_quaternion_norm,
-                                                          vector_type & accumulated) const noexcept
+                                                          vector_type & accumulated) const
 {
     auto const delta_angle = imu.angular_rate_b * dt;
     auto const delta_velocity = imu.specific_force_b * dt;
@@ -116,7 +115,7 @@ Status AccelerometerSample<Linalg, IntervalUs>::integrate(ImuSample<Linalg> cons
 template <typename Linalg, std::uint64_t IntervalUs>
 typename AccelerometerSample<Linalg, IntervalUs>::Result
 AccelerometerSample<Linalg, IntervalUs>::update(ImuSample<Linalg> const & imu, std::uint64_t period_us,
-                                                int clipping_mask, value_type minimum_quaternion_norm) noexcept
+                                                int clipping_mask, value_type minimum_quaternion_norm)
 {
     Result result;
     if (!linalg::all_finite(imu.specific_force_b) || !linalg::all_finite(imu.angular_rate_b))

@@ -83,7 +83,7 @@ public:
         std::uint64_t last_good_time_us{};
 
         /** Caller validates timestamp ordering; unavailable health cannot request a reset. */
-        [[nodiscard]] constexpr bool reset_required(std::uint64_t now_us) const noexcept
+        [[nodiscard]] constexpr bool reset_required(std::uint64_t now_us) const
         {
             return update_time_us != 0U && update_time_us <= now_us && last_good_time_us <= update_time_us &&
                    (last_good_time_us == 0U || now_us - last_good_time_us > acceleration_reset_delay_us);
@@ -132,8 +132,8 @@ public:
         bool restart_quality = false;
     };
 
-    [[nodiscard]] State const & state() const noexcept { return m_state; }
-    void reset() noexcept { *this = GnssFusion{}; }
+    [[nodiscard]] State const & state() const { return m_state; }
+    void reset() { *this = GnssFusion{}; }
 
     /**
      * Positive durations are fixed until reset; horizontal timeout <= UINT64_MAX/2.
@@ -142,7 +142,7 @@ public:
      * revoke permissions but consume no time/configuration/history.
      */
     [[nodiscard]] Status update(std::uint64_t now_us, Conditions const & conditions, Parameters const & parameters,
-                                Sample const & sample) noexcept;
+                                Sample const & sample);
 
     /**
      * Consume one permission; only fused refreshes that group's progress.
@@ -150,32 +150,31 @@ public:
      * Other groups ignore this argument. Unavailable health leaves timeout recovery intact.
      */
     [[nodiscard]] Status record_fusion(Group group, std::uint64_t sample_time_us, FusionDecision decision,
-                                       VerticalAccelerationTimes const & vertical_acceleration = {0U, 0U}) noexcept;
+                                       VerticalAccelerationTimes const & vertical_acceleration = {0U, 0U});
 
     /** Consume a reset permission after the checked state/P operation. */
-    [[nodiscard]] Status record_reset(Group group, std::uint64_t sample_time_us, bool reset_succeeded) noexcept;
+    [[nodiscard]] Status record_reset(Group group, std::uint64_t sample_time_us, bool reset_succeeded);
 
     /** Acknowledge the permitted Down-only reset before this sample's height operation. */
-    [[nodiscard]] Status record_vertical_velocity_reset(std::uint64_t sample_time_us, bool reset_succeeded) noexcept;
+    [[nodiscard]] Status record_vertical_velocity_reset(std::uint64_t sample_time_us, bool reset_succeeded);
 
     /** Acknowledge caller-established safe re-entry; does not reset estimator or quality. */
-    [[nodiscard]] Status restart(Group group) noexcept;
+    [[nodiscard]] Status restart(Group group);
 
 private:
-    void revoke_permissions() noexcept;
-    void clear_vertical_velocity_reset() noexcept;
-    [[nodiscard]] bool height_waiting_for_velocity() const noexcept;
+    void revoke_permissions();
+    void clear_vertical_velocity_reset();
+    [[nodiscard]] bool height_waiting_for_velocity() const;
     [[nodiscard]] Status validate_update(std::uint64_t now_us, Conditions const & conditions,
-                                         Parameters const & parameters, Sample const & sample) const noexcept;
-    void request_horizontal_resets(Conditions const & conditions) noexcept;
-    [[nodiscard]] GroupState * select_group(Group group) noexcept;
-    static void stop(GroupState & group, StopReason reason) noexcept;
-    static void require_recovery(GroupState & group, StopReason reason) noexcept;
-    static void request_reset(GroupState & group, StopReason reason) noexcept;
-    [[nodiscard]] bool expired(GroupState const & group, std::uint64_t duration) const noexcept;
-    [[nodiscard]] StopReason height_reset_reason(VerticalAccelerationTimes const & health) const noexcept;
-    void update_group(GroupState & group, GroupConditions conditions, bool new_sample, bool accepted,
-                      bool fresh) noexcept;
+                                         Parameters const & parameters, Sample const & sample) const;
+    void request_horizontal_resets(Conditions const & conditions);
+    [[nodiscard]] GroupState * select_group(Group group);
+    static void stop(GroupState & group, StopReason reason);
+    static void require_recovery(GroupState & group, StopReason reason);
+    static void request_reset(GroupState & group, StopReason reason);
+    [[nodiscard]] bool expired(GroupState const & group, std::uint64_t duration) const;
+    [[nodiscard]] StopReason height_reset_reason(VerticalAccelerationTimes const & health) const;
+    void update_group(GroupState & group, GroupConditions conditions, bool new_sample, bool accepted, bool fresh);
 
     State m_state{};
     Parameters m_parameters{};
@@ -185,13 +184,13 @@ private:
     StopReason m_vertical_velocity_reset_pending = StopReason::none;
 }; /* end class GnssFusion */
 
-inline void GnssFusion::clear_vertical_velocity_reset() noexcept
+inline void GnssFusion::clear_vertical_velocity_reset()
 {
     m_vertical_velocity_reset_pending = StopReason::none;
     m_state.vertical_velocity_reset_reason = StopReason::none;
 }
 
-inline void GnssFusion::revoke_permissions() noexcept
+inline void GnssFusion::revoke_permissions()
 {
     m_state.horizontal_position.action = Action::none;
     m_state.vertical_position.action = Action::none;
@@ -199,13 +198,13 @@ inline void GnssFusion::revoke_permissions() noexcept
     clear_vertical_velocity_reset();
 }
 
-inline bool GnssFusion::height_waiting_for_velocity() const noexcept
+inline bool GnssFusion::height_waiting_for_velocity() const
 {
     return m_vertical_velocity_reset_pending != StopReason::none ||
            m_state.vertical_velocity_reset_reason != StopReason::none;
 }
 
-inline GnssFusion::GroupState * GnssFusion::select_group(Group group) noexcept
+inline GnssFusion::GroupState * GnssFusion::select_group(Group group)
 {
     switch (group)
     {
@@ -219,7 +218,7 @@ inline GnssFusion::GroupState * GnssFusion::select_group(Group group) noexcept
     return nullptr;
 }
 
-inline void GnssFusion::stop(GroupState & group, StopReason reason) noexcept
+inline void GnssFusion::stop(GroupState & group, StopReason reason)
 {
     group.active = false;
     group.action = Action::none;
@@ -229,13 +228,13 @@ inline void GnssFusion::stop(GroupState & group, StopReason reason) noexcept
     }
 }
 
-inline void GnssFusion::require_recovery(GroupState & group, StopReason reason) noexcept
+inline void GnssFusion::require_recovery(GroupState & group, StopReason reason)
 {
     stop(group, reason);
     group.recovery_required = true;
 }
 
-inline void GnssFusion::request_reset(GroupState & group, StopReason reason) noexcept
+inline void GnssFusion::request_reset(GroupState & group, StopReason reason)
 {
     // A timeout reset keeps the session alive; it is not a quality stop.
     if (!group.recovery_required)
@@ -246,14 +245,14 @@ inline void GnssFusion::request_reset(GroupState & group, StopReason reason) noe
     group.action = Action::none;
 }
 
-inline bool GnssFusion::expired(GroupState const & group, std::uint64_t duration) const noexcept
+inline bool GnssFusion::expired(GroupState const & group, std::uint64_t duration) const
 {
     auto progress = group.last_fuse_time_us > group.start_time_us ? group.last_fuse_time_us : group.start_time_us;
     progress = group.last_reset_time_us > progress ? group.last_reset_time_us : progress;
     return progress == 0U || m_update_time_us - progress > duration;
 }
 
-inline GnssFusion::StopReason GnssFusion::height_reset_reason(VerticalAccelerationTimes const & health) const noexcept
+inline GnssFusion::StopReason GnssFusion::height_reset_reason(VerticalAccelerationTimes const & health) const
 {
     if (health.reset_required(m_update_time_us))
     {
@@ -264,7 +263,7 @@ inline GnssFusion::StopReason GnssFusion::height_reset_reason(VerticalAccelerati
 }
 
 inline void GnssFusion::update_group(GroupState & group, GroupConditions conditions, bool new_sample, bool accepted,
-                                     bool fresh) noexcept
+                                     bool fresh)
 {
     if (!conditions.enabled)
     {
@@ -313,7 +312,7 @@ inline void GnssFusion::update_group(GroupState & group, GroupConditions conditi
 }
 
 inline Status GnssFusion::validate_update(std::uint64_t now_us, Conditions const & conditions,
-                                          Parameters const & parameters, Sample const & sample) const noexcept
+                                          Parameters const & parameters, Sample const & sample) const
 {
     if (parameters.horizontal_timeout_us == 0U ||
         parameters.horizontal_timeout_us > std::numeric_limits<std::uint64_t>::max() / 2U ||
@@ -344,7 +343,7 @@ inline Status GnssFusion::validate_update(std::uint64_t now_us, Conditions const
     return Status::success;
 }
 
-inline void GnssFusion::request_horizontal_resets(Conditions const & conditions) noexcept
+inline void GnssFusion::request_horizontal_resets(Conditions const & conditions)
 {
     // Called with accepted fresh data, before either horizontal group attempts fusion.
     bool const both_expired = expired(m_state.horizontal_position, m_parameters.horizontal_timeout_us) &&
@@ -367,7 +366,7 @@ inline void GnssFusion::request_horizontal_resets(Conditions const & conditions)
 }
 
 inline Status GnssFusion::update(std::uint64_t now_us, Conditions const & conditions, Parameters const & parameters,
-                                 Sample const & sample) noexcept
+                                 Sample const & sample)
 {
     revoke_permissions();
     auto const status = validate_update(now_us, conditions, parameters, sample);
@@ -434,7 +433,7 @@ inline Status GnssFusion::update(std::uint64_t now_us, Conditions const & condit
 }
 
 inline Status GnssFusion::record_fusion(Group group, std::uint64_t sample_time_us, FusionDecision decision,
-                                        VerticalAccelerationTimes const & vertical_acceleration) noexcept
+                                        VerticalAccelerationTimes const & vertical_acceleration)
 {
     auto * group_state = select_group(group);
     if (group_state == nullptr || (decision != FusionDecision::fused && decision != FusionDecision::rejected &&
@@ -484,7 +483,7 @@ inline Status GnssFusion::record_fusion(Group group, std::uint64_t sample_time_u
     return Status::success;
 }
 
-inline Status GnssFusion::restart(Group group) noexcept
+inline Status GnssFusion::restart(Group group)
 {
     auto * group_state = select_group(group);
     if (group_state == nullptr)
@@ -503,7 +502,7 @@ inline Status GnssFusion::restart(Group group) noexcept
     return Status::success;
 }
 
-inline Status GnssFusion::record_reset(Group group, std::uint64_t sample_time_us, bool reset_succeeded) noexcept
+inline Status GnssFusion::record_reset(Group group, std::uint64_t sample_time_us, bool reset_succeeded)
 {
     auto * group_state = select_group(group);
     if (group_state == nullptr)
@@ -534,7 +533,7 @@ inline Status GnssFusion::record_reset(Group group, std::uint64_t sample_time_us
     return Status::success;
 }
 
-inline Status GnssFusion::record_vertical_velocity_reset(std::uint64_t sample_time_us, bool reset_succeeded) noexcept
+inline Status GnssFusion::record_vertical_velocity_reset(std::uint64_t sample_time_us, bool reset_succeeded)
 {
     if (m_state.vertical_velocity_reset_reason == StopReason::none || sample_time_us != m_sample_time_us)
     {

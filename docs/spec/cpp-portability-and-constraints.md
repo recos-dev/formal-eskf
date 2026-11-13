@@ -59,7 +59,7 @@ The examples illustrate syntax, not new API declarations or required class desig
 | Ordinary branches and bounded loops | `for (std::size_t i = 0U; i < 3U; ++i)` | Use direct control flow with a known upper bound. |
 | Fixed-size containers | `std::array<bool, 3U> enabled{};` | Keep capacity static and operations allocation-free. |
 | Explicit numeric conversions | `static_cast<value_type>(time_us)` | Check range and precision requirements; a cast alone does not establish validity. |
-| Result-use and exception annotations | `[[nodiscard]] Status update() noexcept;` | Mark results that must be handled; noexcept does not replace validation. |
+| Result-use annotations | `[[nodiscard]] Status update();` | Mark results that must be handled. |
 | Explicit/defaulted/deleted special members | `explicit Estimator(parameters_type const &);`, `Estimator(Estimator const &) = delete;` | Use when conversion, construction or ownership semantics require them; omit redundant declarations. |
 
 ### Features with restricted use
@@ -141,6 +141,8 @@ reinterpretation of object representation
 The core is deterministic for the same input and numerical profile.
 
 ## Error handling
+
+Do not add explicit `noexcept` to project functions. Enforce the core's no-exception restriction through source, dependency review and target build settings; function annotations do not establish it. Defaulted special members retain the exception specification inferred by C++.
 
 Expected numerical failures use explicit return values:
 

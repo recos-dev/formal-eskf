@@ -50,7 +50,7 @@ template <typename Linalg>
     linalg::Matrix<Linalg, 3U, 3U> const & V, AccelerometerFusionConditions const & conditions,
     typename AccelerometerMagnitude<Linalg>::Result const & magnitude,
     typename Linalg::value_type minimum_quaternion_norm, configuration::Ahrs::NominalState<Linalg> & state_output,
-    linalg::Matrix<Linalg, 3U, 3U> & covariance_output) noexcept
+    linalg::Matrix<Linalg, 3U, 3U> & covariance_output)
 {
     AccelerometerFusionResult result;
     result.conditions = check_accelerometer_fusion_conditions<Linalg>(conditions, magnitude);
@@ -81,8 +81,7 @@ template <typename Linalg>
     linalg::Matrix<Linalg, 3U, 3U> const & V, AccelerometerFusionConditions const & conditions,
     typename AccelerometerMagnitude<Linalg>::Result const & magnitude,
     typename Linalg::value_type minimum_quaternion_norm, configuration::Ins::NominalState<Linalg> & state_output,
-    linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-    configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+    linalg::Matrix<Linalg, 15U, 15U> & covariance_output, configuration::Ins::BiasUpdate const & bias_update = {})
 {
     AccelerometerFusionResult result;
     result.conditions = check_accelerometer_fusion_conditions<Linalg>(conditions, magnitude);

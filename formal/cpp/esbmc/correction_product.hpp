@@ -40,8 +40,7 @@ namespace formal_eskf::linalg
 #define CORRECTION_DOT(K)                                                                                              \
     template <>                                                                                                        \
     inline correction_proof::Scalar dot<correction_proof::Backend, K>(                                                 \
-        Matrix<correction_proof::Backend, K, 1U> const & left,                                                         \
-        Matrix<correction_proof::Backend, K, 1U> const & right) noexcept                                               \
+        Matrix<correction_proof::Backend, K, 1U> const & left, Matrix<correction_proof::Backend, K, 1U> const & right) \
     {                                                                                                                  \
         using Call = correction_proof::DotCalls<K>;                                                                    \
         __ESBMC_assert(Call::count++ == 0U, "E-CORRECT entry: exactly one dot product");                               \
@@ -110,7 +109,7 @@ namespace formal_eskf::verification
     inline void FixedArrayLinalg<correction_proof::Scalar, NoNormObserver<correction_proof::Scalar>,                   \
                                  solve_proof::Math>::multiply<R, K, C>(storage_type<R, K> const & left,                \
                                                                        storage_type<K, C> const & right,               \
-                                                                       storage_type<R, C> & output) noexcept           \
+                                                                       storage_type<R, C> & output)                    \
     {                                                                                                                  \
         correction_proof::ordered_product<R, K, C>(left, right, output);                                               \
     }

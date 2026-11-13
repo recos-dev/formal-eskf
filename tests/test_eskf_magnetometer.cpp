@@ -108,9 +108,6 @@ void test_magnetometer_jacobian(TestContext & test, std::string_view profile)
     using value_type = typename Linalg::value_type;
     using Fixture = MagnetometerFixture<Linalg, Configuration>;
     Fixture fixture;
-    static_assert(noexcept(formal_eskf::magnetometer_jacobian(fixture.state, fixture.m_n)));
-    static_assert(noexcept(try_correct_magnetometer(fixture.state, fixture.P, fixture.m_b, fixture.m_n, fixture.V,
-                                                    Fixture::minimum_norm, fixture.state, fixture.P)));
     test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::try_from_coefficients(
                     value_type{0.5}, value_type{0.5}, value_type{0.5}, value_type{0.5}, Fixture::minimum_norm,
                     fixture.state.q_nb) == Status::success,

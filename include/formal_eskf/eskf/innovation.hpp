@@ -40,7 +40,7 @@ template <typename Linalg, std::size_t Size>
 [[nodiscard]] Status try_check_innovation(linalg::Vector<Linalg, Size> const & innovation,
                                           linalg::Vector<Linalg, Size> const & innovation_variance,
                                           typename Linalg::value_type gate_sigma,
-                                          InnovationCheck<Linalg, Size> & output) noexcept
+                                          InnovationCheck<Linalg, Size> & output)
 {
     using value_type = typename Linalg::value_type;
     using math_type = typename Linalg::scalar_math_type;

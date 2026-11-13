@@ -48,7 +48,7 @@ struct FiniteContract
 #if FORMAL_ESKF_PROOF_SQUARED_NORM_CONTRACT
 namespace formal_eskf::linalg
 {
-template <> inline contract_proof::Scalar squared_norm(contract_proof::Vector3 const & input) noexcept
+template <> inline contract_proof::Scalar squared_norm(contract_proof::Vector3 const & input)
 {
     using jacobian_proof::SquaredNormContract;
     __ESBMC_assert(SquaredNormContract::calls == 0U, "F-JR contract: one squared-norm request");
@@ -62,7 +62,7 @@ template <> inline contract_proof::Scalar squared_norm(contract_proof::Vector3 c
 #if FORMAL_ESKF_PROOF_FINITE_CONTRACT
 namespace formal_eskf::linalg
 {
-template <> inline bool all_finite(jacobian_proof::Matrix3 const & input) noexcept
+template <> inline bool all_finite(jacobian_proof::Matrix3 const & input)
 {
     using jacobian_proof::FiniteContract;
     __ESBMC_assert(FiniteContract::calls == 0U, "F-JR contract: one complete candidate check");

@@ -27,7 +27,7 @@ public:
         }
     }
 
-    [[nodiscard]] int failures() const noexcept { return m_failures; }
+    [[nodiscard]] int failures() const { return m_failures; }
 
 private:
     int m_failures = 0;

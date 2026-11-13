@@ -74,10 +74,10 @@ template <typename Linalg, typename Configuration> struct AccelerometerFixture
     vector_type g_n = vector_type::from_row_major({value_type{0}, value_type{0}, value_type{2}});
     matrix3_type V = matrix3_type::identity();
 
-    [[nodiscard]] jacobian_type jacobian() const noexcept { return formal_eskf::accelerometer_jacobian(state, g_n); }
+    [[nodiscard]] jacobian_type jacobian() const { return formal_eskf::accelerometer_jacobian(state, g_n); }
 
     [[nodiscard]] Status correct(state_type & output, covariance_type & P_output, value_type norm = minimum_norm,
-                                 formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {}) const noexcept
+                                 formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {}) const
     {
         if constexpr (size == 3U)
         {
@@ -150,8 +150,6 @@ void test_accelerometer_jacobian(TestContext & test, std::string_view profile)
     using value_type = typename Linalg::value_type;
     using Fixture = AccelerometerFixture<Linalg, Configuration>;
     Fixture fixture;
-    static_assert(noexcept(fixture.jacobian()));
-    static_assert(noexcept(fixture.correct(fixture.state, fixture.P)));
     moving_state(test, fixture, profile);
     // R^T maps (x,y,z) to (y,z,x): g_b=(0,2,0). Only the attitude block is nonzero.
     typename Fixture::jacobian_type expected;

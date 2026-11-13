@@ -32,7 +32,7 @@ template <typename Scalar> struct BiasLimits
  */
 template <typename Linalg>
 [[nodiscard]] Status try_limit_bias(configuration::Ins::NominalState<Linalg> & state,
-                                    BiasLimits<typename Linalg::value_type> limits) noexcept
+                                    BiasLimits<typename Linalg::value_type> limits)
 {
     using value_type = typename Linalg::value_type;
     using math_type = typename Linalg::scalar_math_type;

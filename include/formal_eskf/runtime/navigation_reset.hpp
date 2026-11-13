@@ -23,7 +23,7 @@ template <typename Linalg, std::size_t Size>
 [[nodiscard]] Status validate_navigation_reset_inputs(configuration::Ins::NominalState<Linalg> const & state,
                                                       linalg::Matrix<Linalg, 15U, 15U> const & covariance,
                                                       linalg::Vector<Linalg, Size> const & observation,
-                                                      linalg::Vector<Linalg, Size> const & variances) noexcept
+                                                      linalg::Vector<Linalg, Size> const & variances)
 {
     using value_type = typename Linalg::value_type;
     if (!linalg::all_finite(state.p_n) || !linalg::all_finite(state.v_n) ||
@@ -56,7 +56,7 @@ template <typename Linalg, std::size_t Size>
 
 /** Decouple one navigation error coordinate, retaining its current variance. */
 template <typename Linalg>
-void uncorrelate_navigation_axis(linalg::Matrix<Linalg, 15U, 15U> & covariance, std::size_t axis) noexcept
+void uncorrelate_navigation_axis(linalg::Matrix<Linalg, 15U, 15U> & covariance, std::size_t axis)
 {
     for (std::size_t index = 0U; index < 15U; ++index)
     {
@@ -71,7 +71,7 @@ void uncorrelate_navigation_axis(linalg::Matrix<Linalg, 15U, 15U> & covariance, 
 /** Decouple an overwritten coordinate and apply the navigation reset noise floor. */
 template <typename Linalg>
 void reset_navigation_axis(linalg::Matrix<Linalg, 15U, 15U> & covariance, std::size_t axis,
-                           typename Linalg::value_type variance) noexcept
+                           typename Linalg::value_type variance)
 {
     using value_type = typename Linalg::value_type;
     constexpr value_type minimum_standard_deviation = static_cast<value_type>(0.01);
@@ -103,7 +103,7 @@ template <typename Linalg>
                                                         linalg::Vector<Linalg, 2U> const & variances,
                                                         configuration::Ins::NominalState<Linalg> & state_output,
                                                         linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                                                        linalg::Vector<Linalg, 2U> & delta_output) noexcept
+                                                        linalg::Vector<Linalg, 2U> & delta_output)
 {
     using value_type = typename Linalg::value_type;
     Status const status = detail::validate_navigation_reset_inputs(state, covariance, position, variances);
@@ -151,7 +151,7 @@ template <typename Linalg>
                                                  typename Linalg::value_type variance,
                                                  configuration::Ins::NominalState<Linalg> & state_output,
                                                  linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                                                 typename Linalg::value_type & delta_output) noexcept
+                                                 typename Linalg::value_type & delta_output)
 {
     using value_type = typename Linalg::value_type;
     using scalar_vector_type = linalg::Vector<Linalg, 1U>;
@@ -195,7 +195,7 @@ template <typename Linalg>
                                                  typename Linalg::value_type variance,
                                                  configuration::Ins::NominalState<Linalg> & state_output,
                                                  linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                                                 typename Linalg::value_type & delta_output) noexcept
+                                                 typename Linalg::value_type & delta_output)
 {
     using value_type = typename Linalg::value_type;
     using scalar_vector_type = linalg::Vector<Linalg, 1U>;
@@ -233,13 +233,12 @@ template <typename Linalg>
  * This is neither a height-position reset nor a gated Kalman correction.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_reset_velocity(configuration::Ins::NominalState<Linalg> const & state,
-                                        linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-                                        linalg::Vector<Linalg, 3U> const & velocity,
-                                        linalg::Vector<Linalg, 3U> const & variances,
-                                        configuration::Ins::NominalState<Linalg> & state_output,
-                                        linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                                        linalg::Vector<Linalg, 3U> & delta_output) noexcept
+[[nodiscard]] Status
+try_reset_velocity(configuration::Ins::NominalState<Linalg> const & state,
+                   linalg::Matrix<Linalg, 15U, 15U> const & covariance, linalg::Vector<Linalg, 3U> const & velocity,
+                   linalg::Vector<Linalg, 3U> const & variances,
+                   configuration::Ins::NominalState<Linalg> & state_output,
+                   linalg::Matrix<Linalg, 15U, 15U> & covariance_output, linalg::Vector<Linalg, 3U> & delta_output)
 {
     Status const status = detail::validate_navigation_reset_inputs(state, covariance, velocity, variances);
     if (!succeeded(status))

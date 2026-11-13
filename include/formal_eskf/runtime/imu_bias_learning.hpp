@@ -54,7 +54,7 @@ public:
     };
 
     /** Also required on IMU/source/calibration or body-frame changes. */
-    void reset() noexcept { *this = ImuBiasLearning{}; }
+    void reset() { *this = ImuBiasLearning{}; }
 
     /**
      * Call once per new IMU sample, before corrections at that fusion horizon.
@@ -63,12 +63,11 @@ public:
      * an invalid call must not carry an old learning authorization forward.
      * Do not reuse the result at later horizons without updating this monitor.
      */
-    [[nodiscard]] Result update(std::uint64_t time_us, Conditions const & conditions,
-                                Parameters const & parameters) noexcept;
+    [[nodiscard]] Result update(std::uint64_t time_us, Conditions const & conditions, Parameters const & parameters);
 
 private:
     [[nodiscard]] static bool update_axis(bool eligible, std::uint64_t time_us, std::uint64_t recovery_time_us,
-                                          std::uint64_t & good_since_us) noexcept;
+                                          std::uint64_t & good_since_us);
 
     std::array<std::uint64_t, 3U> m_accelerometer_good_since{};
     std::array<std::uint64_t, 3U> m_gyroscope_good_since{};
@@ -77,7 +76,7 @@ private:
 }; /* end class ImuBiasLearning */
 
 inline bool ImuBiasLearning::update_axis(bool eligible, std::uint64_t time_us, std::uint64_t recovery_time_us,
-                                         std::uint64_t & good_since_us) noexcept
+                                         std::uint64_t & good_since_us)
 {
     if (!eligible)
     {
@@ -92,7 +91,7 @@ inline bool ImuBiasLearning::update_axis(bool eligible, std::uint64_t time_us, s
 }
 
 inline ImuBiasLearning::Result ImuBiasLearning::update(std::uint64_t time_us, Conditions const & conditions,
-                                                       Parameters const & parameters) noexcept
+                                                       Parameters const & parameters)
 {
     Result result;
     if (parameters.recovery_time_us == 0U || parameters.maximum_sample_interval_us == 0U)

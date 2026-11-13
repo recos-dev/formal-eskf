@@ -26,7 +26,7 @@ namespace formal_eskf
 template <typename Linalg>
 [[nodiscard]] linalg::Matrix<Linalg, 3U, 3U>
 accelerometer_jacobian(configuration::Ahrs::NominalState<Linalg> const & state,
-                       linalg::Vector<Linalg, 3U> const & gravity_n) noexcept
+                       linalg::Vector<Linalg, 3U> const & gravity_n)
 {
     return so3::hat<Linalg>(-so3::inverse_rotate(state.q_nb, gravity_n));
 }
@@ -41,7 +41,7 @@ accelerometer_jacobian(configuration::Ahrs::NominalState<Linalg> const & state,
 template <typename Linalg>
 [[nodiscard]] linalg::Matrix<Linalg, 3U, 15U>
 accelerometer_jacobian(configuration::Ins::NominalState<Linalg> const & state,
-                       linalg::Vector<Linalg, 3U> const & gravity_n) noexcept
+                       linalg::Vector<Linalg, 3U> const & gravity_n)
 {
     auto const h = -so3::inverse_rotate(state.q_nb, gravity_n);
     linalg::Matrix<Linalg, 3U, 15U> H;
@@ -74,14 +74,11 @@ accelerometer_jacobian(configuration::Ins::NominalState<Linalg> const & state,
  * respective inputs. No backend, state augmentation or allocation is added.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_correct_accelerometer(configuration::Ahrs::NominalState<Linalg> const & state,
-                                               linalg::Matrix<Linalg, 3U, 3U> const & covariance,
-                                               linalg::Vector<Linalg, 3U> const & specific_force_b,
-                                               linalg::Vector<Linalg, 3U> const & gravity_n,
-                                               linalg::Matrix<Linalg, 3U, 3U> const & V,
-                                               typename Linalg::value_type minimum_quaternion_norm,
-                                               configuration::Ahrs::NominalState<Linalg> & state_output,
-                                               linalg::Matrix<Linalg, 3U, 3U> & covariance_output) noexcept
+[[nodiscard]] Status try_correct_accelerometer(
+    configuration::Ahrs::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 3U, 3U> const & covariance,
+    linalg::Vector<Linalg, 3U> const & specific_force_b, linalg::Vector<Linalg, 3U> const & gravity_n,
+    linalg::Matrix<Linalg, 3U, 3U> const & V, typename Linalg::value_type minimum_quaternion_norm,
+    configuration::Ahrs::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 3U, 3U> & covariance_output)
 {
     using value_type = typename Linalg::value_type;
     if (!linalg::all_finite(state.q_nb.coefficients()) || !linalg::all_finite(specific_force_b) ||
@@ -129,7 +126,7 @@ template <typename Linalg>
     linalg::Vector<Linalg, 3U> const & specific_force_b, linalg::Vector<Linalg, 3U> const & gravity_n,
     linalg::Matrix<Linalg, 3U, 3U> const & V, typename Linalg::value_type minimum_quaternion_norm,
     configuration::Ins::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-    configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+    configuration::Ins::BiasUpdate const & bias_update = {})
 {
     using value_type = typename Linalg::value_type;
     if (!linalg::all_finite(state.q_nb.coefficients()) || !linalg::all_finite(state.v_n) ||

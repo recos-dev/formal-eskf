@@ -26,7 +26,7 @@ struct GnssQualityChecks
     bool vertical_speed = false;
     bool spoofed = false;
 
-    [[nodiscard]] bool any_enabled(GnssQualityChecks const & enabled) const noexcept
+    [[nodiscard]] bool any_enabled(GnssQualityChecks const & enabled) const
     {
         return (satellites && enabled.satellites) || (pdop && enabled.pdop) ||
                (horizontal_accuracy && enabled.horizontal_accuracy) ||
@@ -125,12 +125,12 @@ public:
     using sample_type = GnssQualitySample<Linalg>;
     using result_type = GnssQualityResult<value_type>;
 
-    void reset() noexcept { *this = GnssQuality{}; }
+    void reset() { *this = GnssQuality{}; }
 
     /** A stopped horizontal aiding session must re-establish recent health.
      * Retain initial qualification, filters and source/time watermarks.
      */
-    void restart_health() noexcept
+    void restart_health()
     {
         m_last_fail_us = 0U;
         m_last_pass_us = 0U;
@@ -142,20 +142,20 @@ public:
      * accepted is a quality decision only, not an alignment/innovation/fusion check.
      */
     [[nodiscard]] result_type update(sample_type const & sample, GnssQualityMotion motion, std::uint64_t now_us,
-                                     parameters_type const & parameters) noexcept;
+                                     parameters_type const & parameters);
 
 private:
     using math_type = typename Linalg::scalar_math_type;
     using vector_type = linalg::Vector<Linalg, 3U>;
 
-    [[nodiscard]] static Status validate_parameters(parameters_type const & parameters) noexcept;
-    [[nodiscard]] Status validate_sample(sample_type const & sample, GnssQualityMotion motion) const noexcept;
+    [[nodiscard]] static Status validate_parameters(parameters_type const & parameters);
+    [[nodiscard]] Status validate_sample(sample_type const & sample, GnssQualityMotion motion) const;
     [[nodiscard]] Status update_stationary_checks(sample_type const & sample, parameters_type const & parameters,
-                                                  result_type & result) noexcept;
+                                                  result_type & result);
     [[nodiscard]] Status update_motion_checks(sample_type const & sample, GnssQualityMotion motion,
-                                              parameters_type const & parameters, result_type & result) noexcept;
-    void update_health(std::uint64_t now_us, parameters_type const & parameters, result_type & result) noexcept;
-    void reset_filters() noexcept;
+                                              parameters_type const & parameters, result_type & result);
+    void update_health(std::uint64_t now_us, parameters_type const & parameters, result_type & result);
+    void reset_filters();
 
     vector_type m_position_rate{};
     vector_type m_velocity{};
@@ -168,13 +168,13 @@ private:
     bool m_qualified = false;
 }; /* end class GnssQuality */
 
-template <typename Linalg> void GnssQuality<Linalg>::reset_filters() noexcept
+template <typename Linalg> void GnssQuality<Linalg>::reset_filters()
 {
     m_position_rate = vector_type::zero();
     m_velocity = vector_type::zero();
 }
 
-template <typename Linalg> Status GnssQuality<Linalg>::validate_parameters(parameters_type const & parameters) noexcept
+template <typename Linalg> Status GnssQuality<Linalg>::validate_parameters(parameters_type const & parameters)
 {
     value_type const bounds[]{
         parameters.maximum_pdop,           parameters.maximum_horizontal_accuracy, parameters.maximum_vertical_accuracy,
@@ -207,7 +207,7 @@ template <typename Linalg> Status GnssQuality<Linalg>::validate_parameters(param
 }
 
 template <typename Linalg>
-Status GnssQuality<Linalg>::validate_sample(sample_type const & sample, GnssQualityMotion motion) const noexcept
+Status GnssQuality<Linalg>::validate_sample(sample_type const & sample, GnssQualityMotion motion) const
 {
     value_type const accuracies[]{sample.pdop, sample.horizontal_accuracy, sample.vertical_accuracy,
                                   sample.speed_accuracy};
@@ -233,7 +233,7 @@ Status GnssQuality<Linalg>::validate_sample(sample_type const & sample, GnssQual
 
 template <typename Linalg>
 Status GnssQuality<Linalg>::update_stationary_checks(sample_type const & sample, parameters_type const & parameters,
-                                                     result_type & result) noexcept
+                                                     result_type & result)
 {
     auto const dt =
         std::clamp(static_cast<value_type>(sample.time_us - m_sample_time_us) * static_cast<value_type>(1e-6),
@@ -273,7 +273,7 @@ Status GnssQuality<Linalg>::update_stationary_checks(sample_type const & sample,
 
 template <typename Linalg>
 Status GnssQuality<Linalg>::update_motion_checks(sample_type const & sample, GnssQualityMotion motion,
-                                                 parameters_type const & parameters, result_type & result) noexcept
+                                                 parameters_type const & parameters, result_type & result)
 {
     if (!motion.in_air && motion.vehicle_at_rest)
     {
@@ -315,8 +315,7 @@ Status GnssQuality<Linalg>::update_motion_checks(sample_type const & sample, Gns
 }
 
 template <typename Linalg>
-void GnssQuality<Linalg>::update_health(std::uint64_t now_us, parameters_type const & parameters,
-                                        result_type & result) noexcept
+void GnssQuality<Linalg>::update_health(std::uint64_t now_us, parameters_type const & parameters, result_type & result)
 {
     if (m_last_fail_us == 0U || result.decision == GnssQualityDecision::rejected)
     {
@@ -345,7 +344,7 @@ void GnssQuality<Linalg>::update_health(std::uint64_t now_us, parameters_type co
 template <typename Linalg>
 typename GnssQuality<Linalg>::result_type GnssQuality<Linalg>::update(sample_type const & sample,
                                                                       GnssQualityMotion motion, std::uint64_t now_us,
-                                                                      parameters_type const & parameters) noexcept
+                                                                      parameters_type const & parameters)
 {
     auto const parameter_status = validate_parameters(parameters);
     if (!succeeded(parameter_status))

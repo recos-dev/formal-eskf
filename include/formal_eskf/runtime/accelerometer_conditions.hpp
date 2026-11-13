@@ -41,7 +41,7 @@ struct AccelerometerFusionCheck
 template <typename Linalg>
 [[nodiscard]] constexpr AccelerometerFusionCheck
 check_accelerometer_fusion_conditions(AccelerometerFusionConditions const & conditions,
-                                      typename AccelerometerMagnitude<Linalg>::Result const & magnitude) noexcept
+                                      typename AccelerometerMagnitude<Linalg>::Result const & magnitude)
 {
     AccelerometerFusionCheck result;
     result.status = magnitude.status;

@@ -42,7 +42,7 @@ namespace formal_eskf::so3
 // producers. No accuracy/unit-norm/finite-success assumption is made here.
 template <>
 inline Status try_exp<contract_proof::Linalg>(contract_proof::Vector3 const & theta, contract_proof::Scalar minimum,
-                                              contract_proof::Quaternion & output) noexcept
+                                              contract_proof::Quaternion & output)
 {
     using transition_proof::ExpContract;
     __ESBMC_assert(ExpContract::calls++ == 0U, "E-PCOV transition contract: one Exp request");
@@ -52,7 +52,7 @@ inline Status try_exp<contract_proof::Linalg>(contract_proof::Vector3 const & th
         output = ExpContract::result;
     return ExpContract::status;
 }
-template <> inline transition_proof::Matrix to_rotation_matrix(contract_proof::Quaternion const & q) noexcept
+template <> inline transition_proof::Matrix to_rotation_matrix(contract_proof::Quaternion const & q)
 {
     using transition_proof::RotationContract;
     __ESBMC_assert(RotationContract::calls++ == 0U, "E-PCOV transition contract: one increment rotation");

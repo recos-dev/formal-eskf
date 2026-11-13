@@ -50,7 +50,7 @@ template <typename Linalg>
 [[nodiscard]] ImuDynamicsResult<typename Linalg::value_type>
 check_imu_dynamics(ImuSample<Linalg> const & imu, linalg::Vector<Linalg, 3U> const & accelerometer_bias_b,
                    linalg::Vector<Linalg, 3U> const & gyroscope_bias_b,
-                   ImuDynamicsParameters<typename Linalg::value_type> const & parameters) noexcept
+                   ImuDynamicsParameters<typename Linalg::value_type> const & parameters)
 {
     using value_type = typename Linalg::value_type;
     using math_type = typename Linalg::scalar_math_type;

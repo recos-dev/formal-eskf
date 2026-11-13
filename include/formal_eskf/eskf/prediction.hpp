@@ -36,7 +36,7 @@ namespace detail
 template <typename Math>
 [[nodiscard]] Status validate_prediction_parameters(typename Math::value_type dt, typename Math::value_type dt_min,
                                                     typename Math::value_type dt_max,
-                                                    typename Math::value_type minimum_quaternion_norm) noexcept
+                                                    typename Math::value_type minimum_quaternion_norm)
 {
     using value_type = typename Math::value_type;
 
@@ -60,7 +60,7 @@ template <typename Math>
 /** Check the prior without normalizing or otherwise modifying it. */
 template <typename Linalg>
 [[nodiscard]] Status validate_prediction_quaternion(so3::UnitQuaternion<Linalg> const & q_nb,
-                                                    typename Linalg::value_type tolerance) noexcept
+                                                    typename Linalg::value_type tolerance)
 {
     using value_type = typename Linalg::value_type;
     using scalar_math_type = typename Linalg::scalar_math_type;
@@ -94,7 +94,7 @@ template <typename Linalg>
 [[nodiscard]] Status try_predict_attitude(so3::UnitQuaternion<Linalg> const & q_nb,
                                           linalg::Vector<Linalg, 3U> const & angular_rate_b,
                                           typename Linalg::value_type dt, typename Linalg::value_type minimum_norm,
-                                          so3::UnitQuaternion<Linalg> & output) noexcept
+                                          so3::UnitQuaternion<Linalg> & output)
 {
     if (!linalg::all_finite(q_nb.coefficients()) || !linalg::all_finite(angular_rate_b))
     {
@@ -167,7 +167,7 @@ template <typename Linalg>
 [[nodiscard]] Status try_predict_nominal(configuration::Ahrs::NominalState<Linalg> const & state,
                                          ImuSample<Linalg> const & imu, typename Linalg::value_type dt,
                                          configuration::Ahrs::Parameters<Linalg> const & parameters,
-                                         configuration::Ahrs::NominalState<Linalg> & output) noexcept
+                                         configuration::Ahrs::NominalState<Linalg> & output)
 {
     Status const parameter_status = detail::validate_prediction_parameters<typename Linalg::scalar_math_type>(
         dt, parameters.dt_min, parameters.dt_max, parameters.minimum_quaternion_norm);
@@ -214,7 +214,7 @@ template <typename Linalg>
 [[nodiscard]] Status try_predict_nominal(configuration::Ins::NominalState<Linalg> const & state,
                                          ImuSample<Linalg> const & imu, typename Linalg::value_type dt,
                                          configuration::Ins::Parameters<Linalg> const & parameters,
-                                         configuration::Ins::NominalState<Linalg> & output) noexcept
+                                         configuration::Ins::NominalState<Linalg> & output)
 {
     using value_type = typename Linalg::value_type;
 

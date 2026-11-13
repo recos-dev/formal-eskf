@@ -85,18 +85,15 @@ template <typename Linalg> struct HorizontalVelocityFixture
         }
     }
 
-    [[nodiscard]] static jacobian_type jacobian() noexcept
-    {
-        return formal_eskf::horizontal_velocity_jacobian<Linalg>();
-    }
+    [[nodiscard]] static jacobian_type jacobian() { return formal_eskf::horizontal_velocity_jacobian<Linalg>(); }
 
-    [[nodiscard]] static constexpr bool observes_axis(std::size_t axis) noexcept { return axis < 2U; }
+    [[nodiscard]] static constexpr bool observes_axis(std::size_t axis) { return axis < 2U; }
 
     [[nodiscard]] static Status correct(state_type const & prior, covariance_type const & covariance,
                                         measurement_type const & observation, measurement_covariance_type const & noise,
                                         value_type norm_bound, state_type & posterior,
                                         covariance_type & posterior_covariance,
-                                        formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+                                        formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {})
     {
         return formal_eskf::try_correct_horizontal_velocity(prior, covariance, observation, noise, norm_bound,
                                                             posterior, posterior_covariance, bias_update);
@@ -138,15 +135,15 @@ template <typename Linalg> struct VelocityFixture
         }
     }
 
-    [[nodiscard]] static jacobian_type jacobian() noexcept { return formal_eskf::velocity_jacobian<Linalg>(); }
+    [[nodiscard]] static jacobian_type jacobian() { return formal_eskf::velocity_jacobian<Linalg>(); }
 
-    [[nodiscard]] static constexpr bool observes_axis(std::size_t axis) noexcept { return axis < 3U; }
+    [[nodiscard]] static constexpr bool observes_axis(std::size_t axis) { return axis < 3U; }
 
     [[nodiscard]] static Status correct(state_type const & prior, covariance_type const & covariance,
                                         measurement_type const & observation, measurement_covariance_type const & noise,
                                         value_type norm_bound, state_type & posterior,
                                         covariance_type & posterior_covariance,
-                                        formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+                                        formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {})
     {
         return formal_eskf::try_correct_velocity(prior, covariance, observation, noise, norm_bound, posterior,
                                                  posterior_covariance, bias_update);
@@ -184,8 +181,6 @@ void test_velocity_jacobian(TestContext & test, std::string_view profile, typena
     static_assert(!SupportsVelocity<Linalg, typename Fixture::state_type, typename Fixture::covariance_type, 2U>);
     static_assert(!SupportsVelocity<Linalg, formal_eskf::configuration::Ahrs::NominalState<Linalg>,
                                     formal_eskf::linalg::Matrix<Linalg, 3U, 3U>, 3U>);
-    static_assert(noexcept(formal_eskf::horizontal_velocity_jacobian<Linalg>()));
-    static_assert(noexcept(formal_eskf::velocity_jacobian<Linalg>()));
 
     Fixture const fixture;
     auto const H = Fixture::jacobian();

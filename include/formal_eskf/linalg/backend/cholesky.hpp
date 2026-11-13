@@ -36,12 +36,12 @@ template <typename Backend> class Cholesky
 public:
     // Explicit scalar steps keep the recurrence's evaluation order visible.
     // In particular, subtract_product is not a fused multiply-add.
-    [[nodiscard]] static value_type subtract_product(value_type residual, value_type left, value_type right) noexcept
+    [[nodiscard]] static value_type subtract_product(value_type residual, value_type left, value_type right)
     {
         return residual - left * right;
     }
 
-    [[nodiscard]] static value_type quotient(value_type numerator, value_type denominator) noexcept
+    [[nodiscard]] static value_type quotient(value_type numerator, value_type denominator)
     {
         return numerator / denominator;
     }
@@ -49,7 +49,7 @@ public:
     template <std::size_t Size, std::size_t RightColumns>
     [[nodiscard]] static Status solve(storage_type<Size, Size> const & system,
                                       storage_type<Size, RightColumns> const & right_hand_side,
-                                      storage_type<Size, RightColumns> & solution) noexcept
+                                      storage_type<Size, RightColumns> & solution)
     {
         // Keep each column's forward/backward pair together: failure order and
         // partially written scratch storage must not depend on this decomposition.
@@ -77,8 +77,7 @@ public:
     }
 
     template <std::size_t Size>
-    [[nodiscard]] static Status factorize(storage_type<Size, Size> const & system,
-                                          storage_type<Size, Size> & factor) noexcept
+    [[nodiscard]] static Status factorize(storage_type<Size, Size> const & system, storage_type<Size, Size> & factor)
     {
         for (std::size_t column = 0U; column < Size; ++column)
         {
@@ -119,8 +118,7 @@ public:
     template <std::size_t Size, std::size_t RightColumns>
     [[nodiscard]] static Status forward_substitute(storage_type<Size, Size> const & factor,
                                                    storage_type<Size, RightColumns> const & right_hand_side,
-                                                   storage_type<Size, RightColumns> & solution,
-                                                   std::size_t column) noexcept
+                                                   storage_type<Size, RightColumns> & solution, std::size_t column)
     {
         for (std::size_t row = 0U; row < Size; ++row)
         {
@@ -141,8 +139,7 @@ public:
 
     template <std::size_t Size, std::size_t RightColumns>
     [[nodiscard]] static Status backward_substitute(storage_type<Size, Size> const & factor,
-                                                    storage_type<Size, RightColumns> & solution,
-                                                    std::size_t column) noexcept
+                                                    storage_type<Size, RightColumns> & solution, std::size_t column)
     {
         for (std::size_t remaining = Size; remaining > 0U; --remaining)
         {

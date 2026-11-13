@@ -68,7 +68,7 @@ template <typename Scalar> struct MagneticFieldGeometry
 /** Bounded geometry for a finite NED field; reject overflow/underflow, never clamp. */
 template <typename Linalg>
 [[nodiscard]] Status magnetic_field_geometry(linalg::Vector<Linalg, 3U> const & field,
-                                             MagneticFieldGeometry<typename Linalg::value_type> & output) noexcept
+                                             MagneticFieldGeometry<typename Linalg::value_type> & output)
 {
     using value_type = typename Linalg::value_type;
     using math_type = typename Linalg::scalar_math_type;
@@ -102,10 +102,10 @@ template <typename Linalg>
 }
 
 template <typename Linalg>
-[[nodiscard]] Status
-validate_magnetic_field(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Vector<Linalg, 3U> const & m_b,
-                        linalg::Vector<Linalg, 3U> const & m_n,
-                        MagneticFieldParameters<typename Linalg::value_type> const & parameters) noexcept
+[[nodiscard]] Status validate_magnetic_field(so3::UnitQuaternion<Linalg> const & q_nb,
+                                             linalg::Vector<Linalg, 3U> const & m_b,
+                                             linalg::Vector<Linalg, 3U> const & m_n,
+                                             MagneticFieldParameters<typename Linalg::value_type> const & parameters)
 {
     using value_type = typename Linalg::value_type;
     using math_type = typename Linalg::scalar_math_type;
@@ -133,7 +133,7 @@ validate_magnetic_field(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Vector
 template <typename Linalg>
 [[nodiscard]] Status magnetic_heading_error(linalg::Vector<Linalg, 3U> const & measured_n,
                                             linalg::Vector<Linalg, 3U> const & observation_n,
-                                            typename Linalg::value_type & output) noexcept
+                                            typename Linalg::value_type & output)
 {
     using value_type = typename Linalg::value_type;
     using math_type = typename Linalg::scalar_math_type;
@@ -194,7 +194,7 @@ template <typename Linalg>
 check_magnetic_field(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Vector<Linalg, 3U> const & m_b,
                      linalg::Vector<Linalg, 3U> const & m_n, linalg::Vector<Linalg, 3U> const * health_reference_n,
                      MagneticFieldParameters<typename Linalg::value_type> const & parameters, bool heading_observable,
-                     MagneticFieldChecks const & checks = {}) noexcept
+                     MagneticFieldChecks const & checks = {})
 {
     using value_type = typename Linalg::value_type;
     using math_type = typename Linalg::scalar_math_type;

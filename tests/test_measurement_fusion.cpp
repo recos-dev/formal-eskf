@@ -116,7 +116,7 @@ template <typename Linalg, typename Configuration, std::size_t MeasurementSize> 
         }
     }
 
-    auto fuse(state_type & output, covariance_type & covariance_output) const noexcept
+    auto fuse(state_type & output, covariance_type & covariance_output) const
     {
         return formal_eskf::runtime::fuse_measurement(state, P, r, H, V, minimum_norm, sigma, output,
                                                       covariance_output);
@@ -427,7 +427,7 @@ struct ObservationFusionFixture : FusionFixture<Linalg, formal_eskf::configurati
         }
     }
 
-    auto & observed_state() noexcept
+    auto & observed_state()
     {
         if constexpr (Kind == Observation::horizontal_position || Kind == Observation::vertical_position)
         {
@@ -439,7 +439,7 @@ struct ObservationFusionFixture : FusionFixture<Linalg, formal_eskf::configurati
         }
     }
 
-    auto fuse(state_type & output, covariance_type & output_P, BiasUpdate const & permissions = {}) const noexcept
+    auto fuse(state_type & output, covariance_type & output_P, BiasUpdate const & permissions = {}) const
     {
         if constexpr (Kind == Observation::horizontal_position)
         {
@@ -464,7 +464,7 @@ struct ObservationFusionFixture : FusionFixture<Linalg, formal_eskf::configurati
         }
     }
 
-    Status correct(state_type & output, covariance_type & output_P, BiasUpdate const & permissions) const noexcept
+    Status correct(state_type & output, covariance_type & output_P, BiasUpdate const & permissions) const
     {
         if constexpr (Kind == Observation::horizontal_position)
         {
@@ -497,7 +497,6 @@ void test_observation_fusion(TestContext & test, std::string_view profile, std::
     using state_type = typename fixture_type::state_type;
     using covariance_type = typename fixture_type::covariance_type;
     fixture_type fixture;
-    static_assert(noexcept(fixture.fuse(fixture.state, fixture.P)));
     for (unsigned mask = 0U; mask < 64U; ++mask)
     {
         auto const permissions = bias_permissions(mask);

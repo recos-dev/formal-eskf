@@ -29,7 +29,7 @@ template <typename Linalg, std::size_t Size> struct NavigationInnovationCheck
     bool innovation_limited = false;
 
     NavigationInnovationCheck() = default;
-    explicit NavigationInnovationCheck(MeasurementCheck<Linalg, Size> const & check) noexcept
+    explicit NavigationInnovationCheck(MeasurementCheck<Linalg, Size> const & check)
         : gate(check), fusion_innovation(check.innovation)
     {
     }
@@ -50,7 +50,7 @@ namespace detail
 /** Adjust a rejected gate without re-gating a rounded value at its boundary. */
 template <typename Linalg, std::size_t Size>
 void limit_vertical_innovation(NavigationInnovationCheck<Linalg, Size> & check, std::size_t axis,
-                               typename Linalg::value_type gate_sigma, bool allowed) noexcept
+                               typename Linalg::value_type gate_sigma, bool allowed)
 {
     if (!check.gate.diagnostics_valid || !allowed || !check.gate.rejected)
     {
@@ -82,7 +82,7 @@ template <typename Linalg, std::size_t Size>
     linalg::Matrix<Linalg, 15U, 15U> const & covariance, linalg::Matrix<Linalg, Size, 15U> const & H,
     linalg::Matrix<Linalg, Size, Size> const & V, typename Linalg::value_type minimum_quaternion_norm,
     configuration::Ins::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-    configuration::Ins::BiasUpdate const & bias_update) noexcept
+    configuration::Ins::BiasUpdate const & bias_update)
 {
     NavigationFusionResult<Linalg, Size> result{FusionResult<Linalg, Size>{check.gate}, check.fusion_innovation,
                                                 check.innovation_limited};
@@ -115,7 +115,7 @@ check_gnss_velocity(configuration::Ins::NominalState<Linalg> const & state,
                     linalg::Matrix<Linalg, 15U, 15U> const & covariance, linalg::Vector<Linalg, 3U> const & velocity,
                     linalg::Matrix<Linalg, 3U, 3U> const & V, typename Linalg::value_type minimum_quaternion_norm,
                     typename Linalg::value_type gate_sigma,
-                    GnssVelocityConditions<typename Linalg::value_type> const & conditions) noexcept
+                    GnssVelocityConditions<typename Linalg::value_type> const & conditions)
 {
     using value_type = typename Linalg::value_type;
     using math_type = typename Linalg::scalar_math_type;
@@ -156,7 +156,7 @@ template <typename Linalg>
     typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
     GnssVelocityConditions<typename Linalg::value_type> const & conditions,
     configuration::Ins::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-    configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+    configuration::Ins::BiasUpdate const & bias_update = {})
 {
     auto const check =
         check_gnss_velocity(state, covariance, velocity, V, minimum_quaternion_norm, gate_sigma, conditions);
@@ -179,7 +179,7 @@ fuse_height(configuration::Ins::NominalState<Linalg> const & state, linalg::Matr
             typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
             bool bad_vertical_acceleration, configuration::Ins::NominalState<Linalg> & state_output,
             linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-            configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+            configuration::Ins::BiasUpdate const & bias_update = {})
 {
     NavigationFusionResult<Linalg, 1U> result;
     using math_type = typename Linalg::scalar_math_type;

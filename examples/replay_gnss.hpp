@@ -16,7 +16,7 @@ namespace formal_eskf::example
 {
 
 /** Convert the adapter's validated ten-bit selection, not a core configuration mask. */
-inline runtime::GnssQualityChecks gnss_quality_checks(unsigned mask) noexcept
+inline runtime::GnssQualityChecks gnss_quality_checks(unsigned mask)
 {
     return {.satellites = (mask & 1U) != 0U,
             .pdop = (mask & 2U) != 0U,
@@ -61,17 +61,11 @@ public:
         bool spoofing_available = false;
         typename monitor_type::result_type quality{};
 
-        [[nodiscard]] bool evaluated() const noexcept
-        {
-            return quality.decision != runtime::GnssQualityDecision::invalid_call;
-        }
-        [[nodiscard]] bool accepted() const noexcept
-        {
-            return quality.decision == runtime::GnssQualityDecision::accepted;
-        }
-        [[nodiscard]] std::string_view outcome_name() const noexcept;
+        [[nodiscard]] bool evaluated() const { return quality.decision != runtime::GnssQualityDecision::invalid_call; }
+        [[nodiscard]] bool accepted() const { return quality.decision == runtime::GnssQualityDecision::accepted; }
+        [[nodiscard]] std::string_view outcome_name() const;
 
-        [[nodiscard]] runtime::GnssFusion::Sample lifecycle_sample(std::uint64_t time_us) const noexcept
+        [[nodiscard]] runtime::GnssFusion::Sample lifecycle_sample(std::uint64_t time_us) const
         {
             // Invalid velocity never entered the receiver buffer. Unavailable
             // quality metadata is a received sample, but cannot refresh health.
@@ -79,11 +73,10 @@ public:
         }
     };
 
-    void restart_health() noexcept { m_monitor.restart_health(); }
+    void restart_health() { m_monitor.restart_health(); }
 
     [[nodiscard]] Result update(typename monitor_type::sample_type sample, Metadata const & metadata,
-                                std::uint64_t now_us,
-                                typename monitor_type::parameters_type const & parameters) noexcept;
+                                std::uint64_t now_us, typename monitor_type::parameters_type const & parameters);
 
 private:
     monitor_type m_monitor;
@@ -92,8 +85,7 @@ private:
 template <typename Linalg>
 typename ReplayGnssQuality<Linalg>::Result
 ReplayGnssQuality<Linalg>::update(typename monitor_type::sample_type sample, Metadata const & metadata,
-                                  std::uint64_t now_us,
-                                  typename monitor_type::parameters_type const & parameters) noexcept
+                                  std::uint64_t now_us, typename monitor_type::parameters_type const & parameters)
 {
     Result result;
     result.motion_available = metadata.in_air == 1 || (metadata.in_air == 0 && metadata.at_rest >= 0);
@@ -143,7 +135,7 @@ ReplayGnssQuality<Linalg>::update(typename monitor_type::sample_type sample, Met
     return result;
 }
 
-template <typename Linalg> std::string_view ReplayGnssQuality<Linalg>::Result::outcome_name() const noexcept
+template <typename Linalg> std::string_view ReplayGnssQuality<Linalg>::Result::outcome_name() const
 {
     switch (outcome)
     {

@@ -26,7 +26,7 @@ template <typename Linalg>
     linalg::Vector<Linalg, 2U> const & z_p_ne, linalg::Matrix<Linalg, 2U, 2U> const & V,
     typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
     configuration::Ins::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-    configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+    configuration::Ins::BiasUpdate const & bias_update = {})
 {
     FusionResult<Linalg, 2U> result;
     if (!linalg::all_finite(state.p_n) || !linalg::all_finite(z_p_ne))
@@ -52,7 +52,7 @@ fuse_vertical_position(configuration::Ins::NominalState<Linalg> const & state,
                        typename Linalg::value_type variance, typename Linalg::value_type minimum_quaternion_norm,
                        typename Linalg::value_type gate_sigma, configuration::Ins::NominalState<Linalg> & state_output,
                        linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                       configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+                       configuration::Ins::BiasUpdate const & bias_update = {})
 {
     FusionResult<Linalg, 1U> result;
     using math_type = typename Linalg::scalar_math_type;

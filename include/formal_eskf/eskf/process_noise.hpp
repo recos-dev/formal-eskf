@@ -23,8 +23,7 @@ namespace formal_eskf
 namespace detail
 {
 
-template <typename Linalg>
-[[nodiscard]] Status validate_noise_variances(linalg::Vector<Linalg, 3U> const & variances) noexcept
+template <typename Linalg> [[nodiscard]] Status validate_noise_variances(linalg::Vector<Linalg, 3U> const & variances)
 {
     if (!linalg::all_finite(variances))
     {
@@ -40,7 +39,7 @@ template <typename Linalg>
     return Status::success;
 }
 
-template <typename Math> [[nodiscard]] Status validate_noise_step(typename Math::value_type dt) noexcept
+template <typename Math> [[nodiscard]] Status validate_noise_step(typename Math::value_type dt)
 {
     if (!scalar::is_finite<Math>(dt))
     {
@@ -63,7 +62,7 @@ template <typename Math> [[nodiscard]] Status validate_noise_step(typename Math:
 template <typename Linalg>
 [[nodiscard]] Status try_discretize_process_noise(configuration::Ahrs::ProcessNoise<Linalg> const & noise,
                                                   typename Linalg::value_type dt,
-                                                  linalg::Matrix<Linalg, 3U, 3U> & output) noexcept
+                                                  linalg::Matrix<Linalg, 3U, 3U> & output)
 {
     Status const step_status = detail::validate_noise_step<typename Linalg::scalar_math_type>(dt);
     if (!succeeded(step_status))
@@ -110,7 +109,7 @@ template <typename Linalg>
 template <typename Linalg>
 [[nodiscard]] Status try_discretize_process_noise(configuration::Ins::ProcessNoise<Linalg> const & noise,
                                                   typename Linalg::value_type dt,
-                                                  linalg::Matrix<Linalg, 12U, 12U> & output) noexcept
+                                                  linalg::Matrix<Linalg, 12U, 12U> & output)
 {
     Status const step_status = detail::validate_noise_step<typename Linalg::scalar_math_type>(dt);
     if (!succeeded(step_status))

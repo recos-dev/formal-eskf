@@ -14,12 +14,12 @@
 // Every invocation returns a fresh arbitrary IEEE value, including NaN/Inf;
 // there is no finite, successful or argument-range assumption.
 extern double nondet_double();
-extern "C" float sinf(float) noexcept { return nondet_float(); }
-extern "C" float cosf(float) noexcept { return nondet_float(); }
-extern "C" float sqrtf(float) noexcept { return nondet_float(); }
-extern "C" double sin(double) noexcept { return nondet_double(); }
-extern "C" double cos(double) noexcept { return nondet_double(); }
-extern "C" double sqrt(double) noexcept { return nondet_double(); }
+extern "C" float sinf(float) { return nondet_float(); }
+extern "C" float cosf(float) { return nondet_float(); }
+extern "C" float sqrtf(float) { return nondet_float(); }
+extern "C" double sin(double) { return nondet_double(); }
+extern "C" double cos(double) { return nondet_double(); }
+extern "C" double sqrt(double) { return nondet_double(); }
 
 namespace step_correction_proof
 {
@@ -39,7 +39,7 @@ namespace formal_eskf::linalg
 template <>
 inline step_correction_proof::Covariance
 sandwich<step_correction_proof::Backend, step_correction_proof::state_size, step_correction_proof::state_size>(
-    step_correction_proof::Covariance const &, step_correction_proof::Covariance const &) noexcept
+    step_correction_proof::Covariance const &, step_correction_proof::Covariance const &)
 {
     __ESBMC_assert(step_correction_proof::ProductResult::calls++ == 0U,
                    "E-STEP-CORRECT frame: at most one covariance sandwich");

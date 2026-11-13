@@ -69,8 +69,7 @@ struct RotationContract
 #if FORMAL_ESKF_PROOF_ROTATION_CONTRACT
 namespace formal_eskf::so3
 {
-template <>
-rotation_proof::Matrix to_rotation_matrix<rotation_proof::Linalg>(rotation_proof::Quaternion const & q) noexcept
+template <> rotation_proof::Matrix to_rotation_matrix<rotation_proof::Linalg>(rotation_proof::Quaternion const & q)
 {
     using namespace rotation_proof;
     __ESBMC_assert(!RotationContract::called, "Q-ROTATE contract: action requests exactly one rotation matrix");

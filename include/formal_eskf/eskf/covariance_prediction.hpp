@@ -24,10 +24,9 @@ namespace detail
 {
 
 template <typename Linalg>
-[[nodiscard]] Status try_attitude_error_transition(linalg::Vector<Linalg, 3U> const & angular_rate_b,
-                                                   typename Linalg::value_type dt,
-                                                   typename Linalg::value_type minimum_norm,
-                                                   linalg::Matrix<Linalg, 3U, 3U> & output) noexcept
+[[nodiscard]] Status
+try_attitude_error_transition(linalg::Vector<Linalg, 3U> const & angular_rate_b, typename Linalg::value_type dt,
+                              typename Linalg::value_type minimum_norm, linalg::Matrix<Linalg, 3U, 3U> & output)
 {
     auto const rotation_vector = angular_rate_b * dt;
     if (!linalg::all_finite(rotation_vector))
@@ -68,7 +67,7 @@ template <typename Linalg>
 [[nodiscard]] Status try_predict_covariance(linalg::Matrix<Linalg, 3U, 3U> const & covariance,
                                             ImuSample<Linalg> const & imu, typename Linalg::value_type dt,
                                             configuration::Ahrs::Parameters<Linalg> const & parameters,
-                                            linalg::Matrix<Linalg, 3U, 3U> & output) noexcept
+                                            linalg::Matrix<Linalg, 3U, 3U> & output)
 {
     Status const parameter_status = detail::validate_prediction_parameters<typename Linalg::scalar_math_type>(
         dt, parameters.dt_min, parameters.dt_max, parameters.minimum_quaternion_norm);
@@ -136,7 +135,7 @@ template <typename Linalg>
                                             linalg::Matrix<Linalg, 15U, 15U> const & covariance,
                                             ImuSample<Linalg> const & imu, typename Linalg::value_type dt,
                                             configuration::Ins::Parameters<Linalg> const & parameters,
-                                            linalg::Matrix<Linalg, 15U, 15U> & output) noexcept
+                                            linalg::Matrix<Linalg, 15U, 15U> & output)
 {
     using matrix3_type = linalg::Matrix<Linalg, 3U, 3U>;
     using covariance_type = linalg::Matrix<Linalg, 15U, 15U>;
@@ -215,7 +214,7 @@ template <typename Linalg>
                                  typename Linalg::value_type dt,
                                  configuration::Ahrs::Parameters<Linalg> const & parameters,
                                  configuration::Ahrs::NominalState<Linalg> & state_output,
-                                 linalg::Matrix<Linalg, 3U, 3U> & covariance_output) noexcept
+                                 linalg::Matrix<Linalg, 3U, 3U> & covariance_output)
 {
     auto state_candidate = state;
     Status const nominal_status = try_predict_nominal(state, imu, dt, parameters, state_candidate);
@@ -241,7 +240,7 @@ template <typename Linalg>
                                  typename Linalg::value_type dt,
                                  configuration::Ins::Parameters<Linalg> const & parameters,
                                  configuration::Ins::NominalState<Linalg> & state_output,
-                                 linalg::Matrix<Linalg, 15U, 15U> & covariance_output) noexcept
+                                 linalg::Matrix<Linalg, 15U, 15U> & covariance_output)
 {
     auto state_candidate = state;
     Status const nominal_status = try_predict_nominal(state, imu, dt, parameters, state_candidate);

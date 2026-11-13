@@ -171,7 +171,7 @@ template <>
 inline Status try_predict_nominal<contract_proof::Linalg>(step_proof::State const & state, step_proof::Imu const & imu,
                                                           contract_proof::Scalar dt,
                                                           step_proof::Parameters const & parameters,
-                                                          step_proof::State & output) noexcept
+                                                          step_proof::State & output)
 {
     using namespace step_proof;
     nominal_request(state, output);
@@ -188,7 +188,7 @@ inline Status try_predict_covariance<contract_proof::Linalg>(
     step_proof::State const & state,
 #endif
     step_proof::Matrix const & covariance, step_proof::Imu const & imu, contract_proof::Scalar dt,
-    step_proof::Parameters const & parameters, step_proof::Matrix & output) noexcept
+    step_proof::Parameters const & parameters, step_proof::Matrix & output)
 {
     using namespace step_proof;
     covariance_request(covariance, output);
@@ -203,9 +203,9 @@ inline Status try_predict_covariance<contract_proof::Linalg>(
 }
 
 template <>
-inline Status
-try_inject_nominal<contract_proof::Linalg>(step_proof::State const & state, step_proof::Error const & error,
-                                           contract_proof::Scalar minimum, step_proof::State & output) noexcept
+inline Status try_inject_nominal<contract_proof::Linalg>(step_proof::State const & state,
+                                                         step_proof::Error const & error,
+                                                         contract_proof::Scalar minimum, step_proof::State & output)
 {
     using namespace step_proof;
     nominal_request(state, output);
@@ -218,7 +218,7 @@ try_inject_nominal<contract_proof::Linalg>(step_proof::State const & state, step
 template <>
 inline Status try_reset_covariance<contract_proof::Linalg>(step_proof::Error const & error,
                                                            step_proof::Matrix const & covariance,
-                                                           step_proof::Matrix & output) noexcept
+                                                           step_proof::Matrix & output)
 {
     using namespace step_proof;
     covariance_request(covariance, output);
@@ -248,14 +248,14 @@ namespace formal_eskf::so3
 // nominal wrapper, validation or translation arithmetic is summarized here.
 template <>
 inline Status UnitQuaternion<contract_proof::Linalg>::try_from_coefficients(vector4_type const &, value_type,
-                                                                            UnitQuaternion & output) noexcept
+                                                                            UnitQuaternion & output)
 {
     output = step_proof::leaves->constructor;
     return step_proof::leaves->constructor_status;
 }
 template <>
 inline Status try_exp<contract_proof::Linalg>(contract_proof::Vector3 const &, contract_proof::Scalar,
-                                              contract_proof::Quaternion & output) noexcept
+                                              contract_proof::Quaternion & output)
 {
     output = step_proof::leaves->exponential;
     return step_proof::leaves->exponential_status;
@@ -263,7 +263,7 @@ inline Status try_exp<contract_proof::Linalg>(contract_proof::Vector3 const &, c
 template <>
 inline Status try_compose_normalized<contract_proof::Linalg>(contract_proof::Quaternion const &,
                                                              contract_proof::Quaternion const &, contract_proof::Scalar,
-                                                             contract_proof::Quaternion & output) noexcept
+                                                             contract_proof::Quaternion & output)
 {
     output = step_proof::leaves->composition;
     return step_proof::leaves->composition_status;

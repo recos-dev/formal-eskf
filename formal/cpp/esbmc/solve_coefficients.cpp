@@ -186,13 +186,13 @@ namespace formal_eskf::linalg
 template <>
 inline solve_proof::Scalar Cholesky<solve_proof::Backend>::subtract_product(solve_proof::Scalar residual,
                                                                             solve_proof::Scalar left,
-                                                                            solve_proof::Scalar right) noexcept
+                                                                            solve_proof::Scalar right)
 {
     return solve_proof::Trace::subtract_product(residual, left, right);
 }
 template <>
 inline solve_proof::Scalar Cholesky<solve_proof::Backend>::quotient(solve_proof::Scalar numerator,
-                                                                    solve_proof::Scalar denominator) noexcept
+                                                                    solve_proof::Scalar denominator)
 {
     return solve_proof::Trace::quotient(numerator, denominator);
 }

@@ -35,20 +35,19 @@ template <typename Scalar> struct PrincipalQuaternionCoefficients
 
 template <typename Linalg>
 [[nodiscard]] PrincipalQuaternionCoefficients<typename Linalg::value_type>
-principal_quaternion_coefficients(UnitQuaternion<Linalg> const & quaternion) noexcept
+principal_quaternion_coefficients(UnitQuaternion<Linalg> const & quaternion)
 {
     using value_type = typename Linalg::value_type;
     value_type const sign = quaternion.q0() < value_type{0} ? value_type{-1} : value_type{1};
     return {sign * quaternion.q0(), sign * quaternion.q1(), sign * quaternion.q2(), sign * quaternion.q3()};
 }
 
-template <typename Scalar>
-[[nodiscard]] Scalar log_taylor_scale(Scalar q0, Scalar q0_squared, Scalar qv_squared_norm) noexcept
+template <typename Scalar> [[nodiscard]] Scalar log_taylor_scale(Scalar q0, Scalar q0_squared, Scalar qv_squared_norm)
 {
     return Scalar{2} / q0 * (Scalar{1} - qv_squared_norm / (Scalar{3} * q0_squared));
 }
 
-template <typename Scalar> [[nodiscard]] Scalar log_closed_form_scale(Scalar qv_norm, Scalar half_angle) noexcept
+template <typename Scalar> [[nodiscard]] Scalar log_closed_form_scale(Scalar qv_norm, Scalar half_angle)
 {
     return Scalar{2} * half_angle / qv_norm;
 }
@@ -69,8 +68,7 @@ template <typename Scalar> [[nodiscard]] Scalar log_closed_form_scale(Scalar qv_
  */
 template <typename Linalg>
 [[nodiscard]] Status try_exp(linalg::Vector<Linalg, 3U> const & rotation_vector,
-                             typename Linalg::value_type minimum_quaternion_norm,
-                             UnitQuaternion<Linalg> & output) noexcept
+                             typename Linalg::value_type minimum_quaternion_norm, UnitQuaternion<Linalg> & output)
 {
     using scalar_math_type = typename Linalg::scalar_math_type;
     using value_type = typename Linalg::value_type;
@@ -146,7 +144,7 @@ template <typename Linalg>
  * @see https://arxiv.org/abs/1711.02508
  */
 template <typename Linalg>
-[[nodiscard]] Status try_log(UnitQuaternion<Linalg> const & quaternion, linalg::Vector<Linalg, 3U> & output) noexcept
+[[nodiscard]] Status try_log(UnitQuaternion<Linalg> const & quaternion, linalg::Vector<Linalg, 3U> & output)
 {
     using scalar_math_type = typename Linalg::scalar_math_type;
     using value_type = typename Linalg::value_type;

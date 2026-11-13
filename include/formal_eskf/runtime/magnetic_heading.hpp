@@ -40,17 +40,17 @@ public:
         bool consistent = false; // Retained through low excitation until inconsistency is observed.
     };
 
-    [[nodiscard]] State const & state() const noexcept { return m_state; }
-    void reset() noexcept { *this = MagneticHeading{}; }
+    [[nodiscard]] State const & state() const { return m_state; }
+    void reset() { *this = MagneticHeading{}; }
     /** Missing IMU intervals provide no maneuver evidence. Preserve the heading latch. */
-    void reset_acceleration() noexcept
+    void reset_acceleration()
     {
         m_acceleration = horizontal_type{};
         m_state.horizontal_acceleration = value_type{0};
         m_state.observable = false;
     }
     /** Call only after an actual magnetic heading alignment/reset succeeds. */
-    void reset_heading() noexcept
+    void reset_heading()
     {
         m_state.innovation = value_type{0};
         m_state.filtered_innovation = value_type{0};
@@ -59,7 +59,7 @@ public:
     }
 
     /** Bias-corrected specific force rotated into NED at prediction; only N/E are filtered. */
-    [[nodiscard]] Status update_acceleration(vector_type const & acceleration_n, value_type dt) noexcept;
+    [[nodiscard]] Status update_acceleration(vector_type const & acceleration_n, value_type dt);
 
     /**
      * Unit q_nb, calibrated m_b and trustworthy m_n at one horizon. Update once
@@ -70,18 +70,18 @@ public:
      */
     [[nodiscard]] Status update(so3::UnitQuaternion<Linalg> const & q_nb, vector_type const & m_b,
                                 vector_type const & m_n, Parameters const & parameters, bool heading_aligned,
-                                bool horizontal_aiding) noexcept;
+                                bool horizontal_aiding);
 
 private:
     [[nodiscard]] static Status validate_inputs(so3::UnitQuaternion<Linalg> const & q_nb, vector_type const & m_b,
-                                                vector_type const & m_n, Parameters const & parameters) noexcept;
+                                                vector_type const & m_n, Parameters const & parameters);
 
     horizontal_type m_acceleration{};
     State m_state{};
 }; /* end class MagneticHeading */
 
 template <typename Linalg>
-Status MagneticHeading<Linalg>::update_acceleration(vector_type const & acceleration_n, value_type dt) noexcept
+Status MagneticHeading<Linalg>::update_acceleration(vector_type const & acceleration_n, value_type dt)
 {
     using math_type = typename Linalg::scalar_math_type;
     if (!linalg::all_finite(acceleration_n) || !scalar::is_finite<math_type>(dt))
@@ -114,7 +114,7 @@ Status MagneticHeading<Linalg>::update_acceleration(vector_type const & accelera
 template <typename Linalg>
 Status MagneticHeading<Linalg>::update(so3::UnitQuaternion<Linalg> const & q_nb, vector_type const & m_b,
                                        vector_type const & m_n, Parameters const & parameters, bool heading_aligned,
-                                       bool horizontal_aiding) noexcept
+                                       bool horizontal_aiding)
 {
     using math_type = typename Linalg::scalar_math_type;
     auto status = validate_inputs(q_nb, m_b, m_n, parameters);
@@ -175,7 +175,7 @@ Status MagneticHeading<Linalg>::update(so3::UnitQuaternion<Linalg> const & q_nb,
 
 template <typename Linalg>
 Status MagneticHeading<Linalg>::validate_inputs(so3::UnitQuaternion<Linalg> const & q_nb, vector_type const & m_b,
-                                                vector_type const & m_n, Parameters const & parameters) noexcept
+                                                vector_type const & m_n, Parameters const & parameters)
 {
     using math_type = typename Linalg::scalar_math_type;
     if (!linalg::all_finite(q_nb.coefficients()) || !linalg::all_finite(m_b) || !linalg::all_finite(m_n) ||

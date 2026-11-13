@@ -54,7 +54,7 @@ inline Status try_compute_correction_gain<step_correction_proof::Backend, step_c
                                           step_correction_proof::measurement_size>(
     step_correction_proof::Covariance const & P, step_correction_proof::Residual const & r,
     step_correction_proof::Jacobian const & H, step_correction_proof::Noise const & V,
-    step_correction_proof::Scalar minimum, correction_proof::Gain & output) noexcept
+    step_correction_proof::Scalar minimum, correction_proof::Gain & output)
 {
     using namespace step_correction_proof;
     __ESBMC_assert(Calls::gain++ == 0U && Calls::correction == 0U && Calls::injection == 0U && Calls::reset == 0U,
@@ -77,7 +77,7 @@ inline Status try_apply_correction_gain<step_correction_proof::Backend, step_cor
                                         step_correction_proof::measurement_size>(
     step_correction_proof::Covariance const & P, step_correction_proof::Residual const & r,
     step_correction_proof::Jacobian const & H, step_correction_proof::Noise const & V, correction_proof::Gain const & K,
-    step_correction_proof::Correction & delta, step_correction_proof::Covariance & output) noexcept
+    step_correction_proof::Correction & delta, step_correction_proof::Covariance & output)
 {
     using namespace step_correction_proof;
     __ESBMC_assert(Calls::gain == 1U && Calls::results->gain_status == Status::success && Calls::correction++ == 0U &&
@@ -103,7 +103,7 @@ template <>
 inline Status try_inject_nominal<step_correction_proof::Backend>(step_correction_proof::State const & state,
                                                                  step_correction_proof::Error const & error,
                                                                  step_correction_proof::Scalar minimum,
-                                                                 step_correction_proof::State & output) noexcept
+                                                                 step_correction_proof::State & output)
 {
     using namespace step_correction_proof;
     __ESBMC_assert(Calls::correction == 1U && Calls::results->correction_status == Status::success &&
@@ -122,7 +122,7 @@ inline Status try_inject_nominal<step_correction_proof::Backend>(step_correction
 template <>
 inline Status try_reset_covariance<step_correction_proof::Backend>(step_correction_proof::Error const & error,
                                                                    step_correction_proof::Covariance const & covariance,
-                                                                   step_correction_proof::Covariance & output) noexcept
+                                                                   step_correction_proof::Covariance & output)
 {
     using namespace step_correction_proof;
     __ESBMC_assert(Calls::injection == 1U && Calls::results->injection_status == Status::success &&

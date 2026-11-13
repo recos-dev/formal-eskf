@@ -36,8 +36,6 @@ template <typename Linalg> void test_filter(TestContext & test, std::string_view
     constexpr auto alpha = dt / (tau + dt);
     constexpr auto gravity = static_cast<value_type>(9.80665);
     auto const first = vector_type::from_row_major({value_type{1}, value_type{-2}, value_type{-9}});
-    static_assert(noexcept(monitor.update(first)));
-    static_assert(noexcept(monitor.reset()));
     test.expect(!monitor.initialized(), profile, "new monitor has no sample history");
     auto result = monitor.update(first);
     test.expect(result.status == Status::success && monitor.initialized() && result.within_gravity_band &&

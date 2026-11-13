@@ -194,17 +194,17 @@ template <typename Scalar, bool CosineFails = false> class NonFiniteResultMath
 public:
     using value_type = Scalar;
 
-    [[nodiscard]] static bool is_finite(value_type value) noexcept { return std::isfinite(value); }
-    [[nodiscard]] static value_type sqrt(value_type) noexcept { return std::numeric_limits<value_type>::quiet_NaN(); }
-    [[nodiscard]] static value_type sin(value_type) noexcept
+    [[nodiscard]] static bool is_finite(value_type value) { return std::isfinite(value); }
+    [[nodiscard]] static value_type sqrt(value_type) { return std::numeric_limits<value_type>::quiet_NaN(); }
+    [[nodiscard]] static value_type sin(value_type)
     {
         return CosineFails ? value_type{1} : std::numeric_limits<value_type>::quiet_NaN();
     }
-    [[nodiscard]] static value_type cos(value_type) noexcept
+    [[nodiscard]] static value_type cos(value_type)
     {
         return CosineFails ? std::numeric_limits<value_type>::quiet_NaN() : value_type{1};
     }
-    [[nodiscard]] static value_type atan2(value_type, value_type) noexcept
+    [[nodiscard]] static value_type atan2(value_type, value_type)
     {
         return std::numeric_limits<value_type>::quiet_NaN();
     }

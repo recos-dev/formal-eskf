@@ -11,8 +11,7 @@ namespace formal_eskf::px4
 {
 
 /** Only an initialized filter may propagate accelerometer-clipped intervals. */
-[[nodiscard]] inline bool imu_clipping_acceptable(std::uint8_t accelerometer, std::uint8_t gyroscope,
-                                                  bool initialized) noexcept
+[[nodiscard]] inline bool imu_clipping_acceptable(std::uint8_t accelerometer, std::uint8_t gyroscope, bool initialized)
 {
     return accelerometer <= 7U && gyroscope == 0U && (initialized || accelerometer == 0U);
 }
@@ -23,7 +22,7 @@ template <typename Linalg>
                                      linalg::Matrix<Linalg, 15U, 15U> & covariance, ImuSample<Linalg> const & imu,
                                      typename Linalg::value_type dt,
                                      configuration::Ins::Parameters<Linalg> const & parameters,
-                                     std::uint8_t accelerometer_clipping, bool bad_vertical_acceleration) noexcept
+                                     std::uint8_t accelerometer_clipping, bool bad_vertical_acceleration)
 {
     using value_type = typename Linalg::value_type;
     if (accelerometer_clipping > 7U)

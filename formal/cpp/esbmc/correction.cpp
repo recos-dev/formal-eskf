@@ -293,7 +293,7 @@ namespace formal_eskf::linalg
 template <>
 inline correction_proof::Covariance
 Matrix<correction_proof::Backend, correction_proof::state_size, correction_proof::state_size>::operator-(
-    correction_proof::Covariance const & other) const noexcept
+    correction_proof::Covariance const & other) const
 {
     using namespace correction_proof;
     __ESBMC_assert(Calls::subtracts++ == 0U && Calls::products == 4U && identity_matrix(*this) &&
@@ -304,7 +304,7 @@ Matrix<correction_proof::Backend, correction_proof::state_size, correction_proof
 #define CORRECTION_ADDITION(N)                                                                                         \
     template <>                                                                                                        \
     inline Matrix<correction_proof::Backend, N, N> Matrix<correction_proof::Backend, N, N>::operator+(                 \
-        Matrix<correction_proof::Backend, N, N> const & other) const noexcept                                          \
+        Matrix<correction_proof::Backend, N, N> const & other) const                                                   \
     {                                                                                                                  \
         return correction_proof::addition<N>(*this, other);                                                            \
     }
@@ -318,16 +318,14 @@ CORRECTION_ADDITION(FORMAL_ESKF_PROOF_MEASUREMENT_SIZE)
 #if FORMAL_ESKF_PROOF_CORRECTION_CONTRACT == 1
 #define CORRECTION_FINITE(R, C)                                                                                        \
     template <>                                                                                                        \
-    inline bool all_finite<correction_proof::Backend, R, C>(                                                           \
-        Matrix<correction_proof::Backend, R, C> const & input) noexcept                                                \
+    inline bool all_finite<correction_proof::Backend, R, C>(Matrix<correction_proof::Backend, R, C> const & input)     \
     {                                                                                                                  \
         return correction_proof::check_finite<R, C>(input);                                                            \
     }
 #else
 #define CORRECTION_FINITE(R, C)                                                                                        \
     template <>                                                                                                        \
-    inline bool all_finite<correction_proof::Backend, R, C>(                                                           \
-        Matrix<correction_proof::Backend, R, C> const & input) noexcept                                                \
+    inline bool all_finite<correction_proof::Backend, R, C>(Matrix<correction_proof::Backend, R, C> const & input)     \
     {                                                                                                                  \
         return correction_proof::finite_matrix(input);                                                                 \
     }
@@ -352,7 +350,7 @@ CORRECTION_FINITE(15U, 15U)
     template <>                                                                                                        \
     template <>                                                                                                        \
     inline Matrix<correction_proof::Backend, R, C> Matrix<correction_proof::Backend, R, K>::operator*                  \
-        <C>(Matrix<correction_proof::Backend, K, C> const & right) const noexcept                                      \
+        <C>(Matrix<correction_proof::Backend, K, C> const & right) const                                               \
     {                                                                                                                  \
         return correction_proof::product<R, K, C>(*this, right);                                                       \
     }
@@ -367,7 +365,7 @@ CORRECTION_PRODUCT(FORMAL_ESKF_PROOF_STATE_SIZE, FORMAL_ESKF_PROOF_MEASUREMENT_S
 #define CORRECTION_SYMMETRY(N)                                                                                         \
     template <>                                                                                                        \
     inline bool is_symmetric<correction_proof::Backend, N>(Matrix<correction_proof::Backend, N, N> const & input,      \
-                                                           correction_proof::Scalar tolerance) noexcept                \
+                                                           correction_proof::Scalar tolerance)                         \
     {                                                                                                                  \
         return correction_proof::symmetry<N>(input, tolerance);                                                        \
     }
@@ -380,8 +378,7 @@ CORRECTION_SYMMETRY(FORMAL_ESKF_PROOF_MEASUREMENT_SIZE)
 template <>
 inline Status
 right_solve_spd<correction_proof::Backend, correction_proof::state_size, correction_proof::measurement_size>(
-    correction_proof::Gain const & right, correction_proof::Noise const & system,
-    correction_proof::Gain & output) noexcept
+    correction_proof::Gain const & right, correction_proof::Noise const & system, correction_proof::Gain & output)
 {
     using namespace correction_proof;
     __ESBMC_assert(Calls::solves++ == 0U && Calls::finishes == 1U &&
@@ -397,7 +394,7 @@ right_solve_spd<correction_proof::Backend, correction_proof::state_size, correct
     template <>                                                                                                        \
     inline correction_proof::Covariance sandwich<correction_proof::Backend, correction_proof::state_size, K>(          \
         Matrix<correction_proof::Backend, correction_proof::state_size, K> const & transform,                          \
-        Matrix<correction_proof::Backend, K, K> const & covariance) noexcept                                           \
+        Matrix<correction_proof::Backend, K, K> const & covariance)                                                    \
     {                                                                                                                  \
         return correction_proof::sandwich<K>(transform, covariance);                                                   \
     }
@@ -414,7 +411,7 @@ template <>
 inline Status
 validate_correction_inputs<correction_proof::Backend, correction_proof::state_size, correction_proof::measurement_size>(
     correction_proof::Covariance const & P, correction_proof::Residual const & r, correction_proof::Jacobian const & H,
-    correction_proof::Noise const & V, correction_proof::Scalar minimum) noexcept
+    correction_proof::Noise const & V, correction_proof::Scalar minimum)
 {
     using namespace correction_proof;
     __ESBMC_assert(Calls::validations++ == 0U && Calls::products == 0U && matches(P, *Calls::prior) &&
@@ -428,7 +425,7 @@ validate_correction_inputs<correction_proof::Backend, correction_proof::state_si
     template <>                                                                                                        \
     inline Status try_finish_covariance<correction_proof::Backend, N>(                                                 \
         linalg::Matrix<correction_proof::Backend, N, N> & candidate,                                                   \
-        linalg::Matrix<correction_proof::Backend, N, N> & output) noexcept                                             \
+        linalg::Matrix<correction_proof::Backend, N, N> & output)                                                      \
     {                                                                                                                  \
         return correction_proof::finish<N>(candidate, output);                                                         \
     }

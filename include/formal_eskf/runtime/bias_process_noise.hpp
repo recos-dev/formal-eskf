@@ -31,7 +31,7 @@ namespace formal_eskf::runtime
 template <typename Linalg>
 [[nodiscard]] Status try_inhibit_bias_process_noise(linalg::Matrix<Linalg, 15U, 15U> const & covariance,
                                                     configuration::Ins::ProcessNoise<Linalg> const & noise,
-                                                    configuration::Ins::ProcessNoise<Linalg> & output) noexcept
+                                                    configuration::Ins::ProcessNoise<Linalg> & output)
 {
     using value_type = typename Linalg::value_type;
     using math_type = typename Linalg::scalar_math_type;

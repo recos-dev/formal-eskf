@@ -60,7 +60,7 @@ namespace formal_eskf::linalg
     template <>                                                                                                        \
     inline Matrix<correction_proof::Backend, correction_proof::state_size, C>                                          \
     Matrix<correction_proof::Backend, correction_proof::state_size, correction_proof::measurement_size>::operator*     \
-        <C>(Matrix<correction_proof::Backend, correction_proof::measurement_size, C> const & right) const noexcept     \
+        <C>(Matrix<correction_proof::Backend, correction_proof::measurement_size, C> const & right) const              \
     {                                                                                                                  \
         return correction_proof::sandwich_product<C>(*this, right);                                                    \
     }

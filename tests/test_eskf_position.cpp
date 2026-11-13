@@ -84,18 +84,15 @@ template <typename Linalg> struct HorizontalPositionFixture
         }
     }
 
-    [[nodiscard]] static jacobian_type jacobian() noexcept
-    {
-        return formal_eskf::horizontal_position_jacobian<Linalg>();
-    }
+    [[nodiscard]] static jacobian_type jacobian() { return formal_eskf::horizontal_position_jacobian<Linalg>(); }
 
-    [[nodiscard]] static constexpr bool observes_axis(std::size_t axis) noexcept { return axis < 2U; }
+    [[nodiscard]] static constexpr bool observes_axis(std::size_t axis) { return axis < 2U; }
 
     [[nodiscard]] static Status correct(state_type const & prior, covariance_type const & covariance,
                                         measurement_type const & observation, measurement_covariance_type const & noise,
                                         value_type norm_bound, state_type & posterior,
                                         covariance_type & posterior_covariance,
-                                        formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+                                        formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {})
     {
         return formal_eskf::try_correct_horizontal_position(prior, covariance, observation, noise, norm_bound,
                                                             posterior, posterior_covariance, bias_update);
@@ -137,15 +134,15 @@ template <typename Linalg> struct VerticalPositionFixture
         }
     }
 
-    [[nodiscard]] static jacobian_type jacobian() noexcept { return formal_eskf::vertical_position_jacobian<Linalg>(); }
+    [[nodiscard]] static jacobian_type jacobian() { return formal_eskf::vertical_position_jacobian<Linalg>(); }
 
-    [[nodiscard]] static constexpr bool observes_axis(std::size_t axis) noexcept { return axis == 2U; }
+    [[nodiscard]] static constexpr bool observes_axis(std::size_t axis) { return axis == 2U; }
 
     [[nodiscard]] static Status correct(state_type const & prior, covariance_type const & covariance,
                                         measurement_type const & observation, measurement_covariance_type const & noise,
                                         value_type norm_bound, state_type & posterior,
                                         covariance_type & posterior_covariance,
-                                        formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+                                        formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {})
     {
         return formal_eskf::try_correct_vertical_position(prior, covariance, observation(0U), noise(0U, 0U), norm_bound,
                                                           posterior, posterior_covariance, bias_update);
@@ -181,8 +178,6 @@ void test_position_jacobian(TestContext & test, std::string_view profile, typena
     static_assert(SupportsVerticalPosition<Linalg, typename Fixture::state_type, typename Fixture::covariance_type>);
     static_assert(!SupportsVerticalPosition<Linalg, formal_eskf::configuration::Ahrs::NominalState<Linalg>,
                                             formal_eskf::linalg::Matrix<Linalg, 3U, 3U>>);
-    static_assert(noexcept(formal_eskf::horizontal_position_jacobian<Linalg>()));
-    static_assert(noexcept(formal_eskf::vertical_position_jacobian<Linalg>()));
 
     Fixture const fixture;
     auto const H = Fixture::jacobian();

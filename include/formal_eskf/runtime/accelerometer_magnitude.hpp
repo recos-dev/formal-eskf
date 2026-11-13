@@ -36,13 +36,13 @@ public:
     };
 
     /** Clear history on source/calibration/frame changes; next valid sample seeds the filter. */
-    void reset() noexcept { *this = AccelerometerMagnitude{}; }
+    void reset() { *this = AccelerometerMagnitude{}; }
 
-    [[nodiscard]] bool initialized() const noexcept { return m_initialized; }
-    [[nodiscard]] vector_type const & filtered_specific_force_b() const noexcept { return m_filtered_specific_force_b; }
+    [[nodiscard]] bool initialized() const { return m_initialized; }
+    [[nodiscard]] vector_type const & filtered_specific_force_b() const { return m_filtered_specific_force_b; }
 
     /** First valid sample seeds all axes. Failure preserves history and returns no valid diagnostics. */
-    [[nodiscard]] Result update(vector_type const & specific_force_b) noexcept;
+    [[nodiscard]] Result update(vector_type const & specific_force_b);
 
 private:
     vector_type m_filtered_specific_force_b{};
@@ -51,7 +51,7 @@ private:
 
 template <typename Linalg>
 typename AccelerometerMagnitude<Linalg>::Result
-AccelerometerMagnitude<Linalg>::update(vector_type const & specific_force_b) noexcept
+AccelerometerMagnitude<Linalg>::update(vector_type const & specific_force_b)
 {
     using math_type = typename Linalg::scalar_math_type;
     constexpr auto sample_interval = static_cast<value_type>(0.01);

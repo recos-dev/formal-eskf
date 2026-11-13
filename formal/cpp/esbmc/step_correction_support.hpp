@@ -30,7 +30,7 @@ template <>
 template <>
 inline correction_proof::Scalar
 FixedArrayLinalg<correction_proof::Scalar, NoNormObserver<correction_proof::Scalar>, solve_proof::Math>::norm<4U>(
-    storage_type<4U, 1U> const & vector) noexcept
+    storage_type<4U, 1U> const & vector)
 {
     return formal_eskf::scalar::StandardMath<correction_proof::Scalar>::sqrt(squared_norm(vector));
 }

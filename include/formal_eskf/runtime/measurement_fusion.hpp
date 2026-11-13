@@ -31,7 +31,7 @@ template <typename Linalg, std::size_t Size> struct MeasurementCheck
     linalg::Vector<Linalg, Size> innovation_variance{};
     linalg::Vector<Linalg, Size> test_ratio{};
 
-    [[nodiscard]] bool passed() const noexcept { return succeeded(status) && diagnostics_valid && !rejected; }
+    [[nodiscard]] bool passed() const { return succeeded(status) && diagnostics_valid && !rejected; }
 };
 
 /** A fresh per-call result; only fused means state/covariance were published. */
@@ -46,7 +46,7 @@ template <typename Linalg, std::size_t Size> struct FusionResult
     linalg::Vector<Linalg, Size> test_ratio{};
 
     FusionResult() = default;
-    explicit FusionResult(MeasurementCheck<Linalg, Size> const & check) noexcept
+    explicit FusionResult(MeasurementCheck<Linalg, Size> const & check)
         : status(check.status), diagnostics_valid(check.diagnostics_valid), innovation(check.innovation),
           innovation_variance(check.innovation_variance), test_ratio(check.test_ratio)
     {
@@ -61,13 +61,13 @@ namespace detail
 {
 
 template <typename Linalg>
-[[nodiscard]] bool finite_fusion_state(configuration::Ahrs::NominalState<Linalg> const & state) noexcept
+[[nodiscard]] bool finite_fusion_state(configuration::Ahrs::NominalState<Linalg> const & state)
 {
     return linalg::all_finite(state.q_nb.coefficients());
 }
 
 template <typename Linalg>
-[[nodiscard]] bool finite_fusion_state(configuration::Ins::NominalState<Linalg> const & state) noexcept
+[[nodiscard]] bool finite_fusion_state(configuration::Ins::NominalState<Linalg> const & state)
 {
     return linalg::all_finite(state.q_nb.coefficients()) && linalg::all_finite(state.p_n) &&
            linalg::all_finite(state.v_n) && linalg::all_finite(state.b_a) && linalg::all_finite(state.b_g);
@@ -79,7 +79,7 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
     linalg::Matrix<Linalg, Size, Size> const & covariance, linalg::Vector<Linalg, MeasurementSize> const & r,
     linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
     linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
-    typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma) noexcept
+    typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma)
 {
     MeasurementCheck<Linalg, MeasurementSize> result;
     if (!scalar::is_finite<typename Linalg::scalar_math_type>(gate_sigma))
@@ -118,7 +118,7 @@ check_measurement(configuration::Ahrs::NominalState<Linalg> const & state,
                   linalg::Matrix<Linalg, 3U, 3U> const & covariance, linalg::Vector<Linalg, MeasurementSize> const & r,
                   linalg::Matrix<Linalg, MeasurementSize, 3U> const & H,
                   linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
-                  typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma) noexcept
+                  typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma)
 {
     if (!detail::finite_fusion_state(state))
     {
@@ -135,7 +135,7 @@ template <typename Linalg, std::size_t MeasurementSize>
     configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
     linalg::Vector<Linalg, MeasurementSize> const & r, linalg::Matrix<Linalg, MeasurementSize, 15U> const & H,
     linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
-    typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma) noexcept
+    typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma)
 {
     if (!detail::finite_fusion_state(state))
     {
@@ -168,14 +168,12 @@ template <typename Linalg, std::size_t MeasurementSize>
  * groups, not zero state cross-covariance. No source lifecycle, clock or retry.
  */
 template <typename Linalg, std::size_t MeasurementSize>
-[[nodiscard]] FusionResult<Linalg, MeasurementSize>
-fuse_measurement(configuration::Ahrs::NominalState<Linalg> const & state,
-                 linalg::Matrix<Linalg, 3U, 3U> const & covariance, linalg::Vector<Linalg, MeasurementSize> const & r,
-                 linalg::Matrix<Linalg, MeasurementSize, 3U> const & H,
-                 linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
-                 typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
-                 configuration::Ahrs::NominalState<Linalg> & state_output,
-                 linalg::Matrix<Linalg, 3U, 3U> & covariance_output) noexcept
+[[nodiscard]] FusionResult<Linalg, MeasurementSize> fuse_measurement(
+    configuration::Ahrs::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 3U, 3U> const & covariance,
+    linalg::Vector<Linalg, MeasurementSize> const & r, linalg::Matrix<Linalg, MeasurementSize, 3U> const & H,
+    linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
+    typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
+    configuration::Ahrs::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 3U, 3U> & covariance_output)
 {
     auto const check = check_measurement(state, covariance, r, H, V, minimum_quaternion_norm, gate_sigma);
     FusionResult<Linalg, MeasurementSize> result{check};
@@ -199,7 +197,7 @@ template <typename Linalg, std::size_t MeasurementSize>
     linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
     typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
     configuration::Ins::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-    configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+    configuration::Ins::BiasUpdate const & bias_update = {})
 {
     auto const check = check_measurement(state, covariance, r, H, V, minimum_quaternion_norm, gate_sigma);
     FusionResult<Linalg, MeasurementSize> result{check};

@@ -24,7 +24,7 @@ namespace formal_eskf
  * [delta_p_n, delta_v_n, delta_theta_b, delta_b_a, delta_b_g].
  * No vertical velocity observation is introduced.
  */
-template <typename Linalg> [[nodiscard]] linalg::Matrix<Linalg, 2U, 15U> horizontal_velocity_jacobian() noexcept
+template <typename Linalg> [[nodiscard]] linalg::Matrix<Linalg, 2U, 15U> horizontal_velocity_jacobian()
 {
     linalg::Matrix<Linalg, 2U, 15U> H;
     H.template set_block<0U, 3U>(linalg::Matrix<Linalg, 2U, 2U>::identity());
@@ -37,7 +37,7 @@ template <typename Linalg> [[nodiscard]] linalg::Matrix<Linalg, 2U, 15U> horizon
  * [delta_p_n, delta_v_n, delta_theta_b, delta_b_a, delta_b_g].
  * This affine observation has a constant, exact Jacobian.
  */
-template <typename Linalg> [[nodiscard]] linalg::Matrix<Linalg, 3U, 15U> velocity_jacobian() noexcept
+template <typename Linalg> [[nodiscard]] linalg::Matrix<Linalg, 3U, 15U> velocity_jacobian()
 {
     linalg::Matrix<Linalg, 3U, 15U> H;
     H.template set_block<0U, 3U>(linalg::Matrix<Linalg, 3U, 3U>::identity());
@@ -68,13 +68,11 @@ template <typename Linalg> [[nodiscard]] linalg::Matrix<Linalg, 3U, 15U> velocit
  * No innovation gating, delayed fusion or dynamic allocation is introduced.
  */
 template <typename Linalg>
-[[nodiscard]] Status
-try_correct_velocity(configuration::Ins::NominalState<Linalg> const & state,
-                     linalg::Matrix<Linalg, 15U, 15U> const & covariance, linalg::Vector<Linalg, 3U> const & z_v_n,
-                     linalg::Matrix<Linalg, 3U, 3U> const & V, typename Linalg::value_type minimum_quaternion_norm,
-                     configuration::Ins::NominalState<Linalg> & state_output,
-                     linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                     configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+[[nodiscard]] Status try_correct_velocity(
+    configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
+    linalg::Vector<Linalg, 3U> const & z_v_n, linalg::Matrix<Linalg, 3U, 3U> const & V,
+    typename Linalg::value_type minimum_quaternion_norm, configuration::Ins::NominalState<Linalg> & state_output,
+    linalg::Matrix<Linalg, 15U, 15U> & covariance_output, configuration::Ins::BiasUpdate const & bias_update = {})
 {
     if (!linalg::all_finite(state.v_n) || !linalg::all_finite(z_v_n))
     {
@@ -104,14 +102,11 @@ try_correct_velocity(configuration::Ins::NominalState<Linalg> const & state,
  * Separate observation calls do not represent cross-source noise correlations.
  */
 template <typename Linalg>
-[[nodiscard]] Status try_correct_horizontal_velocity(configuration::Ins::NominalState<Linalg> const & state,
-                                                     linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-                                                     linalg::Vector<Linalg, 2U> const & z_v_ne,
-                                                     linalg::Matrix<Linalg, 2U, 2U> const & V,
-                                                     typename Linalg::value_type minimum_quaternion_norm,
-                                                     configuration::Ins::NominalState<Linalg> & state_output,
-                                                     linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-                                                     configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
+[[nodiscard]] Status try_correct_horizontal_velocity(
+    configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
+    linalg::Vector<Linalg, 2U> const & z_v_ne, linalg::Matrix<Linalg, 2U, 2U> const & V,
+    typename Linalg::value_type minimum_quaternion_norm, configuration::Ins::NominalState<Linalg> & state_output,
+    linalg::Matrix<Linalg, 15U, 15U> & covariance_output, configuration::Ins::BiasUpdate const & bias_update = {})
 {
     if (!linalg::all_finite(state.v_n) || !linalg::all_finite(z_v_ne))
     {

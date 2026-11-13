@@ -28,7 +28,7 @@ template <std::size_t AttitudeOffset, typename Linalg, std::size_t Size>
                                               linalg::Matrix<Linalg, 3U, 3U> const & R_before,
                                               linalg::Matrix<Linalg, 3U, 3U> const & R_after,
                                               typename Linalg::value_type yaw_variance,
-                                              linalg::Matrix<Linalg, Size, Size> & output) noexcept
+                                              linalg::Matrix<Linalg, Size, Size> & output)
 {
     static_assert(AttitudeOffset + 3U <= Size);
     using value_type = typename Linalg::value_type;
@@ -82,7 +82,7 @@ template <std::size_t AttitudeOffset, typename Linalg, std::size_t Size>
     linalg::Vector<Linalg, 3U> const & m_b, linalg::Vector<Linalg, 3U> const & m_n,
     typename Linalg::value_type yaw_variance, typename Linalg::value_type minimum_horizontal_field,
     typename Linalg::value_type minimum_quaternion_norm, so3::UnitQuaternion<Linalg> & attitude_output,
-    linalg::Matrix<Linalg, Size, Size> & covariance_output, so3::UnitQuaternion<Linalg> & delta_output) noexcept
+    linalg::Matrix<Linalg, Size, Size> & covariance_output, so3::UnitQuaternion<Linalg> & delta_output)
 {
     using value_type = typename Linalg::value_type;
     using math_type = typename Linalg::scalar_math_type;
@@ -194,7 +194,7 @@ template <typename Linalg>
     linalg::Vector<Linalg, 3U> const & m_b, linalg::Vector<Linalg, 3U> const & m_n,
     typename Linalg::value_type yaw_variance, typename Linalg::value_type minimum_horizontal_field,
     typename Linalg::value_type minimum_quaternion_norm, configuration::Ahrs::NominalState<Linalg> & state_output,
-    linalg::Matrix<Linalg, 3U, 3U> & covariance_output, so3::UnitQuaternion<Linalg> & delta_output) noexcept
+    linalg::Matrix<Linalg, 3U, 3U> & covariance_output, so3::UnitQuaternion<Linalg> & delta_output)
 {
     auto candidate = state;
     linalg::Matrix<Linalg, 3U, 3U> P;
@@ -219,7 +219,7 @@ template <typename Linalg>
     linalg::Vector<Linalg, 3U> const & m_b, linalg::Vector<Linalg, 3U> const & m_n,
     typename Linalg::value_type yaw_variance, typename Linalg::value_type minimum_horizontal_field,
     typename Linalg::value_type minimum_quaternion_norm, configuration::Ins::NominalState<Linalg> & state_output,
-    linalg::Matrix<Linalg, 15U, 15U> & covariance_output, so3::UnitQuaternion<Linalg> & delta_output) noexcept
+    linalg::Matrix<Linalg, 15U, 15U> & covariance_output, so3::UnitQuaternion<Linalg> & delta_output)
 {
     if (!linalg::all_finite(state.p_n) || !linalg::all_finite(state.v_n) || !linalg::all_finite(state.b_a) ||
         !linalg::all_finite(state.b_g))

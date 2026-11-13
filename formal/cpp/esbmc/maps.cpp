@@ -27,7 +27,7 @@ struct SquaredNormContract
 #if FORMAL_ESKF_PROOF_SQUARED_NORM_CONTRACT
 namespace formal_eskf::linalg
 {
-template <> inline contract_proof::Scalar squared_norm(contract_proof::Vector3 const & input) noexcept
+template <> inline contract_proof::Scalar squared_norm(contract_proof::Vector3 const & input)
 {
     using maps_proof::SquaredNormContract;
     __ESBMC_assert(SquaredNormContract::calls == 0U, "Exp norm contract: at most one request");

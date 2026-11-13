@@ -56,8 +56,6 @@ void test_conditions(TestContext & test)
 {
     constexpr Monitor::Parameters parameters{10U, 10U};
     Monitor initial;
-    static_assert(noexcept(initial.update(1U, {}, parameters)));
-    static_assert(noexcept(initial.reset()));
     expect_permissions(test, initial.update(1U, {}, parameters), disabled,
                        "unknown health and permissions fail closed");
     expect_permissions(test, initial.update(11U, {}, parameters), disabled, "time alone cannot authorize learning");

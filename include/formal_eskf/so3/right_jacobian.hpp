@@ -38,8 +38,7 @@ namespace formal_eskf::so3
  * @see https://arxiv.org/abs/1711.02508
  */
 template <typename Linalg>
-[[nodiscard]] Status try_right_jacobian(linalg::Vector<Linalg, 3U> const & phi,
-                                        linalg::Matrix<Linalg, 3U, 3U> & output) noexcept
+[[nodiscard]] Status try_right_jacobian(linalg::Vector<Linalg, 3U> const & phi, linalg::Matrix<Linalg, 3U, 3U> & output)
 {
     using value_type = typename Linalg::value_type;
     using scalar_math_type = typename Linalg::scalar_math_type;

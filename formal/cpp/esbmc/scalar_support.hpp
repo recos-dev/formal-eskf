@@ -34,14 +34,14 @@ extern void __ESBMC_assert(bool, char const *);
 #if FORMAL_ESKF_PROOF_SCALAR_LIBM
 namespace std
 {
-float formal_eskf_proof_sqrt(float) noexcept;
-double formal_eskf_proof_sqrt(double) noexcept;
-float formal_eskf_proof_sin(float) noexcept;
-double formal_eskf_proof_sin(double) noexcept;
-float formal_eskf_proof_cos(float) noexcept;
-double formal_eskf_proof_cos(double) noexcept;
-float formal_eskf_proof_atan2(float, float) noexcept;
-double formal_eskf_proof_atan2(double, double) noexcept;
+float formal_eskf_proof_sqrt(float);
+double formal_eskf_proof_sqrt(double);
+float formal_eskf_proof_sin(float);
+double formal_eskf_proof_sin(double);
+float formal_eskf_proof_cos(float);
+double formal_eskf_proof_cos(double);
+float formal_eskf_proof_atan2(float, float);
+double formal_eskf_proof_atan2(double, double);
 } // namespace std
 #define sqrt formal_eskf_proof_sqrt
 #define sin formal_eskf_proof_sin
@@ -166,38 +166,35 @@ using OtherScalar = float;
 #else
 using OtherScalar = double;
 #endif
-inline scalar_proof::Scalar formal_eskf_proof_sqrt(scalar_proof::Scalar x) noexcept
+inline scalar_proof::Scalar formal_eskf_proof_sqrt(scalar_proof::Scalar x)
 {
     return scalar_proof::Libm::root.record(x);
 }
-inline scalar_proof::Scalar formal_eskf_proof_sin(scalar_proof::Scalar x) noexcept
-{
-    return scalar_proof::Libm::sine.record(x);
-}
-inline scalar_proof::Scalar formal_eskf_proof_cos(scalar_proof::Scalar x) noexcept
+inline scalar_proof::Scalar formal_eskf_proof_sin(scalar_proof::Scalar x) { return scalar_proof::Libm::sine.record(x); }
+inline scalar_proof::Scalar formal_eskf_proof_cos(scalar_proof::Scalar x)
 {
     return scalar_proof::Libm::cosine.record(x);
 }
-inline scalar_proof::Scalar formal_eskf_proof_atan2(scalar_proof::Scalar y, scalar_proof::Scalar x) noexcept
+inline scalar_proof::Scalar formal_eskf_proof_atan2(scalar_proof::Scalar y, scalar_proof::Scalar x)
 {
     return scalar_proof::Libm::angle.record(y, x);
 }
-inline OtherScalar formal_eskf_proof_sqrt(OtherScalar) noexcept
+inline OtherScalar formal_eskf_proof_sqrt(OtherScalar)
 {
     __ESBMC_assert(false, "F-SCALAR: wrong libm scalar overload");
     return OtherScalar{0};
 }
-inline OtherScalar formal_eskf_proof_sin(OtherScalar) noexcept
+inline OtherScalar formal_eskf_proof_sin(OtherScalar)
 {
     __ESBMC_assert(false, "F-SCALAR: wrong libm scalar overload");
     return OtherScalar{0};
 }
-inline OtherScalar formal_eskf_proof_cos(OtherScalar) noexcept
+inline OtherScalar formal_eskf_proof_cos(OtherScalar)
 {
     __ESBMC_assert(false, "F-SCALAR: wrong libm scalar overload");
     return OtherScalar{0};
 }
-inline OtherScalar formal_eskf_proof_atan2(OtherScalar, OtherScalar) noexcept
+inline OtherScalar formal_eskf_proof_atan2(OtherScalar, OtherScalar)
 {
     __ESBMC_assert(false, "F-SCALAR: wrong libm scalar overload");
     return OtherScalar{0};

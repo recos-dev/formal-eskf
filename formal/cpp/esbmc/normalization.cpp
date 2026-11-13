@@ -41,7 +41,7 @@ struct NormalizeContract
 #if FORMAL_ESKF_PROOF_NORMALIZATION_BOUNDARY == 1
 namespace formal_eskf::linalg
 {
-template <> inline contract_proof::Scalar norm(contract_proof::Vector4 const & input) noexcept
+template <> inline contract_proof::Scalar norm(contract_proof::Vector4 const & input)
 {
     using normalization_proof::NormContract;
     __ESBMC_assert(NormContract::calls == 0U, "normalization contract: one norm request");
@@ -51,7 +51,7 @@ template <> inline contract_proof::Scalar norm(contract_proof::Vector4 const & i
 }
 template <>
 inline Matrix<contract_proof::Linalg, 4U, 1U>
-Matrix<contract_proof::Linalg, 4U, 1U>::operator/(value_type divisor) const noexcept
+Matrix<contract_proof::Linalg, 4U, 1U>::operator/(value_type divisor) const
 {
     using normalization_proof::CandidateContract;
     __ESBMC_assert(CandidateContract::calls == 0U, "normalization contract: one division request");
@@ -66,7 +66,7 @@ namespace formal_eskf::linalg
 {
 template <>
 inline Status try_normalize(contract_proof::Vector4 const & input, contract_proof::Scalar minimum,
-                            contract_proof::Vector4 & output) noexcept
+                            contract_proof::Vector4 & output)
 {
     using normalization_proof::NormalizeContract;
     __ESBMC_assert(NormalizeContract::calls == 0U, "normalization contract: one checked-vector request");

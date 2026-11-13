@@ -16,7 +16,7 @@ namespace formal_eskf::detail
 /** Shared finite-result check and symmetry cleanup for covariance transitions. */
 template <typename Linalg, std::size_t Size>
 [[nodiscard]] Status try_finish_covariance(linalg::Matrix<Linalg, Size, Size> & candidate,
-                                           linalg::Matrix<Linalg, Size, Size> & output) noexcept
+                                           linalg::Matrix<Linalg, Size, Size> & output)
 {
     if (!linalg::all_finite(candidate))
     {

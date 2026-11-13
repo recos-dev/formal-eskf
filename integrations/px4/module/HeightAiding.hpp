@@ -87,7 +87,7 @@ public:
     static constexpr value_type gate_sigma = value_type{5};
     static constexpr unsigned barometer_warmup_samples = 20U; // 200 ms / 10 ms pinned profile.
 
-    [[nodiscard]] Status initialize(std::uint64_t now_us, value_type origin_altitude) noexcept
+    [[nodiscard]] Status initialize(std::uint64_t now_us, value_type origin_altitude)
     {
         if (now_us == 0U || !valid_altitude(origin_altitude))
         {
@@ -103,12 +103,12 @@ public:
     [[nodiscard]] Result update(std::uint64_t now_us, Sample const & barometer, Sample const & gnss,
                                 bool vertical_velocity_aiding, state_type & state, covariance_type & covariance,
                                 configuration::Ins::BiasUpdate const & bias_update = {},
-                                Acceleration const & acceleration = {false, {0U, 0U}}) noexcept;
+                                Acceleration const & acceleration = {false, {0U, 0U}});
 
     /** Inspect one sensor session; source must be barometer or gnss. */
-    [[nodiscard]] Session const & session(Source source) const noexcept { return m_sessions[index(source)]; }
+    [[nodiscard]] Session const & session(Source source) const { return m_sessions[index(source)]; }
     [[nodiscard]] typename runtime::VerticalAccelerationHealth<Linalg>::Innovation
-    vertical_innovation(Source source) const noexcept
+    vertical_innovation(Source source) const
     {
         auto const & aid = session(source);
         if (!aid.active || aid.fusion_reset || !aid.fusion.diagnostics_valid)
@@ -117,39 +117,36 @@ public:
         }
         return {true, -aid.fusion_innovation, aid.fusion.innovation_variance(0U)};
     }
-    [[nodiscard]] Source reference() const noexcept { return m_reference; }
-    [[nodiscard]] std::uint64_t progress_time() const noexcept { return m_last_height_progress; }
-    [[nodiscard]] std::uint8_t reset_counter() const noexcept { return m_reset_counter; }
-    [[nodiscard]] value_type reset_delta() const noexcept { return m_reset_delta; }
+    [[nodiscard]] Source reference() const { return m_reference; }
+    [[nodiscard]] std::uint64_t progress_time() const { return m_last_height_progress; }
+    [[nodiscard]] std::uint8_t reset_counter() const { return m_reset_counter; }
+    [[nodiscard]] value_type reset_delta() const { return m_reset_delta; }
     [[nodiscard]] bool reset_required(std::uint64_t now_us,
-                                      runtime::GnssFusion::VerticalAccelerationTimes const & acceleration = {
-                                          0U, 0U}) const noexcept
+                                      runtime::GnssFusion::VerticalAccelerationTimes const & acceleration = {0U,
+                                                                                                             0U}) const
     {
         auto const progress = m_last_height_progress == 0U ? m_started : m_last_height_progress;
         return acceleration.reset_required(now_us) ||
                (progress != 0U && now_us > progress && now_us - progress > fusion_timeout_us);
     }
-    [[nodiscard]] bool valid(std::uint64_t now_us) const noexcept
+    [[nodiscard]] bool valid(std::uint64_t now_us) const
     {
         return m_last_height_progress != 0U && now_us >= m_last_height_progress &&
                now_us - m_last_height_progress <= fusion_timeout_us;
     }
 
 private:
-    [[nodiscard]] static constexpr std::size_t index(Source source) noexcept
-    {
-        return source == Source::barometer ? 0U : 1U;
-    }
-    [[nodiscard]] static bool valid_altitude(value_type altitude) noexcept
+    [[nodiscard]] static constexpr std::size_t index(Source source) { return source == Source::barometer ? 0U : 1U; }
+    [[nodiscard]] static bool valid_altitude(value_type altitude)
     {
         return std::isfinite(altitude) && altitude > value_type{-12000} && altitude < value_type{100000};
     }
-    void stop(Source source, StopReason reason) noexcept;
+    void stop(Source source, StopReason reason);
     void process(Source source, std::uint64_t now_us, Sample const & sample, bool vertical_velocity_aiding,
                  state_type & state, covariance_type & covariance, Result & result,
-                 configuration::Ins::BiasUpdate const & bias_update, Acceleration const & acceleration) noexcept;
+                 configuration::Ins::BiasUpdate const & bias_update, Acceleration const & acceleration);
     void reset_height(Source source, std::uint64_t now_us, value_type altitude, value_type variance, state_type & state,
-                      covariance_type & covariance, Result & result) noexcept;
+                      covariance_type & covariance, Result & result);
 
     std::array<Session, 2U> m_sessions{};
     Source m_reference = Source::none;
@@ -159,7 +156,7 @@ private:
     std::uint64_t m_started{}, m_tick{}, m_last_height_progress{};
 }; /* end class HeightAiding */
 
-template <typename Linalg> void HeightAiding<Linalg>::stop(Source source, StopReason reason) noexcept
+template <typename Linalg> void HeightAiding<Linalg>::stop(Source source, StopReason reason)
 {
     auto & aid = m_sessions[index(source)];
     aid.active = false;
@@ -173,7 +170,7 @@ template <typename Linalg> void HeightAiding<Linalg>::stop(Source source, StopRe
 
 template <typename Linalg>
 void HeightAiding<Linalg>::reset_height(Source source, std::uint64_t now_us, value_type altitude, value_type variance,
-                                        state_type & state, covariance_type & covariance, Result & result) noexcept
+                                        state_type & state, covariance_type & covariance, Result & result)
 {
     value_type delta{};
     // The existing checked primitive replaces one Down coordinate regardless of sensor origin.
@@ -200,7 +197,7 @@ template <typename Linalg>
 void HeightAiding<Linalg>::process(Source source, std::uint64_t now_us, Sample const & sample,
                                    bool vertical_velocity_aiding, state_type & state, covariance_type & covariance,
                                    Result & result, configuration::Ins::BiasUpdate const & bias_update,
-                                   Acceleration const & acceleration) noexcept
+                                   Acceleration const & acceleration)
 {
     auto & aid = m_sessions[index(source)];
     bool const barometer = source == Source::barometer;
@@ -354,11 +351,10 @@ void HeightAiding<Linalg>::process(Source source, std::uint64_t now_us, Sample c
 }
 
 template <typename Linalg>
-typename HeightAiding<Linalg>::Result HeightAiding<Linalg>::update(std::uint64_t now_us, Sample const & barometer,
-                                                                   Sample const & gnss, bool vertical_velocity_aiding,
-                                                                   state_type & state, covariance_type & covariance,
-                                                                   configuration::Ins::BiasUpdate const & bias_update,
-                                                                   Acceleration const & acceleration) noexcept
+typename HeightAiding<Linalg>::Result
+HeightAiding<Linalg>::update(std::uint64_t now_us, Sample const & barometer, Sample const & gnss,
+                             bool vertical_velocity_aiding, state_type & state, covariance_type & covariance,
+                             configuration::Ins::BiasUpdate const & bias_update, Acceleration const & acceleration)
 {
     Result result;
     if (m_started == 0U || now_us < m_started || now_us <= m_tick)

@@ -121,9 +121,9 @@ public:
         std::uint64_t last_reset_time_us{}; // Only actual successful reset feedback updates this.
     };
 
-    [[nodiscard]] State const & state() const noexcept { return m_state; }
+    [[nodiscard]] State const & state() const { return m_state; }
     /** Reinitialize the timeline; optionally bind the source used by caller's initial heading. */
-    void reset(Source const & source = {0U, 0U, 0U}) noexcept
+    void reset(Source const & source = {0U, 0U, 0U})
     {
         *this = MagnetometerFusion{};
         m_source = source;
@@ -139,13 +139,13 @@ public:
      * Invalid calls stop activity/permission without consuming time or source.
      */
     [[nodiscard]] Status update(std::uint64_t now_us, Conditions const & conditions, Parameters const & parameters,
-                                Sample const & sample) noexcept;
+                                Sample const & sample);
 
     /** One feedback per granted sample/tick; invalid feedback preserves the controller. */
-    [[nodiscard]] Status record_fusion(std::uint64_t sample_time_us, FusionDecision decision) noexcept;
+    [[nodiscard]] Status record_fusion(std::uint64_t sample_time_us, FusionDecision decision);
 
     /** Consume a reset permission with the actual numerical result; no fabricated fusion. */
-    [[nodiscard]] Status record_reset(std::uint64_t sample_time_us, bool reset_succeeded) noexcept;
+    [[nodiscard]] Status record_reset(std::uint64_t sample_time_us, bool reset_succeeded);
 
     /**
      * Explicit authorization after caller establishes safe re-entry, including
@@ -156,7 +156,7 @@ public:
      * Field-reference revisions use Source::reference_id during normal update.
      * Never restart repeatedly merely to bypass a fusion timeout.
      */
-    void restart() noexcept
+    void restart()
     {
         m_state = State{};
         m_sample_count = 0U;
@@ -165,12 +165,12 @@ public:
 
 private:
     [[nodiscard]] Status validate_update(std::uint64_t now_us, Conditions const & conditions,
-                                         Parameters const & parameters, Sample const & sample) const noexcept;
-    void select_sample_action(Conditions const & conditions, bool field_accepted) noexcept;
-    void stop(StopReason reason) noexcept;
-    void require_recovery(RecoveryReason reason) noexcept;
-    void check_fusion_timeout() noexcept;
-    void update_source(Source const & source, Conditions const & conditions) noexcept;
+                                         Parameters const & parameters, Sample const & sample) const;
+    void select_sample_action(Conditions const & conditions, bool field_accepted);
+    void stop(StopReason reason);
+    void require_recovery(RecoveryReason reason);
+    void check_fusion_timeout();
+    void update_source(Source const & source, Conditions const & conditions);
 
     State m_state{};
     Parameters m_parameters{};
@@ -183,14 +183,14 @@ private:
     bool m_heading_reset_required = false;
 }; /* end class MagnetometerFusion */
 
-inline void MagnetometerFusion::stop(StopReason reason) noexcept
+inline void MagnetometerFusion::stop(StopReason reason)
 {
     m_state.active = false;
     m_state.action = Action::none;
     m_state.stop_reason = reason;
 }
 
-inline void MagnetometerFusion::require_recovery(RecoveryReason reason) noexcept
+inline void MagnetometerFusion::require_recovery(RecoveryReason reason)
 {
     if (m_state.recovery_reason == RecoveryReason::none)
     {
@@ -199,7 +199,7 @@ inline void MagnetometerFusion::require_recovery(RecoveryReason reason) noexcept
     stop(StopReason::recovery_required);
 }
 
-inline void MagnetometerFusion::check_fusion_timeout() noexcept
+inline void MagnetometerFusion::check_fusion_timeout()
 {
     auto const progress =
         m_state.last_fuse_time_us > m_state.last_reset_time_us ? m_state.last_fuse_time_us : m_state.last_reset_time_us;
@@ -217,7 +217,7 @@ inline void MagnetometerFusion::check_fusion_timeout() noexcept
     }
 }
 
-inline void MagnetometerFusion::update_source(Source const & source, Conditions const & conditions) noexcept
+inline void MagnetometerFusion::update_source(Source const & source, Conditions const & conditions)
 {
     bool const source_changed = m_source.device_id != 0U && (source.device_id != m_source.device_id ||
                                                              source.calibration_count != m_source.calibration_count);
@@ -249,7 +249,7 @@ inline void MagnetometerFusion::update_source(Source const & source, Conditions 
 }
 
 inline Status MagnetometerFusion::validate_update(std::uint64_t now_us, Conditions const & conditions,
-                                                  Parameters const & parameters, Sample const & sample) const noexcept
+                                                  Parameters const & parameters, Sample const & sample) const
 {
     if (parameters.maximum_interval_us == 0U ||
         parameters.maximum_interval_us > std::numeric_limits<std::uint64_t>::max() / 2U ||
@@ -279,7 +279,7 @@ inline Status MagnetometerFusion::validate_update(std::uint64_t now_us, Conditio
 }
 
 inline Status MagnetometerFusion::update(std::uint64_t now_us, Conditions const & conditions,
-                                         Parameters const & parameters, Sample const & sample) noexcept
+                                         Parameters const & parameters, Sample const & sample)
 {
     m_state.action = Action::none;
     m_state.filter_reset = false;
@@ -334,7 +334,7 @@ inline Status MagnetometerFusion::update(std::uint64_t now_us, Conditions const 
     return Status::success;
 }
 
-inline void MagnetometerFusion::select_sample_action(Conditions const & conditions, bool field_accepted) noexcept
+inline void MagnetometerFusion::select_sample_action(Conditions const & conditions, bool field_accepted)
 {
     if (!conditions.ready)
     {
@@ -439,7 +439,7 @@ inline void MagnetometerFusion::select_sample_action(Conditions const & conditio
     }
 }
 
-inline Status MagnetometerFusion::record_fusion(std::uint64_t sample_time_us, FusionDecision decision) noexcept
+inline Status MagnetometerFusion::record_fusion(std::uint64_t sample_time_us, FusionDecision decision)
 {
     if (decision != FusionDecision::fused && decision != FusionDecision::rejected && decision != FusionDecision::failed)
     {
@@ -473,7 +473,7 @@ inline Status MagnetometerFusion::record_fusion(std::uint64_t sample_time_us, Fu
     return Status::success;
 }
 
-inline Status MagnetometerFusion::record_reset(std::uint64_t sample_time_us, bool reset_succeeded) noexcept
+inline Status MagnetometerFusion::record_reset(std::uint64_t sample_time_us, bool reset_succeeded)
 {
     if (m_state.action != Action::reset || sample_time_us != m_sample_time_us)
     {

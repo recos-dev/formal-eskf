@@ -41,7 +41,7 @@ namespace formal_eskf::linalg
 {
 template <>
 inline bool all_finite<correction_proof::Backend, correction_proof::rows, correction_proof::rows>(
-    correction_proof::Square const & input) noexcept
+    correction_proof::Square const & input)
 {
     using namespace correction_proof;
     __ESBMC_assert(FiniteCall::count++ == 0U && same_matrix(input, *FiniteCall::input),

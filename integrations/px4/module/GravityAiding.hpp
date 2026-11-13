@@ -36,25 +36,25 @@ public:
     };
 
     /** A discontinuity discards partial increments and LPF history, not established tilt alignment. */
-    void reset_samples() noexcept
+    void reset_samples()
     {
         m_sampler.reset();
         m_active = false;
     }
-    [[nodiscard]] bool active() const noexcept { return m_active; }
-    [[nodiscard]] bool tilt_aligned() const noexcept { return m_tilt.aligned(); }
+    [[nodiscard]] bool active() const { return m_active; }
+    [[nodiscard]] bool tilt_aligned() const { return m_tilt.aligned(); }
 
     /** Tilt/sampler history is consumed before correction; a later failure does not roll it back. */
     [[nodiscard]] Result update(ImuSample<Linalg> const & imu, std::uint64_t angular_period_us,
                                 std::uint64_t acceleration_period_us, int clipping_mask, Context const & context,
                                 vector_type const & gravity_n, state_type & state, covariance_type & covariance,
-                                configuration::Ins::BiasUpdate const & bias_update = {}) noexcept;
+                                configuration::Ins::BiasUpdate const & bias_update = {});
 
 private:
     [[nodiscard]] runtime::AccelerometerFusionResult
     fuse_observation(typename sampler_type::Result const & sample, Context const & context,
                      vector_type const & gravity_n, state_type & state, covariance_type & covariance,
-                     configuration::Ins::BiasUpdate const & bias_update) noexcept;
+                     configuration::Ins::BiasUpdate const & bias_update);
 
     static constexpr auto minimum_norm = static_cast<value_type>(1e-6);
     sampler_type m_sampler{};
@@ -67,7 +67,7 @@ typename GravityAiding<Linalg>::Result
 GravityAiding<Linalg>::update(ImuSample<Linalg> const & imu, std::uint64_t angular_period_us,
                               std::uint64_t acceleration_period_us, int clipping_mask, Context const & context,
                               vector_type const & gravity_n, state_type & state, covariance_type & covariance,
-                              configuration::Ins::BiasUpdate const & bias_update) noexcept
+                              configuration::Ins::BiasUpdate const & bias_update)
 {
     Result result;
     if (angular_period_us == 0U || angular_period_us > 50000U || acceleration_period_us == 0U ||
@@ -115,7 +115,7 @@ template <typename Linalg>
 runtime::AccelerometerFusionResult
 GravityAiding<Linalg>::fuse_observation(typename sampler_type::Result const & sample, Context const & context,
                                         vector_type const & gravity_n, state_type & state, covariance_type & covariance,
-                                        configuration::Ins::BiasUpdate const & bias_update) noexcept
+                                        configuration::Ins::BiasUpdate const & bias_update)
 {
     runtime::AccelerometerFusionResult result;
     if (sample.clipping_mask < 0)

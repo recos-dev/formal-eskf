@@ -33,7 +33,7 @@ extern float nondet_float();
  * ESBMC 8.4 has no atan2f body.  Interior results remain nondeterministic over
  * the specified range; only the two exact axis values are fixed.
  */
-extern "C" float atan2f(float y, float x) noexcept
+extern "C" float atan2f(float y, float x)
 {
     constexpr float half_pi = 1.57079632679489661923F;
     if (y == 0.0F && x > 0.0F)
@@ -111,22 +111,22 @@ template <typename Number> struct ScalarArray<Number, 1U>
 
 template <typename Number> struct NoNormObserver
 {
-    template <std::size_t Size, typename Values> static void input(Values const &) noexcept {}
-    static void result(Number) noexcept {}
+    template <std::size_t Size, typename Values> static void input(Values const &) {}
+    static void result(Number) {}
     template <std::size_t Rows, std::size_t Inner, std::size_t Columns, typename Left, typename Right, typename Result>
-    static void product(Left const &, Right const &, Result const &) noexcept
+    static void product(Left const &, Right const &, Result const &)
     {
     }
     template <std::size_t Size, typename Left, typename Right, typename Result>
-    static void addition(Left const &, Right const &, Result const &) noexcept
+    static void addition(Left const &, Right const &, Result const &)
     {
     }
     template <std::size_t Size, typename Values, typename Result>
-    static void quotient(Values const &, Number, Result const &) noexcept
+    static void quotient(Values const &, Number, Result const &)
     {
     }
     template <std::size_t Size, typename Values, typename Result>
-    static void scaling(Values const &, Number, Result const &) noexcept
+    static void scaling(Values const &, Number, Result const &)
     {
     }
 };
@@ -143,7 +143,7 @@ public:
         ScalarArray<value_type, Rows * Columns> values;
     };
 
-    template <std::size_t Rows, std::size_t Columns> static void set_zero(storage_type<Rows, Columns> & matrix) noexcept
+    template <std::size_t Rows, std::size_t Columns> static void set_zero(storage_type<Rows, Columns> & matrix)
     {
         for (std::size_t index = 0U; index < Rows * Columns; ++index)
         {
@@ -153,21 +153,21 @@ public:
 
     template <std::size_t Rows, std::size_t Columns>
     [[nodiscard]] static value_type const & coefficient(storage_type<Rows, Columns> const & matrix, std::size_t row,
-                                                        std::size_t column) noexcept
+                                                        std::size_t column)
     {
         return matrix.values[row * Columns + column];
     }
 
     template <std::size_t Rows, std::size_t Columns>
     [[nodiscard]] static value_type & coefficient(storage_type<Rows, Columns> & matrix, std::size_t row,
-                                                  std::size_t column) noexcept
+                                                  std::size_t column)
     {
         return matrix.values[row * Columns + column];
     }
 
     template <std::size_t Rows, std::size_t Columns>
     static void add(storage_type<Rows, Columns> const & left, storage_type<Rows, Columns> const & right,
-                    storage_type<Rows, Columns> & result) noexcept
+                    storage_type<Rows, Columns> & result)
     {
         for (std::size_t index = 0U; index < Rows * Columns; ++index)
         {
@@ -178,7 +178,7 @@ public:
 
     template <std::size_t Rows, std::size_t Columns>
     static void subtract(storage_type<Rows, Columns> const & left, storage_type<Rows, Columns> const & right,
-                         storage_type<Rows, Columns> & result) noexcept
+                         storage_type<Rows, Columns> & result)
     {
         for (std::size_t index = 0U; index < Rows * Columns; ++index)
         {
@@ -187,7 +187,7 @@ public:
     }
 
     template <std::size_t Rows, std::size_t Columns>
-    static void negate(storage_type<Rows, Columns> const & matrix, storage_type<Rows, Columns> & result) noexcept
+    static void negate(storage_type<Rows, Columns> const & matrix, storage_type<Rows, Columns> & result)
     {
         for (std::size_t index = 0U; index < Rows * Columns; ++index)
         {
@@ -197,7 +197,7 @@ public:
 
     template <std::size_t Rows, std::size_t Columns>
     static void scale(storage_type<Rows, Columns> const & matrix, value_type scalar,
-                      storage_type<Rows, Columns> & result) noexcept
+                      storage_type<Rows, Columns> & result)
     {
         for (std::size_t index = 0U; index < Rows * Columns; ++index)
         {
@@ -208,7 +208,7 @@ public:
 
     template <std::size_t Rows, std::size_t Columns>
     static void divide(storage_type<Rows, Columns> const & matrix, value_type scalar,
-                       storage_type<Rows, Columns> & result) noexcept
+                       storage_type<Rows, Columns> & result)
     {
         for (std::size_t index = 0U; index < Rows * Columns; ++index)
         {
@@ -218,8 +218,7 @@ public:
     }
 
     template <std::size_t Size>
-    [[nodiscard]] static value_type dot(storage_type<Size, 1U> const & left,
-                                        storage_type<Size, 1U> const & right) noexcept
+    [[nodiscard]] static value_type dot(storage_type<Size, 1U> const & left, storage_type<Size, 1U> const & right)
     {
         value_type result{0};
         for (std::size_t index = 0U; index < Size; ++index)
@@ -229,13 +228,12 @@ public:
         return result;
     }
 
-    template <std::size_t Size>
-    [[nodiscard]] static value_type squared_norm(storage_type<Size, 1U> const & vector) noexcept
+    template <std::size_t Size> [[nodiscard]] static value_type squared_norm(storage_type<Size, 1U> const & vector)
     {
         return dot(vector, vector);
     }
 
-    template <std::size_t Size> [[nodiscard]] static value_type norm(storage_type<Size, 1U> const & vector) noexcept
+    template <std::size_t Size> [[nodiscard]] static value_type norm(storage_type<Size, 1U> const & vector)
     {
         Observer::template input<Size>(vector.values);
         value_type const result = scalar_math_type::sqrt(squared_norm(vector));
@@ -245,7 +243,7 @@ public:
 
     template <std::size_t Rows, std::size_t Inner, std::size_t Columns>
     static void multiply(storage_type<Rows, Inner> const & left, storage_type<Inner, Columns> const & right,
-                         storage_type<Rows, Columns> & result) noexcept
+                         storage_type<Rows, Columns> & result)
     {
         for (std::size_t row = 0U; row < Rows; ++row)
         {
@@ -263,7 +261,7 @@ public:
     }
 
     template <std::size_t Rows, std::size_t Columns>
-    static void transpose(storage_type<Rows, Columns> const & matrix, storage_type<Columns, Rows> & result) noexcept
+    static void transpose(storage_type<Rows, Columns> const & matrix, storage_type<Columns, Rows> & result)
     {
         for (std::size_t row = 0U; row < Rows; ++row)
         {
@@ -300,18 +298,18 @@ inline void assume_quaternion(Quaternion const & quaternion)
     assume_scalar(quaternion.q3());
 }
 
-[[nodiscard]] inline bool same_coefficients(Quaternion const & left, Quaternion const & right) noexcept
+[[nodiscard]] inline bool same_coefficients(Quaternion const & left, Quaternion const & right)
 {
     return left.q0() == right.q0() && left.q1() == right.q1() && left.q2() == right.q2() && left.q3() == right.q3();
 }
 
-[[nodiscard]] inline bool is_negative_identity(Quaternion const & quaternion) noexcept
+[[nodiscard]] inline bool is_negative_identity(Quaternion const & quaternion)
 {
     return quaternion.q0() == Scalar{-1} && quaternion.q1() == Scalar{0} && quaternion.q2() == Scalar{0} &&
            quaternion.q3() == Scalar{0};
 }
 
-[[nodiscard]] inline bool same_vector(Vector3 const & left, Vector3 const & right) noexcept
+[[nodiscard]] inline bool same_vector(Vector3 const & left, Vector3 const & right)
 {
     return left(0U) == right(0U) && left(1U) == right(1U) && left(2U) == right(2U);
 }

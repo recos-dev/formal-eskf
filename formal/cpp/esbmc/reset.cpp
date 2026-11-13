@@ -101,7 +101,7 @@ namespace formal_eskf::linalg
 template <>
 template <>
 inline reset_proof::Matrix Matrix<contract_proof::Linalg, reset_proof::size, reset_proof::size>::operator*
-    <reset_proof::size>(reset_proof::Matrix const & other) const noexcept
+    <reset_proof::size>(reset_proof::Matrix const & other) const
 {
     using reset_proof::ProductContract;
     __ESBMC_assert(ProductContract::calls < 2U, "E-RESET product contract: two matrix products in the sandwich");
@@ -121,7 +121,7 @@ inline reset_proof::Matrix Matrix<contract_proof::Linalg, reset_proof::size, res
 #if FORMAL_ESKF_PROOF_FINITE_CONTRACT
 namespace formal_eskf::linalg
 {
-template <> inline bool all_finite(reset_proof::Matrix const & matrix) noexcept
+template <> inline bool all_finite(reset_proof::Matrix const & matrix)
 {
     using reset_proof::FiniteContract;
     __ESBMC_assert(FiniteContract::calls == 0U, "E-RESET finalizer contract: exactly one complete candidate check");
@@ -137,7 +137,7 @@ namespace formal_eskf::so3
 {
 template <>
 inline Status try_right_jacobian<contract_proof::Linalg>(contract_proof::Vector3 const & input,
-                                                         reset_proof::Matrix3 & output) noexcept
+                                                         reset_proof::Matrix3 & output)
 {
     using reset_proof::JacobianContract;
     __ESBMC_assert(JacobianContract::calls == 0U, "E-RESET contract: at most one right Jacobian");
@@ -154,8 +154,7 @@ inline Status try_right_jacobian<contract_proof::Linalg>(contract_proof::Vector3
 namespace formal_eskf::linalg
 {
 template <>
-inline reset_proof::Matrix sandwich(reset_proof::Matrix const & transform,
-                                    reset_proof::Matrix const & covariance) noexcept
+inline reset_proof::Matrix sandwich(reset_proof::Matrix const & transform, reset_proof::Matrix const & covariance)
 {
     using reset_proof::SandwichContract;
     __ESBMC_assert(SandwichContract::calls == 0U, "E-RESET contract: at most one full covariance sandwich");
@@ -168,7 +167,7 @@ inline reset_proof::Matrix sandwich(reset_proof::Matrix const & transform,
 
 namespace formal_eskf::detail
 {
-template <> inline Status try_finish_covariance(reset_proof::Matrix & candidate, reset_proof::Matrix & output) noexcept
+template <> inline Status try_finish_covariance(reset_proof::Matrix & candidate, reset_proof::Matrix & output)
 {
     using reset_proof::FinishContract;
     __ESBMC_assert(FinishContract::calls == 0U && reset_proof::SandwichContract::calls == 1U,

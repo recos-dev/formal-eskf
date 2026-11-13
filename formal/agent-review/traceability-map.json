@@ -2723,6 +2723,10 @@
         "cpp": [
           {
             "file": "include/formal_eskf/eskf/correction.hpp",
+            "symbol": "Status try_correction_covariances("
+          },
+          {
+            "file": "include/formal_eskf/eskf/correction.hpp",
             "symbol": "Status validate_correction_inputs("
           },
           {
@@ -3088,7 +3092,7 @@
           },
           {
             "file": "include/formal_eskf/runtime/measurement_fusion.hpp",
-            "symbol": "check_fusion_gate("
+            "symbol": "check_measurement("
           },
           {
             "file": "include/formal_eskf/eskf/magnetometer.hpp",
@@ -3352,11 +3356,19 @@
         "cpp": [
           {
             "file": "include/formal_eskf/runtime/measurement_fusion.hpp",
+            "symbol": "struct MeasurementCheck"
+          },
+          {
+            "file": "include/formal_eskf/eskf/correction.hpp",
+            "symbol": "Status try_correction_covariances("
+          },
+          {
+            "file": "include/formal_eskf/runtime/measurement_fusion.hpp",
             "symbol": "struct FusionResult"
           },
           {
             "file": "include/formal_eskf/runtime/measurement_fusion.hpp",
-            "symbol": "check_fusion_gate("
+            "symbol": "check_measurement("
           },
           {
             "file": "include/formal_eskf/runtime/measurement_fusion.hpp",

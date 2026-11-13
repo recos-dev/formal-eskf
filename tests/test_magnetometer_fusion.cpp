@@ -260,8 +260,8 @@ template <typename Linalg> void test_field_frames(TestContext & test, std::strin
         {
             auto const j = (axis + 1U) % 3U;
             auto const k = (axis + 2U) % 3U;
-            measured.set(axis, static_cast<value_type>(reference(axis) + 2.0L * q.q0() * first[axis] +
-                                                       2.0L * (u[j] * first[k] - u[k] * first[j])));
+            measured(axis) = static_cast<value_type>(reference(axis) + 2.0L * q.q0() * first[axis] +
+                                                     2.0L * (u[j] * first[k] - u[k] * first[j]));
         }
         auto const result = check_magnetic_field(q, measured, reference, field_parameters<Linalg>(), true);
         test.expect(result.accepted && std::abs(result.inclination_error) < static_cast<value_type>(1e-5) &&
@@ -292,7 +292,7 @@ template <typename Linalg> void test_invalid_field(TestContext & test, std::stri
         for (std::size_t axis = 0U; axis < 3U; ++axis)
         {
             auto bad = reference;
-            bad.set(axis, invalid);
+            bad(axis) = invalid;
             expect_failure(check_magnetic_field(identity, bad, reference, parameters, true), Status::non_finite_input);
             expect_failure(check_magnetic_field(identity, reference, bad, parameters, true), Status::non_finite_input);
         }
@@ -329,7 +329,7 @@ template <typename Linalg> void test_invalid_field(TestContext & test, std::stri
     expect_failure(check_magnetic_field(identity, Vector<Linalg>{}, reference, parameters, true), Status::domain_error);
     expect_failure(check_magnetic_field(identity, reference, Vector<Linalg>{}, parameters, true), Status::domain_error);
     auto huge = reference;
-    huge.set(2U, limits_type::max());
+    huge(2U) = limits_type::max();
     expect_failure(check_magnetic_field(identity, huge, reference, parameters, true), Status::non_finite_result);
     expect_failure(check_magnetic_field(identity, reference, huge, parameters, true), Status::non_finite_result);
     auto const tiny = Vector<Linalg>::from_row_major({limits_type::min(), value_type{0}, value_type{0}});
@@ -490,10 +490,28 @@ template <typename Linalg, typename Configuration> void test_fusion(TestContext 
 
 template <typename Linalg, typename Configuration> void test_rejection(TestContext & test, std::string_view profile)
 {
+    enum class Scenario
+    {
+        excessive_field_strength,
+        heading_mismatch,
+        innovation_outlier,
+        non_finite_noise_covariance,
+        zero_gate_sigma,
+        indefinite_innovation_covariance,
+        negative_measurement_variance,
+        invalid_norm_bound,
+        field_rejection_before_noise_validation,
+        non_finite_measurement,
+    };
+
     using fixture_type = FusionFixture<Linalg, Configuration>;
     using value_type = typename fixture_type::value_type;
     using limits_type = std::numeric_limits<value_type>;
-    for (unsigned scenario = 0U; scenario < 10U; ++scenario)
+    for (auto const scenario :
+         {Scenario::excessive_field_strength, Scenario::heading_mismatch, Scenario::innovation_outlier,
+          Scenario::non_finite_noise_covariance, Scenario::zero_gate_sigma, Scenario::indefinite_innovation_covariance,
+          Scenario::negative_measurement_variance, Scenario::invalid_norm_bound,
+          Scenario::field_rejection_before_noise_validation, Scenario::non_finite_measurement})
     {
         fixture_type fixture;
         FusionDecision expected = FusionDecision::failed;
@@ -501,30 +519,30 @@ template <typename Linalg, typename Configuration> void test_rejection(TestConte
         bool gate_valid = false;
         switch (scenario)
         {
-        case 0U:
+        case Scenario::excessive_field_strength:
             fixture.sample = fixture.reference * value_type{2};
             expected = FusionDecision::rejected;
             break;
-        case 1U:
+        case Scenario::heading_mismatch:
             fixture.sample = Vector<Linalg>::from_row_major({value_type{0}, value_type{30}, value_type{40}});
             expected = FusionDecision::rejected;
             break;
-        case 2U:
+        case Scenario::innovation_outlier:
             fixture.heading_observable = false;
             fixture.P = typename fixture_type::covariance_type{};
             fixture.sample = Vector<Linalg>::from_row_major({value_type{0}, value_type{30}, value_type{40}});
             expected = FusionDecision::rejected;
             gate_valid = true;
             break;
-        case 3U:
+        case Scenario::non_finite_noise_covariance:
             fixture.V(2U, 2U) = limits_type::quiet_NaN();
             status = Status::non_finite_input;
             break;
-        case 4U:
+        case Scenario::zero_gate_sigma:
             fixture.sigma = value_type{0};
             status = Status::domain_error;
             break;
-        case 5U:
+        case Scenario::indefinite_innovation_covariance:
             // Positive diagonal S can pass the component gate yet fail LLT.
             fixture.P = typename fixture_type::covariance_type{};
             fixture.V = fixture_type::noise_type::identity();
@@ -533,21 +551,21 @@ template <typename Linalg, typename Configuration> void test_rejection(TestConte
             status = Status::not_positive_definite;
             gate_valid = true;
             break;
-        case 6U:
+        case Scenario::negative_measurement_variance:
             fixture.V(0U, 0U) = value_type{-1};
             status = Status::domain_error;
             break;
-        case 7U:
+        case Scenario::invalid_norm_bound:
             fixture.minimum_norm = value_type{2};
             status = Status::domain_error;
             break;
-        case 8U:
+        case Scenario::field_rejection_before_noise_validation:
             // Field rejection does not certify inputs of later, unexecuted stages.
             fixture.sample = fixture.reference * value_type{2};
             fixture.V(2U, 2U) = limits_type::quiet_NaN();
             expected = FusionDecision::rejected;
             break;
-        default:
+        case Scenario::non_finite_measurement:
             fixture.sample(2U) = limits_type::infinity();
             status = Status::non_finite_input;
             break;
@@ -572,7 +590,7 @@ template <typename Linalg, typename Configuration> void test_rejection(TestConte
                             result.fusion.diagnostics_valid == gate_valid && same_state(state_output, old_state) &&
                             same_bits(covariance_output, old_P),
                         profile, "field/gate rejection and numerical failures preserve all output aliases");
-            if (scenario == 2U)
+            if (scenario == Scenario::innovation_outlier)
             {
                 test.expect(result.field.accepted && !result.field.heading_checked &&
                                 result.fusion.test_ratio(0U) > value_type{1} &&
@@ -694,7 +712,7 @@ void test_separate_references(TestContext & test, std::string_view profile)
     test.expect(inclined.fusion.decision == FusionDecision::rejected && inclined.field.failures.inclination &&
                     !inclined.field.failures.strength && same_state(output, before) && same_bits(output_P, before_P),
                 profile, "geographic inclination is independent of the observation reference");
-    health.set(0U, std::numeric_limits<value_type>::quiet_NaN());
+    health(0U) = std::numeric_limits<value_type>::quiet_NaN();
     auto const invalid = fuse();
     test.expect(invalid.fusion.status == Status::non_finite_input && !invalid.field.diagnostics_valid &&
                     same_state(output, before) && same_bits(output_P, before_P),
@@ -713,7 +731,7 @@ void test_separate_references(TestContext & test, std::string_view profile)
                 "a strength-only reference needs no heading information");
     health = Vector<Linalg>{};
     test.expect(fuse().fusion.status == Status::domain_error, profile, "zero consumed health reference fails");
-    health.set(0U, std::numeric_limits<value_type>::max());
+    health(0U) = std::numeric_limits<value_type>::max();
     test.expect(fuse().fusion.status == Status::non_finite_result, profile, "health geometry overflow fails");
 }
 

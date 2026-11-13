@@ -23,7 +23,7 @@ namespace formal_eskf::runtime
 template <typename Linalg>
 [[nodiscard]] FusionResult<Linalg, 2U> fuse_horizontal_position(
     configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-    linalg::Matrix<Linalg, 2U, 1U> const & z_p_ne, linalg::Matrix<Linalg, 2U, 2U> const & V,
+    linalg::Vector<Linalg, 2U> const & z_p_ne, linalg::Matrix<Linalg, 2U, 2U> const & V,
     typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
     configuration::Ins::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
     configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
@@ -62,7 +62,7 @@ fuse_vertical_position(configuration::Ins::NominalState<Linalg> const & state,
         result.status = Status::non_finite_input;
         return result;
     }
-    auto const r = linalg::Matrix<Linalg, 1U, 1U>::from_row_major({z_p_d - state.p_n(2U)});
+    auto const r = linalg::Vector<Linalg, 1U>::from_row_major({z_p_d - state.p_n(2U)});
     if (!linalg::all_finite(r))
     {
         result.status = Status::non_finite_result;

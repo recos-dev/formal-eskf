@@ -49,9 +49,9 @@ template <typename Linalg> struct GnssMeasurementFixture
 {
     using value_type = typename Linalg::value_type;
     using state_type = Ins::NominalState<Linalg>;
-    using covariance_type = typename Linalg::template matrix_type<15U, 15U>;
-    using noise_type = typename Linalg::template matrix_type<3U, 3U>;
-    using vector_type = typename Linalg::template vector_type<3U>;
+    using covariance_type = formal_eskf::linalg::Matrix<Linalg, 15U, 15U>;
+    using noise_type = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
+    using vector_type = formal_eskf::linalg::Vector<Linalg, 3U>;
     state_type state{};
     covariance_type P = covariance_type::identity() * value_type{3};
     noise_type V = noise_type::identity();
@@ -84,8 +84,8 @@ template <typename Linalg> void test_policy(Context & test)
                     {
                         F fixture;
                         fixture.conditions = {fault, accuracy, T{0.5}};
-                        fixture.velocity.set(axis, horizontal);
-                        fixture.velocity.set(2U, down);
+                        fixture.velocity(axis) = horizontal;
+                        fixture.velocity(2U) = down;
                         auto output = fixture.state;
                         auto output_P = fixture.P;
                         auto const result = fixture.fuse(output, output_P);
@@ -153,16 +153,16 @@ template <typename Linalg> void test_correction_contract(Context & test)
             {
                 F fixture;
                 // PSD prior and correlated SPD measurement noise; couple biases to the observation.
-                fixture.P.set(9U, height ? 2U : 5U, T{0.25});
-                fixture.P.set(height ? 2U : 5U, 9U, T{0.25});
-                fixture.P.set(12U, height ? 2U : 5U, T{0.125});
-                fixture.P.set(height ? 2U : 5U, 12U, T{0.125});
-                fixture.V.set(0U, 1U, T{0.125});
-                fixture.V.set(1U, 0U, T{0.125});
+                fixture.P(9U, height ? 2U : 5U) = T{0.25};
+                fixture.P(height ? 2U : 5U, 9U) = T{0.25};
+                fixture.P(12U, height ? 2U : 5U) = T{0.125};
+                fixture.P(height ? 2U : 5U, 12U) = T{0.125};
+                fixture.V(0U, 1U) = T{0.125};
+                fixture.V(1U, 0U) = T{0.125};
                 fixture.conditions.bad_vertical_acceleration = fault;
                 if (!fault)
                 {
-                    fixture.velocity.set(2U, T{1});
+                    fixture.velocity(2U) = T{1};
                 }
                 Ins::BiasUpdate permissions;
                 permissions.accelerometer = {false, false, false};
@@ -171,16 +171,17 @@ template <typename Linalg> void test_correction_contract(Context & test)
                 auto expected_r = fixture.velocity;
                 if (fault)
                 {
-                    expected_r.set(2U, T{-2});
+                    expected_r(2U) = T{-2};
                 }
                 Status status{};
                 if (height)
                 {
                     status = formal_eskf::try_correct(
-                        fixture.state, fixture.P, Linalg::template vector_type<1U>::from_row_major({expected_r(2U)}),
+                        fixture.state, fixture.P,
+                        formal_eskf::linalg::Vector<Linalg, 1U>::from_row_major({expected_r(2U)}),
                         formal_eskf::vertical_position_jacobian<Linalg>(),
-                        Linalg::template matrix_type<1U, 1U>::identity(), fixture.minimum_norm, expected, expected_P,
-                        permissions);
+                        formal_eskf::linalg::Matrix<Linalg, 1U, 1U>::identity(), fixture.minimum_norm, expected,
+                        expected_P, permissions);
                 }
                 else
                 {
@@ -227,7 +228,7 @@ template <typename Linalg> void test_rounded_boundary(Context & test)
             continue;
         }
         fixture.V = F::noise_type::identity() * (S - T{3});
-        fixture.velocity.set(2U, T{-100});
+        fixture.velocity(2U) = T{-100};
         auto output = fixture.state;
         auto output_P = fixture.P;
         auto const result = fixture.fuse(output, output_P);
@@ -241,15 +242,45 @@ template <typename Linalg> void test_rounded_boundary(Context & test)
 
 template <typename Linalg> void test_failures(Context & test)
 {
+    enum class Failure
+    {
+        negative_speed_accuracy,
+        non_finite_speed_accuracy,
+        zero_speed_accuracy_limit,
+        non_finite_speed_accuracy_limit,
+        non_finite_measurement,
+        zero_gate_sigma,
+        non_finite_gate_sigma,
+        non_finite_prior_covariance,
+        negative_measurement_variance,
+        invalid_norm_bound,
+        indefinite_innovation_covariance,
+        invalid_norm_with_zero_height_variance,
+        innovation_square_overflow,
+    };
+
     using F = GnssMeasurementFixture<Linalg>;
     using T = typename F::value_type;
     auto const inf = std::numeric_limits<T>::infinity();
     auto const nan = std::numeric_limits<T>::quiet_NaN();
     for (bool height : {false, true})
     {
-        for (unsigned failure = 0U; failure < 12U; ++failure)
+        for (auto const failure :
+             {Failure::negative_speed_accuracy, Failure::non_finite_speed_accuracy, Failure::zero_speed_accuracy_limit,
+              Failure::non_finite_speed_accuracy_limit, Failure::non_finite_measurement, Failure::zero_gate_sigma,
+              Failure::non_finite_gate_sigma, Failure::non_finite_prior_covariance,
+              Failure::negative_measurement_variance, Failure::invalid_norm_bound,
+              Failure::indefinite_innovation_covariance, Failure::invalid_norm_with_zero_height_variance,
+              Failure::innovation_square_overflow})
         {
-            if (height && failure < 4U)
+            if (height &&
+                (failure == Failure::negative_speed_accuracy || failure == Failure::non_finite_speed_accuracy ||
+                 failure == Failure::zero_speed_accuracy_limit || failure == Failure::non_finite_speed_accuracy_limit ||
+                 failure == Failure::indefinite_innovation_covariance))
+            {
+                continue;
+            }
+            if (!height && failure == Failure::invalid_norm_with_zero_height_variance)
             {
                 continue;
             }
@@ -258,56 +289,53 @@ template <typename Linalg> void test_failures(Context & test)
                 F fixture;
                 switch (failure)
                 {
-                case 0U:
+                case Failure::negative_speed_accuracy:
                     fixture.conditions.speed_accuracy = T{-1};
                     break;
-                case 1U:
+                case Failure::non_finite_speed_accuracy:
                     fixture.conditions.speed_accuracy = nan;
                     break;
-                case 2U:
+                case Failure::zero_speed_accuracy_limit:
                     fixture.conditions.maximum_speed_accuracy = T{0};
                     break;
-                case 3U:
+                case Failure::non_finite_speed_accuracy_limit:
                     fixture.conditions.maximum_speed_accuracy = inf;
                     break;
-                case 4U:
-                    fixture.velocity.set(2U, nan);
+                case Failure::non_finite_measurement:
+                    fixture.velocity(2U) = nan;
                     break;
-                case 5U:
+                case Failure::zero_gate_sigma:
                     fixture.gate = T{0};
                     break;
-                case 6U:
+                case Failure::non_finite_gate_sigma:
                     fixture.gate = inf;
                     break;
-                case 7U:
-                    fixture.P.set(0U, 0U, nan);
+                case Failure::non_finite_prior_covariance:
+                    fixture.P(0U, 0U) = nan;
                     break;
-                case 8U:
-                    fixture.V.set(0U, 0U, T{-1});
+                case Failure::negative_measurement_variance:
+                    fixture.V(0U, 0U) = T{-1};
                     break;
-                case 9U:
+                case Failure::invalid_norm_bound:
                     fixture.minimum_norm = T{2};
-                    break; // Gate valid; checked correction rejects quaternion norm.
-                case 10U:
+                    break; // Invalid normalization bound is rejected before gate diagnostics.
+                case Failure::indefinite_innovation_covariance:
                     // Positive diagonal but indefinite S: the exception must not bypass LLT.
-                    fixture.P.set(height ? 2U : 3U, height ? 2U : 3U, T{0});
-                    if (!height)
-                    {
-                        fixture.V.set(0U, 1U, T{8});
-                        fixture.V.set(1U, 0U, T{8});
-                    }
-                    else
-                    {
-                        fixture.minimum_norm = T{2};
-                    }
+                    fixture.P(3U, 3U) = T{0};
+                    fixture.V(0U, 1U) = T{8};
+                    fixture.V(1U, 0U) = T{8};
                     break;
-                case 11U:
-                    fixture.velocity.set(2U, std::numeric_limits<T>::max());
+                case Failure::invalid_norm_with_zero_height_variance:
+                    fixture.P(2U, 2U) = T{0};
+                    fixture.minimum_norm = T{2};
+                    break;
+                case Failure::innovation_square_overflow:
+                    fixture.velocity(2U) = std::numeric_limits<T>::max();
                     break; // Finite innovation, overflowing squared gate numerator.
                 }
                 auto output = fixture.state;
                 auto output_P = fixture.P * T{2};
-                output.p_n.set(0U, T{7});
+                output.p_n(0U) = T{7};
                 auto & state_output = (aliases & 1U) ? fixture.state : output;
                 auto & covariance_output = (aliases & 2U) ? fixture.P : output_P;
                 auto const before_state = state_output;

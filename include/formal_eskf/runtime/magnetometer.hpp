@@ -63,8 +63,9 @@ template <typename State, typename Linalg, std::size_t Size>
         result.fusion.status = Status::non_finite_result;
         return result;
     }
-    result.fusion = check_fusion_gate(state, covariance, r, H, V, minimum_quaternion_norm, gate_sigma);
-    if (!result.fusion.diagnostics_valid || result.fusion.decision == FusionDecision::rejected)
+    auto const check = check_measurement(state, covariance, r, H, V, minimum_quaternion_norm, gate_sigma);
+    result.fusion = FusionResult<Linalg, 3U>{check};
+    if (!check.passed())
     {
         return result;
     }

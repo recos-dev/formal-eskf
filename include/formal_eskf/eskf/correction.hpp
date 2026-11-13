@@ -104,11 +104,54 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
     return Status::success;
 }
 
+} /* end namespace detail */
+
 /**
- * Validate correction inputs and compute the unconstrained gain.
- * The residual and norm bound are checked here to preserve validation order.
- * gain_output is internal scratch, disjoint from inputs; publish only on success.
+ * Validate a correction's matrix inputs and compute PHt = P H^T and S = H PHt + V.
+ * Uses the same validation and arithmetic as try_correct, without solving for
+ * gain or inspecting the nominal state. Suitable for innovation gating before
+ * attempting correction; success does not establish PSD P, SPD V or a unit prior.
+ * r and the normalization bound are checked in correction order, even though
+ * they do not enter these products. Only computed S receives symmetry cleanup.
+ * Both outputs publish together on success; outputs are disjoint from each other and from inputs.
+ * Results describe this prior and linearization only, not a reusable correction
+ * permission. Correction remains independently checked when subsequently called.
  */
+template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
+[[nodiscard]] Status try_correction_covariances(
+    linalg::Matrix<Linalg, Size, Size> const & covariance, linalg::Vector<Linalg, MeasurementSize> const & r,
+    linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
+    linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
+    typename Linalg::value_type minimum_quaternion_norm,
+    linalg::Matrix<Linalg, Size, MeasurementSize> & cross_covariance_output,
+    linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> & innovation_covariance_output) noexcept
+{
+    Status const input_status = detail::validate_correction_inputs(covariance, r, H, V, minimum_quaternion_norm);
+    if (!succeeded(input_status))
+    {
+        return input_status;
+    }
+
+    auto const PHt = covariance * linalg::transpose(H);
+    if (!linalg::all_finite(PHt))
+    {
+        return Status::non_finite_result;
+    }
+    auto S = H * PHt + V;
+    Status const innovation_status = detail::try_finish_covariance(S, S);
+    if (!succeeded(innovation_status))
+    {
+        return innovation_status;
+    }
+    cross_covariance_output = PHt;
+    innovation_covariance_output = S;
+    return Status::success;
+}
+
+namespace detail
+{
+
+/** Checked unconstrained gain; output is disjoint scratch, published only on success. */
 template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
 [[nodiscard]] Status try_compute_correction_gain(linalg::Matrix<Linalg, Size, Size> const & covariance,
                                                  linalg::Vector<Linalg, MeasurementSize> const & r,
@@ -117,27 +160,14 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
                                                  typename Linalg::value_type minimum_quaternion_norm,
                                                  linalg::Matrix<Linalg, Size, MeasurementSize> & gain_output) noexcept
 {
-    Status const input_status = validate_correction_inputs(covariance, r, H, V, minimum_quaternion_norm);
-    if (!succeeded(input_status))
-    {
-        return input_status;
-    }
-
-    // Sola (274): K = P H^T (H P H^T + V)^-1. Reuse the cross-covariance
-    // and solve K S = P H^T; do not form S^-1.
-    auto const PHt = covariance * linalg::transpose(H);
-    if (!linalg::all_finite(PHt))
-    {
-        return Status::non_finite_result;
-    }
-    auto S = H * PHt + V;
-    // P and V have already passed exact-symmetry checks. Remove asymmetry
-    // introduced by the products above, not asymmetry in caller-supplied data.
-    Status const innovation_status = try_finish_covariance(S, S);
+    linalg::Matrix<Linalg, Size, MeasurementSize> PHt;
+    linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> S;
+    Status const innovation_status = try_correction_covariances(covariance, r, H, V, minimum_quaternion_norm, PHt, S);
     if (!succeeded(innovation_status))
     {
         return innovation_status;
     }
+    // Sola (274): solve K S = P H^T; do not form S^-1.
     linalg::Matrix<Linalg, Size, MeasurementSize> K;
     Status const solve_status = linalg::right_solve_spd(PHt, S, K);
     if (!succeeded(solve_status))

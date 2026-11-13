@@ -23,7 +23,7 @@ namespace formal_eskf::runtime
 template <typename Linalg>
 [[nodiscard]] FusionResult<Linalg, 3U>
 fuse_velocity(configuration::Ins::NominalState<Linalg> const & state,
-              linalg::Matrix<Linalg, 15U, 15U> const & covariance, linalg::Matrix<Linalg, 3U, 1U> const & z_v_n,
+              linalg::Matrix<Linalg, 15U, 15U> const & covariance, linalg::Vector<Linalg, 3U> const & z_v_n,
               linalg::Matrix<Linalg, 3U, 3U> const & V, typename Linalg::value_type minimum_quaternion_norm,
               typename Linalg::value_type gate_sigma, configuration::Ins::NominalState<Linalg> & state_output,
               linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
@@ -49,7 +49,7 @@ fuse_velocity(configuration::Ins::NominalState<Linalg> const & state,
 template <typename Linalg>
 [[nodiscard]] FusionResult<Linalg, 2U> fuse_horizontal_velocity(
     configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-    linalg::Matrix<Linalg, 2U, 1U> const & z_v_ne, linalg::Matrix<Linalg, 2U, 2U> const & V,
+    linalg::Vector<Linalg, 2U> const & z_v_ne, linalg::Matrix<Linalg, 2U, 2U> const & V,
     typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
     configuration::Ins::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
     configuration::Ins::BiasUpdate const & bias_update = {}) noexcept

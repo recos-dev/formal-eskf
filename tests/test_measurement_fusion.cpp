@@ -134,6 +134,17 @@ void test_generic_fusion(TestContext & test, std::string_view profile)
     test.expect(formal_eskf::try_correct(fixture.state, fixture.P, fixture.r, fixture.H, fixture.V,
                                          fixture.minimum_norm, expected_state, expected_P) == Status::success,
                 profile, "ungated correction reference succeeds");
+    auto const check = formal_eskf::runtime::check_measurement(fixture.state, fixture.P, fixture.r, fixture.H,
+                                                               fixture.V, fixture.minimum_norm, fixture.sigma);
+    test.expect(check.passed() && check.status == Status::success && check.diagnostics_valid && !check.rejected,
+                profile, "standalone gate accepts without correction or source permission");
+    formal_eskf::linalg::Matrix<Linalg, fixture_type::size, MeasurementSize> PHt;
+    typename fixture_type::noise_type S;
+    test.expect(formal_eskf::try_correction_covariances(fixture.P, fixture.r, fixture.H, fixture.V,
+                                                        fixture.minimum_norm, PHt, S) == Status::success &&
+                    same_matrix_bits(PHt, fixture.P * formal_eskf::linalg::transpose(fixture.H)) &&
+                    same_matrix_bits(formal_eskf::linalg::diagonal(S), check.innovation_variance),
+                profile, "core covariance boundary supplies the exact gate covariance");
     // All four whole-object alias arrangements; input matrices are correlated.
     for (unsigned aliases = 0U; aliases < 4U; ++aliases)
     {
@@ -319,14 +330,65 @@ void test_gate_and_failures(TestContext & test, std::string_view profile)
     bad.sigma = value_type{0.5}; // Positive but unsafe denominator, not an outlier.
     preserved(bad, FusionDecision::failed, Status::zero_or_unsafe_divisor, false);
 
+    // Both numerical outputs commit together, including when failure occurs after PHt.
+    enum class CovarianceFailure
+    {
+        non_finite_input_before_domain_error,
+        invalid_norm_bound,
+        cross_covariance_overflow,
+        innovation_covariance_overflow,
+    };
+    for (auto const failure :
+         {CovarianceFailure::non_finite_input_before_domain_error, CovarianceFailure::invalid_norm_bound,
+          CovarianceFailure::cross_covariance_overflow, CovarianceFailure::innovation_covariance_overflow})
+    {
+        auto source = fixture;
+        Status expected = Status::domain_error;
+        switch (failure)
+        {
+        case CovarianceFailure::non_finite_input_before_domain_error:
+            source.V(0U, 0U) = value_type{-1};
+            source.r(0U) = limits_type::quiet_NaN();
+            expected = Status::non_finite_input; // Finite checks precede all domain checks.
+            break;
+        case CovarianceFailure::invalid_norm_bound:
+            source.minimum_norm = value_type{2};
+            break;
+        case CovarianceFailure::cross_covariance_overflow:
+            source.P(0U, 0U) = limits_type::max();
+            source.H(0U, 0U) = value_type{2};
+            expected = Status::non_finite_result;
+            break;
+        case CovarianceFailure::innovation_covariance_overflow:
+            source.H(0U, 0U) = std::sqrt(limits_type::max());
+            expected = Status::non_finite_result;
+            break;
+        }
+        auto PHt = formal_eskf::linalg::Matrix<Linalg, fixture_type::size, 3U>::zero();
+        auto S = fixture_type::noise_type::identity() * value_type{-9};
+        PHt(0U, 0U) = -value_type{0};
+        PHt(1U, 0U) = limits_type::quiet_NaN();
+        auto const before_cross = PHt;
+        auto const before_S = S;
+        auto const status = formal_eskf::try_correction_covariances(source.P, source.r, source.H, source.V,
+                                                                    source.minimum_norm, PHt, S);
+        test.expect(status == expected && same_matrix_bits(PHt, before_cross) && same_matrix_bits(S, before_S), profile,
+                    "covariance preparation preserves both outputs on early or arithmetic failure");
+    }
+
     // Gate passes, LLT fails: positive innovation diagonal is not an SPD proof.
     bad = fixture;
     bad.V(0U, 1U) = value_type{8};
     bad.V(1U, 0U) = value_type{8};
+    auto check =
+        formal_eskf::runtime::check_measurement(bad.state, bad.P, bad.r, bad.H, bad.V, bad.minimum_norm, bad.sigma);
+    test.expect(check.passed(), profile, "standalone gate does not attempt LLT");
     preserved(bad, FusionDecision::failed, Status::not_positive_definite, true);
     // Gate passes, injection fails; valid diagnostics survive but no estimate is published.
     bad = fixture;
     bad.state.q_nb = invalid_quaternion<Linalg>({value_type{0}, value_type{0}, value_type{0}, value_type{0}});
+    check = formal_eskf::runtime::check_measurement(bad.state, bad.P, bad.r, bad.H, bad.V, bad.minimum_norm, bad.sigma);
+    test.expect(check.passed(), profile, "standalone gate does not normalize or inject");
     preserved(bad, FusionDecision::failed, Status::invalid_quaternion_norm, true);
     bad.r(0U) = value_type{3};
     preserved(bad, FusionDecision::rejected, Status::success, true); // Rejection does not run injection.

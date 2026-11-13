@@ -21,6 +21,19 @@ enum class FusionDecision
     fused,
 };
 
+/** Gate evidence for one prior; a passed gate neither corrects nor grants source permission. */
+template <typename Linalg, std::size_t Size> struct MeasurementCheck
+{
+    Status status = Status::success;
+    bool diagnostics_valid = false;
+    bool rejected = true;
+    linalg::Vector<Linalg, Size> innovation{};
+    linalg::Vector<Linalg, Size> innovation_variance{};
+    linalg::Vector<Linalg, Size> test_ratio{};
+
+    [[nodiscard]] bool passed() const noexcept { return succeeded(status) && diagnostics_valid && !rejected; }
+};
+
 /** A fresh per-call result; only fused means state/covariance were published. */
 template <typename Linalg, std::size_t Size> struct FusionResult
 {
@@ -28,9 +41,20 @@ template <typename Linalg, std::size_t Size> struct FusionResult
     Status status = Status::success;
     // Remains true if the gate succeeded but correction subsequently failed.
     bool diagnostics_valid = false;
-    linalg::Matrix<Linalg, Size, 1U> innovation{};
-    linalg::Matrix<Linalg, Size, 1U> innovation_variance{};
-    linalg::Matrix<Linalg, Size, 1U> test_ratio{};
+    linalg::Vector<Linalg, Size> innovation{};
+    linalg::Vector<Linalg, Size> innovation_variance{};
+    linalg::Vector<Linalg, Size> test_ratio{};
+
+    FusionResult() = default;
+    explicit FusionResult(MeasurementCheck<Linalg, Size> const & check) noexcept
+        : status(check.status), diagnostics_valid(check.diagnostics_valid), innovation(check.innovation),
+          innovation_variance(check.innovation_variance), test_ratio(check.test_ratio)
+    {
+        if (succeeded(status) && diagnostics_valid && check.rejected)
+        {
+            decision = FusionDecision::rejected;
+        }
+    }
 };
 
 namespace detail
@@ -49,37 +73,23 @@ template <typename Linalg>
            linalg::all_finite(state.v_n) && linalg::all_finite(state.b_a) && linalg::all_finite(state.b_g);
 }
 
-/** Internal gate stage. A passed gate is not yet a fused measurement. */
-template <typename State, typename Linalg, std::size_t Size, std::size_t MeasurementSize>
-[[nodiscard]] FusionResult<Linalg, MeasurementSize>
-check_fusion_gate(State const & state, linalg::Matrix<Linalg, Size, Size> const & covariance,
-                  linalg::Matrix<Linalg, MeasurementSize, 1U> const & r,
-                  linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
-                  linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
-                  typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma) noexcept
+/** Shared matrix arithmetic; nominal-state validation belongs to the explicit overloads. */
+template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
+[[nodiscard]] MeasurementCheck<Linalg, MeasurementSize> check_measurement_innovation(
+    linalg::Matrix<Linalg, Size, Size> const & covariance, linalg::Vector<Linalg, MeasurementSize> const & r,
+    linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
+    linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
+    typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma) noexcept
 {
-    FusionResult<Linalg, MeasurementSize> result;
-    if (!finite_fusion_state(state) || !scalar::is_finite<typename Linalg::scalar_math_type>(gate_sigma))
+    MeasurementCheck<Linalg, MeasurementSize> result;
+    if (!scalar::is_finite<typename Linalg::scalar_math_type>(gate_sigma))
     {
         result.status = Status::non_finite_input;
         return result;
     }
-    // Reuse correction's matrix-domain checks, without changing the ungated API.
-    result.status = formal_eskf::detail::validate_correction_inputs(covariance, r, H, V, minimum_quaternion_norm);
-    if (!succeeded(result.status))
-    {
-        return result;
-    }
-    // Match correction's multiplication order and computed-covariance cleanup.
-    // The unchanged correction recomputes these products on an accepted call.
-    auto const PHt = covariance * linalg::transpose(H);
-    if (!linalg::all_finite(PHt))
-    {
-        result.status = Status::non_finite_result;
-        return result;
-    }
-    auto S = H * PHt + V;
-    result.status = formal_eskf::detail::try_finish_covariance(S, S);
+    linalg::Matrix<Linalg, Size, MeasurementSize> PHt;
+    linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> S;
+    result.status = try_correction_covariances(covariance, r, H, V, minimum_quaternion_norm, PHt, S);
     if (!succeeded(result.status))
     {
         return result;
@@ -95,14 +105,46 @@ check_fusion_gate(State const & state, linalg::Matrix<Linalg, Size, Size> const 
     result.innovation = r;
     result.innovation_variance = variance;
     result.test_ratio = gate.test_ratio;
-    if (gate.rejected)
-    {
-        result.decision = FusionDecision::rejected;
-    }
+    result.rejected = gate.rejected;
     return result;
 }
 
 } /* end namespace detail */
+
+/** Check one AHRS observation group without correction or output publication. */
+template <typename Linalg, std::size_t MeasurementSize>
+[[nodiscard]] MeasurementCheck<Linalg, MeasurementSize>
+check_measurement(configuration::Ahrs::NominalState<Linalg> const & state,
+                  linalg::Matrix<Linalg, 3U, 3U> const & covariance, linalg::Vector<Linalg, MeasurementSize> const & r,
+                  linalg::Matrix<Linalg, MeasurementSize, 3U> const & H,
+                  linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
+                  typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma) noexcept
+{
+    if (!detail::finite_fusion_state(state))
+    {
+        MeasurementCheck<Linalg, MeasurementSize> result;
+        result.status = Status::non_finite_input;
+        return result;
+    }
+    return detail::check_measurement_innovation(covariance, r, H, V, minimum_quaternion_norm, gate_sigma);
+}
+
+/** Check one INS observation group without correction or output publication. */
+template <typename Linalg, std::size_t MeasurementSize>
+[[nodiscard]] MeasurementCheck<Linalg, MeasurementSize> check_measurement(
+    configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
+    linalg::Vector<Linalg, MeasurementSize> const & r, linalg::Matrix<Linalg, MeasurementSize, 15U> const & H,
+    linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
+    typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma) noexcept
+{
+    if (!detail::finite_fusion_state(state))
+    {
+        MeasurementCheck<Linalg, MeasurementSize> result;
+        result.status = Status::non_finite_input;
+        return result;
+    }
+    return detail::check_measurement_innovation(covariance, r, H, V, minimum_quaternion_norm, gate_sigma);
+}
 
 /**
  * Gate one observation group, then correct using the same prior, r, H and V.
@@ -126,16 +168,18 @@ check_fusion_gate(State const & state, linalg::Matrix<Linalg, Size, Size> const 
  * groups, not zero state cross-covariance. No source lifecycle, clock or retry.
  */
 template <typename Linalg, std::size_t MeasurementSize>
-[[nodiscard]] FusionResult<Linalg, MeasurementSize> fuse_measurement(
-    configuration::Ahrs::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 3U, 3U> const & covariance,
-    linalg::Matrix<Linalg, MeasurementSize, 1U> const & r, linalg::Matrix<Linalg, MeasurementSize, 3U> const & H,
-    linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
-    typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
-    configuration::Ahrs::NominalState<Linalg> & state_output,
-    linalg::Matrix<Linalg, 3U, 3U> & covariance_output) noexcept
+[[nodiscard]] FusionResult<Linalg, MeasurementSize>
+fuse_measurement(configuration::Ahrs::NominalState<Linalg> const & state,
+                 linalg::Matrix<Linalg, 3U, 3U> const & covariance, linalg::Vector<Linalg, MeasurementSize> const & r,
+                 linalg::Matrix<Linalg, MeasurementSize, 3U> const & H,
+                 linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
+                 typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
+                 configuration::Ahrs::NominalState<Linalg> & state_output,
+                 linalg::Matrix<Linalg, 3U, 3U> & covariance_output) noexcept
 {
-    auto result = detail::check_fusion_gate(state, covariance, r, H, V, minimum_quaternion_norm, gate_sigma);
-    if (!result.diagnostics_valid || result.decision == FusionDecision::rejected)
+    auto const check = check_measurement(state, covariance, r, H, V, minimum_quaternion_norm, gate_sigma);
+    FusionResult<Linalg, MeasurementSize> result{check};
+    if (!check.passed())
     {
         return result;
     }
@@ -151,14 +195,15 @@ template <typename Linalg, std::size_t MeasurementSize>
 template <typename Linalg, std::size_t MeasurementSize>
 [[nodiscard]] FusionResult<Linalg, MeasurementSize> fuse_measurement(
     configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
-    linalg::Matrix<Linalg, MeasurementSize, 1U> const & r, linalg::Matrix<Linalg, MeasurementSize, 15U> const & H,
+    linalg::Vector<Linalg, MeasurementSize> const & r, linalg::Matrix<Linalg, MeasurementSize, 15U> const & H,
     linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> const & V,
     typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
     configuration::Ins::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
     configuration::Ins::BiasUpdate const & bias_update = {}) noexcept
 {
-    auto result = detail::check_fusion_gate(state, covariance, r, H, V, minimum_quaternion_norm, gate_sigma);
-    if (!result.diagnostics_valid || result.decision == FusionDecision::rejected)
+    auto const check = check_measurement(state, covariance, r, H, V, minimum_quaternion_norm, gate_sigma);
+    FusionResult<Linalg, MeasurementSize> result{check};
+    if (!check.passed())
     {
         return result;
     }

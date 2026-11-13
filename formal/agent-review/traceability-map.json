@@ -3980,6 +3980,30 @@
           },
           {
             "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "symbol": "enum class Action"
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "symbol": "void GnssFusion::revoke_permissions("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "symbol": "void GnssFusion::clear_vertical_velocity_reset("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "symbol": "bool GnssFusion::height_waiting_for_velocity("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "symbol": "Status GnssFusion::validate_update("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
+            "symbol": "void GnssFusion::request_horizontal_resets("
+          },
+          {
+            "file": "include/formal_eskf/runtime/gnss_fusion.hpp",
             "symbol": "struct VerticalAccelerationTimes"
           },
           {

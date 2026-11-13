@@ -965,6 +965,11 @@ position and velocity, not estimator state/P, quality qualification or clocks.
 This profile assumes GNSS is the sole horizontal and height source; use horizontal
 OR 3D velocity per sample. Alternate aiding and reset execution remain separate.
 
+Each group's `action` is `Action::none`, `Action::fuse` or `Action::reset`
+for the current sample. This single-use permission is separate from `active` session
+state and persistent `recovery_required` history. Sample/time/order conditions
+still apply; an action does not execute an estimator operation.
+
 - Caller supplies each group's `enabled`, `ready` and `start_without_reset`.
   Readiness includes initialized frame/state and the group's required attitude
   alignment. Starting without reset requires explicit caller-established safe
@@ -1005,7 +1010,7 @@ OR 3D velocity per sample. Alternate aiding and reset execution remain separate.
   a never-started group has no progress. A horizontal timeout request retains
   its active session while waiting for reset; it does not restart quality health.
 - Each group's `initialization_required`/`fusion_timeout`/`bad_vertical_acceleration` requests may grant
-  `reset_allowed` only on a new, accepted, fresh, enabled and ready sample.
+  `Action::reset` only on a new, accepted, fresh, enabled and ready sample.
   Reset and correction permissions are mutually exclusive. Each update, even
   an invalid one, revokes old reset permission. `record_reset(group, sample, reset_succeeded)`
   consumes one matching permission after the checked numerical reset returns.
@@ -1045,7 +1050,9 @@ OR 3D velocity per sample. Alternate aiding and reset execution remain separate.
   invalid updates), or explicit velocity/height repair, revokes pending permission.
   Restarting the velocity group also clears its Down-reset history. While
   permission is outstanding, `vertical_velocity_reset_reason` identifies
-  fusion timeout or bad vertical acceleration; consumption/revocation clears it.
+  fusion timeout or bad vertical acceleration. `none` means no permission has
+  been granted; consumption/revocation clears the reason. There is no separate
+  boolean permission to keep synchronized.
 - Ordinary stops can start again after accepted quality and caller-established
   initialization. Losing the last active horizontal group emits one
   `restart_quality` notification; call `GnssQuality::restart_health()` before

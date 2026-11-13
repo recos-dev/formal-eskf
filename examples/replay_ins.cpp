@@ -1473,10 +1473,12 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     lifecycle_updated = true;
                     lifecycle_sample_consumed = true;
                     auto const & lifecycle = gnss_lifecycle.state();
-                    if ((lifecycle.vertical_position.recovery_required && !lifecycle.vertical_position.reset_allowed) ||
-                        (lifecycle.velocity.recovery_required && !lifecycle.velocity.reset_allowed) ||
+                    if ((lifecycle.vertical_position.recovery_required &&
+                         (lifecycle.vertical_position.action != GnssLifecycle::Action::reset)) ||
+                        (lifecycle.velocity.recovery_required &&
+                         (lifecycle.velocity.action != GnssLifecycle::Action::reset)) ||
                         (lifecycle.horizontal_position.recovery_required &&
-                         !lifecycle.horizontal_position.reset_allowed))
+                         (lifecycle.horizontal_position.action != GnssLifecycle::Action::reset)))
                     {
                         // Record the request before any group mutates the estimate.
                         write_gnss_lifecycle(lifecycle_updates, previous_lifecycle, gnss_lifecycle.state(), source_time,
@@ -1542,7 +1544,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 auto velocity_V = Linalg::matrix_type<3U, 3U>::identity() * noise.velocity_xy;
                 velocity_V.set(2U, 2U, noise.velocity_z);
                 auto const velocity = vector3(navigation_row[4U], navigation_row[5U], navigation_row[6U]);
-                if (quality_parameters && gnss_lifecycle.state().velocity.reset_allowed)
+                if (quality_parameters && (gnss_lifecycle.state().velocity.action == GnssLifecycle::Action::reset))
                 {
                     Vector3 delta;
                     auto const reason = gnss_lifecycle.state().velocity.stop_reason;
@@ -1554,7 +1556,7 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     vertical_cache.observations.gnss_velocity_down = {true, 0.0, noise.velocity_z};
                     vertical_cache.velocity_time_us = source_time;
                 }
-                else if (!quality_parameters || gnss_lifecycle.state().velocity.fusion_allowed)
+                else if (!quality_parameters || (gnss_lifecycle.state().velocity.action == GnssLifecycle::Action::fuse))
                 {
                     ++velocity_attempts;
                     formal_eskf::runtime::NavigationFusionResult<Linalg, 3U> measurement;
@@ -1599,7 +1601,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
 
                 // Height timeout / last-good acceleration are sampled before height control.
                 // Reset only Down after normal velocity fusion (even if gated out).
-                if (quality_parameters && gnss_lifecycle.state().vertical_velocity_reset_allowed)
+                if (quality_parameters &&
+                    (gnss_lifecycle.state().vertical_velocity_reset_reason != GnssLifecycle::StopReason::none))
                 {
                     auto const reason = gnss_lifecycle.state().vertical_velocity_reset_reason;
                     double delta{};
@@ -1622,7 +1625,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
 
                 auto const position_V = Linalg::matrix_type<2U, 2U>::identity() * noise.position_xy;
                 auto const position = Linalg::vector_type<2U>::from_row_major({navigation_row[1U], navigation_row[2U]});
-                if (quality_parameters && gnss_lifecycle.state().horizontal_position.reset_allowed)
+                if (quality_parameters &&
+                    (gnss_lifecycle.state().horizontal_position.action == GnssLifecycle::Action::reset))
                 {
                     Linalg::vector_type<2U> delta;
                     auto const reason = gnss_lifecycle.state().horizontal_position.stop_reason;
@@ -1635,7 +1639,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                     ++position_xy_resets;
                     position_accepted = true;
                 }
-                else if (!quality_parameters || gnss_lifecycle.state().horizontal_position.fusion_allowed)
+                else if (!quality_parameters ||
+                         (gnss_lifecycle.state().horizontal_position.action == GnssLifecycle::Action::fuse))
                 {
                     ++position_xy_attempts;
                     auto const result = formal_eskf::runtime::fuse_horizontal_position(
@@ -1664,7 +1669,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 // one. Health consumes the selected (possibly limited) innovation,
                 // while the CSV retains the original residual and gate evidence.
                 capture_vertical_evidence(previous_lifecycle.vertical_position.active);
-                if (!quality_parameters || gnss_lifecycle.state().vertical_position.fusion_allowed)
+                if (!quality_parameters ||
+                    (gnss_lifecycle.state().vertical_position.action == GnssLifecycle::Action::fuse))
                 {
                     ++position_z_attempts;
                     auto const measurement = formal_eskf::runtime::fuse_height(
@@ -1695,13 +1701,14 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                         height_limited_fusions += measurement.innovation_limited ? 1U : 0U;
                     }
                 }
-                else if (!gnss_lifecycle.state().vertical_position.reset_allowed)
+                else if (gnss_lifecycle.state().vertical_position.action != GnssLifecycle::Action::reset)
                 {
                     ++position_z_skipped;
                 }
                 // Height recovery is decided after the current correction attempt.
                 // Successful correction resolves a fusion timeout, but not persistent bad acceleration.
-                if (quality_parameters && gnss_lifecycle.state().vertical_position.reset_allowed)
+                if (quality_parameters &&
+                    (gnss_lifecycle.state().vertical_position.action == GnssLifecycle::Action::reset))
                 {
                     double delta{};
                     auto const reason = gnss_lifecycle.state().vertical_position.stop_reason;

@@ -498,7 +498,7 @@ void FormalEskf::fuse_gps()
     const double position_variance = square(std::min(std::max(double(m_gps.eph), 0.5), 10.));
     const auto Rxy = backend_type::matrix_type<2, 2>::identity() * position_variance;
     // Snapshot the coupled reset decision before either horizontal group advances.
-    if (session.velocity.reset_allowed)
+    if (session.velocity.action == GnssFusion::Action::reset)
     {
         vector3_type delta;
         auto const status =
@@ -516,7 +516,7 @@ void FormalEskf::fuse_gps()
         m_vel_ratio = 0.;
         m_gps_velocity_innovation = {true, 0., velocity_variances(2)};
     }
-    else if (session.velocity.fusion_allowed)
+    else if (session.velocity.action == GnssFusion::Action::fuse)
     {
         auto const result =
             fuse_gnss_velocity(m_state, m_covariance, velocity, Rv, minimum_quaternion_norm, 5., velocity_conditions,
@@ -541,7 +541,7 @@ void FormalEskf::fuse_gps()
             // A Down-only reset preserves this attempt's selected velocity diagnostics.
         }
     }
-    if (session.horizontal_position.reset_allowed)
+    if (session.horizontal_position.action == GnssFusion::Action::reset)
     {
         backend_type::vector_type<2> delta;
         auto const variances = backend_type::vector_type<2>::from_row_major({position_variance, position_variance});
@@ -558,7 +558,7 @@ void FormalEskf::fuse_gps()
         ++m_odometry_reset_counter;
         m_pos_ratio = 0.;
     }
-    else if (session.horizontal_position.fusion_allowed)
+    else if (session.horizontal_position.action == GnssFusion::Action::fuse)
     {
         auto const result = fuse_horizontal_position(m_state, m_covariance, xy, Rxy, minimum_quaternion_norm, 5.,
                                                      m_state, m_covariance, m_bias_learning_result.bias_update);

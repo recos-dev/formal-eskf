@@ -65,10 +65,6 @@ magnetometer_residual(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Vector<L
         return Status::domain_error;
     }
     auto const h_m_b = so3::inverse_rotate(q_nb, m_n);
-    if (!linalg::all_finite(h_m_b))
-    {
-        return Status::non_finite_result;
-    }
     auto const r = m_b - h_m_b;
     if (!linalg::all_finite(r))
     {
@@ -89,10 +85,6 @@ template <typename Linalg>
     using vector_type = linalg::Vector<Linalg, 3U>;
     auto const down_n = vector_type::from_row_major({value_type{0}, value_type{0}, value_type{1}});
     auto const down_b = so3::inverse_rotate(q_nb, down_n);
-    if (!linalg::all_finite(down_b))
-    {
-        return Status::non_finite_result;
-    }
     // Unit prior remains a caller precondition, as in the full-field model.
     // Do not normalize/repair the prior or replace the observation Jacobian.
     auto const projector = down_b * linalg::transpose(down_b);

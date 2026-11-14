@@ -56,13 +56,9 @@ template <typename Linalg, std::size_t Size>
     }
     for (std::size_t axis = 0U; axis < Size; ++axis)
     {
-        if (innovation_variance(axis) <= value_type{0})
-        {
-            return Status::domain_error;
-        }
         if (innovation_variance(axis) < minimum_normal)
         {
-            return Status::zero_or_unsafe_divisor;
+            return innovation_variance(axis) <= value_type{0} ? Status::domain_error : Status::zero_or_unsafe_divisor;
         }
     }
 

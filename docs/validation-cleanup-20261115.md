@@ -13,7 +13,7 @@ the review list; they are work items, not proof requirements or measured speedup
 | 5 | G01-C04 | Hoist bias permissions out of column loops | Implemented in DC-01 |
 | 6 | G02-C1 | Reuse validated prior quaternion | Pending |
 | 7 | G02-C2 | AHRS nominal output forwarding | Implemented in DC-03 |
-| 8 | G02-021.1 | Acceleration finite check subsumption | Pending |
+| 8 | G02-021.1 | Acceleration finite check subsumption | Implemented in DC-04 |
 | 9 | G03-C1 | Diagonal-only process-noise result scan | Implemented in DC-01 |
 | 10 | G02-C3, G03-C2, G04-C1–C3 | Shared prediction validation and mathematics | Pending |
 | 11 | G04-C4 | Scan only variable F_x blocks | Implemented in DC-01 |
@@ -24,14 +24,14 @@ the review list; they are work items, not proof requirements or measured speedup
 | 16 | G05-C6 | Forward covariance reset output | Implemented in DC-03 |
 | 17 | G05-C8 | Avoid copied-and-overwritten INS candidate | Implemented in DC-03 |
 | 18 | G06-C1 | Reuse runtime innovation premises | Pending |
-| 19 | G06-C2 | Simplify innovation range comparisons | Pending |
+| 19 | G06-C2 | Simplify innovation range comparisons | Implemented in DC-04 |
 | 20 | G07-C1, C5 | Construction-valid H and delayed construction | Implemented in DC-01 |
-| 21 | G07-C2 | Accel h/z finite check subsumption | Pending |
+| 21 | G07-C2 | Accel h/z finite check subsumption | Implemented in DC-04 |
 | 22 | G07-C3, G08-C4 | Finite vector nonzero checks | Implemented in DC-01 |
 | 23 | G08-C1 | Build runtime magnetic H from existing h | Implemented in DC-01 |
 | 24 | G08-C2–C3 | Share magnetic model preparation across gate/core | Pending |
 | 25 | G08-C6 | Share magnetic prediction/projection rotation | Pending |
-| 26 | G08-C5 | Magnetic h/u finite check subsumption | Pending |
+| 26 | G08-C5 | Magnetic h/u finite check subsumption | Implemented in DC-04 |
 | 27 | G09-C1 | Direct constant selector Jacobians | Implemented in DC-01 |
 | 28 | G09-C3 | Reuse height local H | Implemented in DC-01 |
 
@@ -78,7 +78,7 @@ numerical reason; a missing proof is not a pass.
   path. The production source and real oracle are not weakened.
 - Final proof execution: 66/66 selected profiles pass (6 E-NOISE, 16 E-PCOV
   callers, 6 matching OpaqueMath noise producers, 38 affected E-OBS profiles).
-  Formatting and all mapped C++/ESBMC symbol references pass. No requirement
+  Formatting and all mapped implementation/proof symbol references pass. No requirement
   assertion was weakened; the deliberately broken copy is rejected.
 - Self-review: changes are correct within the recorded backend/scalar/failure
   contracts; observed functionality is unchanged. Commit accepted. Runtime
@@ -141,7 +141,7 @@ numerical reason; a missing proof is not a pass.
   profiles. Native tests pass in 20 executions across Eigen/PX4/CMSIS-DSP,
   including alternate approximation/projection configuration; 4 ASan/UBSan
   tests, unix32/unix64 Cppcheck, formatting and ShellCheck pass. Both offline
-  verification-tool suites pass; all 589 mapped C++/ESBMC symbol references
+  verification-tool suites pass; all 589 mapped implementation/proof symbol references
   resolve. Attitude producer alias coverage adds 16 profiles (1554 total,
   still 127 entry points); this is not 1554 mathematical requirements.
 - Behavior review: all 1248 baseline/current digests match over 29,952 native
@@ -160,3 +160,35 @@ numerical reason; a missing proof is not a pass.
 - Self-review: final-callee forwarding is correct under the independently checked
   frames; observed functionality is unchanged. Commit accepted. Lean equations
   are unchanged. Local manifest: `dc03-manifest.json` in the evidence directory.
+
+### DC-04: numerical implications — accepted
+
+- Changed: retain final p/v checks instead of separately rescanning acceleration;
+  retain residual checks instead of h/z scans; retain the complete Down projector
+  check instead of its input scan; group each innovation variance's lower-bound
+  comparisons while retaining its original error status and axis order.
+- Correctness review: F-SCALAR now proves, for arbitrary binary32/binary64 operands,
+  that finite addition/subtraction/multiplication results require finite operands.
+  Thus finite v implies finite acceleration, finite residual implies finite h/z,
+  and finite diagonal products of the projector imply finite Down coordinates.
+  Division is not covered by this implication. The converse is false: finite
+  operands can overflow, so final product/gain checks remain.
+- Validation: 62 affected ESBMC profiles pass (28 prediction, 32 magnetic/acceleration
+  observations, 2 scalar primitives), retaining the original independent caller/status oracles.
+  The scalar cases are rerun after formatting. Native tests pass in 24 executions
+  across Eigen/PX4/CMSIS-DSP, including alternate modes and runtime consumers;
+  4 ASan/UBSan tests, unix32/unix64 Cppcheck and formatting pass. Two initial
+  native invocations used incorrect source paths/names; corrected runs execute
+  the intended tests. Initial model selection ran 32 position/velocity profiles;
+  self-review corrected selection to models 4–7. The earlier passes are extra
+  regression evidence, not the affected-model acceptance. No failed setup is
+  counted as acceptance evidence.
+- Behavior review: all 1248 baseline/current digests match over 29,952 calls.
+  Inputs, formulas, per-axis failure precedence, aliases and output rollback
+  are unchanged. Rejected paths may evaluate an additional subtraction or
+  outer product before returning the same non_finite_result; NaN payload,
+  floating-point flags and trapping profiles are outside this comparison.
+- Self-review: correct under the recorded IEEE profile; observed
+  functionality is unchanged. Commit accepted. Local arithmetic implication
+  evidence does not close the outstanding complete E-INNOV/E-MAG-TILT proof
+  boundaries, and does not constitute a deployed-backend proof. Lean is unchanged.

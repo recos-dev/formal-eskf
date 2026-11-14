@@ -11,7 +11,7 @@
 using namespace scalar_proof;
 namespace scalar = formal_eskf::scalar;
 
-void verify_scalar_primitives(Scalar value)
+void verify_scalar_primitives(Scalar value, Scalar other)
 {
     __ESBMC_assert(FORMAL_ESKF_PROOF_SCALAR_LIBM == 0,
                    "Runner error: scalar primitives require the actual library model");
@@ -28,6 +28,26 @@ void verify_scalar_primitives(Scalar value)
     Pair const initialized{};
     __ESBMC_assert(bits(initialized.sine) == 0U && bits(initialized.cosine) == 0U,
                    "F-SCALAR: default SinCos owns two initialized positive zeros");
+    // Local IEEE implications used to subsume intermediate-result scans.
+    bool const finite_operands = scalar_proof::finite(value) && scalar_proof::finite(other);
+    __ESBMC_assert(!scalar_proof::finite(value + other) || finite_operands,
+                   "F-SCALAR: finite addition requires finite operands");
+    __ESBMC_assert(!scalar_proof::finite(value - other) || finite_operands,
+                   "F-SCALAR: finite subtraction requires finite operands");
+    __ESBMC_assert(!scalar_proof::finite(value * other) || finite_operands,
+                   "F-SCALAR: finite multiplication requires finite operands");
+    if (scalar_proof::finite(value))
+    {
+        auto const minimum_normal = std::numeric_limits<Scalar>::min();
+        auto const original = value <= Scalar{0}       ? Status::domain_error
+                              : value < minimum_normal ? Status::zero_or_unsafe_divisor
+                                                       : Status::success;
+        auto const grouped = value < minimum_normal
+                                 ? (value <= Scalar{0} ? Status::domain_error : Status::zero_or_unsafe_divisor)
+                                 : Status::success;
+        __ESBMC_assert(original == grouped,
+                       "F-SCALAR: grouped normal-range comparison preserves each axis failure status");
+    }
 }
 
 void verify_scalar_backend(Scalar x, Scalar y, Scalar root, Scalar sine, Scalar cosine, Scalar angle)

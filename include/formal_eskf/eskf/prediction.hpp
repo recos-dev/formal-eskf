@@ -247,7 +247,7 @@ template <typename Linalg>
     auto const acceleration_n = so3::rotate(state.q_nb, specific_force_b) + parameters.gravity_n;
     candidate.p_n = state.p_n + state.v_n * dt + acceleration_n * (value_type{0.5} * dt * dt);
     candidate.v_n = state.v_n + acceleration_n * dt;
-    if (!linalg::all_finite(acceleration_n) || !linalg::all_finite(candidate.p_n) || !linalg::all_finite(candidate.v_n))
+    if (!linalg::all_finite(candidate.p_n) || !linalg::all_finite(candidate.v_n))
     {
         return Status::non_finite_result;
     }

@@ -90,7 +90,7 @@ template <typename Linalg>
     }
     auto const h = -so3::inverse_rotate(state.q_nb, gravity_n);
     auto const r = specific_force_b - h;
-    if (!linalg::all_finite(h) || !linalg::all_finite(r))
+    if (!linalg::all_finite(r))
     {
         return Status::non_finite_result;
     }
@@ -139,16 +139,12 @@ template <typename Linalg>
     }
     auto const h = -so3::inverse_rotate(state.q_nb, gravity_n);
     auto const z = specific_force_b - state.b_a;
-    if (!linalg::all_finite(z))
-    {
-        return Status::non_finite_result;
-    }
     auto const r = z - h;
-    if (!linalg::all_finite(h) || !linalg::all_finite(r))
+    if (!linalg::all_finite(r))
     {
         return Status::non_finite_result;
     }
-    // H contains only zeros and signed copies of the checked h coefficients.
+    // Finite r implies finite h; H contains only zeros and signed copies of h.
     linalg::Matrix<Linalg, 3U, 15U> H;
     H.template set_block<0U, 6U>(so3::hat<Linalg>(h));
     return correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output, bias_update);

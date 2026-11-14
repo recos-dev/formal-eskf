@@ -2,7 +2,7 @@
 
 The numerical core computes estimator operations; portable runtime components manage sensor and fusion policies; deployment adapters own platform effects. This specification defines those responsibility boundaries and maps the current PX4 implementation to them. Mathematical behavior belongs to the [state conventions](eskf-state-conventions.md) and [requirements](verification-requirements.md).
 
-Verification claims follow the [Formal Verification Strategy](formal-verification-strategy.md); implementation constraints follow the [C++ subset](cpp-portability-and-constraints.md). The source map below describes the existing implementation, not an approved refactor or proof of the full module.
+Verification claims follow the [Formal Verification Strategy](formal-verification-strategy.md); implementation constraints follow the [C++ subset](cpp-portability-and-constraints.md). The source map below describes the current implementation; it does not establish full module correctness or compliance with the target execution architecture.
 
 The [PX4 module architecture](px4-module-architecture.md) defines the target
 execution, timing, output and real-time contracts for review. The current-source
@@ -54,6 +54,14 @@ projection and its timestamp/MSL/ellipsoid datum. Entry and IMU deployment
 settings are defined in
 [DeploymentProfile.hpp](../../integrations/px4/module/DeploymentProfile.hpp),
 separately from platform effects and the aiding controllers' policies.
+
+Module-specific tuning and age limits belong to `DeploymentProfile.hpp`;
+`recent()` requires an explicit age policy and evaluates it at the admitted IMU
+horizon. Existing portable policy defaults remain with their runtime types;
+do not duplicate them merely to list every value in the module profile.
+`formal_eskf_params.c` and `load_startup_parameters()` own the startup-only PX4
+overrides. `FormalEskf` selects INS/binary64/PX4 matrix; the module CMake target
+owns language, floating-point and algorithm flags.
 
 The module owns `TiltAlignment` independently of gravity enablement or sample
 history. Its `Gravity` record holds the existing runtime sampler, mode activity

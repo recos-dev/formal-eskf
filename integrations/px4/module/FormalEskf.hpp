@@ -292,13 +292,14 @@ private:
     bool magnetic_heading_valid() const;
     bool magnetic_heading_aiding() const;
     uint16_t gps_failure_flags() const;
-    bool gps_position_valid(uint64_t max_age = 5000000) const;
-    bool gps_velocity_valid(uint64_t max_age = 5000000) const;
+    bool gps_position_valid(std::uint64_t max_age = formal_eskf::px4::profile::gnss::maximum_aiding_age_us) const;
+    bool gps_velocity_valid(std::uint64_t max_age = formal_eskf::px4::profile::gnss::maximum_aiding_age_us) const;
     template <std::size_t N>
     bool record_gps_fusion(formal_eskf::runtime::GnssFusion::Group group,
                            formal_eskf::runtime::FusionResult<backend_type, N> const & result, double & ratio);
     bool check(status_type status);
-    bool recent(uint64_t sample, uint64_t max_age = 1000000) const;
+    // Inclusive age at the admitted IMU horizon; callers select their own policy.
+    bool recent(std::uint64_t sample, std::uint64_t max_age) const;
     static vector3_type vector3(double x, double y, double z) { return vector3_type::from_row_major({x, y, z}); }
     static double square(double x) { return x * x; }
 

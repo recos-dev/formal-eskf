@@ -99,7 +99,9 @@ bool FormalEskf::magnetic_heading_aiding() const
 bool FormalEskf::magnetic_heading_valid() const
 {
     auto const & lifecycle = m_magnetic.lifecycle.state();
-    return magnetic_heading_aiding() && recent(std::max(lifecycle.last_fuse_time_us, lifecycle.last_reset_time_us)) &&
+    return magnetic_heading_aiding() &&
+           recent(std::max(lifecycle.last_fuse_time_us, lifecycle.last_reset_time_us),
+                  profile::magnetic::maximum_heading_age_us) &&
            m_covariance(8, 8) < profile::magnetic::maximum_heading_variance;
 }
 

@@ -77,6 +77,7 @@ inline constexpr double acceleration_limit_m_s2 = 0.5;
 inline constexpr double noise_variance = 25.; // (0.05 gauss)^2 in microtesla^2.
 inline constexpr double gate_sigma = 3.;
 inline constexpr double maximum_heading_variance = 0.1;
+inline constexpr std::uint64_t maximum_heading_age_us = 1000000U;
 inline constexpr std::uint64_t context_maximum_age_us = 3000000U;
 inline constexpr std::uint64_t model_interval_us = 10000000U;
 } // namespace magnetic
@@ -87,6 +88,7 @@ namespace gnss
 inline constexpr runtime::GnssFusion::Parameters timing{7000000U, 1000000U, 5000000U};
 inline constexpr std::uint64_t maximum_sample_age_us = 500000U;
 inline constexpr std::uint64_t context_maximum_age_us = 3000000U;
+inline constexpr std::uint64_t maximum_aiding_age_us = 5000000U;
 inline constexpr double minimum_velocity_noise_m_s = 0.3;
 inline constexpr double vertical_variance_multiplier = 2.25;
 inline constexpr double minimum_position_noise_m = 0.5;

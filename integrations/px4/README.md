@@ -61,6 +61,24 @@ make -C /path/to/PX4-Autopilot px4_sitl_formal_eskf -j8
 
 The destination requires the pinned PX4 checkout and its build dependencies. It does not need the formal-eskf source repository. Exports require a new directory to avoid overwriting an earlier package. The manifest detects accidental changes to exported payload files and the host patch.
 
+## Production module tests
+
+After installing the package, enable the host fixture on the pinned SITL target:
+
+```bash
+cmake -S "$PX4_ROOT" -B "$PX4_ROOT/build/px4_sitl_formal_eskf" \
+  -DCONFIG=px4_sitl_formal_eskf -DFORMAL_ESKF_MODULE_TESTS=ON
+cmake --build "$PX4_ROOT/build/px4_sitl_formal_eskf" \
+  --target formal_eskf_module_test --parallel 2
+"$PX4_ROOT/build/px4_sitl_formal_eskf/formal_eskf_module_test"
+```
+
+The fixture executes the production module and uORB with controlled time and
+timer dispatch. It checks sensor sequencing, failures, resets, publication and
+diagnostic snapshots. Work-queue-unavailable and injected-failure messages are
+expected; the final scenario summary and process exit code determine success.
+The scheduler, dependency internals and target timing require separate evidence.
+
 ## Automatic flight
 
 Run from the formal-eskf repository root in a system terminal:
@@ -127,7 +145,7 @@ flowchart LR
 - Uses integrated IMU instance 0 in FRD coordinates and `timestamp_sample`. A single work-queue writer owns the filter. Shell diagnostics read a coherent snapshot; a busy reader skips a snapshot without delaying estimation. Snapshot epochs, skipped exchanges and publication failures are reported by `status`.
 - Prepares seven output topics before enabling callbacks using invalid, zero-epoch messages. Returned setup failures abort startup; normal publications retain their existing cadence and validity rules.
 - Initializes tilt and gyro bias from stationary IMU samples; magnetometer and the selected geographic/stored/zero declination initialize yaw. No EKF2 or ground-truth subscriptions enter the estimator.
-- Qualifies GNSS with the portable quality monitor before startup and fusion. Uses independent velocity, horizontal-position and height gates. Future samples wait; stale/invalid samples cannot refresh health. Velocity and horizontal position have the portable lifecycle and checked resets; each successful reset publishes its deltas/counters. GNSS/barometer height arbitration and magnetic measurements use separate adapter helpers.
+- Qualifies GNSS with the portable quality monitor before startup and fusion. Uses independent velocity, horizontal-position and height gates. Future samples wait; stale/invalid samples cannot refresh health. Velocity and horizontal position have the portable lifecycle and checked resets; each successful reset publishes its deltas/counters. GNSS and magnetic coordination stay with the estimator owner; `HeightAiding` owns two-source height arbitration and offset history.
 - Connects magnetic field checks, heading consistency, lifecycle, gated correction and real heading/covariance resets through direct operations in `module/FormalEskfAttitude.cpp`. The module owns magnetic history, estimator alignment and reset reporting; `module/DeploymentProfile.hpp` owns the fixed settings. These match the pinned PX4 v1.16.2 defaults for noise (5 microtesla), gate (3 sigma), strength tolerance (20 microtesla), health (>1 s), no-data stop (1 s) and unsuccessful-fusion timeout (>7 s), without live EKF2 parameter bindings.
 - Publishes NED position/velocity, scalar-first body-to-NED quaternions, covariance diagonals, biases and estimator status. Horizontal aiding uses actual fusion/reset progress: report dead reckoning after 1 s, withdraw horizontal validity after 5 s, and stop GNSS sessions after 7 s of missing data or sustained poor quality. Height source activity and validity follow the policy below; magnetic progress retains its existing freshness check.
 - Holds the previous IMU rate for small missing intervals; discontinuities beyond 50 ms and IMU identity/calibration changes latch a fault. Numerical failures also latch a fault. Restart is required for recovery.

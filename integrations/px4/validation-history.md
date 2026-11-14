@@ -13,6 +13,67 @@ See the [integration guide](README.md) for current setup and behavior,
 [review criteria](../../docs/spec/formal-verification-traceability-and-review-criteria.md)
 for requirement/evidence acceptance.
 
+## Combined module acceptance: 2026-11-14
+
+A-01 batch 6 audits the combined current-horizon implementation after `b045ff3`.
+The remaining hidden GNSS-aiding and magnetic-heading ages move to the deployment
+profile with unchanged values. `recent()` now requires its caller's age policy;
+its inclusive IMU-horizon comparison is unchanged. No replacement framework,
+sensor policy, numerical equation or public core interface is introduced.
+
+The source review follows admission and initialization through prediction,
+GNSS velocity/position, vertical health, height, gravity, magnetic feedback and
+publication. It retains per-source clocks and qualification, preceding-health
+dependencies, held-rate noise selection, bias limits and actual reset feedback.
+GNSS may retain earlier success after a later failure; height still commits both
+sources transactionally; gravity/magnetic history may advance before a failure.
+The two magnetic alignment-stop checks belong to different phases and remain.
+There are no retained forwarding facades for the retired gravity/magnetic
+controllers. The three support headers retain distinct prediction, two-source
+height and geographic-reference contracts. Portable policy defaults remain with
+their runtime types rather than being duplicated in the deployment profile.
+
+| Check | Result |
+| --- | --- |
+| Baseline/current/installed/sanitized module | 87 scenarios each; 82 comparison scenarios retain identical 30,994,690-byte traces |
+| Native tests; replay tests | 119 passed across three backends; 67 replay-related checks passed |
+| Independent package export/relocation/install | 8 package tests passed; 58 installed hashes match the export |
+| Installed build independence | Four module units plus fixture compile without the original checkout path |
+| Formatting; repository Cppcheck unix32/unix64; pinned PX4 build | Passed |
+| Module traceability | 70 source references resolve; requirement IDs and proof claims unchanged |
+| Independent ULog checks; ground fault/recovery checks | 18/18; 20/20 passed |
+| SIH position / velocity / attitude RMSE | 0.156 m / 0.257 m/s / 1.667 degrees |
+
+The exported installer ran from a temporary directory outside the source checkout;
+the resulting installed package supplied the tested binary. The integration guide
+now documents the opt-in production fixture commands. Real ULog replay executed
+70,898 predictions, 1,423 navigation events and 12,397 magnetic events, including
+11,576 magnetic corrections. Missing clipping metadata skipped all 35,134 gravity
+observations; this run establishes execution, not gravity efficacy or accuracy
+against independent truth. A first replay-test invocation lacked one executable;
+the required targets were built and all 67 selected tests rerun without changing
+assertions. The failed attempt remains in the evidence directory.
+
+The target architecture has the following scoped status after this acceptance;
+passing this refactor does not close every target clause:
+
+| Clause | Established scope and remaining obligation |
+| --- | --- |
+| PX4-OWN | One estimator writer, estimator-owned alignment/resets, distinct source histories and shell snapshot. Delayed/output histories remain F-04. |
+| PX4-EXEC | Current ordered, bounded tick and backup status path checked. Full-rate output before delayed fusion and downsampling remain F-04. |
+| PX4-TIME | Current admission/horizon/age rules preserved. Delay/context histories, generation-loss accounting and full wall-time source expiry remain F-04. |
+| PX4-LIFE | Startup, fault latch, returned setup errors and normal reader/stop lifetime covered. Complete configuration acceptance and forced-stop/dependency safety remain F-06.2/F-07.2. |
+| PX4-OUT | Existing seven payloads, reset metadata, horizons and publication-error reporting checked. Output predictor is F-04; uncertainty/aggregate validity semantics and frame envelope remain F-06.1/F-05.2. |
+| PX4-RT | Fixed storage, nonblocking diagnostic writer, startup topic preparation and static/bounded compiler frames inspected. Dependency allocation/locking, estimator logging and target CPU/full-stack/deadline bounds remain F-07.2. |
+| PX4-VERIFY | Source/package/binary identity, native/sanitizer/comparison and SITL/replay evidence retained. Module formal composition is V-01; physical disturbance and hardware acceptance remain F-07.1/F-07.3. |
+
+Evidence is in `output/px4-module-acceptance-20261114/summary.json`. Advisory module
+Cppcheck retains the existing CLI finding and 537 dependency findings. ASan/UBSan
+instrument module/fixture only, with PX4 archives uninstrumented and leak detection
+disabled. The largest individual frame remains 9,248 bytes; this is not a full
+call-chain or target stack bound. Shared core/runtime, replay and proof bodies are
+unchanged; no new Lean/ESBMC or machine-checked module-refinement claim is made.
+
 ## Output and diagnostics refactor validation: 2026-11-14
 
 A-01 batch 5 uses `dac5451` as its baseline. Seven named topic publishers

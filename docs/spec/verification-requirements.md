@@ -800,11 +800,14 @@ tests cover this narrower operation; Lean/ESBMC and floating-point bounds are pe
 
 #### PX4 module magnetic aiding
 
-`integrations/px4/module/MagneticAiding.hpp` connects the existing field check,
-heading monitor, lifecycle, gated correction, reset LPF and heading reset for the
-fixed-field INS. It owns only magnetic history and reset metadata; the module
-owns state/P, clocks, uORB and serialized execution. The numerical core equations
-are unchanged. Native tests and SITL are evidence, not Lean/ESBMC proof of this wiring.
+`FormalEskfAttitude.cpp` connects the existing field check, heading monitor,
+lifecycle, gated correction, reset LPF and heading reset for the fixed-field INS.
+The module's `Magnetic` record owns sensor history and diagnostics; estimator
+members own heading alignment and quaternion reset bookkeeping. Named operations
+separate admission, source/field preparation, correction feedback and reset,
+using fixed settings from `DeploymentProfile.hpp`. State/P, clocks, uORB and
+serialized execution retain the same module owner. Native tests and SITL are
+evidence, not Lean/ESBMC proof of this wiring; numerical core equations are unchanged.
 
 - Read calibrated FRD `vehicle_magnetometer` data, convert gauss to microtesla,
   and bind `device_id`/`calibration_count`. Startup accumulation cannot mix sources.

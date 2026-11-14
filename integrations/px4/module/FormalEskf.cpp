@@ -184,7 +184,7 @@ bool FormalEskf::initialize_attitude(double & yaw)
     const matrix::Dcm<double> tilt{matrix::Euler<double>(roll, pitch, 0.)};
     const matrix::Vector3<double> level_mag = tilt * matrix::Vector3<double>(mag(0), mag(1), mag(2));
     if (profile::microtesla_per_gauss * std::hypot(level_mag(0), level_mag(1)) <
-        magnetic_type::field_parameters.minimum_horizontal_field)
+        profile::magnetic::field.minimum_horizontal_field)
     {
         return false;
     }
@@ -249,9 +249,8 @@ void FormalEskf::initialize(ImuInput const & sample, imu_type const & imu)
         return;
     }
     initialize_navigation();
-    m_mag_seen = m_mag.timestamp_sample;
     m_initialization.magnetic_source.reference_id = m_magnetic_model.reference_id();
-    m_magnetic_aiding.initialize(m_initialization.magnetic_source, m_mag_seen);
+    initialize_magnetic_aiding(m_initialization.magnetic_source, m_mag.timestamp_sample);
     m_imu_history.record(sample, imu);
     m_initialized = true;
     if (!update_imu_bias(sample, imu))
@@ -435,7 +434,7 @@ void FormalEskf::predict_and_fuse(ImuInput const & sample, imu_type const & imu)
     {
         ++m_gaps;
         reset_imu_observations();
-        m_magnetic_aiding.reset_acceleration();
+        m_magnetic.heading.reset_acceleration();
         // Synthetic intervals use the previous rate, never a fresh sensor observation.
         if (!check(formal_eskf::px4::predict_imu(m_state, m_covariance, m_imu_history.measurement,
                                                  static_cast<double>(gap) * profile::seconds_per_microsecond,
@@ -453,7 +452,7 @@ void FormalEskf::predict_and_fuse(ImuInput const & sample, imu_type const & imu)
     }
     ++m_predictions;
     auto const acceleration_n = formal_eskf::so3::rotate(m_state.q_nb, imu.specific_force_b - m_state.b_a);
-    if (!check(m_magnetic_aiding.update_acceleration(acceleration_n, sample.acceleration_interval_s())))
+    if (!check(m_magnetic.heading.update_acceleration(acceleration_n, sample.acceleration_interval_s())))
     {
         return;
     }

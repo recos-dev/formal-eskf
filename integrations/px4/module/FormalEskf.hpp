@@ -34,11 +34,12 @@
 #include <formal_eskf/runtime/imu.hpp>
 #include <formal_eskf/runtime/accelerometer.hpp>
 #include <formal_eskf/runtime/tilt_alignment.hpp>
+#include <formal_eskf/runtime/magnetometer.hpp>
+#include <formal_eskf/runtime/magnetometer_lifecycle.hpp>
 
 #include "DeploymentProfile.hpp"
 #include "HeightAiding.hpp"
 #include "ImuPrediction.hpp"
-#include "MagneticAiding.hpp"
 #include "MagneticModel.hpp"
 
 // Single writer: all filter state is owned by this work item. The core has no
@@ -72,7 +73,8 @@ private:
     using gravity_sampler_type =
         formal_eskf::runtime::AccelerometerSample<backend_type,
                                                   formal_eskf::px4::profile::gravity::observation_interval_us>;
-    using magnetic_type = formal_eskf::px4::MagneticAiding<backend_type>;
+    using quaternion_type = formal_eskf::so3::UnitQuaternion<backend_type>;
+    using magnetic_lifecycle_type = formal_eskf::runtime::MagnetometerFusion;
     using magnetic_model_type = formal_eskf::px4::MagneticModel<backend_type>;
 
     struct Initialization
@@ -83,7 +85,7 @@ private:
         std::uint32_t imu_samples{};
         std::uint32_t magnetic_samples{};
         std::uint64_t magnetic_time_us{};
-        magnetic_type::source_type magnetic_source{};
+        magnetic_lifecycle_type::Source magnetic_source{};
 
         // Motion resets accumulated observations, not sensor identity/watermarks.
         void reset_samples();
@@ -146,6 +148,28 @@ private:
         void reset_samples();
     };
 
+    struct Magnetic
+    {
+        formal_eskf::runtime::MagneticHeading<backend_type> heading{};
+        formal_eskf::runtime::MagnetometerFilter<backend_type> filter{};
+        magnetic_lifecycle_type lifecycle{};
+        formal_eskf::runtime::MagnetometerFusionResult<backend_type> observation{};
+        magnetic_lifecycle_type::Source source{};
+        std::uint64_t sample_time_us{}; // Newest consumed arrival, including stale/invalid data.
+        bool horizontal_aiding{};
+        std::uint32_t corrections{};
+        double test_ratio{};
+    };
+
+    struct MagneticSample
+    {
+        vector3_type field_b{}; // Calibrated body FRD, microtesla.
+        magnetic_lifecycle_type::Source source{};
+        std::uint64_t time_us{}; // Zero denotes no eligible new arrival.
+        bool fresh{};
+        bool usable{};
+    };
+
     void Run() override;
     static ImuInput decode_imu(vehicle_imu_s const & sample);
     void process_imu(ImuInput const & sample);
@@ -162,6 +186,14 @@ private:
     void reset_imu_observations();
     void fuse_gps();
     void fuse_mag();
+    void initialize_magnetic_aiding(magnetic_lifecycle_type::Source const & source, std::uint64_t sample_time_us);
+    magnetic_lifecycle_type::Conditions magnetic_conditions() const;
+    MagneticSample consume_magnetic_sample();
+    status_type prepare_magnetic_observation(MagneticSample const & sample,
+                                             magnetic_lifecycle_type::Conditions const & conditions,
+                                             magnetic_lifecycle_type::Sample & event);
+    bool fuse_magnetic_observation(MagneticSample const & sample);
+    status_type reset_magnetic_heading(std::uint64_t sample_time_us);
     void fuse_height();
     void fuse_gravity(ImuInput const & sample, imu_type const & imu);
     void record_vertical_velocity_reset(double delta);
@@ -174,6 +206,7 @@ private:
     std::optional<magnetic_model_type::sample_type> lookup_magnetic_model(double latitude, double longitude) const;
     bool gps_good() const;
     bool magnetic_heading_valid() const;
+    bool magnetic_heading_aiding() const;
     uint16_t gps_failure_flags() const;
     bool gps_position_valid(uint64_t max_age = 5000000) const;
     bool gps_velocity_valid(uint64_t max_age = 5000000) const;
@@ -218,7 +251,10 @@ private:
     vertical_health_type m_vertical_health{};
     vertical_health_type::Innovation m_gps_velocity_innovation{};
     double m_average_imu_interval = formal_eskf::px4::profile::imu::nominal_interval_s;
-    magnetic_type m_magnetic_aiding{};
+    Magnetic m_magnetic{};
+    bool m_heading_aligned{};
+    quaternion_type m_quaternion_reset_delta{};
+    std::uint8_t m_quaternion_reset_counter{};
     magnetic_model_type m_magnetic_model{};
     magnetic_model_type::Settings m_magnetic_settings{};
     uint64_t m_mag_model_origin_time{};
@@ -246,10 +282,10 @@ private:
     vehicle_land_detected_s m_land{};
     vehicle_status_s m_vehicle_status{};
     uint64_t m_last_status{}, m_last_output{};
-    uint64_t m_gps_seen{}, m_mag_seen{}, m_max_fusion_age{};
-    uint32_t m_predictions{}, m_gps_updates{}, m_mag_updates{}, m_baro_updates{};
+    uint64_t m_gps_seen{}, m_max_fusion_age{};
+    uint32_t m_predictions{}, m_gps_updates{}, m_baro_updates{};
     uint32_t m_rejections{}, m_errors{}, m_gaps{};
-    double m_pos_ratio{}, m_vel_ratio{}, m_height_ratio{}, m_gps_height_ratio{}, m_mag_ratio{};
+    double m_pos_ratio{}, m_vel_ratio{}, m_height_ratio{}, m_gps_height_ratio{};
     // PX4 shell status runs on another thread; serialize diagnostic reads.
     std::mutex m_state_mutex;
     perf_counter_t m_cycle_perf{perf_alloc(PC_ELAPSED, "formal_eskf: cycle")};

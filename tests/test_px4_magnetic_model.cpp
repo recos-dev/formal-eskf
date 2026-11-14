@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: BSD-3-Clause
-#include "../integrations/px4/module/MagneticAiding.hpp"
 #include "../integrations/px4/module/MagneticModel.hpp"
 #include "test_backend.hpp"
 #include "test_support.hpp"
@@ -14,7 +13,6 @@ using formal_eskf::test::Context;
 template <typename Linalg> void run(Context & test)
 {
     using Model = formal_eskf::px4::MagneticModel<Linalg>;
-    using Aiding = formal_eskf::px4::MagneticAiding<Linalg>;
     using Scalar = typename Model::value_type;
     using Vector = typename Model::vector_type;
     auto const pi = formal_eskf::scalar::pi<typename Linalg::scalar_math_type>();
@@ -114,69 +112,10 @@ template <typename Linalg> void run(Context & test)
                         converted.declination == old.declination && converted.inclination == old.inclination,
                     "frame", "invalid geographic coordinates preserve output");
     }
-    for (bool geographic : {false, true})
     {
         Model model;
-        Aiding aiding;
-        typename Aiding::state_type state;
-        auto P = Aiding::covariance_type::identity() * static_cast<Scalar>(0.01);
-        typename Aiding::source_type source{1, 0, 1};
-        typename Aiding::Context context{true, true, Aiding::lifecycle_type::FlightState::on_ground};
-        test.expect(model.initialize(1000000, {geographic ? 3U : 2U, 0}, seed, initial) == Status::success,
-                    "integration", "reference setup");
-        aiding.initialize(source, 1000000);
-        auto tick = [&](std::uint64_t now)
-        {
-            typename Aiding::Reference reference{model.observation_n(), model.health_n(), model.available()};
-            source.reference_id = model.reference_id();
-            return aiding.update(now, {now, source, seed}, context, reference, state, P);
-        };
-        for (unsigned i = 1; i <= 103; ++i)
-        {
-            test.expect(tick(1000000 + 10000 * i).status == Status::success, "integration", "healthy startup");
-        }
-        auto candidate = initial;
-        candidate.declination = static_cast<Scalar>(0.05);
-        test.expect(model.update(2040000, candidate, true, true).changed, "integration",
-                    "adopt changed geographic model");
-        auto result = tick(2040000);
-        test.expect(result.status == Status::success && result.reset == geographic && result.fused != geographic &&
-                        aiding.reset_counter() == (geographic ? 1 : 0),
-                    "integration", "geographic revision resets resting heading; health-only revision does not");
-        if (!geographic)
-        {
-            candidate.strength = 80;
-            test.expect(model.update(2050000, candidate, true, true).changed, "integration",
-                        "health-only strength adoption");
-            auto const old_q = state.q_nb;
-            result = tick(2050000);
-            test.expect(result.rejected && !result.reset && !result.fused &&
-                            aiding.observation().field.failures.strength &&
-                            formal_eskf::linalg::max_abs(old_q.coefficients() - state.q_nb.coefficients()) == Scalar{0},
-                        "integration", "independent WMM can reject a seed-matching field without resetting heading");
-        }
-    }
-    {
-        Model model;
-        Aiding aiding;
-        typename Aiding::state_type state;
-        auto P = Aiding::covariance_type::identity() * static_cast<Scalar>(0.01);
-        typename Aiding::source_type source{1, 0, 1};
-        typename Aiding::Context context{false, true, Aiding::lifecycle_type::FlightState::on_ground};
-        test.expect(model.initialize(1, {}, seed, std::nullopt) == Status::success, "fallback",
-                    "missing WMM permits seed initialization");
-        typename Aiding::Reference reference{model.observation_n(), model.health_n(), model.available()};
-        aiding.initialize(source, 1);
-        typename Aiding::Result result;
-        for (unsigned i = 1; i <= 103; ++i)
-        {
-            auto const now = 1U + i * 10000U;
-            result = aiding.update(now, {now, source, seed}, context, reference, state, P);
-            test.expect(result.status == Status::success, "fallback",
-                        "missing health reference is not invalid geometry");
-        }
-        test.expect(result.fused && !model.available() && aiding.reset_counter() == 0, "fallback",
-                    "seed correction uses broad field-strength fallback without invented WMM");
+        test.expect(model.initialize(1, {}, seed, std::nullopt) == Status::success && !model.available(), "fallback",
+                    "missing WMM permits seed initialization without inventing a health reference");
         test.expect(model.initialize(1, {}, Vector::from_row_major({0, 0, 50}), initial) == Status::domain_error,
                     "seed", "WMM cannot make a vertical-only seed heading observable");
     }

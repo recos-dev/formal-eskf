@@ -13,6 +13,53 @@ See the [integration guide](README.md) for current setup and behavior,
 [review criteria](../../docs/spec/formal-verification-traceability-and-review-criteria.md)
 for requirement/evidence acceptance.
 
+## Magnetic ownership refactor validation: 2026-11-14
+
+A-01 batch 3 uses `5c781f7`, including the separately committed replay fix,
+as its baseline. The module owns magnetic history, estimator heading alignment
+and quaternion reset bookkeeping directly. Named operations handle admission,
+source/field preparation, correction feedback and reset; `MagneticAiding` is
+retired without a compatibility wrapper. Shared core/runtime and replay code,
+numerical models, thresholds and caller horizons are unchanged.
+
+| Check | Result |
+| --- | --- |
+| Original/current/installed production module | 53 scenarios passed; 22,532,722 trace bytes identical |
+| Native CTest, three backends | 119 passed |
+| Module and fixture ASan/UBSan | 53 scenarios passed |
+| Package tests; installed identity | 8 passed; 59 files verified |
+| Repository Cppcheck unix32/unix64; formatting; pinned PX4 build | Passed |
+| Independent ULog checks; ground fault/recovery checks | 18/18; 20/20 passed |
+| SIH position / velocity / attitude RMSE | 0.164 m / 0.258 m/s / 1.640 degrees |
+
+The production fixture grows from 30 to 53 scenarios. It covers strict health
+startup, aided/unaided data outages, stale/future/duplicate/invalid input,
+source/calibration and flight-context precedence, bias permissions/limits,
+field/innovation timeouts, heading consistency, numerical correction/reset
+failure, actual host WMM lookup and independent observation/health revisions.
+The same assertions run against both versions; only private-member access changes.
+Traces include state/P, lifecycle/progress/reset data and seven uORB outputs.
+
+The retired helper's three backend test instances and model/controller integration
+cases move to the production module fixture. Its claim is the deployed binary64
+PX4-matrix profile, not the retired generic controller's scalar/backend surface.
+Portable numerical/runtime and geographic-model tests retain their own coverage.
+The single arrival watermark replaces two equivalent healthy-path watermarks;
+lifecycle receipt and successful-fusion/reset clocks remain separate. Model lookup
+still follows admission, and a later failure retains preceding mutations and
+prevents normal continuation. The two alignment-stop checks remain at their
+distinct pre-filter and post-feedback phases.
+
+Evidence is in `output/px4-magnetic-refactor-20261114/summary.json`, including
+source/package/binary identity and compiler stack reports. Reported frames remain
+static or bounded, with the same largest numerical frames; this is not a complete
+target call-chain bound. The advisory four-unit module Cppcheck scan retains the
+pre-existing CLI `constParameter` finding and upstream/generated-header findings;
+it is not a clean module-analysis claim. Sanitizers instrument the module and
+fixture, not all PX4 archives, with leak detection disabled. Controlled-time tests
+do not prove work-queue concurrency or shutdown. No new Lean/ESBMC proof, hardware
+qualification, delayed-horizon equivalence or completion of PX4-RT is claimed.
+
 ## Replay magnetic alignment fix validation: 2026-11-14
 
 A-01 batch 3's prerequisite corrects replay wiring against baseline `2c8815d`:

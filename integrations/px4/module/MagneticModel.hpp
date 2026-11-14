@@ -6,6 +6,8 @@
 
 #include <formal_eskf/runtime/magnetic_reference.hpp>
 
+#include "DeploymentProfile.hpp"
+
 namespace formal_eskf::px4
 {
 
@@ -40,7 +42,8 @@ public:
     bool lookup_due(std::uint64_t now_us, bool position_valid, bool origin_updated = false) const
     {
         return now_us > m_last_lookup_time &&
-               (origin_updated || (position_valid && now_us - m_last_lookup_time > 10000000U));
+               (origin_updated ||
+                (position_valid && now_us - m_last_lookup_time > profile::magnetic::model_interval_us));
     }
 
     /** Missing/invalid candidates retain the adopted model; attempts are rate-limited too. */

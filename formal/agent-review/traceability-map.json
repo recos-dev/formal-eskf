@@ -2967,8 +2967,8 @@
             "symbol": "def magnetic_field_parameters("
           },
           {
-            "file": "integrations/px4/module/MagneticAiding.hpp",
-            "symbol": "class MagneticAiding"
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
+            "symbol": "FormalEskf::prepare_magnetic_observation("
           }
         ],
         "esbmc": []
@@ -3023,8 +3023,8 @@
             "symbol": "read_magnetic_heading_parameters("
           },
           {
-            "file": "integrations/px4/module/MagneticAiding.hpp",
-            "symbol": "class MagneticAiding"
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
+            "symbol": "FormalEskf::prepare_magnetic_observation("
           },
           {
             "file": "integrations/px4/module/FormalEskfAttitude.cpp",
@@ -3147,8 +3147,8 @@
             "symbol": "void replay("
           },
           {
-            "file": "integrations/px4/module/MagneticAiding.hpp",
-            "symbol": "class MagneticAiding"
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
+            "symbol": "bool FormalEskf::fuse_magnetic_observation("
           }
         ],
         "esbmc": []
@@ -3211,8 +3211,8 @@
             "symbol": "MagneticContext read_magnetic_context("
           },
           {
-            "file": "integrations/px4/module/MagneticAiding.hpp",
-            "symbol": "class MagneticAiding"
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
+            "symbol": "void FormalEskf::initialize_magnetic_aiding("
           },
           {
             "file": "integrations/px4/module/FormalEskfAttitude.cpp",
@@ -3243,8 +3243,8 @@
             "symbol": "class MagnetometerFilter"
           },
           {
-            "file": "integrations/px4/module/MagneticAiding.hpp",
-            "symbol": "class MagneticAiding"
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
+            "symbol": "void FormalEskf::fuse_mag()"
           }
         ],
         "esbmc": []
@@ -3283,8 +3283,8 @@
             "symbol": "reset_magnetic_heading("
           },
           {
-            "file": "integrations/px4/module/MagneticAiding.hpp",
-            "symbol": "class MagneticAiding"
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
+            "symbol": "FormalEskf::status_type FormalEskf::reset_magnetic_heading("
           },
           {
             "file": "integrations/px4/module/FormalEskfAttitude.cpp",
@@ -3671,8 +3671,8 @@
             "symbol": "HeightAiding<Linalg>::update("
           },
           {
-            "file": "integrations/px4/module/MagneticAiding.hpp",
-            "symbol": "MagneticAiding<Linalg>::update("
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
+            "symbol": "bool FormalEskf::fuse_magnetic_observation("
           },
           {
             "file": "integrations/px4/module/FormalEskf.cpp",
@@ -3811,8 +3811,8 @@
             "symbol": "void HeightAiding<Linalg>::process("
           },
           {
-            "file": "integrations/px4/module/MagneticAiding.hpp",
-            "symbol": "MagneticAiding<Linalg>::update("
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
+            "symbol": "bool FormalEskf::fuse_magnetic_observation("
           },
           {
             "file": "integrations/px4/module/FormalEskfAttitude.cpp",

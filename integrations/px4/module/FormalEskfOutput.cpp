@@ -17,9 +17,9 @@ void FormalEskf::publish(imu_type const & imu)
     for (size_t i = 0; i < 4; ++i)
     {
         attitude.q[i] = float(m_state.q_nb.coefficients()(i));
-        attitude.delta_q_reset[i] = float(m_magnetic_aiding.reset_delta().coefficients()(i));
+        attitude.delta_q_reset[i] = float(m_quaternion_reset_delta.coefficients()(i));
     }
-    attitude.quat_reset_counter = m_magnetic_aiding.reset_counter();
+    attitude.quat_reset_counter = m_quaternion_reset_counter;
     m_attitude_pub.publish(attitude);
     if (m_time_us - m_last_output < 10000)
     {
@@ -60,9 +60,9 @@ void FormalEskf::publish(imu_type const & imu)
     local.heading_var = m_covariance(8, 8);
     local.tilt_var = m_covariance(6, 6) + m_covariance(7, 7);
     local.heading_good_for_control = heading_valid;
-    auto const & delta = m_magnetic_aiding.reset_delta().coefficients();
+    auto const & delta = m_quaternion_reset_delta.coefficients();
     local.delta_heading = 2. * std::atan2(delta(3), delta(0));
-    local.heading_reset_counter = m_magnetic_aiding.reset_counter();
+    local.heading_reset_counter = m_quaternion_reset_counter;
     local.xy_global = local.z_global = true;
     local.ref_timestamp = m_origin.time_us;
     local.ref_lat = m_origin.projection.getProjectionReferenceLat();
@@ -124,7 +124,7 @@ void FormalEskf::publish_status(uint64_t now)
     const bool gps_valid = gps_pos_valid || gps_vel_valid;
     const bool gps_height_active = healthy && m_height_aiding.session(height_type::Source::gnss).active;
     const bool mag_valid = healthy && magnetic_heading_valid();
-    const bool mag_aiding = healthy && m_magnetic_aiding.heading_aiding();
+    const bool mag_aiding = healthy && magnetic_heading_aiding();
     const bool baro_active = healthy && m_height_aiding.session(height_type::Source::barometer).active;
     estimator_status_s status{};
     status.timestamp = now;
@@ -135,7 +135,7 @@ void FormalEskf::publish_status(uint64_t now)
         {
             status.control_mode_flags |= (1ULL << status.CS_TILT_ALIGN);
         }
-        if (m_magnetic_aiding.aligned())
+        if (m_heading_aligned)
         {
             status.control_mode_flags |= (1ULL << status.CS_YAW_ALIGN);
         }
@@ -165,18 +165,18 @@ void FormalEskf::publish_status(uint64_t now)
         status.control_mode_flags |= (1ULL << status.CS_IN_AIR);
     }
     status.gps_check_fail_flags = gps_failure_flags();
-    status.reset_count_quat = m_magnetic_aiding.reset_counter();
+    status.reset_count_quat = m_quaternion_reset_counter;
     status.reset_count_pos_ne = m_position_reset_counter;
     status.reset_count_vel_ne = m_velocity_reset_counter;
     status.reset_count_vel_d = m_vertical_velocity_reset_counter;
     status.reset_count_pod_d = m_height_aiding.reset_counter();
     status.filter_fault_flags = (m_fault || m_vertical_health.state().bad_vertical_acceleration) ? (1U << 16) : 0U;
-    status.hdg_test_ratio = m_mag_ratio;
+    status.hdg_test_ratio = m_magnetic.test_ratio;
     status.vel_test_ratio = m_vel_ratio;
     status.pos_test_ratio = m_pos_ratio;
     status.hgt_test_ratio =
         m_height_aiding.reference() == height_type::Source::gnss ? m_gps_height_ratio : m_height_ratio;
-    status.pre_flt_fail_innov_heading = !mag_valid || m_mag_ratio > 1.;
+    status.pre_flt_fail_innov_heading = !mag_valid || m_magnetic.test_ratio > 1.;
     status.pre_flt_fail_innov_vel_horiz = status.pre_flt_fail_innov_vel_vert = !gps_vel_valid || m_vel_ratio > 1.;
     status.pre_flt_fail_innov_pos_horiz = !gps_pos_valid || m_pos_ratio > 1.;
     status.pre_flt_fail_innov_height =
@@ -199,14 +199,14 @@ void FormalEskf::publish_status(uint64_t now)
     flags.timestamp_sample = m_time_us;
     flags.cs_tilt_align = healthy && m_tilt_alignment.aligned();
     flags.cs_gravity_vector = healthy && m_gravity.active;
-    flags.cs_yaw_align = healthy && m_magnetic_aiding.aligned();
+    flags.cs_yaw_align = healthy && m_heading_aligned;
     flags.cs_gnss_pos = healthy && m_gnss_fusion.state().horizontal_position.active;
     flags.cs_gnss_vel = healthy && m_gnss_fusion.state().velocity.active;
     flags.cs_gps_hgt = gps_height_active;
-    flags.cs_mag = healthy && m_magnetic_aiding.lifecycle().active;
+    flags.cs_mag = healthy && m_magnetic.lifecycle.state().active;
     flags.cs_mag_hdg = mag_aiding;
-    flags.cs_mag_heading_consistent = healthy && m_magnetic_aiding.heading().consistent;
-    auto const & magnetic_field = m_magnetic_aiding.observation().field;
+    flags.cs_mag_heading_consistent = healthy && m_magnetic.heading.state().consistent;
+    auto const & magnetic_field = m_magnetic.observation.field;
     flags.cs_mag_field_disturbed =
         magnetic_field.diagnostics_valid && (magnetic_field.failures.strength || magnetic_field.failures.inclination);
     flags.cs_baro_hgt = baro_active;
@@ -217,7 +217,7 @@ void FormalEskf::publish_status(uint64_t now)
     flags.reject_hor_pos = m_pos_ratio > 1.;
     flags.reject_hor_vel = flags.reject_ver_vel = m_vel_ratio > 1.;
     flags.reject_ver_pos = status.hgt_test_ratio > 1.f;
-    flags.reject_yaw = m_magnetic_aiding.observation().fusion.diagnostics_valid && m_mag_ratio > 1.;
+    flags.reject_yaw = m_magnetic.observation.fusion.diagnostics_valid && m_magnetic.test_ratio > 1.;
     m_flags_pub.publish(flags);
     if (!m_initialized)
     {
@@ -246,7 +246,7 @@ int FormalEskf::print_status()
     std::lock_guard<std::mutex> guard(m_state_mutex);
     PX4_INFO("formal-eskf INS / PX4 matrix / binary64 / C++20 / single instance");
     PX4_INFO("initialized=%d fault=%d predictions=%u gps=%u mag=%u baro=%u", m_initialized, m_fault, m_predictions,
-             m_gps_updates, m_mag_updates, m_baro_updates);
+             m_gps_updates, m_magnetic.corrections, m_baro_updates);
     PX4_INFO("gnss_quality=%d qualified=%d metadata_valid=%d fail_flags=0x%x pos_active=%d vel_active=%d resets=%u/%u",
              int(m_gnss_quality_result.decision), m_gnss_quality_result.qualified, m_gps_metadata_valid,
              unsigned(gps_failure_flags()), m_gnss_fusion.state().horizontal_position.active,
@@ -257,9 +257,9 @@ int FormalEskf::print_status()
     PX4_INFO("p=[%.3f %.3f %.3f] v=[%.3f %.3f %.3f]", m_state.p_n(0), m_state.p_n(1), m_state.p_n(2), m_state.v_n(0),
              m_state.v_n(1), m_state.v_n(2));
     PX4_INFO("mag: active=%u aligned=%u consistent=%u stop=%u recovery=%u resets=%u",
-             unsigned(m_magnetic_aiding.lifecycle().active), unsigned(m_magnetic_aiding.aligned()),
-             unsigned(m_magnetic_aiding.heading().consistent), unsigned(m_magnetic_aiding.lifecycle().stop_reason),
-             unsigned(m_magnetic_aiding.lifecycle().recovery_reason), unsigned(m_magnetic_aiding.reset_counter()));
+             unsigned(m_magnetic.lifecycle.state().active), unsigned(m_heading_aligned),
+             unsigned(m_magnetic.heading.state().consistent), unsigned(m_magnetic.lifecycle.state().stop_reason),
+             unsigned(m_magnetic.lifecycle.state().recovery_reason), unsigned(m_quaternion_reset_counter));
     PX4_INFO("mag model: available=%u checks=%llu model_revision=%u heading_revision=%u source=%u unavailable=%u",
              unsigned(m_magnetic_model.available()), (unsigned long long)m_magnetic_model.lookup_count(),
              unsigned(m_magnetic_model.model_revision()), unsigned(m_magnetic_model.reference_id()),

@@ -3,8 +3,11 @@
 
 #include <array>
 #include <cstdint>
+#include <numbers>
 
 #include <formal_eskf/runtime/imu.hpp>
+#include <formal_eskf/runtime/magnetic_field.hpp>
+#include <formal_eskf/runtime/magnetometer_lifecycle.hpp>
 
 namespace formal_eskf::px4::profile
 {
@@ -62,6 +65,20 @@ namespace gravity
 {
 inline constexpr std::uint64_t observation_interval_us = 10000U;
 } // namespace gravity
+
+namespace magnetic
+{
+inline constexpr runtime::MagneticFieldParameters<double> field{20., std::numbers::pi / 9., 0., 5.};
+inline constexpr runtime::MagneticFieldChecks checks{true, false, false};
+inline constexpr runtime::MagnetometerFusion::Parameters timing{1000000U, 500000U, 7000000U};
+inline constexpr double heading_noise_rad = 0.3;
+inline constexpr double acceleration_limit_m_s2 = 0.5;
+inline constexpr double noise_variance = 25.; // (0.05 gauss)^2 in microtesla^2.
+inline constexpr double gate_sigma = 3.;
+inline constexpr double maximum_heading_variance = 0.1;
+inline constexpr std::uint64_t context_maximum_age_us = 3000000U;
+inline constexpr std::uint64_t model_interval_us = 10000000U;
+} // namespace magnetic
 
 // SITL scheduling profile; target resource acceptance is separate.
 inline constexpr std::uint16_t work_queue_stack_bytes = 60U * 1024U;

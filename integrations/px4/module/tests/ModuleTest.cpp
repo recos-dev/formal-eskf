@@ -237,6 +237,440 @@ public:
         std::fprintf(trace_file, "gravity %u %u %u %u %llu\n", unsigned(m_filter.m_tilt_alignment.aligned()),
                      unsigned(m_filter.m_gravity.active), m_filter.m_gravity.samples, m_filter.m_gravity.corrections,
                      static_cast<unsigned long long>(m_filter.m_gravity.interval_us));
+        auto const & magnetic = m_filter.m_magnetic.lifecycle.state();
+        auto const & heading = m_filter.m_magnetic.heading.state();
+        auto const & observation = m_filter.m_magnetic.observation;
+        std::fprintf(trace_file, "magnetic %u %u %u %u %u %u %u %u %u %llu %llu %llu %llu %llu %llu\n",
+                     unsigned(magnetic.active), unsigned(magnetic.action), unsigned(magnetic.stop_reason),
+                     unsigned(magnetic.recovery_reason), unsigned(m_filter.m_heading_aligned),
+                     unsigned(m_filter.m_quaternion_reset_counter), m_filter.m_odometry_reset_counter,
+                     m_filter.m_magnetic.corrections, unsigned(observation.fusion.decision),
+                     static_cast<unsigned long long>(m_filter.m_magnetic.sample_time_us),
+                     static_cast<unsigned long long>(magnetic.start_time_us),
+                     static_cast<unsigned long long>(magnetic.last_fuse_time_us),
+                     static_cast<unsigned long long>(magnetic.last_reset_time_us),
+                     static_cast<unsigned long long>(m_filter.m_magnetic_model.lookup_count()),
+                     static_cast<unsigned long long>(m_filter.m_mag_model_origin_time));
+        std::array<double, 8U> magnetic_values{heading.innovation, heading.filtered_innovation,
+                                               heading.horizontal_acceleration, m_filter.m_magnetic.test_ratio};
+        for (std::size_t i = 0U; i < 4U; ++i)
+        {
+            magnetic_values[4U + i] = m_filter.m_quaternion_reset_delta.coefficients()(i);
+        }
+        trace_bytes(magnetic_values.data(), sizeof(magnetic_values));
+    }
+
+    void set_horizontal_aiding(bool enabled)
+    {
+        // Establish the preceding GNSS phase's lifecycle state. Magnetic tests
+        // exercise fuse_mag(), not GNSS qualification or its numerical update.
+        using Gnss = formal_eskf::runtime::GnssFusion;
+        m_filter.m_gnss_fusion.reset();
+        if (enabled)
+        {
+            Gnss::Conditions conditions;
+            conditions.horizontal_position = {true, true, true};
+            expect(formal_eskf::succeeded(
+                       m_filter.m_gnss_fusion.update(clock_us, conditions, FormalEskf::gnss_fusion_parameters,
+                                                     {clock_us, formal_eskf::runtime::GnssQualityDecision::accepted})),
+                   "prepare horizontal aiding context");
+            expect(formal_eskf::succeeded(m_filter.m_gnss_fusion.record_fusion(
+                       Gnss::Group::horizontal_position, clock_us, formal_eskf::runtime::FusionDecision::fused)),
+                   "prepare preceding fusion feedback");
+        }
+    }
+
+    void prepare_magnetic(bool aided = true)
+    {
+        auto & filter = m_filter;
+        filter.m_time_us = clock_us;
+        filter.m_covariance = FormalEskf::covariance_type::identity() * 0.01;
+        filter.m_initialized = true;
+        filter.m_origin.projection.initReference(47.397742, 8.545594, clock_us);
+        filter.m_origin.time_us = clock_us;
+        filter.m_mag_model_origin_time = clock_us;
+        filter.m_mag.device_id = 301U;
+        filter.m_mag.magnetometer_ga[0] = 0.3f;
+        filter.m_mag.magnetometer_ga[2] = 0.4f;
+        auto const field = FormalEskf::vector3(100. * double(filter.m_mag.magnetometer_ga[0]), 0.,
+                                               100. * double(filter.m_mag.magnetometer_ga[2]));
+        expect(formal_eskf::succeeded(filter.m_magnetic_model.initialize(clock_us, {0U, 0.}, field, {})),
+               "seed magnetic north without an independent health model");
+        filter.m_magnetic.sample_time_us = clock_us;
+        filter.initialize_magnetic_aiding({301U, 0U, 1U}, clock_us);
+        filter.m_land.landed = true;
+        filter.m_land.at_rest = true;
+        set_horizontal_aiding(aided);
+    }
+
+    void magnetic_tick(bool new_sample = true, std::uint64_t interval = 10000U, bool fresh_context = true)
+    {
+        clock_us += interval;
+        m_filter.m_time_us = clock_us;
+        if (new_sample)
+        {
+            m_filter.m_mag.timestamp_sample = clock_us;
+        }
+        if (fresh_context)
+        {
+            m_filter.m_land.timestamp = clock_us;
+        }
+        m_filter.fuse_mag();
+        snapshot("magnetic-phase");
+    }
+
+    void start_magnetic()
+    {
+        for (unsigned i = 0U; i < 101U; ++i)
+        {
+            magnetic_tick();
+            expect(m_filter.m_magnetic.corrections == 0U &&
+                       std::max(m_filter.m_magnetic.lifecycle.state().last_fuse_time_us,
+                                m_filter.m_magnetic.lifecycle.state().last_reset_time_us) == 0U,
+                   "strict startup health does not invent fusion");
+        }
+        magnetic_tick();
+        expect(!m_filter.m_fault && m_filter.m_magnetic.corrections == 1U && m_filter.magnetic_heading_aiding(),
+               "first qualified sample executes real magnetic correction");
+    }
+
+    void magnetic_outputs()
+    {
+        if (!m_filter.m_fault)
+        {
+            m_filter.publish({});
+        }
+        m_filter.publish_status(clock_us);
+        capture_outputs();
+    }
+
+    static void magnetic_outage(bool aided)
+    {
+        FormalEskfModuleTest test;
+        test.prepare_magnetic(aided);
+        test.start_magnetic();
+        auto & filter = test.m_filter;
+        auto const progress = std::max(filter.m_magnetic.lifecycle.state().last_fuse_time_us,
+                                       filter.m_magnetic.lifecycle.state().last_reset_time_us);
+        test.magnetic_tick(false, 1000000U);
+        expect(!filter.m_magnetic.lifecycle.state().active && filter.m_heading_aligned == aided &&
+                   std::max(filter.m_magnetic.lifecycle.state().last_fuse_time_us,
+                            filter.m_magnetic.lifecycle.state().last_reset_time_us) == progress,
+               "data timeout preserves progress and clears only unaided heading alignment");
+        test.magnetic_outputs();
+        test.magnetic_tick();
+        expect(!filter.m_fault && filter.m_quaternion_reset_counter == (aided ? 0U : 1U) &&
+                   filter.m_magnetic.corrections == (aided ? 2U : 1U),
+               "returning data resumes aided fusion or performs one unaided heading reset");
+        expect(filter.m_odometry_reset_counter == filter.m_quaternion_reset_counter,
+               "heading reset reaches odometry bookkeeping exactly once");
+        test.magnetic_outputs();
+        test.magnetic_tick();
+        expect(filter.m_magnetic.corrections == (aided ? 3U : 2U), "ordinary fusion follows reset on the next sample");
+    }
+
+    enum class MagneticInputCase
+    {
+        stale,
+        future,
+        duplicate,
+        non_finite,
+        zero_field,
+        invalid_device
+    };
+
+    static void magnetic_input(MagneticInputCase scenario)
+    {
+        FormalEskfModuleTest test;
+        test.prepare_magnetic();
+        test.start_magnetic();
+        auto & filter = test.m_filter;
+        auto const before = filter.m_covariance;
+        auto const seen = filter.m_magnetic.sample_time_us;
+        auto const lookups = filter.m_magnetic_model.lookup_count();
+        bool received = true;
+        switch (scenario)
+        {
+        case MagneticInputCase::stale:
+            clock_us += 600000U;
+            filter.m_mag.timestamp_sample = clock_us - 500000U;
+            received = false;
+            break;
+        case MagneticInputCase::future:
+            filter.m_mag.timestamp_sample = clock_us + 20000U;
+            received = false;
+            break;
+        case MagneticInputCase::duplicate:
+            received = false;
+            break;
+        case MagneticInputCase::non_finite:
+            filter.m_mag.magnetometer_ga[0] = std::numeric_limits<float>::quiet_NaN();
+            break;
+        case MagneticInputCase::zero_field:
+            filter.m_mag.magnetometer_ga[0] = 0.f;
+            filter.m_mag.magnetometer_ga[2] = 0.f;
+            break;
+        case MagneticInputCase::invalid_device:
+            filter.m_mag.device_id = 0U;
+            break;
+        }
+        test.magnetic_tick(received, scenario == MagneticInputCase::stale ? 0U : 10000U);
+        expect(!filter.m_fault && filter.m_magnetic.corrections == 1U && same_bits(before, filter.m_covariance),
+               "inadmissible magnetic sample does not alter state or latch a numerical fault");
+        expect(filter.m_magnetic_model.lookup_count() == lookups,
+               "inadmissible magnetic data cannot trigger geographic lookup");
+        bool const consumed = scenario != MagneticInputCase::future && scenario != MagneticInputCase::duplicate;
+        expect((filter.m_magnetic.sample_time_us > seen) == consumed && filter.m_rejections == (consumed ? 1U : 0U),
+               "admission watermark and rejection count distinguish arrivals from pending/duplicate data");
+        test.magnetic_outputs();
+        if (scenario == MagneticInputCase::future)
+        {
+            test.magnetic_tick(false);
+            expect(filter.m_magnetic.corrections == 2U, "future observation becomes eligible at its timestamp");
+            test.magnetic_tick(false);
+            expect(filter.m_magnetic.corrections == 2U, "eligible observation is not reused");
+        }
+        if (scenario == MagneticInputCase::stale)
+        {
+            test.magnetic_tick(false, 400000U);
+            expect(!filter.m_magnetic.lifecycle.state().active, "late arrival does not postpone no-data timeout");
+        }
+    }
+
+    enum class MagneticSourceCase
+    {
+        ground,
+        aided_air,
+        unaided_air,
+        unknown,
+        stale_land,
+        land_overrides_arming
+    };
+
+    static void magnetic_source(MagneticSourceCase scenario)
+    {
+        FormalEskfModuleTest test;
+        test.prepare_magnetic(scenario != MagneticSourceCase::unaided_air);
+        test.start_magnetic();
+        auto & filter = test.m_filter;
+        ++filter.m_mag.calibration_count;
+        filter.m_land.landed =
+            scenario == MagneticSourceCase::ground || scenario == MagneticSourceCase::land_overrides_arming;
+        bool const fresh_land = scenario != MagneticSourceCase::unknown && scenario != MagneticSourceCase::stale_land;
+        if (!fresh_land)
+        {
+            filter.m_land.timestamp = clock_us - 3000000U;
+        }
+        if (scenario == MagneticSourceCase::stale_land || scenario == MagneticSourceCase::land_overrides_arming)
+        {
+            filter.m_vehicle_status.timestamp = clock_us;
+            filter.m_vehicle_status.arming_state = vehicle_status_s::ARMING_STATE_ARMED;
+        }
+        for (unsigned i = 0U; i < 4U; ++i)
+        {
+            test.magnetic_tick(true, 10000U, fresh_land);
+        }
+        bool const reset = scenario == MagneticSourceCase::ground || scenario == MagneticSourceCase::unaided_air ||
+                           scenario == MagneticSourceCase::land_overrides_arming;
+        bool const pending = scenario == MagneticSourceCase::unknown;
+        expect(!filter.m_fault && filter.m_quaternion_reset_counter == (reset ? 1U : 0U) &&
+                   filter.m_magnetic.corrections == ((!reset && !pending) ? 2U : 1U),
+               "source recovery uses ground/air/unknown context with fresh land overriding arming");
+        test.magnetic_outputs();
+        if (pending)
+        {
+            test.magnetic_tick();
+            expect(filter.m_magnetic.corrections == 2U, "known in-air context releases aided source recovery");
+        }
+    }
+
+    static void magnetic_bias_and_field()
+    {
+        FormalEskfModuleTest test;
+        test.prepare_magnetic();
+        test.start_magnetic();
+        auto & filter = test.m_filter;
+        filter.m_covariance = FormalEskf::covariance_type::identity();
+        filter.m_covariance(8U, 9U) = filter.m_covariance(9U, 8U) = 0.2;
+        filter.m_covariance(8U, 12U) = filter.m_covariance(12U, 8U) = 0.2;
+        filter.m_bias_learning_result.bias_update = {{false, false, false}, {true, true, true}};
+        filter.m_mag.magnetometer_ga[1] = 0.01f;
+        test.magnetic_tick();
+        expect(filter.m_magnetic.corrections == 2U && filter.m_state.b_a(0U) == 0. && filter.m_state.b_g(0U) != 0. &&
+                   filter.m_covariance(9U, 9U) == 1.,
+               "magnetic correction forwards independent bias permissions");
+        filter.m_state.b_a(0U) = -1.;
+        filter.m_state.b_g(1U) = 1.;
+        test.magnetic_tick();
+        expect(filter.m_magnetic.corrections == 3U && filter.m_state.b_a(0U) == -0.4 && filter.m_state.b_g(1U) == 0.15,
+               "successful correction applies deployment bias limits");
+        filter.m_state.b_a(0U) = -1.;
+        auto const before = filter.m_covariance;
+        filter.m_mag.magnetometer_ga[2] = 1.f;
+        test.magnetic_tick();
+        expect(filter.m_magnetic.corrections == 3U && filter.m_state.b_a(0U) == -1. &&
+                   same_bits(before, filter.m_covariance) && filter.m_magnetic.lifecycle.state().active &&
+                   !filter.magnetic_heading_aiding(),
+               "field rejection retains session and estimate without invoking bias limits");
+        test.magnetic_outputs();
+    }
+
+    static void magnetic_timeout(bool disturbance)
+    {
+        FormalEskfModuleTest test;
+        test.prepare_magnetic(false);
+        test.start_magnetic();
+        auto & filter = test.m_filter;
+        filter.m_land.at_rest = false;
+        filter.m_mag.magnetometer_ga[0] = 0.f;
+        filter.m_mag.magnetometer_ga[1] = disturbance ? 3.f : 0.3f;
+        filter.m_mag.magnetometer_ga[2] = disturbance ? 4.f : 0.4f;
+        for (unsigned i = 0U; i < 701U; ++i)
+        {
+            test.magnetic_tick();
+        }
+        expect(!filter.m_fault && filter.m_quaternion_reset_counter == (disturbance ? 0U : 1U),
+               "overdue fusion resets only while the field is qualified");
+        if (disturbance)
+        {
+            expect(!filter.m_heading_aligned, "unqualified timeout clears unaided alignment");
+            test.set_horizontal_aiding(true);
+            filter.m_mag.magnetometer_ga[1] = 0.3f;
+            filter.m_mag.magnetometer_ga[2] = 0.4f;
+            for (unsigned i = 0U; i < 102U; ++i)
+            {
+                test.magnetic_tick();
+            }
+            expect(filter.m_quaternion_reset_counter == 1U,
+                   "returning horizontal aiding does not bypass lost heading alignment");
+        }
+        expect(filter.m_heading_aligned && filter.m_odometry_reset_counter == 1U,
+               "successful heading reset restores alignment and notifies odometry");
+        test.magnetic_outputs();
+    }
+
+    static void magnetic_failure(bool reset)
+    {
+        FormalEskfModuleTest test;
+        test.prepare_magnetic(false);
+        test.start_magnetic();
+        auto & filter = test.m_filter;
+        filter.m_covariance(0U, 0U) = -1.;
+        auto const before = filter.m_covariance;
+        if (reset)
+        {
+            ++filter.m_mag.calibration_count;
+            for (unsigned i = 0U; i < 3U; ++i)
+            {
+                test.magnetic_tick();
+            }
+        }
+        test.magnetic_tick();
+        using Recovery = formal_eskf::runtime::MagnetometerFusion::RecoveryReason;
+        expect(filter.m_fault && filter.m_errors == 1U && filter.m_magnetic.corrections == 1U &&
+                   filter.m_quaternion_reset_counter == 0U && same_bits(before, filter.m_covariance),
+               "numerical failure preserves estimate and success counters, recording one fault");
+        expect(filter.m_magnetic.lifecycle.state().recovery_reason ==
+                   (reset ? Recovery::reset_failed : Recovery::fusion_failed),
+               "actual numerical result reaches lifecycle repair latch");
+        test.magnetic_outputs();
+    }
+
+    static void magnetic_heading_history()
+    {
+        FormalEskfModuleTest test;
+        test.prepare_magnetic();
+        test.start_magnetic();
+        auto & filter = test.m_filter;
+        filter.m_land.at_rest = false;
+        filter.m_mag.magnetometer_ga[0] = 0.f;
+        filter.m_mag.magnetometer_ga[1] = 0.3f;
+        for (unsigned i = 0U; i < 30U; ++i)
+        {
+            test.magnetic_tick();
+        }
+        expect(!filter.m_magnetic.heading.state().consistent && !filter.magnetic_heading_aiding(),
+               "filtered heading inconsistency inhibits aided navigation updates");
+        auto const updates = filter.m_magnetic.corrections;
+        filter.m_mag.magnetometer_ga[0] = 0.3f;
+        filter.m_mag.magnetometer_ga[1] = 0.f;
+        for (unsigned i = 0U; i < 100U; ++i)
+        {
+            test.magnetic_tick();
+        }
+        expect(filter.m_magnetic.corrections == updates && filter.m_quaternion_reset_counter == 0U,
+               "small innovation without excitation cannot restore heading consistency");
+        for (unsigned i = 0U; i < 200U; ++i)
+        {
+            expect(formal_eskf::succeeded(
+                       filter.m_magnetic.heading.update_acceleration(FormalEskf::vector3(1., 0., 0.), 0.01)),
+                   "feed prediction acceleration to maneuver history");
+        }
+        test.magnetic_tick();
+        expect(filter.m_magnetic.corrections == updates + 1U && filter.m_magnetic.heading.state().consistent,
+               "maneuver evidence permits consistency recovery");
+        filter.m_magnetic.heading.reset_acceleration();
+        expect(filter.m_magnetic.heading.state().horizontal_acceleration == 0. &&
+                   filter.m_magnetic.heading.state().consistent,
+               "gap reset clears acceleration without heading loss");
+        test.snapshot("magnetic-history");
+        test.magnetic_outputs();
+    }
+
+    static void magnetic_model_lookup()
+    {
+        FormalEskfModuleTest test;
+        test.prepare_magnetic();
+        test.start_magnetic();
+        auto & filter = test.m_filter;
+        auto const field = filter.m_magnetic_model.observation_n();
+        auto const lookups = filter.m_magnetic_model.lookup_count();
+        filter.m_origin.time_us = clock_us;
+        filter.m_mag.magnetometer_ga[0] = std::numeric_limits<float>::quiet_NaN();
+        test.magnetic_tick();
+        expect(filter.m_magnetic_model.lookup_count() == lookups &&
+                   filter.m_mag_model_origin_time != filter.m_origin.time_us,
+               "invalid input cannot consume pending origin lookup");
+        filter.m_mag.magnetometer_ga[0] = 0.3f;
+        test.magnetic_tick();
+        expect(!filter.m_fault && filter.m_magnetic_model.lookup_count() == lookups + 1U &&
+                   filter.m_mag_model_origin_time == filter.m_origin.time_us && filter.m_magnetic_model.available() &&
+                   same_bits(field, filter.m_magnetic_model.observation_n()),
+               "eligible sample invokes real WMM once, retaining separately selected observation field");
+        test.magnetic_outputs();
+    }
+
+    static void magnetic_reference_change(bool geographic)
+    {
+        FormalEskfModuleTest test;
+        test.prepare_magnetic();
+        auto & filter = test.m_filter;
+        auto const field = filter.m_magnetic_model.observation_n();
+        FormalEskf::magnetic_model_type::sample_type model{0., std::atan2(field(2U), field(0U)),
+                                                           formal_eskf::linalg::norm(field)};
+        expect(formal_eskf::succeeded(
+                   filter.m_magnetic_model.initialize(clock_us, {geographic ? 3U : 2U, 0.}, field, model)),
+               "seed independent geographic reference");
+        test.start_magnetic();
+        model.declination = 0.05;
+        expect(filter.m_magnetic_model.update(clock_us + 10000U, model, true, true).changed,
+               "adopt a changed reference before magnetic control");
+        test.magnetic_tick();
+        expect(!filter.m_fault && filter.m_quaternion_reset_counter == (geographic ? 1U : 0U) &&
+                   filter.m_magnetic.corrections == (geographic ? 1U : 2U),
+               "geographic revision resets resting heading; health-only revision retains correction reference");
+        if (!geographic)
+        {
+            model.strength = 80.;
+            expect(filter.m_magnetic_model.update(clock_us + 10000U, model, true, true).changed,
+                   "adopt independent health strength");
+            auto const before = filter.m_covariance;
+            test.magnetic_tick();
+            expect(filter.m_magnetic.corrections == 2U && filter.m_quaternion_reset_counter == 0U &&
+                       filter.m_magnetic.observation.field.failures.strength && same_bits(before, filter.m_covariance),
+                   "independent health model can reject a seed-matching observation without resetting yaw");
+        }
+        test.magnetic_outputs();
     }
 
     void prepare_gravity()
@@ -789,6 +1223,31 @@ int main(int argc, char ** argv)
     FormalEskfModuleTest::gravity_failure(FormalEskfModuleTest::GravityFailure::correction);
     FormalEskfModuleTest::gravity_in_run(true);
     FormalEskfModuleTest::gravity_in_run(false);
+    FormalEskfModuleTest::magnetic_outage(false);
+    FormalEskfModuleTest::magnetic_outage(true);
+    using MagneticInputCase = FormalEskfModuleTest::MagneticInputCase;
+    for (auto scenario :
+         {MagneticInputCase::stale, MagneticInputCase::future, MagneticInputCase::duplicate,
+          MagneticInputCase::non_finite, MagneticInputCase::zero_field, MagneticInputCase::invalid_device})
+    {
+        FormalEskfModuleTest::magnetic_input(scenario);
+    }
+    using MagneticSourceCase = FormalEskfModuleTest::MagneticSourceCase;
+    for (auto scenario :
+         {MagneticSourceCase::ground, MagneticSourceCase::aided_air, MagneticSourceCase::unaided_air,
+          MagneticSourceCase::unknown, MagneticSourceCase::stale_land, MagneticSourceCase::land_overrides_arming})
+    {
+        FormalEskfModuleTest::magnetic_source(scenario);
+    }
+    FormalEskfModuleTest::magnetic_bias_and_field();
+    FormalEskfModuleTest::magnetic_timeout(false);
+    FormalEskfModuleTest::magnetic_timeout(true);
+    FormalEskfModuleTest::magnetic_failure(false);
+    FormalEskfModuleTest::magnetic_failure(true);
+    FormalEskfModuleTest::magnetic_heading_history();
+    FormalEskfModuleTest::magnetic_model_lookup();
+    FormalEskfModuleTest::magnetic_reference_change(false);
+    FormalEskfModuleTest::magnetic_reference_change(true);
     using Fault = FormalEskfModuleTest::Fault;
     for (auto fault :
          {Fault::non_finite, Fault::source_change, Fault::gyro_source_change, Fault::calibration_change,

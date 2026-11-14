@@ -13,6 +13,34 @@ See the [integration guide](README.md) for current setup and behavior,
 [review criteria](../../docs/spec/formal-verification-traceability-and-review-criteria.md)
 for requirement/evidence acceptance.
 
+## Replay magnetic alignment fix validation: 2026-11-14
+
+A-01 batch 3's prerequisite corrects replay wiring against baseline `2c8815d`:
+forward owned heading alignment and clear it when an active session stops
+without horizontal aiding. Actual reset feedback restores alignment. Core,
+runtime and PX4 module code, numerical models and settings are unchanged;
+magnetic structural refactoring remains separate.
+
+| Regression | Baseline reset count | Corrected reset count |
+| --- | --- | --- |
+| Unaided data outage and return | 0 | 1 |
+| Horizontally aided data outage and return | 0 | 0 |
+| Field-rejection stop, then GNSS recovery before magnetic recovery | 0 | 1 |
+| Rejected-fusion stop, then GNSS recovery before health qualification | 0 | 1 |
+
+The three missing-reset assertions fail against the saved original executable.
+The corrected magnetic replay suite passes 26/26, as does ASan/UBSan; the
+lifecycle, heading and module-aiding suites pass 9/9 across three backends.
+Formatting and repository Cppcheck unix32/unix64 pass. Existing assertions and
+thresholds are retained. The 14 existing `R-MAGNETOMETER-LIFECYCLE` references
+still resolve; no mapping or proof-body change is required.
+
+Evidence and source/binary identity are in
+`output/replay-magnetic-alignment-20261114/summary.json`. The initial sanitizer
+attempt failed because LeakSanitizer cannot run under the sandbox's ptrace;
+ASan/UBSan were rerun with leak detection disabled. These are host replay and
+component checks, not new Lean/ESBMC proofs, SITL or target real-time acceptance.
+
 ## Gravity ownership refactor validation: 2026-11-14
 
 A-01 batch 2 uses `95c22cf` as its behavior baseline on the same pinned PX4

@@ -1922,7 +1922,8 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                                                                     horizontal_aiding,
                                                                     sample_flags.at_rest == 1,
                                                                     magnetic_context.flight_state,
-                                                                    magnetic_heading.state().consistent};
+                                                                    magnetic_heading.state().consistent,
+                                                                    magnetic_heading_aligned};
             check_status(magnetic_lifecycle.update(time, magnetic_conditions, magnetic_timing, lifecycle_sample),
                          "magnetometer lifecycle", time);
             if (mag_enabled && magnetic_time != 0U)
@@ -1983,6 +1984,12 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
                 outcome = reset_succeeded ? "reset" : "reset_failed";
             }
             auto const & lifecycle = magnetic_lifecycle.state();
+            // Either update or fusion feedback can stop aiding. A successful
+            // heading reset above restores activity and alignment together.
+            if (previous.active && !lifecycle.active && !horizontal_aiding)
+            {
+                magnetic_heading_aligned = false;
+            }
             if (magnetic_time != 0U || lifecycle.stop_reason != previous.stop_reason ||
                 lifecycle.recovery_reason != previous.recovery_reason)
             {

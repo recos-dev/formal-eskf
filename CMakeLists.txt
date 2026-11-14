@@ -204,7 +204,9 @@ if(PROJECT_IS_TOP_LEVEL)
                         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_replay_vertical_acceleration.cmake
                 )
             endforeach()
-            foreach(CASE IN ITEMS timeout disturbed aided source_ground source_air source_unaided
+            foreach(CASE IN ITEMS timeout disturbed aided data_gap_unaided data_gap_aided
+                                  disturbed_aiding_recovery rejected_aiding_recovery
+                                  source_ground source_air source_unaided
                                   source_unknown calibration source_disturbed reference_unaided reference_aided context_invalid
                                   model_aided model_rejected_position model_unavailable
                                   model_health_only model_health_disturbed

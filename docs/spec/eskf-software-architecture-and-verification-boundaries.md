@@ -133,7 +133,7 @@ both callers; it does not make their integration profiles equivalent.
 | Horizontal aiding | Gravity and magnetic conditions consume current GNSS lifecycle activity. | `ReplayFusionConditions` retains activity for 7 s after an actual horizontal correction/reset. | Preserve caller-supplied meaning; do not infer one from the other in a common helper. |
 | Missing IMU metadata | The module validates actual clipping/identity metadata and faults on unsupported discontinuities. | Missing clipping assumes clear only for bias learning; it blocks gravity fusion and invalidates vertical-health history. | Keep input compatibility in the adapter; absence must not become measured health. |
 | Magnetic admission and settings | `MagneticAiding` discards arrivals aged 500 ms or more before updating lifecycle receipt, rejects unusable external fields, and binds fixed deployment settings. | Replay selects the newest arrived sample per tick and passes it to the lifecycle without the same admission filter; parameters and field checks can come from replay inputs. | Preserve existing admission/configuration boundaries; sharing lower-level code does not establish equal decisions. |
-| Magnetic heading alignment | `MagneticAiding` clears alignment on an unaided stop and explicitly supplies `heading_aligned` to the lifecycle. | Replay clears its local alignment flag on selected source changes, but omits that lifecycle field and therefore supplies its default `true`; it also lacks the unaided-stop alignment transition. | **Known replay wiring gap**, not an approved policy difference. Resolve separately before sharing magnetic coordination. |
+| Magnetic heading alignment | `MagneticAiding` clears alignment on an unaided stop and explicitly supplies `heading_aligned` to the lifecycle. | Replay supplies its owned flag and clears it when update or fusion feedback ends an active session without horizontal aiding. A successful heading reset restores alignment. | The replay omission is corrected separately from structural refactoring. Preserve this behavior and each caller's horizontal-aiding policy. |
 | Height sources | `HeightAiding` arbitrates barometer/GNSS and owns their offsets and datum. | Replay uses its GNSS-only vertical lifecycle. | Keep source arbitration and datum ownership distinct; a header merge cannot substitute one controller for the other. |
 | Numerical failure | A module fault prevents later aiding/publication and requires restart. | Replay terminates with an error; earlier successful operations remain observable in its evidence. | Preserve each caller's failure boundary; neither provides whole-tick rollback. |
 
@@ -143,13 +143,14 @@ Source boundaries: [module update sequence](../../integrations/px4/module/Formal
 [replay sequence](../../examples/replay_ins.cpp), and
 [replay conditions](../../examples/replay_conditions.hpp).
 
-The magnetic gap has a concrete consequence: after an unaided data timeout,
-the lifecycle requests a reset for a qualified sample when `heading_aligned` is
-false, while the default true permits ordinary fusion. Source-change tests can
-still pass because the lifecycle separately remembers source-required resets.
-This gap predates the file consolidation; passing existing tests does not close
-it. Correcting it needs its own behavior change and regression case, not a
-compatibility switch that permanently preserves the omission.
+After an unaided stop, returning qualified magnetic data must establish heading
+alignment before ordinary fusion. Restored horizontal aiding alone cannot set
+that flag; a stop while horizontally aided retains it. The
+[replay regressions](../../tests/test_replay_magnetometer_reset.cmake) cover data
+outages and stops during field qualification or rejected-fusion feedback, including
+GNSS recovery before magnetic recovery. Earlier source-change tests alone did
+not catch the omission because the lifecycle separately remembers source-required
+resets. This fix does not unify the other integration-profile differences above.
 
 These are composition boundaries for the software verification plan. Existing
 core proofs remain scoped to their own contracts; runtime/controller and complete

@@ -537,13 +537,20 @@ received GNSS packet. Only a recorded `at_rest=true` enables the rest override;
 missing rest metadata is not evidence of motion. With horizontal aiding, the
 rest override additionally requires consistent magnetic heading.
 
+Supply the replay-owned `heading_aligned` flag on every lifecycle update. When
+an active session stops without horizontal aiding, clear alignment whether the
+stop comes from the update or actual fusion feedback. A successful heading reset
+restores activity and alignment together; returning GNSS aiding alone cannot do
+so. A stop with horizontal aiding retains alignment. This follows the pinned
+`stopMagFusion()` heading-loss rule within our fixed-field profile.
+
 The reference is [PX4 v1.16.2 magnetometer control](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/magnetometer/mag_control.cpp),
 with timing from [ekf.h](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/ekf.h)
 and [common.h](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/common.h).
 
 | Decision | Implemented rule |
 |---|---|
-| Start | Continuing conditions pass, stable yaw/reset frame, at least four samples, more than 1 s since the last failed field check unless the health duration is disabled, newest sample age strictly below 0.5 s; actual successful fusion activates. |
+| Start | Continuing conditions pass, stable yaw/reset frame, at least four samples, more than 1 s since the last failed field check unless the health duration is disabled, newest sample age strictly below 0.5 s. If heading is unaligned, apply a real heading reset first; otherwise actual successful fusion activates. |
 | Continue | A current good field may fuse without repeating startup health, subject to `!horizontal_aiding || heading_consistent`. Field rejection or heading inhibition does not itself end the session. |
 | No data | On a no-sample tick, stop at age **>= 1 s**; preserve field history and allow fresh qualified data to restart. |
 | Fusion timeout | Try the current observation first. Only an active session still without success for **> 7 s** takes the timeout branch. |
@@ -669,6 +676,8 @@ explicit source-change alignment recovery retains its separate reset policy.
   requirement during source recovery. The default is true for callers that
   already establish yaw alignment. The caller clears lost alignment and reports
   it true again only after actual successful alignment/reset.
+  This branch takes precedence over the timeout/reference retry rules:
+  restored horizontal aiding does not by itself establish heading alignment.
 - Device/calibration changes stop activity, clear source-specific progress/count
   and revoke old feedback. Preserve the field-check failure timestamp (as PX4
   does); four new samples are still required. `filter_reset` is a one-update

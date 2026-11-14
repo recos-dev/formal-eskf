@@ -7,7 +7,7 @@ the review list; they are work items, not proof requirements or measured speedup
 | Item | Audit origin | Candidate | Disposition |
 |---|---|---|---|
 | 1 | G01 | Reuse finite input premises in symmetry checks | Implemented in DC-02 |
-| 2 | G01-C02 | Pairwise symmetry residual | Implemented in DC-02 |
+| 2 | G01-C02 | Stream the complete symmetry residual | Implemented in DC-02 |
 | 3 | G01-C01 | Forward gain solve output | Implemented in DC-03 |
 | 4 | G01-C03, G06-C8, G08-C7 | Same-call PHt/S reuse after gating | Retained in DC-07 |
 | 5 | G01-C04 | Hoist bias permissions out of column loops | Implemented in DC-01 |
@@ -37,7 +37,8 @@ the review list; they are work items, not proof requirements or measured speedup
 
 Three separate numerical proposals are sparse covariance propagation (G04-C9),
 block covariance reset (G05-C9) and selector-specific PHt/S (G09-C8). Their
-disposition belongs to DC-08; no numerical rewrite is presumed equivalent.
+disposition is recorded in DC-08: retain all three; no numerical rewrite is
+presumed equivalent.
 
 ## Evidence and acceptance
 
@@ -297,3 +298,83 @@ numerical reason; a missing proof is not a pass.
   observed functionality is unchanged. Commit accepted. E-OBS remains the
   full-vector (tilt=0) proof boundary; projected-mode native evidence does not
   close E-MAG-TILT's outstanding formal coverage or prove deployed backends.
+
+### DC-08: final acceptance and retained numerical proposals
+
+All 28 implementation candidates have a recorded disposition: **22 implemented,
+6 retained** (#4, #10, #14, #15, #18, #24). Retention means the existing checked
+boundary is the selected design for this cleanup, not an implemented optimization.
+The initial 194 atomic predicates, 47 conditional candidates and 78 computation
+entries are different inventory units; none is a percentage of proven safety.
+
+| Batch | Disposition | Accepted ESBMC profile executions |
+|---|---|---:|
+| DC-01 | 9 implemented: construction-known scans and local reuse | 66 |
+| DC-02 | 2 implemented: finite symmetry premise and streamed residual | 92 |
+| DC-03 | 5 implemented: transactional forwarding and state initialization | 306 |
+| DC-04 | 4 implemented: finite-result implications and variance comparisons | 62 |
+| DC-05 | 1 implemented; 1 retained: prediction validation ownership | 76 |
+| DC-06 | 2 retained: injection/reset and SO(3) boundaries | 0 (no source change) |
+| DC-07 | 1 implemented; 3 retained: local magnetic preparation | 18 |
+| Total | 22 implemented / 6 retained | 620 |
+
+The 620 successful executions are incremental batch evidence, including repeated
+profiles. They are not 620 distinct requirements or a fresh run of all 1554
+profiles on the final tree. Another 32 selector profiles passed as extra DC-04
+regressions. Failed attempts, setup errors, interrupted runs and deliberate
+negative controls are excluded. Per-batch manifests retain source hashes and
+execution logs; final source changes have their affected profiles rerun.
+
+| Separate numerical proposal | Disposition and reason |
+|---|---|
+| Sparse covariance propagation (G04-C9) | Retain the current dense expression. Skipping structural-zero products or reassociating sums needs explicit IEEE overflow, signed-zero and rounding acceptance; algebraic equality alone does not establish the existing behavior contract. |
+| Block covariance reset (G05-C9) | Retain the full sandwich/finalizer. A block implementation must preserve cross-covariance updates, alias/rollback behavior and numerical policy; it is not a removable guard. |
+| Selector-specific PHt/S (G09-C8) | Retain dense products and full S/LLT. Direct coefficient gathering can preserve a negative zero that dense multiplication changes; correlated V and updated priors must remain intact. |
+
+These proposals are not adopted in this behavior-preserving cleanup. They require
+an explicitly scoped numerical optimization decision and target benchmarking,
+not a weakened oracle or a claim that all redundant arithmetic disappeared.
+
+Concrete source-level savings include diagonal Q_i result scans (3/12 rather
+than 9/144 entries), F_x result scans (27 rather than 225 entries), removal of
+an extra 45-entry constructed-H scan, streamed symmetry without transpose/difference
+matrices, redundant outer transaction copies, the private four-coefficient q
+scan, and one rather than two magnetic rotation constructions with tilt enabled.
+These are operation/storage changes, not measured end-to-end speedups.
+
+Final behavior comparison retains all 1248 baseline/current digests over 29,952
+calls. Native/backend tests, sanitizers, Cppcheck and the affected proof executions
+are recorded above. Public interfaces, formulas, defaults, ordered failure
+statuses, supported aliases and output atomicity are preserved under the stated
+numerical profile. NaN payloads, fenv/traps, target libm accuracy, whole-backend
+verification, full E-INNOV/E-MAG-TILT coverage and target timing are not claimed.
+
+The pre-existing FEATURE_TODO/ROADMAP additions and untracked research/data files
+are excluded from these commits. The remaining added/removed lines of both
+tracked drafts match the initial unrelated patch exactly.
+
+The final call graph was extracted from production tree `ea268c4` into
+`output/core-callgraph-cleanup-20261115/`, leaving the baseline artifact intact.
+The directory contains `callgraph.json`, `callgraph.dot`, `callgraph.svg`, per-profile
+AST/command/dependency records and `source-hashes.json`. Inspect each JSON edge's
+caller, callee, source line/expression and applicable profiles; the SVG is the
+operation-level overview, not every low-level edge.
+
+| Graph acceptance | Result |
+|---|---|
+| Configurations | 16: Eigen/PX4 × quaternion/reset/projection macro combinations; float/double and INS/AHRS roots |
+| Core source coverage | 52 function definitions in 15 headers, same as the baseline roots |
+| Unresolved dispatch / uninstantiated core definitions | 0 / 0 within the recorded probes |
+| Source identity | 44 captured source files and 471 distinct dependency hashes match |
+| Raw core if statements | 118 → 112; this is not the 194 atomic-predicate inventory or a performance metric |
+
+This is a configured static direct-call graph. It does not prove path feasibility,
+dominance, aliasing or semantic equivalence, and excludes unrecorded callers,
+other dimensions/backends and platform scheduling. The preceding caller/producer
+proofs, source review and native comparisons establish their own stated evidence.
+
+Final self-review: all 28 candidates and the three numerical proposals have an
+explicit disposition, source/hash references and scoped acceptance. The adopted
+changes preserve the specified behavior under the recorded contracts; no known
+regression remains in the exercised scope. The cleanup is accepted for commit;
+retained boundaries and outstanding formal/target guarantees remain explicit.

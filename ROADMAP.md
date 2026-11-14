@@ -306,8 +306,8 @@ The numbered candidates below refer to the fixed 28-item review list.
 | DC-04 | 8, 19, 21, 26 | Numerical implication and innovation comparisons | Complete: `095a6d4` |
 | DC-05 | 6, 10 | Prediction input ownership and common mathematics | Complete: `94c00a1` |
 | DC-06 | 14, 15 | Injection/reset validation and angle computations | Complete: `f220141` (retained) |
-| DC-07 | 4, 18, 24, 25 | Same-call gate/correction and magnetic model preparation | Complete; DC-07 acceptance record |
-| DC-08 | All; three sparse-algebra proposals | Cross-profile acceptance and final disposition | Pending |
+| DC-07 | 4, 18, 24, 25 | Same-call gate/correction and magnetic model preparation | Complete: `ea268c4` |
+| DC-08 | All; three sparse-algebra proposals | Cross-profile acceptance and final disposition | Complete: 22 implemented, 6 retained; sparse proposals retained |
 
 Execute in this order. For each batch, record what changed, correctness evidence,
 and behavior equivalence in [the acceptance record](docs/validation-cleanup-20261115.md).

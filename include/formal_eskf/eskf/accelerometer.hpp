@@ -84,7 +84,7 @@ template <typename Linalg>
     {
         return Status::non_finite_input;
     }
-    if (!(linalg::max_abs(gravity_n) > value_type{0}))
+    if (gravity_n(0U) == value_type{0} && gravity_n(1U) == value_type{0} && gravity_n(2U) == value_type{0})
     {
         return Status::domain_error;
     }
@@ -133,7 +133,7 @@ template <typename Linalg>
     {
         return Status::non_finite_input;
     }
-    if (!(linalg::max_abs(gravity_n) > value_type{0}))
+    if (gravity_n(0U) == value_type{0} && gravity_n(1U) == value_type{0} && gravity_n(2U) == value_type{0})
     {
         return Status::domain_error;
     }
@@ -144,12 +144,13 @@ template <typename Linalg>
         return Status::non_finite_result;
     }
     auto const r = z - h;
-    linalg::Matrix<Linalg, 3U, 15U> H;
-    H.template set_block<0U, 6U>(so3::hat<Linalg>(h));
-    if (!linalg::all_finite(h) || !linalg::all_finite(r) || !linalg::all_finite(H))
+    if (!linalg::all_finite(h) || !linalg::all_finite(r))
     {
         return Status::non_finite_result;
     }
+    // H contains only zeros and signed copies of the checked h coefficients.
+    linalg::Matrix<Linalg, 3U, 15U> H;
+    H.template set_block<0U, 6U>(so3::hat<Linalg>(h));
     return correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output, bias_update);
 }
 

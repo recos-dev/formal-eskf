@@ -80,9 +80,13 @@ template <typename Linalg>
         // Evaluate left to right; avoid overflowing dt*dt for zero noise.
         candidate(axis, axis) = (noise.angular_rate_variance(axis) * dt) * dt;
     }
-    if (!linalg::all_finite(candidate))
+    // Off-diagonal entries remain the finite zeros from construction.
+    for (std::size_t index = 0U; index < 3U; ++index)
     {
-        return Status::non_finite_result;
+        if (!scalar::is_finite<typename Linalg::scalar_math_type>(candidate(index, index)))
+        {
+            return Status::non_finite_result;
+        }
     }
     output = candidate;
     return Status::success;
@@ -135,9 +139,13 @@ template <typename Linalg>
         candidate(6U + axis, 6U + axis) = noise.accelerometer_bias_random_walk_variance_density(axis) * dt;
         candidate(9U + axis, 9U + axis) = noise.gyroscope_bias_random_walk_variance_density(axis) * dt;
     }
-    if (!linalg::all_finite(candidate))
+    // Only diagonal entries contain arithmetic results.
+    for (std::size_t index = 0U; index < 12U; ++index)
     {
-        return Status::non_finite_result;
+        if (!scalar::is_finite<typename Linalg::scalar_math_type>(candidate(index, index)))
+        {
+            return Status::non_finite_result;
+        }
     }
     output = candidate;
     return Status::success;

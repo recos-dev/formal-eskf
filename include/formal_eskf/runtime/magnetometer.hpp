@@ -220,7 +220,7 @@ check_magnetic_observation(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Vec
                            linalg::Vector<Linalg, 3U> const & m_n, linalg::Vector<Linalg, 3U> const * field_reference_n,
                            MagneticFieldParameters<typename Linalg::value_type> const & field_parameters,
                            bool heading_observable, MagneticFieldChecks const & field_checks,
-                           linalg::Vector<Linalg, 3U> & residual_output)
+                           linalg::Vector<Linalg, 3U> & prediction_output, linalg::Vector<Linalg, 3U> & residual_output)
 {
     MagnetometerFusionResult<Linalg> result;
     result.field =
@@ -242,6 +242,7 @@ check_magnetic_observation(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Vec
         result.fusion.status = Status::non_finite_result;
         return result;
     }
+    prediction_output = h_m_b;
     residual_output = r;
     return result;
 }
@@ -278,14 +279,15 @@ fuse_magnetometer(configuration::Ahrs::NominalState<Linalg> const & state,
         result.fusion.status = Status::non_finite_input;
         return result;
     }
+    linalg::Vector<Linalg, 3U> h_m_b;
     linalg::Vector<Linalg, 3U> r;
     auto result = detail::check_magnetic_observation(state.q_nb, m_b, m_n, field_reference_n, field_parameters,
-                                                     heading_observable, field_checks, r);
+                                                     heading_observable, field_checks, h_m_b, r);
     if (!succeeded(result.fusion.status) || !result.field.accepted)
     {
         return result;
     }
-    auto const H = magnetometer_jacobian(state, m_n);
+    auto const H = so3::hat<Linalg>(h_m_b);
     if (!linalg::all_finite(H))
     {
         result.fusion.status = Status::non_finite_result;
@@ -324,14 +326,16 @@ template <typename Linalg>
         result.fusion.status = Status::non_finite_input;
         return result;
     }
+    linalg::Vector<Linalg, 3U> h_m_b;
     linalg::Vector<Linalg, 3U> r;
     auto result = detail::check_magnetic_observation(state.q_nb, m_b, m_n, field_reference_n, field_parameters,
-                                                     heading_observable, field_checks, r);
+                                                     heading_observable, field_checks, h_m_b, r);
     if (!succeeded(result.fusion.status) || !result.field.accepted)
     {
         return result;
     }
-    auto const H = magnetometer_jacobian(state, m_n);
+    linalg::Matrix<Linalg, 3U, 15U> H;
+    H.template set_block<0U, 6U>(so3::hat<Linalg>(h_m_b));
     if (!linalg::all_finite(H))
     {
         result.fusion.status = Status::non_finite_result;

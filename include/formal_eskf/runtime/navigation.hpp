@@ -316,12 +316,12 @@ fuse_height(configuration::Ins::NominalState<Linalg> const & state, linalg::Matr
         return result;
     }
     auto const V = linalg::Matrix<Linalg, 1U, 1U>::from_row_major({variance});
-    NavigationInnovationCheck<Linalg, 1U> check{check_measurement(
-        state, covariance, r, vertical_position_jacobian<Linalg>(), V, minimum_quaternion_norm, gate_sigma)};
+    auto const H = vertical_position_jacobian<Linalg>();
+    NavigationInnovationCheck<Linalg, 1U> check{
+        check_measurement(state, covariance, r, H, V, minimum_quaternion_norm, gate_sigma)};
     detail::limit_vertical_innovation(check, 0U, gate_sigma, bad_vertical_acceleration);
-    return detail::correct_navigation_measurement(check, state, covariance, vertical_position_jacobian<Linalg>(), V,
-                                                  minimum_quaternion_norm, state_output, covariance_output,
-                                                  bias_update);
+    return detail::correct_navigation_measurement(check, state, covariance, H, V, minimum_quaternion_norm, state_output,
+                                                  covariance_output, bias_update);
 }
 
 namespace detail

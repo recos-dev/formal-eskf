@@ -10,14 +10,14 @@ the review list; they are work items, not proof requirements or measured speedup
 | 2 | G01-C02 | Pairwise symmetry residual | Pending |
 | 3 | G01-C01 | Forward gain solve output | Pending |
 | 4 | G01-C03, G06-C8, G08-C7 | Same-call PHt/S reuse after gating | Pending |
-| 5 | G01-C04 | Hoist bias permissions out of column loops | Pending |
+| 5 | G01-C04 | Hoist bias permissions out of column loops | Implemented in DC-01 |
 | 6 | G02-C1 | Reuse validated prior quaternion | Pending |
 | 7 | G02-C2 | AHRS nominal output forwarding | Pending |
 | 8 | G02-021.1 | Acceleration finite check subsumption | Pending |
-| 9 | G03-C1 | Diagonal-only process-noise result scan | Pending |
+| 9 | G03-C1 | Diagonal-only process-noise result scan | Implemented in DC-01 |
 | 10 | G02-C3, G03-C2, G04-C1–C3 | Shared prediction validation and mathematics | Pending |
-| 11 | G04-C4 | Scan only variable F_x blocks | Pending |
-| 12 | G04-C5 | Reuse -R | Pending |
+| 11 | G04-C4 | Scan only variable F_x blocks | Implemented in DC-01 |
+| 12 | G04-C5 | Reuse -R | Implemented in DC-01 |
 | 13 | G04-C6 | Forward covariance prediction output | Pending |
 | 14 | G05-C1–C2 | Reuse injection/reset input premises | Pending |
 | 15 | G05-C3 | Share Exp/Jr angle intermediates | Pending |
@@ -25,15 +25,15 @@ the review list; they are work items, not proof requirements or measured speedup
 | 17 | G05-C8 | Avoid copied-and-overwritten INS candidate | Pending |
 | 18 | G06-C1 | Reuse runtime innovation premises | Pending |
 | 19 | G06-C2 | Simplify innovation range comparisons | Pending |
-| 20 | G07-C1, C5 | Construction-valid H and delayed construction | Pending |
+| 20 | G07-C1, C5 | Construction-valid H and delayed construction | Implemented in DC-01 |
 | 21 | G07-C2 | Accel h/z finite check subsumption | Pending |
-| 22 | G07-C3, G08-C4 | Finite vector nonzero checks | Pending |
-| 23 | G08-C1 | Build runtime magnetic H from existing h | Pending |
+| 22 | G07-C3, G08-C4 | Finite vector nonzero checks | Implemented in DC-01 |
+| 23 | G08-C1 | Build runtime magnetic H from existing h | Implemented in DC-01 |
 | 24 | G08-C2–C3 | Share magnetic model preparation across gate/core | Pending |
 | 25 | G08-C6 | Share magnetic prediction/projection rotation | Pending |
 | 26 | G08-C5 | Magnetic h/u finite check subsumption | Pending |
-| 27 | G09-C1 | Direct constant selector Jacobians | Pending |
-| 28 | G09-C3 | Reuse height local H | Pending |
+| 27 | G09-C1 | Direct constant selector Jacobians | Implemented in DC-01 |
+| 28 | G09-C3 | Reuse height local H | Implemented in DC-01 |
 
 Three separate numerical proposals are sparse covariance propagation (G04-C9),
 block covariance reset (G05-C9) and selector-specific PHt/S (G09-C8). Their
@@ -49,5 +49,46 @@ numerical reason; a missing proof is not a pass.
 
 ## Batch records
 
-Implementation has not started. No new proof or performance claim is made by
-this plan.
+### DC-01: construction and local reuse — accepted
+
+- Changed: diagonal-only Q_i result checks (3/12 entries); three 3x3 F_x
+  result checks (27 entries); shared negative R; INS acceleration H is built
+  after h/r checks without another 45-entry scan; finite gravity/field vectors
+  use direct zero comparisons; bias permissions are checked once per row;
+  constant selectors write their ones directly; height reuses H; magnetic
+  runtime builds H from its existing prediction.
+- Correctness review: all skipped entries are construction-known finite values.
+  The dt scaling, matrix-product order, early input failures, bias/projection
+  ordering and final output publication remain unchanged. E-PCOV's harness now
+  executes result-block scans instead of abstracting the complete predicate;
+  its independent oracle and full transition-entry assertions are preserved.
+- Behavior review: baseline/current comparison covers 29,952 operation calls
+  on Eigen and PX4 Matrix, float/double, INS/AHRS and four output alias modes.
+  It includes finite extremes, signed zero, subnormals, infinities and NaNs;
+  all 1,248 cumulative status/state/P/diagnostic digests match. This is native
+  evidence, not exhaustive proof; NaN payload and fenv are not compared.
+- Completed: 24 default native test executables (Eigen/PX4/CMSIS-DSP), 8 alternate Q/R/M executions,
+  8 ASan/UBSan tests (LeakSanitizer disabled in this sandbox), configured
+  Cppcheck unix32/unix64, and all six E-NOISE profiles. Two magnetic-count probes
+  preserve core/runtime output equality and show reference-field actions 3→2
+  and residual-helper finite inspections 22→16. These counts are not timings.
+- Completed: all eight modified INS E-PCOV caller profiles and 38 affected
+  E-OBS profiles. A negative control deliberately removes the force-block
+  finite check in an isolated copy: ESBMC detects the changed validation/status
+  path. The production source and real oracle are not weakened.
+- Final proof execution: 66/66 selected profiles pass (6 E-NOISE, 16 E-PCOV
+  callers, 6 matching OpaqueMath noise producers, 38 affected E-OBS profiles).
+  Formatting and all mapped C++/ESBMC symbol references pass. No requirement
+  assertion was weakened; the deliberately broken copy is rejected.
+- Self-review: changes are correct within the recorded backend/scalar/failure
+  contracts; observed functionality is unchanged. Commit accepted. Runtime
+  tests and replay-related checks remain native evidence, not runtime proofs.
+- Initial native commands corrected a nonexistent noise test filename and a
+  missing Eigen include used by the PX4 covariance test oracle. The initial
+  CTest selector matched no tests; the corrected selectors executed all eight
+  intended sanitizer tests. Failed setup logs remain local; no assertion was
+  changed to make these runs pass.
+- Harness symbol references are retained. The traceability summary records the
+  changed E-PCOV boundary; no Lean theorem, target-libm claim or backend proof
+  has been added. The original call-graph audit remains historical baseline
+  evidence; its source hashes must not be presented as current acceptance.

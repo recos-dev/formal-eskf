@@ -93,7 +93,7 @@ Status parameter_status(Scalar dt, Parameters const & p)
 // floating-point expressions. This is not an assumption or a mocked success.
 struct Results
 {
-    bool covariance_finite, transition_finite;
+    bool covariance_finite;
     Status quaternion_status, noise_status, transition_status, finish_status;
     NoiseMatrix noise;
     Matrix3 transition, rotation, force_product, rotated_noise;
@@ -109,7 +109,6 @@ struct Calls
     inline static Scalar dt{};
     inline static unsigned quaternion = 0U, finite = 0U, noise = 0U, transition = 0U, rotation = 0U, product = 0U,
                            sandwich = 0U, noise_sandwich = 0U, finish = 0U;
-    inline static Matrix checked_transition{};
 };
 
 void check_candidate(Matrix const & actual)
@@ -271,18 +270,9 @@ namespace formal_eskf::linalg
 template <> inline bool all_finite(pcov_proof::Matrix const & matrix)
 {
     using namespace pcov_proof;
-    __ESBMC_assert(Calls::finite < (FORMAL_ESKF_PROOF_INS ? 2U : 1U),
-                   "E-PCOV contract: bounded complete matrix checks");
-    if (Calls::finite++ == 0U)
-    {
-        __ESBMC_assert(same_matrix(matrix, *Calls::covariance), "E-PCOV: check the complete OLD covariance");
-        return Calls::result->covariance_finite;
-    }
-#if FORMAL_ESKF_PROOF_INS
-    check_transition(matrix);
-    Calls::checked_transition = matrix;
-#endif
-    return Calls::result->transition_finite;
+    __ESBMC_assert(Calls::finite++ == 0U, "E-PCOV: one complete input covariance check");
+    __ESBMC_assert(same_matrix(matrix, *Calls::covariance), "E-PCOV: check the complete OLD covariance");
+    return Calls::result->covariance_finite;
 }
 template <>
 template <>
@@ -312,7 +302,7 @@ template <> inline pcov_proof::Matrix sandwich(pcov_proof::Matrix const & transf
     __ESBMC_assert(Calls::sandwich++ == 0U, "E-PCOV contract: one complete covariance sandwich");
     __ESBMC_assert(same_matrix(p, *Calls::covariance), "E-PCOV: propagate the complete OLD covariance");
 #if FORMAL_ESKF_PROOF_INS
-    __ESBMC_assert(same_matrix(transform, Calls::checked_transition), "E-PCOV: propagate with the checked F_x");
+    check_transition(transform);
 #else
     __ESBMC_assert(same_matrix(transform, Calls::result->transition),
                    "E-PCOV: AHRS propagates with the returned transition");
@@ -419,8 +409,20 @@ void verify_predict_covariance(State state, Matrix covariance, Imu imu, Scalar d
     {
         rotation_calls = 1U;
         product_calls = 1U;
-        finite_calls = 2U;
-        if (!results.transition_finite)
+        // Independent full-entry oracle: finite dt makes the fixed identity,
+        // zero and +/-dt blocks finite. All 27 remaining coefficients are
+        // evaluated here, without assuming anything about producer results.
+        bool finite = true;
+        for (std::size_t row = 0U; row < 3U; ++row)
+        {
+            for (std::size_t column = 0U; column < 3U; ++column)
+            {
+                finite = std::isfinite(results.force_product(row, column) * dt) &&
+                         std::isfinite((-results.rotation(row, column)) * dt) &&
+                         std::isfinite(results.transition(row, column)) && finite;
+            }
+        }
+        if (!finite)
             expected = Status::non_finite_result;
     }
 #endif

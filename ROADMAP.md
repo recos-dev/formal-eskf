@@ -300,7 +300,7 @@ The numbered candidates below refer to the fixed 28-item review list.
 
 | Batch | Candidates | Work | Status |
 |---|---|---|---|
-| DC-01 | 5, 9, 11, 12, 20, 22, 23, 27, 28 | Construction-based scans, local reuse and fixed Jacobians | Pending |
+| DC-01 | 5, 9, 11, 12, 20, 22, 23, 27, 28 | Construction-based scans, local reuse and fixed Jacobians | Complete; DC-01 acceptance record |
 | DC-02 | 1, 2 | Symmetry validation and residual computation | Pending |
 | DC-03 | 3, 7, 13, 16, 17 | Transactional forwarding and state initialization | Pending |
 | DC-04 | 8, 19, 21, 26 | Numerical implication and innovation comparisons | Pending |

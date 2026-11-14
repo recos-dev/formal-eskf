@@ -31,13 +31,16 @@ void constrain_bias_gain(configuration::Ins::BiasUpdate const & bias_update,
     using value_type = typename Linalg::value_type;
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
-        for (std::size_t column = 0U; column < MeasurementSize; ++column)
+        if (!bias_update.accelerometer[axis])
         {
-            if (!bias_update.accelerometer[axis])
+            for (std::size_t column = 0U; column < MeasurementSize; ++column)
             {
                 K(9U + axis, column) = value_type{0};
             }
-            if (!bias_update.gyroscope[axis])
+        }
+        if (!bias_update.gyroscope[axis])
+        {
+            for (std::size_t column = 0U; column < MeasurementSize; ++column)
             {
                 K(12U + axis, column) = value_type{0};
             }

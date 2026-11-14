@@ -27,7 +27,8 @@ namespace formal_eskf
 template <typename Linalg> linalg::Matrix<Linalg, 2U, 15U> horizontal_velocity_jacobian()
 {
     linalg::Matrix<Linalg, 2U, 15U> H;
-    H.template set_block<0U, 3U>(linalg::Matrix<Linalg, 2U, 2U>::identity());
+    H(0U, 3U) = typename Linalg::value_type{1};
+    H(1U, 4U) = typename Linalg::value_type{1};
     return H;
 }
 
@@ -40,7 +41,9 @@ template <typename Linalg> linalg::Matrix<Linalg, 2U, 15U> horizontal_velocity_j
 template <typename Linalg> linalg::Matrix<Linalg, 3U, 15U> velocity_jacobian()
 {
     linalg::Matrix<Linalg, 3U, 15U> H;
-    H.template set_block<0U, 3U>(linalg::Matrix<Linalg, 3U, 3U>::identity());
+    H(0U, 3U) = typename Linalg::value_type{1};
+    H(1U, 4U) = typename Linalg::value_type{1};
+    H(2U, 5U) = typename Linalg::value_type{1};
     return H;
 }
 

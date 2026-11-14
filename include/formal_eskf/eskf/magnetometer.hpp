@@ -59,7 +59,8 @@ magnetometer_residual(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Vector<L
     }
     // Reject absent field vectors without squaring their magnitudes. Field
     // strength, inclination and disturbance thresholds belong to future gating.
-    if (!(linalg::max_abs(m_b) > value_type{0}) || !(linalg::max_abs(m_n) > value_type{0}))
+    if ((m_b(0U) == value_type{0} && m_b(1U) == value_type{0} && m_b(2U) == value_type{0}) ||
+        (m_n(0U) == value_type{0} && m_n(1U) == value_type{0} && m_n(2U) == value_type{0}))
     {
         return Status::domain_error;
     }

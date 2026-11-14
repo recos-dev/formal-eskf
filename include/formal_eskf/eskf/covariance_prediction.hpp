@@ -179,18 +179,22 @@ template <typename Linalg>
     }
 
     auto const R = so3::to_rotation_matrix(state.q_nb);
+    auto const negative_R = -R;
     auto const I_dt = matrix3_type::identity() * dt;
-    covariance_type F_x = covariance_type::identity();
-    F_x.template set_block<0U, 3U>(I_dt);
-    F_x.template set_block<3U, 6U>(-R * so3::hat<Linalg>(specific_force_b) * dt);
-    F_x.template set_block<3U, 9U>(-R * dt);
-    F_x.template set_block<6U, 6U>(attitude_transition);
-    F_x.template set_block<6U, 12U>(-I_dt);
-    if (!linalg::all_finite(F_x))
+    auto const force_transition = negative_R * so3::hat<Linalg>(specific_force_b) * dt;
+    auto const bias_transition = negative_R * dt;
+    if (!linalg::all_finite(force_transition) || !linalg::all_finite(bias_transition) ||
+        !linalg::all_finite(attitude_transition))
     {
         return Status::non_finite_result;
     }
-
+    // The other blocks contain only finite dt, its negation, zeros and ones.
+    covariance_type F_x = covariance_type::identity();
+    F_x.template set_block<0U, 3U>(I_dt);
+    F_x.template set_block<3U, 6U>(force_transition);
+    F_x.template set_block<3U, 9U>(bias_transition);
+    F_x.template set_block<6U, 6U>(attitude_transition);
+    F_x.template set_block<6U, 12U>(-I_dt);
     auto candidate = linalg::sandwich(F_x, covariance);
     candidate.template set_block<3U, 3U>(candidate.template block<3U, 3U, 3U, 3U>() +
                                          linalg::sandwich(R, Q_i.template block<0U, 0U, 3U, 3U>()));

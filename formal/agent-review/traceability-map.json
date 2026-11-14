@@ -3505,6 +3505,14 @@
           {
             "file": "include/formal_eskf/runtime/tilt_alignment.hpp",
             "symbol": "class TiltAlignment"
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.hpp",
+            "symbol": "formal_eskf::runtime::TiltAlignment<backend_type> m_tilt_alignment"
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
+            "symbol": "void FormalEskf::fuse_gravity("
           }
         ],
         "esbmc": []
@@ -3547,12 +3555,12 @@
             "symbol": "void replay("
           },
           {
-            "file": "integrations/px4/module/GravityAiding.hpp",
-            "symbol": "class GravityAiding"
+            "file": "integrations/px4/module/FormalEskf.hpp",
+            "symbol": "struct Gravity"
           },
           {
-            "file": "integrations/px4/module/GravityAiding.hpp",
-            "symbol": "GravityAiding<Linalg>::fuse_observation("
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
+            "symbol": "void FormalEskf::Gravity::reset_samples()"
           },
           {
             "file": "integrations/px4/module/FormalEskfAttitude.cpp",
@@ -3807,8 +3815,8 @@
             "symbol": "MagneticAiding<Linalg>::update("
           },
           {
-            "file": "integrations/px4/module/GravityAiding.hpp",
-            "symbol": "class GravityAiding"
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
+            "symbol": "void FormalEskf::fuse_gravity("
           }
         ],
         "esbmc": []

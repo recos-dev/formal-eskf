@@ -29,7 +29,7 @@ The numerical library supports INS and rotation-only AHRS. The in-tree PX4 modul
 |---|---|---|
 | Numerical core | [eskf/](../../include/formal_eskf/eskf/), [so3/](../../include/formal_eskf/so3/), [linalg/](../../include/formal_eskf/linalg/), [scalar/](../../include/formal_eskf/scalar/) | Operates on caller-supplied state, covariance and parameters; configuration selects related types and dimensions. No sensor clock or scheduler. |
 | Portable sensor policies | [runtime/](../../include/formal_eskf/runtime/) | Components retain their own qualification, sampling and lifecycle history. Callers supply time, measurements and context; fusion operations borrow the estimator state/covariance. |
-| Deployment coordination | [ImuPrediction.hpp](../../integrations/px4/module/ImuPrediction.hpp), [HeightAiding.hpp](../../integrations/px4/module/HeightAiding.hpp), [GravityAiding.hpp](../../integrations/px4/module/GravityAiding.hpp), [MagneticAiding.hpp](../../integrations/px4/module/MagneticAiding.hpp) | Bind deployment settings and compose runtime/core operations. Aiding helpers own source-specific history and borrow state/covariance for updates; they do not own uORB publication. |
+| Deployment coordination | [ImuPrediction.hpp](../../integrations/px4/module/ImuPrediction.hpp), [HeightAiding.hpp](../../integrations/px4/module/HeightAiding.hpp), [MagneticAiding.hpp](../../integrations/px4/module/MagneticAiding.hpp) | Bind deployment settings and compose runtime/core operations. Aiding helpers own source-specific history and borrow state/covariance for updates; they do not own uORB publication. |
 | PX4 module | [FormalEskf.hpp](../../integrations/px4/module/FormalEskf.hpp), [FormalEskf.cpp](../../integrations/px4/module/FormalEskf.cpp) | Owns the INS state/covariance, runtime/helper instances, geographic origin, sensor subscriptions, sample times, fault state and published reset counters. |
 | Host replay | [examples/](../../examples/) | Owns log decoding, replay scheduling and output. Calling the same core does not establish equivalence to the PX4 module's timing or integration. |
 
@@ -54,6 +54,14 @@ projection and its timestamp/MSL/ellipsoid datum. Entry and IMU deployment
 settings are defined in
 [DeploymentProfile.hpp](../../integrations/px4/module/DeploymentProfile.hpp),
 separately from platform effects and the aiding controllers' policies.
+
+The module owns `TiltAlignment` independently of gravity enablement or sample
+history. Its `Gravity` record holds the existing runtime sampler, mode activity
+and reporting counters. `fuse_gravity()` directly sequences alignment, sampling,
+eligibility/correction and bias limiting; it introduces no controller wrapper.
+Admission establishes valid periods and known clipping before this private phase.
+Observation resets leave alignment and counters intact. Replay retains its own
+estimator-level alignment owner and its distinct evaluation horizon below.
 
 ```mermaid
 flowchart TD
@@ -121,7 +129,7 @@ both callers; it does not make their integration profiles equivalent.
 
 | Boundary | PX4 module | Replay | Refactor treatment |
 |---|---|---|---|
-| Gravity sampling and tilt | `GravityAiding::update` evaluates tilt and samples after navigation/height corrections. Separate angle/velocity periods preserve the measured angle integral. | `replay` evaluates tilt and samples on the predicted prior, before navigation corrections; its prepared sample supplies one common period. | Preserve the documented horizons and integration periods. Sharing a controller must not silently move these evaluations. |
+| Gravity sampling and tilt | `FormalEskf::fuse_gravity` evaluates estimator-owned tilt and samples after navigation/height corrections. Separate angle/velocity periods preserve the measured angle integral. | `replay` evaluates tilt and samples on the predicted prior, before navigation corrections; its prepared sample supplies one common period. | Preserve the documented horizons and integration periods. Sharing a controller must not silently move these evaluations. |
 | Horizontal aiding | Gravity and magnetic conditions consume current GNSS lifecycle activity. | `ReplayFusionConditions` retains activity for 7 s after an actual horizontal correction/reset. | Preserve caller-supplied meaning; do not infer one from the other in a common helper. |
 | Missing IMU metadata | The module validates actual clipping/identity metadata and faults on unsupported discontinuities. | Missing clipping assumes clear only for bias learning; it blocks gravity fusion and invalidates vertical-health history. | Keep input compatibility in the adapter; absence must not become measured health. |
 | Magnetic admission and settings | `MagneticAiding` discards arrivals aged 500 ms or more before updating lifecycle receipt, rejects unusable external fields, and binds fixed deployment settings. | Replay selects the newest arrived sample per tick and passes it to the lifecycle without the same admission filter; parameters and field checks can come from replay inputs. | Preserve existing admission/configuration boundaries; sharing lower-level code does not establish equal decisions. |
@@ -130,7 +138,7 @@ both callers; it does not make their integration profiles equivalent.
 | Numerical failure | A module fault prevents later aiding/publication and requires restart. | Replay terminates with an error; earlier successful operations remain observable in its evidence. | Preserve each caller's failure boundary; neither provides whole-tick rollback. |
 
 Source boundaries: [module update sequence](../../integrations/px4/module/FormalEskf.cpp),
-[gravity coordination](../../integrations/px4/module/GravityAiding.hpp),
+[gravity coordination](../../integrations/px4/module/FormalEskfAttitude.cpp),
 [magnetic coordination](../../integrations/px4/module/MagneticAiding.hpp),
 [replay sequence](../../examples/replay_ins.cpp), and
 [replay conditions](../../examples/replay_conditions.hpp).

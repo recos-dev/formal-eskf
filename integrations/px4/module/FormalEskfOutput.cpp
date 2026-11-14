@@ -131,7 +131,7 @@ void FormalEskf::publish_status(uint64_t now)
     status.timestamp_sample = m_time_us;
     if (healthy)
     {
-        if (m_gravity_aiding.tilt_aligned())
+        if (m_tilt_alignment.aligned())
         {
             status.control_mode_flags |= (1ULL << status.CS_TILT_ALIGN);
         }
@@ -197,8 +197,8 @@ void FormalEskf::publish_status(uint64_t now)
     estimator_status_flags_s flags{};
     flags.timestamp = now;
     flags.timestamp_sample = m_time_us;
-    flags.cs_tilt_align = healthy && m_gravity_aiding.tilt_aligned();
-    flags.cs_gravity_vector = healthy && m_gravity_aiding.active();
+    flags.cs_tilt_align = healthy && m_tilt_alignment.aligned();
+    flags.cs_gravity_vector = healthy && m_gravity.active;
     flags.cs_yaw_align = healthy && m_magnetic_aiding.aligned();
     flags.cs_gnss_pos = healthy && m_gnss_fusion.state().horizontal_position.active;
     flags.cs_gnss_vel = healthy && m_gnss_fusion.state().velocity.active;
@@ -282,8 +282,8 @@ int FormalEskf::print_status()
     PX4_INFO("vertical IMU health: available=%u bad=%u", unsigned(m_vertical_health.state().last_update_time_us != 0),
              unsigned(m_vertical_health.state().bad_vertical_acceleration));
     PX4_INFO("gravity: enabled=%u tilt=%u active=%u samples=%u fused=%u interval_us=%llu", unsigned(m_gravity_enabled),
-             unsigned(m_gravity_aiding.tilt_aligned()), unsigned(m_gravity_aiding.active()), m_gravity_samples,
-             m_gravity_updates, (unsigned long long)m_gravity_interval);
+             unsigned(m_tilt_alignment.aligned()), unsigned(m_gravity.active), m_gravity.samples, m_gravity.corrections,
+             (unsigned long long)m_gravity.interval_us);
     perf_print_counter(m_cycle_perf);
     return 0;
 }

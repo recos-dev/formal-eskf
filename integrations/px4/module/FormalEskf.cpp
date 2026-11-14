@@ -372,7 +372,7 @@ bool FormalEskf::accept_imu(ImuInput const & sample)
 void FormalEskf::reset_imu_observations()
 {
     m_vertical_health.reset();
-    m_gravity_aiding.reset_samples();
+    m_gravity.reset_samples();
     m_average_imu_interval = profile::imu::nominal_interval_s;
 }
 

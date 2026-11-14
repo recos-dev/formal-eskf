@@ -13,6 +13,51 @@ See the [integration guide](README.md) for current setup and behavior,
 [review criteria](../../docs/spec/formal-verification-traceability-and-review-criteria.md)
 for requirement/evidence acceptance.
 
+## Gravity ownership refactor validation: 2026-11-14
+
+A-01 batch 2 uses `95c22cf` as its behavior baseline on the same pinned PX4
+host. The module owns tilt alignment and a concrete gravity history/reporting
+record, calling the existing sampler/fusion operations directly. The exclusive
+`GravityAiding` wrapper is retired. Shared core/runtime and replay source, models,
+settings and evaluation horizons are unchanged; magnetic admission is unchanged.
+
+| Check | Result |
+| --- | --- |
+| Original/current production gravity phase and `Run()` | 30 scenarios passed; 5,870,099 trace bytes identical |
+| Native CTest, three backends | 122 passed |
+| Replay CLI regressions: bias, vertical health and magnetic reset | 46 passed |
+| Module and fixture ASan/UBSan | 30 scenarios passed |
+| Package installation/export; installed identity | 8 tests passed; 60 files verified |
+| Repository Cppcheck unix32/unix64; formatting; pinned PX4 build | Passed |
+| Independent ULog checks; ground fault/recovery scenarios | 18/18; 20/20 passed |
+| SIH position / velocity / attitude RMSE | 0.166 m / 0.259 m/s / 1.670 degrees |
+
+The three backend instances of the retired wrapper test are replaced by expanded
+production-module tests (14 to 30 scenarios). Portable sampler, tilt and fusion
+tests retain their existing backend/scalar coverage; module evidence applies to
+its declared binary64/PX4 matrix profile. New cases cover actual tilt correction,
+enablement, aided/unaided conditions, rest freshness, clipping, separate periods,
+LPF retention/reset, bias inhibition/limiting and alignment/sample/correction
+failures. Real `Run()` sequences exercise GNSS loss and metadata rejection.
+
+The private gravity phase relies on `accept_imu()` for valid periods and known
+0–7 masks. The retired helper's duplicate period check and unknown-mask branch
+are not needed on this call path; invalid metadata still rejects before the
+phase and clears observation history. Generic sampler/replay unknown-metadata
+behavior is unchanged. The same expanded fixture runs against the original
+and refactor, with only private-member accesses migrated; its state/covariance,
+gravity diagnostics and seven uORB topic traces match byte-for-byte.
+
+Evidence is in `output/px4-gravity-refactor-20261114/`: `summary.json` records
+source/package/binary identity, comparison and check logs; `sitl/` retains the
+flight and analysis. The additional four-unit module Cppcheck scan remains
+advisory: upstream/generated-header findings and the pre-existing CLI
+`constParameter` finding persist; no finding identifies the changed gravity path.
+The fixture uses controlled time without a running work queue. Sanitizers cover
+the four module translation units and fixture, not linked PX4 platform archives;
+leak detection is disabled. No new Lean/ESBMC, concurrency, target resource or
+physical-flight claim is made. Existing runtime/module formal gaps remain open.
+
 ## Module input boundary validation: 2026-11-14
 
 A-01 batch 1 follow-up against the architecture spec at `4a7478c` keeps the

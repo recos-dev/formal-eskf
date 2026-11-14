@@ -1564,14 +1564,15 @@ Lean/ESBMC evidence. Prediction/measurement reuse correlation, interval-averagin
 model error and full PX4 estimator equivalence remain outside the claim.
 
 The PX4 module shares this sampler and `runtime::TiltAlignment` with replay.
-`px4::GravityAiding` runs after navigation corrections and before magnetic aiding.
+`FormalEskf::fuse_gravity` runs after navigation corrections and before magnetic aiding.
 It receives actual gyro/accel integration periods: sampler angular rate is scaled
 by their ratio, preserving measured delta-angle while averaging force over the
 accel period. Fresh `vehicle_land_detected.at_rest` (at most 2 s old, not future)
 provides the rest override; missing/stale rest is false. Horizontal aiding is the
 actual GNSS position/velocity lifecycle activity, not merely a valid fix.
 Tilt alignment latches when the NED roll/pitch variance sum is below (3°)²;
-module alignment flags expose that same latch. Clipping is ORed across intervals.
+the estimator owns this latch independently of the gravity sampler and enablement,
+and module alignment flags expose it. Clipping is ORed across intervals.
 Rejected IMU samples and small gaps clear partial samples and LPF history;
 synthetic holds never enter the sampler. Existing restart-required identity,
 calibration and large-gap faults terminate the session before further sampling.
@@ -1591,12 +1592,15 @@ update before correction. A later failure does not roll back those earlier
 stages. `reset_samples()` clears partial increments, LPF history and active mode,
 but preserves the tilt-alignment latch. After successful sampling, disabled,
 horizontally aided or unaligned contexts clear active mode even on partial
-intervals; otherwise it is held until an emission. Unknown interval clipping
-clears active mode and rejects that
-observation; known clipping preserves an otherwise active mode while rejecting
-the sample. These history boundaries are checked in
-`tests/test_px4_gravity_aiding.cpp`; sampler cadence and failure preservation are
-checked in `tests/test_accelerometer_sample.cpp`. Neither establishes a whole-tick
+intervals; otherwise it is held until an emission. The module admits only known
+0–7 clipping masks and valid integration periods before this private phase;
+unsupported metadata rejects the IMU and resets observation history. The shared
+sampler still supports unknown metadata for replay, where it blocks correction.
+Known clipping preserves an otherwise active mode while rejecting the sample.
+These module history boundaries are checked through production gravity and
+`Run()` paths in `integrations/px4/module/tests/ModuleTest.cpp`. Sampler cadence,
+unknown metadata and failure preservation remain checked across native backends
+in `tests/test_accelerometer_sample.cpp`. Neither establishes a whole-tick
 transaction or closes the pending runtime Lean/ESBMC obligations.
 
 ### R-IMU-DYNAMICS: instantaneous IMU magnitude check

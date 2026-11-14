@@ -58,6 +58,11 @@ inline constexpr double maximum_angular_rate_rad_s = 3.;
 inline constexpr double bias_learning_decay_s = 0.5;
 } // namespace imu
 
+namespace gravity
+{
+inline constexpr std::uint64_t observation_interval_us = 10000U;
+} // namespace gravity
+
 // SITL scheduling profile; target resource acceptance is separate.
 inline constexpr std::uint16_t work_queue_stack_bytes = 60U * 1024U;
 inline constexpr std::int8_t work_queue_relative_priority = -15;

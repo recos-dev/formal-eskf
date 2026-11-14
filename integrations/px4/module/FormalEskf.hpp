@@ -32,9 +32,10 @@
 #include <formal_eskf/runtime/gnss_lifecycle.hpp>
 #include <formal_eskf/runtime/navigation.hpp>
 #include <formal_eskf/runtime/imu.hpp>
+#include <formal_eskf/runtime/accelerometer.hpp>
+#include <formal_eskf/runtime/tilt_alignment.hpp>
 
 #include "DeploymentProfile.hpp"
-#include "GravityAiding.hpp"
 #include "HeightAiding.hpp"
 #include "ImuPrediction.hpp"
 #include "MagneticAiding.hpp"
@@ -68,6 +69,9 @@ private:
     using height_type = formal_eskf::px4::HeightAiding<backend_type>;
     using bias_learning_type = formal_eskf::runtime::ImuBiasInhibition<backend_type>;
     using vertical_health_type = formal_eskf::runtime::VerticalAccelerationHealth<backend_type>;
+    using gravity_sampler_type =
+        formal_eskf::runtime::AccelerometerSample<backend_type,
+                                                  formal_eskf::px4::profile::gravity::observation_interval_us>;
     using magnetic_type = formal_eskf::px4::MagneticAiding<backend_type>;
     using magnetic_model_type = formal_eskf::px4::MagneticModel<backend_type>;
 
@@ -128,6 +132,18 @@ private:
         std::uint64_t time_us{};
         double altitude_msl_m{};
         double altitude_ellipsoid_m{};
+    };
+
+    struct Gravity
+    {
+        gravity_sampler_type sampler{};
+        bool active{};
+        std::uint32_t samples{};
+        std::uint32_t corrections{};
+        std::uint64_t interval_us{};
+
+        // Discard partial observations/LPF history, retaining session counters.
+        void reset_samples();
     };
 
     void Run() override;
@@ -194,10 +210,9 @@ private:
     bool m_fault{};
 
     height_type m_height_aiding{};
-    formal_eskf::px4::GravityAiding<backend_type> m_gravity_aiding{};
+    formal_eskf::runtime::TiltAlignment<backend_type> m_tilt_alignment{};
+    Gravity m_gravity{};
     bool m_gravity_enabled = true;
-    uint32_t m_gravity_samples{}, m_gravity_updates{};
-    uint64_t m_gravity_interval{};
     bias_learning_type m_bias_learning{bias_learning_parameters()};
     bias_learning_type::Result m_bias_learning_result{};
     vertical_health_type m_vertical_health{};

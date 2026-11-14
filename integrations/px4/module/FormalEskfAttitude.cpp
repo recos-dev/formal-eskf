@@ -7,22 +7,69 @@
 
 namespace profile = formal_eskf::px4::profile;
 
+void FormalEskf::Gravity::reset_samples()
+{
+    sampler.reset();
+    active = false;
+}
+
 void FormalEskf::fuse_gravity(ImuInput const & sample, imu_type const & imu)
 {
-    auto const & gnss = m_gnss_fusion.state();
-    formal_eskf::px4::GravityAiding<backend_type>::Context const context{
-        m_gravity_enabled, recent(m_land.timestamp, profile::imu::rest_maximum_age_us) && m_land.at_rest,
-        gnss.horizontal_position.active || gnss.velocity.active};
-    auto const result = m_gravity_aiding.update(imu, sample.angular_period_us, sample.acceleration_period_us,
-                                                sample.accelerometer_clipping, context, m_parameters.gravity_n, m_state,
-                                                m_covariance, m_bias_learning_result.bias_update);
-    if (!check(result.status) || !result.ready)
+    // Only admitted, real IMU intervals reach this phase. Alignment uses the
+    // post-navigation/height prior, even when gravity fusion is disabled.
+    if (!check(m_tilt_alignment.update(m_state.q_nb, m_covariance.block<6U, 6U, 3U, 3U>())))
     {
         return;
     }
-    ++m_gravity_samples;
-    m_gravity_interval = result.interval_us;
-    m_gravity_updates += result.fusion.decision == formal_eskf::runtime::FusionDecision::fused;
+    // The sampler uses the acceleration period; retain the independently
+    // measured angle integral when the two integration periods differ.
+    auto interval_imu = imu;
+    interval_imu.angular_rate_b =
+        imu.angular_rate_b * (static_cast<double>(sample.angular_period_us) / sample.acceleration_period_us);
+    auto const observation = m_gravity.sampler.update(interval_imu, sample.acceleration_period_us,
+                                                      sample.accelerometer_clipping, profile::minimum_quaternion_norm);
+    if (!check(observation.status))
+    {
+        return;
+    }
+
+    auto const & gnss = m_gnss_fusion.state();
+    formal_eskf::runtime::AccelerometerFusionConditions const conditions{
+        m_gravity_enabled,
+        m_tilt_alignment.aligned(),
+        gnss.horizontal_position.active || gnss.velocity.active,
+        recent(m_land.timestamp, profile::imu::rest_maximum_age_us) && m_land.at_rest,
+        {(observation.clipping_mask & 1) != 0, (observation.clipping_mask & 2) != 0,
+         (observation.clipping_mask & 4) != 0}};
+    if (!conditions.enabled || conditions.horizontal_aiding || !conditions.tilt_aligned)
+    {
+        m_gravity.active = false;
+    }
+    if (!observation.ready)
+    {
+        return;
+    }
+
+    // Existing unnormalized observation weight, not calibrated sensor noise.
+    auto const V = matrix3_type::identity() * formal_eskf::linalg::dot(m_parameters.gravity_n, m_parameters.gravity_n);
+    auto const result = formal_eskf::runtime::fuse_accelerometer(
+        m_state, m_covariance, observation.specific_force_b, m_parameters.gravity_n, V, conditions,
+        observation.magnitude, profile::minimum_quaternion_norm, m_state, m_covariance,
+        m_bias_learning_result.bias_update);
+    m_gravity.active = result.conditions.active;
+    if (!check(result.status))
+    {
+        return;
+    }
+    bool const fused = result.decision == formal_eskf::runtime::FusionDecision::fused;
+    if (fused && !check(formal_eskf::runtime::limit_bias(m_state, profile::bias_limits<double>())))
+    {
+        // Sampling and correction have already committed; a tick is not atomic.
+        return;
+    }
+    ++m_gravity.samples;
+    m_gravity.interval_us = observation.interval_us;
+    m_gravity.corrections += fused;
 }
 
 bool FormalEskf::magnetic_heading_valid() const

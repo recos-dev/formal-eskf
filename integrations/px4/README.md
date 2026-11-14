@@ -239,7 +239,9 @@ timing equivalence. See
 [the noise contract](../../docs/spec/verification-requirements.md#r-imu-process-noise-fault-dependent-sampled-imu-variance)
 and [the health/bias contract](../../docs/spec/verification-requirements.md#r-px4-imu-bias-module-health-and-bias-learning-inhibition).
 
-Gravity aiding now uses the shared replay sampler and tilt-alignment test.
+Gravity aiding uses the shared replay sampler and tilt-alignment test. The module
+owns alignment independently of gravity enablement and sampling history, and
+directly sequences the gravity phase in `FormalEskfAttitude.cpp`.
 Actual IMU increments form rotation-aware, non-overlapping observations near
 10 ms; the last emitted duration is printed in module status. Prediction holds
 are excluded and discontinuities clear sampler/LPF history. The module supplies

@@ -2,6 +2,7 @@
 #include "../FormalEskf.hpp"
 
 #include <array>
+#include <bit>
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
@@ -40,6 +41,22 @@ void trace_bytes(void const * data, std::size_t size)
         std::fprintf(trace_file, "%02x", bytes[i]);
     }
     std::fputc('\n', trace_file);
+}
+
+template <typename Matrix> bool same_bits(Matrix const & a, Matrix const & b)
+{
+    using bytes_type = std::array<std::byte, sizeof(typename Matrix::value_type)>;
+    for (std::size_t row = 0U; row < Matrix::row_count; ++row)
+    {
+        for (std::size_t column = 0U; column < Matrix::column_count; ++column)
+        {
+            if (std::bit_cast<bytes_type>(a(row, column)) != std::bit_cast<bytes_type>(b(row, column)))
+            {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 } // namespace
@@ -135,7 +152,10 @@ public:
         gps.epv = 1.f;
         gps.s_variance_m_s = 0.2f;
         gps.vel_ned_valid = true;
-        m_gps_pub.publish(gps);
+        if (m_send_gps)
+        {
+            m_gps_pub.publish(gps);
+        }
         vehicle_magnetometer_s mag{};
         mag.timestamp = clock_us;
         mag.timestamp_sample = clock_us;
@@ -214,6 +234,238 @@ public:
             }
         }
         trace_bytes(values.data(), sizeof(values));
+        std::fprintf(trace_file, "gravity %u %u %u %u %llu\n", unsigned(m_filter.m_tilt_alignment.aligned()),
+                     unsigned(m_filter.m_gravity.active), m_filter.m_gravity.samples, m_filter.m_gravity.corrections,
+                     static_cast<unsigned long long>(m_filter.m_gravity.interval_us));
+    }
+
+    void prepare_gravity()
+    {
+        m_filter.m_time_us = m_sample.timestamp_sample;
+        m_filter.m_covariance = FormalEskf::covariance_type::identity() * 0.0001;
+        m_filter.m_land.timestamp = m_filter.m_time_us;
+    }
+
+    // Exercise the production gravity phase independently of earlier aiding.
+    // Inputs satisfy IMU admission; invalid input periods are tested through Run().
+    void gravity_sample(FormalEskf::imu_type const & imu, std::uint32_t angular_period = 5000U,
+                        std::uint32_t acceleration_period = 5000U, std::uint8_t clipping = 0U)
+    {
+        FormalEskf::ImuInput input;
+        input.angular_period_us = angular_period;
+        input.acceleration_period_us = acceleration_period;
+        input.accelerometer_clipping = clipping;
+        input.time_us = m_filter.m_time_us;
+        m_filter.fuse_gravity(input, imu);
+        snapshot("gravity-phase");
+    }
+
+    enum class GravityCase
+    {
+        eligible,
+        disabled,
+        aided,
+        high_force,
+        rest_override,
+        stale_rest,
+        clipped,
+        unaligned
+    };
+
+    static void gravity_conditions(GravityCase scenario)
+    {
+        FormalEskfModuleTest test;
+        test.prepare_gravity();
+        auto & filter = test.m_filter;
+        FormalEskf::imu_type imu{-filter.m_parameters.gravity_n, {}};
+        std::uint8_t clipping = 0U;
+        switch (scenario)
+        {
+        case GravityCase::eligible:
+            expect(formal_eskf::succeeded(formal_eskf::so3::exp<FormalEskf::backend_type>(
+                       FormalEskf::vector3(0.02, 0., 0.), 1e-6, filter.m_state.q_nb)),
+                   "construct tilted prior for production gravity correction");
+            break;
+        case GravityCase::disabled:
+            filter.m_gravity_enabled = false;
+            break;
+        case GravityCase::aided:
+            test.warmup();
+            filter.m_gravity.reset_samples();
+            break;
+        case GravityCase::high_force:
+            imu.specific_force_b = imu.specific_force_b * 2.;
+            break;
+        case GravityCase::rest_override:
+        case GravityCase::stale_rest:
+            imu.specific_force_b = imu.specific_force_b * 2.;
+            filter.m_land.at_rest = true;
+            if (scenario == GravityCase::stale_rest)
+            {
+                filter.m_land.timestamp = filter.m_time_us - 2000001U;
+            }
+            break;
+        case GravityCase::clipped:
+            clipping = 1U;
+            break;
+        case GravityCase::unaligned:
+            filter.m_covariance = FormalEskf::covariance_type::identity();
+            break;
+        }
+        auto const before = filter.m_covariance;
+        auto const before_q = filter.m_state.q_nb.coefficients();
+        auto const count = filter.m_gravity.corrections;
+        for (unsigned i = 0U; i < 4U; ++i)
+        {
+            test.gravity_sample(imu, 5000U, 5000U, clipping);
+        }
+        bool const eligible = scenario == GravityCase::eligible || scenario == GravityCase::rest_override;
+        expect(!filter.m_fault && (filter.m_gravity.corrections > count) == eligible,
+               "production gravity conditions admit only eligible samples");
+        bool const active = eligible || scenario == GravityCase::clipped;
+        expect(filter.m_gravity.active == active, "mode activity is distinct from clipped sample rejection");
+        if (!eligible)
+        {
+            expect(same_bits(before, filter.m_covariance),
+                   "ineligible gravity observations leave covariance unchanged");
+        }
+        if (scenario == GravityCase::eligible)
+        {
+            expect(filter.m_state.q_nb.q1() < before_q(1U), "gravity correction reduces the injected roll error");
+        }
+        expect(filter.m_tilt_alignment.aligned() == (scenario != GravityCase::unaligned),
+               "alignment evaluation remains independent of gravity enablement and sample eligibility");
+    }
+
+    static void gravity_history()
+    {
+        FormalEskfModuleTest test;
+        test.prepare_gravity();
+        auto & filter = test.m_filter;
+        FormalEskf::imu_type imu{-filter.m_parameters.gravity_n, {}};
+        filter.m_gravity_enabled = false;
+        auto high_force = imu;
+        high_force.specific_force_b = high_force.specific_force_b * 2.;
+        test.gravity_sample(high_force);
+        test.gravity_sample(high_force);
+        expect(filter.m_gravity.samples == 1U && filter.m_tilt_alignment.aligned(),
+               "disabled gravity still samples, filters magnitude and evaluates alignment");
+        filter.m_gravity_enabled = true;
+        test.gravity_sample(imu);
+        test.gravity_sample(imu);
+        expect(filter.m_gravity.corrections == 0U && !filter.m_gravity.active,
+               "re-enabling retains LPF history and rejects the first gravity-sized observation");
+        filter.reset_imu_observations();
+        expect(filter.m_tilt_alignment.aligned(), "sample-history reset preserves estimator alignment");
+        test.gravity_sample(imu);
+        test.gravity_sample(imu);
+        expect(filter.m_gravity.corrections == 1U, "reset discards old LPF history and permits the new observation");
+        auto const emitted = filter.m_gravity.samples;
+        test.gravity_sample(imu);
+        filter.reset_imu_observations();
+        test.gravity_sample(imu);
+        expect(filter.m_gravity.samples == emitted, "partial intervals cannot cross a history reset");
+        filter.m_gravity_enabled = false;
+        test.gravity_sample(imu);
+        expect(!filter.m_gravity.active, "disabled mode clears previously active gravity");
+    }
+
+    static void gravity_periods_and_bias()
+    {
+        FormalEskfModuleTest a, b;
+        a.prepare_gravity();
+        b.prepare_gravity();
+        FormalEskf::imu_type imu{-a.m_filter.m_parameters.gravity_n, FormalEskf::vector3(0.5, 0., 0.)};
+        auto equivalent = imu;
+        equivalent.angular_rate_b(0) = 0.4;
+        for (unsigned i = 0U; i < 2U; ++i)
+        {
+            a.gravity_sample(imu, 4000U, 5000U);
+            b.gravity_sample(equivalent);
+        }
+        expect(same_bits(a.m_filter.m_covariance, b.m_filter.m_covariance) &&
+                   same_bits(a.m_filter.m_state.q_nb.coefficients(), b.m_filter.m_state.q_nb.coefficients()) &&
+                   same_bits(a.m_filter.m_state.p_n, b.m_filter.m_state.p_n) &&
+                   same_bits(a.m_filter.m_state.v_n, b.m_filter.m_state.v_n) &&
+                   same_bits(a.m_filter.m_state.b_a, b.m_filter.m_state.b_a) &&
+                   same_bits(a.m_filter.m_state.b_g, b.m_filter.m_state.b_g),
+               "independent angle/velocity periods retain the same measured angle integral");
+        auto & filter = a.m_filter;
+        filter.m_state.b_a(0) = 1.;
+        filter.m_state.b_g(1) = -1.;
+        filter.m_bias_learning_result.bias_update = {{false, false, false}, {false, false, false}};
+        auto const count = filter.m_gravity.corrections;
+        a.gravity_sample(imu);
+        a.gravity_sample(imu);
+        expect(filter.m_gravity.corrections == count + 1U && filter.m_state.b_a(0) == 0.4 &&
+                   filter.m_state.b_g(1) == -0.15,
+               "gravity forwards bias inhibition and applies deployment limits after successful fusion");
+    }
+
+    enum class GravityFailure
+    {
+        tilt,
+        sample,
+        correction
+    };
+
+    static void gravity_failure(GravityFailure failure)
+    {
+        FormalEskfModuleTest test;
+        test.prepare_gravity();
+        auto & filter = test.m_filter;
+        FormalEskf::imu_type imu{-filter.m_parameters.gravity_n, {}};
+        if (failure == GravityFailure::tilt)
+        {
+            filter.m_covariance(6U, 6U) = std::numeric_limits<double>::quiet_NaN();
+        }
+        else if (failure == GravityFailure::sample)
+        {
+            imu.specific_force_b(0U) = std::numeric_limits<double>::quiet_NaN();
+        }
+        else
+        {
+            test.gravity_sample(imu);
+            filter.m_parameters.gravity_n = {};
+        }
+        auto const before = filter.m_covariance;
+        test.gravity_sample(imu);
+        expect(filter.m_fault && filter.m_errors == 1U && filter.m_gravity.samples == 0U,
+               "gravity phase failure is recorded once and does not publish a successful sample");
+        expect(same_bits(before, filter.m_covariance),
+               "failed alignment/correction preserves covariance, including NaN payloads");
+        expect(filter.m_tilt_alignment.aligned() == (failure != GravityFailure::tilt) &&
+                   filter.m_gravity.active == (failure == GravityFailure::correction),
+               "failed correction preserves already evaluated alignment and mode activity");
+        filter.publish_status(clock_us);
+        test.capture_outputs();
+        expect(filter.m_gravity.corrections == 0U, "failure cannot count as a correction");
+    }
+
+    static void gravity_in_run(bool enabled)
+    {
+        FormalEskfModuleTest test;
+        test.m_filter.m_gravity_enabled = enabled;
+        test.warmup();
+        auto const count = test.m_filter.m_gravity.corrections;
+        test.m_send_gps = false;
+        for (unsigned i = 0U; i < 2000U; ++i)
+        {
+            test.m_sample.timestamp_sample += 4000U;
+            test.tick();
+        }
+        expect(!test.m_filter.m_fault && test.m_filter.m_tilt_alignment.aligned() &&
+                   (test.m_filter.m_gravity.corrections > count) == enabled,
+               "Run releases gravity after GNSS aiding stops, respecting startup enablement");
+        test.snapshot("gravity-after-gnss-stop");
+        test.m_sample.timestamp_sample += 4000U;
+        test.m_sample.delta_velocity_clipping = 8U;
+        auto const horizon = test.m_filter.m_time_us;
+        test.tick();
+        expect(test.m_filter.m_time_us == horizon && test.m_filter.m_tilt_alignment.aligned() &&
+                   !test.m_filter.m_gravity.active,
+               "invalid IMU metadata rejects before gravity and clears only observation history");
+        test.snapshot("gravity-invalid-metadata");
     }
 
     static void startup()
@@ -491,6 +743,7 @@ private:
     std::array<int, 7U> m_outputs{};
     vehicle_imu_s m_sample{};
     bool m_armed = false;
+    bool m_send_gps = true;
     std::uint32_t m_mag_device = 301U;
     uORB::Publication<vehicle_imu_s> m_imu_pub{ORB_ID(vehicle_imu)};
     uORB::Publication<sensor_gps_s> m_gps_pub{ORB_ID(vehicle_gps_position)};
@@ -522,6 +775,20 @@ int main(int argc, char ** argv)
     FormalEskfModuleTest::admission();
     FormalEskfModuleTest::gaps_and_periods();
     FormalEskfModuleTest::interval_boundaries();
+    using GravityCase = FormalEskfModuleTest::GravityCase;
+    for (auto scenario :
+         {GravityCase::eligible, GravityCase::disabled, GravityCase::aided, GravityCase::high_force,
+          GravityCase::rest_override, GravityCase::stale_rest, GravityCase::clipped, GravityCase::unaligned})
+    {
+        FormalEskfModuleTest::gravity_conditions(scenario);
+    }
+    FormalEskfModuleTest::gravity_history();
+    FormalEskfModuleTest::gravity_periods_and_bias();
+    FormalEskfModuleTest::gravity_failure(FormalEskfModuleTest::GravityFailure::tilt);
+    FormalEskfModuleTest::gravity_failure(FormalEskfModuleTest::GravityFailure::sample);
+    FormalEskfModuleTest::gravity_failure(FormalEskfModuleTest::GravityFailure::correction);
+    FormalEskfModuleTest::gravity_in_run(true);
+    FormalEskfModuleTest::gravity_in_run(false);
     using Fault = FormalEskfModuleTest::Fault;
     for (auto fault :
          {Fault::non_finite, Fault::source_change, Fault::gyro_source_change, Fault::calibration_change,

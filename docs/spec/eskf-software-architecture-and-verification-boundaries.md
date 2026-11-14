@@ -109,8 +109,19 @@ The current `FormalEskf::Run()` path is:
 5. Process gravity aiding, then magnetic aiding, when their respective conditions permit.
 6. Publish estimates while initialized and fault-free. Publish status separately at its scheduled interval, including when no new IMU sample arrives.
 
-`Run()` owns scheduling, subscription updates and status publication under one
-mutex shared with shell status reads. `process_imu()` owns sample admission,
+`Run()` owns scheduling, subscription updates and status publication. Named
+topic publishers retain the estimate horizon, narrowing and reset mapping.
+The owner updates a fixed-size diagnostic snapshot with one nonblocking lock
+attempt; a busy exchange skips only the snapshot. Shell readers copy that
+snapshot under the exchange lock and format it after unlocking, without reading
+live estimator or performance-counter state. The snapshot carries its epoch,
+sequence, skipped exchanges and publication failures. Startup prepares topic
+storage with explicitly invalid, zero-epoch messages before enabling callbacks;
+returned preparation failures abort startup. These mechanisms do not establish
+target timing or exception safety of all PX4 dependencies. Normal reader lifetime
+uses PX4's module guard; its forced-stop timeout remains a separate lifecycle gap.
+
+`process_imu()` owns sample admission,
 timeline consumption, initialization and estimate publication. For an initialized
 filter, `predict_and_fuse()` handles continuity, gap holds and the ordered aiding
 sequence above. A failed stage prevents later aiding and estimate publication.

@@ -2,6 +2,10 @@
 #include "../FormalEskf.hpp"
 
 #include <array>
+#include <atomic>
+#include <thread>
+#include <new>
+#include <cerrno>
 #include <bit>
 #include <cstdio>
 #include <cstdlib>
@@ -23,6 +27,11 @@ unsigned failures{};
 unsigned scenarios{};
 unsigned publications{};
 FILE * trace_file{};
+pthread_mutex_t * failed_init_mutex{};
+pthread_mutex_t * failed_lock_mutex{};
+pthread_mutex_t * failed_trylock_mutex{};
+orb_id_t failed_publication{};
+bool failed_allocation{}, failed_perf{};
 
 void expect(bool condition, char const * description)
 {
@@ -61,11 +70,12 @@ template <typename Matrix> bool same_bits(Matrix const & a, Matrix const & b)
 
 } // namespace
 
-// Only platform time/timer dispatch are controlled. Numerical code, messages,
+// Time/timer dispatch and explicitly injected resource failures are controlled. Numerical code, messages,
 // uORB storage/subscriptions and the production Run() implementation are real.
 // The work-queue manager is intentionally stopped: PX4 reports its unavailable
 // queue during construction, and this fixture invokes each tick synchronously.
-// Scheduler startup, concurrency and shutdown are not tested here.
+// Real scheduler startup and forced-timeout shutdown remain outside this fixture.
+// Separate cases exercise the snapshot protocol and the normal module lifecycle lock.
 extern "C" hrt_abstime __wrap_hrt_absolute_time() { return clock_us; }
 extern "C" void __wrap_hrt_call_after(hrt_call *, hrt_abstime delay, hrt_callout, void *)
 {
@@ -73,6 +83,42 @@ extern "C" void __wrap_hrt_call_after(hrt_call *, hrt_abstime delay, hrt_callout
     watchdog_delay = static_cast<std::uint32_t>(delay);
 }
 extern "C" void __wrap_hrt_cancel(hrt_call *) {}
+// Resource tests inject returned dependency errors; all normal calls use the
+// actual PX4 implementation. Injection is disabled during concurrent tests.
+extern "C" int __real_pthread_mutex_init(pthread_mutex_t *, pthread_mutexattr_t const *);
+extern "C" int __wrap_pthread_mutex_init(pthread_mutex_t * mutex, pthread_mutexattr_t const * attr)
+{
+    return mutex == failed_init_mutex ? ENOMEM : __real_pthread_mutex_init(mutex, attr);
+}
+extern "C" int __real_pthread_mutex_lock(pthread_mutex_t *);
+extern "C" int __wrap_pthread_mutex_lock(pthread_mutex_t * mutex)
+{
+    return mutex == failed_lock_mutex ? EINVAL : __real_pthread_mutex_lock(mutex);
+}
+extern "C" int __real_pthread_mutex_trylock(pthread_mutex_t *);
+extern "C" int __wrap_pthread_mutex_trylock(pthread_mutex_t * mutex)
+{
+    return mutex == failed_trylock_mutex ? EINVAL : __real_pthread_mutex_trylock(mutex);
+}
+extern "C" int __real__ZN4uORB7Manager11orb_publishEPK12orb_metadataPvPKv(orb_id_t, orb_advert_t, void const *);
+extern "C" int __wrap__ZN4uORB7Manager11orb_publishEPK12orb_metadataPvPKv(orb_id_t topic, orb_advert_t handle,
+                                                                          void const * data)
+{
+    return topic == failed_publication
+               ? PX4_ERROR
+               : __real__ZN4uORB7Manager11orb_publishEPK12orb_metadataPvPKv(topic, handle, data);
+}
+extern "C" void * __real__ZnwmRKSt9nothrow_t(std::size_t, std::nothrow_t const &);
+extern "C" void * __wrap__ZnwmRKSt9nothrow_t(std::size_t size, std::nothrow_t const & tag)
+{
+    return failed_allocation ? nullptr : __real__ZnwmRKSt9nothrow_t(size, tag);
+}
+extern "C" perf_counter_t __real_perf_alloc(perf_counter_type, char const *);
+extern "C" perf_counter_t __wrap_perf_alloc(perf_counter_type type, char const * name)
+{
+    return failed_perf ? nullptr : __real_perf_alloc(type, name);
+}
+
 class FormalEskfModuleTest
 {
 public:
@@ -686,6 +732,283 @@ public:
         expect(!f.m_fault && f.m_gnss.quality_result.failures.horizontal_speed == fresh_land,
                "fresh land context overrides arming; exactly three-second-old land is unavailable");
         test.snapshot("GNSS-context");
+    }
+
+    static void output_mapping(bool stale, bool fault)
+    {
+        FormalEskfModuleTest test;
+        test.start_navigation();
+        auto & f = test.m_filter;
+        f.m_state.p_n = FormalEskf::vector3(1.23456789, -2.34567891, -3.45678912);
+        f.m_state.v_n = FormalEskf::vector3(4., 5., 6.);
+        f.m_state.b_a = FormalEskf::vector3(0.01, 0.02, 0.03);
+        f.m_state.b_g = FormalEskf::vector3(0.04, 0.05, 0.06);
+        f.m_position_reset_delta = FormalEskf::vector2_type::from_row_major({0.1, 0.2});
+        f.m_velocity_reset_delta = FormalEskf::vector3(0.3, 0.4, 0.5);
+        f.m_height_reset_delta = -0.6;
+        f.m_vertical_velocity_reset_delta = 0.7;
+        f.m_position_reset_counter = 253U;
+        f.m_height_reset_counter = 254U;
+        f.m_velocity_reset_counter = 255U;
+        f.m_vertical_velocity_reset_counter = 252U;
+        f.m_odometry_reset_counter = 251U;
+        f.m_fault = fault;
+        f.m_last_output = f.m_time_us - 10000U;
+        if (stale)
+        {
+            clock_us += 100000U;
+        }
+        FormalEskf::imu_type imu{FormalEskf::vector3(0.1, 0.2, -9.7), FormalEskf::vector3(0.4, 0.5, 0.6)};
+        if (!fault)
+        {
+            f.publish(imu);
+        }
+        f.publish_status(clock_us);
+        test.capture_outputs();
+        estimator_status_s status{};
+        estimator_status_flags_s flags{};
+        estimator_sensor_bias_s bias{};
+        orb_copy(ORB_ID(estimator_status), test.m_outputs[4], &status);
+        orb_copy(ORB_ID(estimator_status_flags), test.m_outputs[5], &flags);
+        orb_copy(ORB_ID(estimator_sensor_bias), test.m_outputs[6], &bias);
+        expect(status.timestamp == clock_us && status.timestamp_sample == f.m_time_us &&
+                   bool(status.solution_status_flags & 1U) == (!stale && !fault) &&
+                   bias.accel_bias_valid == (!stale && !fault),
+               "status and bias honor the strict wall-age/fault boundary");
+        expect(status.reset_count_pod_d == 254U && status.reset_count_vel_d == 252U &&
+                   flags.cs_inertial_dead_reckoning == (stale || fault),
+               "status reset and validity mapping");
+        if (!fault)
+        {
+            vehicle_attitude_s attitude{};
+            vehicle_local_position_s local{};
+            vehicle_global_position_s global{};
+            vehicle_odometry_s odometry{};
+            orb_copy(ORB_ID(vehicle_attitude), test.m_outputs[0], &attitude);
+            orb_copy(ORB_ID(vehicle_local_position), test.m_outputs[1], &local);
+            orb_copy(ORB_ID(vehicle_global_position), test.m_outputs[2], &global);
+            orb_copy(ORB_ID(vehicle_odometry), test.m_outputs[3], &odometry);
+            expect(local.x == float(f.m_state.p_n(0)) && local.delta_z == float(-0.6) &&
+                       global.delta_alt == -local.delta_z && local.z_reset_counter == global.alt_reset_counter &&
+                       odometry.reset_counter == 251U && odometry.q[0] == attitude.q[0],
+                   "topic rounding and reset signs/counters");
+            double latitude{}, longitude{};
+            f.m_origin.projection.reproject(local.x, local.y, latitude, longitude);
+            expect(global.lat == latitude && global.lon == longitude && local.xy_valid == !stale && local.z_valid,
+                   "global projection uses the published float position; height validity stays distinct");
+            expect(local.timestamp_sample == f.m_time_us && global.timestamp_sample == f.m_time_us &&
+                       odometry.timestamp_sample == f.m_time_us,
+                   "all estimates retain the IMU sample horizon");
+        }
+        test.snapshot("output-mapping");
+    }
+
+    static void output_cadence()
+    {
+        FormalEskfModuleTest test;
+        test.start_navigation();
+        auto & f = test.m_filter;
+        auto const last = f.m_last_output;
+        clock_us += 9999U;
+        f.m_time_us = clock_us;
+        f.publish({});
+        bool updated{};
+        orb_check(test.m_outputs[0], &updated);
+        expect(updated, "attitude publishes before the navigation deadline");
+        orb_check(test.m_outputs[1], &updated);
+        expect(!updated && f.m_last_output == last, "navigation waits until ten milliseconds");
+        test.capture_outputs();
+        ++clock_us;
+        f.m_time_us = clock_us;
+        f.publish({});
+        orb_check(test.m_outputs[1], &updated);
+        expect(updated && f.m_last_output == clock_us, "navigation publishes at the exact deadline");
+        test.capture_outputs();
+        f.m_initialized = false;
+        f.publish_status(clock_us);
+        orb_check(test.m_outputs[6], &updated);
+        expect(!updated, "uninitialized status does not publish bias estimates");
+        test.capture_outputs();
+        test.snapshot("output-cadence");
+    }
+
+    static void publication_preparation()
+    {
+        FormalEskfModuleTest test;
+        vehicle_attitude_s attitude{};
+        vehicle_local_position_s local{};
+        vehicle_global_position_s global{};
+        vehicle_odometry_s odometry{};
+        estimator_status_s status{};
+        estimator_status_flags_s flags{};
+        estimator_sensor_bias_s bias{};
+        expect(orb_copy(ORB_ID(vehicle_attitude), test.m_outputs[0], &attitude) == 0 &&
+                   orb_copy(ORB_ID(vehicle_local_position), test.m_outputs[1], &local) == 0 &&
+                   orb_copy(ORB_ID(vehicle_global_position), test.m_outputs[2], &global) == 0 &&
+                   orb_copy(ORB_ID(vehicle_odometry), test.m_outputs[3], &odometry) == 0 &&
+                   orb_copy(ORB_ID(estimator_status), test.m_outputs[4], &status) == 0 &&
+                   orb_copy(ORB_ID(estimator_status_flags), test.m_outputs[5], &flags) == 0 &&
+                   orb_copy(ORB_ID(estimator_sensor_bias), test.m_outputs[6], &bias) == 0,
+               "startup prepares actual storage for all seven topics");
+        expect(attitude.timestamp == 0U && attitude.timestamp_sample == 0U && std::isnan(attitude.q[0]) &&
+                   local.timestamp == 0U && !local.xy_valid && !local.z_valid && !local.v_xy_valid &&
+                   !local.v_z_valid && global.timestamp == 0U && !global.lat_lon_valid && !global.alt_valid &&
+                   odometry.timestamp == 0U && odometry.quality == 0 && std::isnan(odometry.q[0]) &&
+                   status.timestamp == 0U && status.solution_status_flags == 0U && flags.timestamp == 0U &&
+                   !flags.cs_tilt_align && !flags.cs_yaw_align && bias.timestamp == 0U && !bias.accel_bias_valid &&
+                   !bias.gyro_bias_valid,
+               "preparation marks no estimate, never a fabricated valid sample");
+        test.prepare_navigation();
+        auto & f = test.m_filter;
+        f.m_last_output = clock_us - 10000U;
+        auto const state = f.m_state;
+        failed_publication = ORB_ID(vehicle_attitude);
+        f.publish({});
+        failed_publication = nullptr;
+        expect(f.m_publication_failures == 1U && !f.m_fault && same_bits(state.p_n, f.m_state.p_n),
+               "publication error is counted without pretending estimator failure or delivery success");
+        f.update_diagnostics(clock_us);
+        FormalEskf::Diagnostics view;
+        expect(f.read_diagnostics(view) && view.publication_failures == 1U,
+               "publication failure reaches shell snapshot");
+    }
+
+    static void resource_failures()
+    {
+        ++scenarios;
+        {
+            FormalEskf filter;
+            failed_init_mutex = &filter.m_diagnostics_mutex;
+            expect(!filter.init() && !filter.m_diagnostics_ready, "mutex setup failure prevents callback startup");
+            failed_init_mutex = nullptr;
+        }
+        {
+            failed_perf = true;
+            FormalEskf filter;
+            failed_perf = false;
+            expect(!filter.init(), "perf allocation failure prevents callback startup");
+        }
+        for (orb_id_t topic : {ORB_ID(vehicle_attitude), ORB_ID(vehicle_local_position),
+                               ORB_ID(vehicle_global_position), ORB_ID(vehicle_odometry), ORB_ID(estimator_status),
+                               ORB_ID(estimator_status_flags), ORB_ID(estimator_sensor_bias)})
+        {
+            FormalEskf filter;
+            failed_publication = topic;
+            expect(!filter.init(), "each failed topic preparation prevents startup");
+            failed_publication = nullptr;
+        }
+        failed_allocation = true;
+        expect(FormalEskf::task_spawn(0, nullptr) == PX4_ERROR && FormalEskf::get_instance() == nullptr,
+               "module allocation failure returns an error without constructing a session");
+        failed_allocation = false;
+    }
+
+    static void diagnostic_contention()
+    {
+        FormalEskfModuleTest test;
+        test.warmup();
+        auto & f = test.m_filter;
+        FormalEskf::Diagnostics before, after;
+        expect(f.read_diagnostics(before), "read coherent pre-contention snapshot");
+        auto const predictions = f.m_predictions;
+        expect(pthread_mutex_lock(&f.m_diagnostics_mutex) == 0, "hold snapshot exchange");
+        test.m_sample.timestamp_sample += 4000U;
+        test.tick();
+        expect(f.m_predictions == predictions + 1U && f.m_diagnostics.sequence == before.sequence,
+               "busy diagnostics skip only snapshot, never block a real Run update");
+        expect(pthread_mutex_unlock(&f.m_diagnostics_mutex) == 0, "release snapshot exchange");
+        test.m_sample.timestamp_sample += 4000U;
+        test.tick();
+        expect(f.read_diagnostics(after) && after.sequence == before.sequence + 2U &&
+                   after.skipped == before.skipped + 1U && after.sample_time_us == f.m_time_us,
+               "later snapshot exposes missed sequence and resumes with current state");
+        failed_lock_mutex = &f.m_diagnostics_mutex;
+        auto const old_sequence = after.sequence;
+        expect(!f.read_diagnostics(after) && after.sequence == old_sequence,
+               "failed reader does not expose live state");
+        failed_lock_mutex = nullptr;
+        failed_trylock_mutex = &f.m_diagnostics_mutex;
+        f.update_diagnostics(clock_us);
+        failed_trylock_mutex = nullptr;
+        f.update_diagnostics(clock_us);
+        expect(f.read_diagnostics(after) && after.exchange_errors == 1U && !f.m_fault,
+               "exchange error is observable and does not stop estimation");
+    }
+
+    static void diagnostic_concurrency()
+    {
+        FormalEskfModuleTest test;
+        auto & f = test.m_filter;
+        std::atomic<bool> ready{false}, done{false};
+        std::atomic<unsigned> incoherent{0U}, reads{0U};
+        std::thread reader(
+            [&]
+            {
+                FormalEskf::Diagnostics view;
+                while (!done.load())
+                {
+                    if (f.read_diagnostics(view))
+                    {
+                        ++reads;
+                        if (view.position[0] != double(view.predictions) || view.velocity[0] != -view.position[0] ||
+                            view.sample_time_us != view.predictions)
+                        {
+                            ++incoherent;
+                        }
+                    }
+                    ready.store(true);
+                }
+            });
+        while (!ready.load())
+        {
+            std::this_thread::yield();
+        }
+        for (unsigned i = 1U; i <= 20000U; ++i)
+        {
+            f.m_predictions = i;
+            f.m_time_us = i;
+            f.m_state.p_n(0) = i;
+            f.m_state.v_n(0) = -double(i);
+            f.update_diagnostics(i);
+        }
+        done.store(true);
+        reader.join();
+        expect(reads.load() > 0U && incoherent.load() == 0U,
+               "concurrent reader never sees mixed diagnostic generations");
+        f.update_diagnostics(clock_us);
+        FormalEskf::Diagnostics final;
+        expect(f.read_diagnostics(final) && final.predictions == 20000U,
+               "final snapshot remains readable after contention");
+    }
+
+    static void diagnostic_shutdown()
+    {
+        ++scenarios;
+        auto * instance = new FormalEskf();
+        FormalEskf::_object.store(instance);
+        FormalEskf::_task_id = FormalEskf::task_id_is_work_queue;
+        expect(instance->init(), "initialize session for normal module shutdown");
+        // ModuleBase::status_command holds this lifecycle guard through print_status.
+        expect(pthread_mutex_lock(&px4_modules_mutex) == 0, "hold the real module reader lifetime guard");
+        FormalEskf::Diagnostics view;
+        expect(instance->read_diagnostics(view), "read snapshot before shutdown");
+        instance->request_stop();
+        std::atomic<bool> stop_requested{false};
+        std::thread owner(
+            [&]
+            {
+                stop_requested.store(true);
+                instance->Run(); // unregisters, cancels and deletes under ModuleBase's lifecycle lock.
+            });
+        while (!stop_requested.load())
+        {
+            std::this_thread::yield();
+        }
+        expect(FormalEskf::get_instance() == instance, "reader lifecycle guard prevents concurrent destruction");
+        expect(pthread_mutex_unlock(&px4_modules_mutex) == 0, "release module reader lifetime guard");
+        owner.join();
+        expect(FormalEskf::get_instance() == nullptr && FormalEskf::_task_id == -1,
+               "normal shutdown releases session after diagnostic reader exits");
     }
 
     void set_horizontal_aiding(bool enabled)
@@ -1701,6 +2024,10 @@ int main(int argc, char ** argv)
     FormalEskfModuleTest::navigation_context(true, true);
     FormalEskfModuleTest::navigation_context(false, true);
     FormalEskfModuleTest::navigation_context(false, false);
+    FormalEskfModuleTest::output_mapping(false, false);
+    FormalEskfModuleTest::output_mapping(true, false);
+    FormalEskfModuleTest::output_mapping(false, true);
+    FormalEskfModuleTest::output_cadence();
     using Fault = FormalEskfModuleTest::Fault;
     for (auto fault :
          {Fault::non_finite, Fault::source_change, Fault::gyro_source_change, Fault::calibration_change,
@@ -1708,6 +2035,14 @@ int main(int argc, char ** argv)
     {
         FormalEskfModuleTest::fault(fault);
     }
+    FILE * comparison_trace = trace_file;
+    trace_file = nullptr; // Deliberate diagnostic/startup changes have independent assertions.
+    FormalEskfModuleTest::publication_preparation();
+    FormalEskfModuleTest::resource_failures();
+    FormalEskfModuleTest::diagnostic_contention();
+    FormalEskfModuleTest::diagnostic_concurrency();
+    FormalEskfModuleTest::diagnostic_shutdown();
+    trace_file = comparison_trace;
     if (trace_file != nullptr)
     {
         bool const written = std::ferror(trace_file) == 0;

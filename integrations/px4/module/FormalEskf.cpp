@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <new>
 #include <px4_platform_common/param.h>
 
 namespace profile = formal_eskf::px4::profile;
@@ -42,22 +43,16 @@ FormalEskf::bias_learning_type::Parameters FormalEskf::bias_learning_parameters(
     return result;
 }
 
-FormalEskf::FormalEskf() : ScheduledWorkItem(MODULE_NAME, formal_eskf_queue)
-{
-    // Register output topics before logger starts; publish only valid samples.
-    m_attitude_pub.advertise();
-    m_local_pub.advertise();
-    m_global_pub.advertise();
-    m_odometry_pub.advertise();
-    m_bias_pub.advertise();
-    m_status_pub.advertise();
-    m_flags_pub.advertise();
-}
+FormalEskf::FormalEskf() : ScheduledWorkItem(MODULE_NAME, formal_eskf_queue) {}
 
 FormalEskf::~FormalEskf()
 {
     m_imu_sub.unregisterCallback();
     perf_free(m_cycle_perf);
+    if (m_diagnostics_ready)
+    {
+        pthread_mutex_destroy(&m_diagnostics_mutex);
+    }
 }
 
 bool FormalEskf::load_startup_parameters()
@@ -85,10 +80,16 @@ bool FormalEskf::load_startup_parameters()
 
 bool FormalEskf::init()
 {
-    if (!load_startup_parameters())
+    if (!m_diagnostics_ready)
+    {
+        m_diagnostics_ready = pthread_mutex_init(&m_diagnostics_mutex, nullptr) == 0;
+    }
+    if (!m_diagnostics_ready || m_cycle_perf == nullptr || !load_startup_parameters() || !prepare_publications())
     {
         return false;
     }
+    // Complete the initial snapshot before a sensor callback can schedule Run().
+    update_diagnostics(hrt_absolute_time());
     if (!m_imu_sub.registerCallback())
     {
         return false;
@@ -274,7 +275,6 @@ void FormalEskf::Run()
         exit_and_cleanup();
         return;
     }
-    std::lock_guard<std::mutex> guard(m_state_mutex);
     ScheduleDelayed(profile::backup_interval_us); // Status timeout, not an independent watchdog.
     perf_begin(m_cycle_perf);
     m_gps_sub.update(&m_gps);
@@ -294,6 +294,7 @@ void FormalEskf::Run()
         m_last_status = now;
     }
     perf_end(m_cycle_perf);
+    update_diagnostics(now);
 }
 
 FormalEskf::ImuInput FormalEskf::decode_imu(vehicle_imu_s const & sample)
@@ -514,7 +515,7 @@ bool FormalEskf::update_imu_health(std::uint8_t accelerometer_clipping)
 
 int FormalEskf::task_spawn(int argc, char * argv[])
 {
-    FormalEskf * instance = new FormalEskf();
+    FormalEskf * instance = new (std::nothrow) FormalEskf();
     if (instance)
     {
         _object.store(instance);

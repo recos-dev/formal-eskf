@@ -126,6 +126,13 @@ inline constexpr double offset_variance_multiplier = 1000.;
 inline constexpr double ratio_filter_time_s = 10.;
 } // namespace height_bias
 
+namespace output
+{
+inline constexpr std::uint64_t navigation_interval_us = 10000U;
+inline constexpr std::uint64_t maximum_age_us = 100000U;
+inline constexpr std::uint64_t dead_reckoning_age_us = 1000000U;
+} // namespace output
+
 // SITL scheduling profile; target resource acceptance is separate.
 inline constexpr std::uint16_t work_queue_stack_bytes = 60U * 1024U;
 inline constexpr std::int8_t work_queue_relative_priority = -15;

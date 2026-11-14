@@ -3292,11 +3292,23 @@
           },
           {
             "file": "integrations/px4/module/FormalEskfOutput.cpp",
-            "symbol": "void FormalEskf::publish("
+            "symbol": "vehicle_attitude_s FormalEskf::publish_attitude("
           },
           {
             "file": "integrations/px4/module/FormalEskfOutput.cpp",
-            "symbol": "void FormalEskf::publish_status("
+            "symbol": "vehicle_local_position_s FormalEskf::publish_local_position("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "void FormalEskf::publish_odometry("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "estimator_status_s FormalEskf::publish_estimator_status("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "void FormalEskf::publish_status_flags("
           }
         ],
         "esbmc": []
@@ -4156,7 +4168,23 @@
           },
           {
             "file": "integrations/px4/module/FormalEskfOutput.cpp",
-            "symbol": "void FormalEskf::publish("
+            "symbol": "vehicle_local_position_s FormalEskf::publish_local_position("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "void FormalEskf::publish_global_position("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "void FormalEskf::publish_odometry("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "estimator_status_s FormalEskf::publish_estimator_status("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "void FormalEskf::publish_status_flags("
           },
           {
             "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",

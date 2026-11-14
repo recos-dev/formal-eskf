@@ -35,7 +35,13 @@ if(FORMAL_ESKF_MODULE_TESTS)
 		px4_layer px4_platform uORB systemlib cdev px4_work_queue px4_daemon
 		work_queue parameters events perf tinybson uorb_msgs geo world_magnetic_model)
 	target_link_options(formal_eskf_module_test PRIVATE
-		-Wl,--wrap=hrt_absolute_time -Wl,--wrap=hrt_call_after -Wl,--wrap=hrt_cancel)
+		-Wl,--wrap=hrt_absolute_time -Wl,--wrap=hrt_call_after -Wl,--wrap=hrt_cancel
+		-Wl,--wrap=pthread_mutex_init
+		-Wl,--wrap=pthread_mutex_lock
+		-Wl,--wrap=pthread_mutex_trylock
+		-Wl,--wrap=_ZN4uORB7Manager11orb_publishEPK12orb_metadataPvPKv
+		-Wl,--wrap=_ZnwmRKSt9nothrow_t
+		-Wl,--wrap=perf_alloc)
 	enable_testing()
 	add_test(NAME formal_eskf.module COMMAND formal_eskf_module_test)
 endif()

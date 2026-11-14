@@ -3,7 +3,8 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <mutex>
+#include <array>
+#include <pthread.h>
 #include <optional>
 #include <px4_platform_common/module.h>
 #include <px4_platform_common/px4_work_queue/ScheduledWorkItem.hpp>
@@ -198,6 +199,41 @@ private:
         bool usable{};
     };
 
+    struct OutputValidity
+    {
+        bool healthy{}, gps_position{}, gps_velocity{}, gps{}, gps_height{};
+        bool magnetic{}, magnetic_aiding{}, barometer{};
+    };
+
+    // Fixed-size shell view. No reader accesses live filter fields or perf counters.
+    struct Diagnostics
+    {
+        std::uint64_t time_us{}, sample_time_us{}, sequence{}, skipped{}, exchange_errors{};
+        bool initialized{}, fault{}, qualified{}, metadata_valid{};
+        std::uint32_t predictions{}, gps_updates{}, mag_updates{}, baro_updates{}, rejections{}, errors{}, gaps{};
+        std::uint64_t maximum_gps_age_us{};
+        int gnss_quality{};
+        std::uint16_t gps_failure_flags{};
+        bool gps_position_active{}, gps_velocity_active{};
+        std::uint8_t position_resets{}, velocity_resets{}, height_resets{}, vertical_velocity_resets{};
+        std::array<double, 3U> position{}, velocity{};
+        bool magnetic_active{}, heading_aligned{}, heading_consistent{};
+        unsigned magnetic_stop{}, magnetic_recovery{}, quaternion_resets{};
+        bool model_available{};
+        std::uint64_t model_checks{};
+        unsigned model_revision{}, heading_revision{}, heading_source{}, model_unavailable{};
+        double declination{};
+        unsigned height_reference{};
+        bool barometer_active{}, gnss_height_active{}, barometer_fault{};
+        double barometer_bias{}, gnss_height_bias{};
+        unsigned accelerometer_mask{}, gyroscope_mask{};
+        bool high_dynamics{}, health_available{}, bad_acceleration{};
+        bool gravity_enabled{}, tilt_aligned{}, gravity_active{};
+        unsigned gravity_samples{}, gravity_corrections{};
+        std::uint64_t gravity_interval_us{}, cycle_events{}, publication_failures{};
+        float cycle_mean_s{}; // PX4 perf uses its clock; lockstep time is not CPU time.
+    };
+
     void Run() override;
     static ImuInput decode_imu(vehicle_imu_s const & sample);
     void process_imu(ImuInput const & sample);
@@ -233,8 +269,22 @@ private:
     void record_vertical_velocity_reset(double delta);
     bool update_imu_bias(ImuInput const & sample, imu_type const & imu);
     bool update_imu_health(std::uint8_t accelerometer_clipping);
+    bool prepare_publications();
+    void record_publication(bool delivered);
     void publish(imu_type const & imu);
+    vehicle_attitude_s publish_attitude(std::uint64_t now);
+    vehicle_local_position_s publish_local_position(std::uint64_t now, imu_type const & imu,
+                                                    vehicle_attitude_s const & attitude, bool navigation_valid,
+                                                    bool heading_valid);
+    void publish_global_position(std::uint64_t now, vehicle_local_position_s const & local);
+    void publish_odometry(std::uint64_t now, imu_type const & imu, vehicle_attitude_s const & attitude, bool valid);
+    OutputValidity output_validity(std::uint64_t now) const;
     void publish_status(uint64_t now);
+    estimator_status_s publish_estimator_status(std::uint64_t now, OutputValidity const & validity);
+    void publish_status_flags(std::uint64_t now, OutputValidity const & validity, estimator_status_s const & status);
+    void publish_sensor_bias(std::uint64_t now, bool healthy);
+    void update_diagnostics(std::uint64_t now);
+    bool read_diagnostics(Diagnostics & snapshot);
     void update_gps_quality();
     void update_magnetic_model();
     std::optional<magnetic_model_type::sample_type> lookup_magnetic_model(double latitude, double longitude) const;
@@ -311,7 +361,11 @@ private:
     uint32_t m_predictions{}, m_baro_updates{};
     uint32_t m_rejections{}, m_errors{}, m_gaps{};
     double m_height_ratio{}, m_gps_height_ratio{};
-    // PX4 shell status runs on another thread; serialize diagnostic reads.
-    std::mutex m_state_mutex;
+    std::uint64_t m_publication_failures{};
+    // One writer; only this fixed-size copy is shared with shell readers.
+    pthread_mutex_t m_diagnostics_mutex{};
+    bool m_diagnostics_ready{};
+    Diagnostics m_diagnostics{};
+    std::uint64_t m_diagnostics_sequence{}, m_diagnostics_skipped{}, m_diagnostics_errors{};
     perf_counter_t m_cycle_perf{perf_alloc(PC_ELAPSED, "formal_eskf: cycle")};
 }; /* end class FormalEskf */

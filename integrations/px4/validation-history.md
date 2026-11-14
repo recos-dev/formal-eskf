@@ -13,6 +13,66 @@ See the [integration guide](README.md) for current setup and behavior,
 [review criteria](../../docs/spec/formal-verification-traceability-and-review-criteria.md)
 for requirement/evidence acceptance.
 
+## Output and diagnostics refactor validation: 2026-11-14
+
+A-01 batch 5 uses `dac5451` as its baseline. Seven named topic publishers
+retain existing sample times, float narrowing, validity, reset mapping and
+cadence. Shell status reads a fixed snapshot instead of holding a filter-wide
+mutex through printing. The owner makes one nonblocking exchange attempt;
+contention skips only the snapshot, with sequence/epoch and skipped/error counts.
+Initial snapshot construction precedes callback registration, preserving one
+writer. Snapshot performance reporting retains event count and mean, without
+reading live counters from the shell; it replaces the full live perf dump.
+
+| Check | Result |
+| --- | --- |
+| Baseline/current/installed output comparison | 82 scenarios; 30,994,690 trace bytes identical |
+| Current and installed module fixture | 87 scenarios passed, including 5 resource/diagnostic groups |
+| Module and fixture ASan/UBSan | 87 scenarios passed; comparison trace also identical |
+| Native CTest, three backends | 119 passed |
+| Package tests; installed identity | 8 passed; 58 files verified |
+| Repository Cppcheck unix32/unix64; formatting; pinned PX4 build | Passed |
+| Offline review-tool regression; module source references | 100 passed; 70 references resolved |
+| Independent ULog checks; ground fault/recovery checks | 18/18; 20/20 passed |
+| SIH position / velocity / attitude RMSE | 0.163 m / 0.257 m/s / 1.707 degrees |
+
+Intentional startup/resource changes are tested separately from numerical/output
+equivalence. Seven invalid, zero-epoch seed messages prepare uORB topic storage
+before callbacks; attitude/odometry quaternions are invalid. Returned mutex,
+perf, module-allocation and per-topic preparation failures prevent startup.
+Runtime publication failures increment diagnostics without claiming delivery or
+changing the estimator result. Module allocation uses the non-throwing overload;
+the four module objects no longer reference `std::__throw_system_error`.
+
+Tests exercise a real `Run()` while snapshot exchange is occupied, resumed/stale
+snapshot reporting, injected exchange errors, concurrent coherent reads and
+normal reader/stop lifetime under PX4's module guard. They control dispatch/time
+and returned dependency failures; they do not emulate every scheduler interleaving
+or prove dependency allocation/exception safety. Startup ordering was corrected
+during self-review before acceptance to avoid an initialization/Run writer race.
+
+The first SITL attempt treated the new zero-epoch telemetry as readiness and
+checked initialization too early. The runner now waits for a nonzero estimate
+epoch. Initial ULog analysis likewise used the seed's nonexistent geographic
+origin; it now requires an initialized reference from each source. The same
+flight then passes all unchanged checks. Re-analysis of the preceding batch's
+flight gives identical results. Failed attempts remain in `sitl/` and
+`analysis-before-seed-handling.json`; a truncated status line was also split so
+publication failures remain visible.
+
+Evidence is in `output/px4-output-refactor-20261114/summary.json`, with source,
+package, binary, comparison and stack identity. Frames remain static or bounded;
+this is not a full target call-chain bound. Advisory module Cppcheck retains one
+existing CLI `constParameter` finding and 537 dependency findings. Sanitizers
+instrument the four module units and fixture, not PX4 archives; leak detection
+is disabled. Shared core/runtime, replay and Lean/ESBMC bodies are unchanged.
+
+F-07.2 still covers platform locking/callback costs, dependency allocation and
+exception paths, forced-stop timeout deletion, estimator-path logging and target
+stack/deadline acceptance. Cycle perf uses PX4 time and excludes the final
+snapshot exchange; it is not complete callback CPU/WCET evidence. This batch
+does not close F-04 delayed fusion or establish full PX4-RT acceptance.
+
 ## Navigation ownership refactor validation: 2026-11-14
 
 A-01 batch 4 uses `ec85c36` as its baseline. GNSS history is grouped in one

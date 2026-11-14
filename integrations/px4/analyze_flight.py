@@ -53,12 +53,18 @@ def analyze(DIRECTORY):
     V_TRUE = interpolate(TRUTH, ["vx", "vy", "vz"], T)
     # Account for independently initialized local origins. Translation comes
     # from the logged geographic references, never fitted to flight errors.
+    # Zero-epoch startup messages have no geographic reference yet.
+    LOCAL_REFS = np.flatnonzero((LOCAL["ref_timestamp"] > 0) & LOCAL["xy_global"] & LOCAL["z_global"])
+    TRUTH_REFS = np.flatnonzero((TRUTH["ref_timestamp"] > 0) & TRUTH["xy_global"] & TRUTH["z_global"])
+    if not LOCAL_REFS.size or not TRUTH_REFS.size:
+        raise RuntimeError("Initialized geographic references are missing")
+    LOCAL_REF, TRUTH_REF = LOCAL_REFS[0], TRUTH_REFS[0]
     RADIUS = 6371000.
     ORIGIN_OFFSET = np.array([
-        np.deg2rad(float(LOCAL["ref_lat"][0] - TRUTH["ref_lat"][0])) * RADIUS,
-        np.deg2rad(float(LOCAL["ref_lon"][0] - TRUTH["ref_lon"][0])) * RADIUS
-        * np.cos(np.deg2rad(float(TRUTH["ref_lat"][0]))),
-        float(TRUTH["ref_alt"][0] - LOCAL["ref_alt"][0]),
+        np.deg2rad(float(LOCAL["ref_lat"][LOCAL_REF] - TRUTH["ref_lat"][TRUTH_REF])) * RADIUS,
+        np.deg2rad(float(LOCAL["ref_lon"][LOCAL_REF] - TRUTH["ref_lon"][TRUTH_REF])) * RADIUS
+        * np.cos(np.deg2rad(float(TRUTH["ref_lat"][TRUTH_REF]))),
+        float(TRUTH["ref_alt"][TRUTH_REF] - LOCAL["ref_alt"][LOCAL_REF]),
     ])
     P_EST_IN_TRUTH_FRAME = P_EST + ORIGIN_OFFSET
     POSITION_ERROR = P_EST_IN_TRUTH_FRAME - P_TRUE

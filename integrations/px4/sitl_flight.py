@@ -325,7 +325,9 @@ class Flight:
                  "-w", str(self.rootfs), str(self.build / "etc")],
                 cwd=self.args.px4, env=ENV, stdout=CONSOLE, stderr=subprocess.STDOUT,
                 start_new_session=True)
-            self.wait_for(lambda: "LOCAL_POSITION_NED" in self.messages and "HEARTBEAT" in self.messages,
+            # Startup topic preparation publishes a zero-epoch invalid sample.
+            self.wait_for(lambda: "LOCAL_POSITION_NED" in self.messages and
+                          self.messages["LOCAL_POSITION_NED"][1].time_boot_ms > 0 and "HEARTBEAT" in self.messages,
                           self.args.startup_timeout, "Estimator telemetry available")
             self.pump(10.)
             STARTUP = [self.cli("formal_eskf", "status"), self.cli("listener", "vehicle_local_position", "-n", "1"),

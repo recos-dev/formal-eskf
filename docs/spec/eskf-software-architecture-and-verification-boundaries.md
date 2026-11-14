@@ -73,6 +73,16 @@ preparation, correction feedback and heading reset have named operations;
 `MagneticModel` keeps its independent reference/lookup lifetime. The replay keeps
 its separate admission, timing and settings instead of using a module controller.
 
+GNSS quality/drift history, lifecycle and diagnostics are grouped in `Gnss`.
+Message conversion and wall-clock motion context precede quality evaluation;
+velocity and horizontal-position operations consume the lifecycle's coupled
+reset decisions in that order. Rejected quality may retain velocity health
+evidence without authorizing correction. `HeightAiding` retains two-source
+arbitration, offsets and an all-or-nothing state/P/history update; its result
+returns applied reset counts/deltas. The estimator owns the published height
+reset history and updates it only after that transaction succeeds. `HeightBias`
+is kept with its sole owner in the same header.
+
 ```mermaid
 flowchart TD
     U["PX4 sensor/context messages"] --> A["FormalEskf: time, state, scheduling, publication"]

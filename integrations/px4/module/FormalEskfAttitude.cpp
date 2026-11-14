@@ -33,7 +33,7 @@ void FormalEskf::fuse_gravity(ImuInput const & sample, imu_type const & imu)
         return;
     }
 
-    auto const & gnss = m_gnss_fusion.state();
+    auto const & gnss = m_gnss.lifecycle.state();
     formal_eskf::runtime::AccelerometerFusionConditions const conditions{
         m_gravity_enabled,
         m_tilt_alignment.aligned(),
@@ -155,7 +155,7 @@ FormalEskf::magnetic_lifecycle_type::Conditions FormalEskf::magnetic_conditions(
     conditions.enabled = true;
     // Session activity is distinct from output validity and dead reckoning.
     conditions.horizontal_aiding =
-        m_gnss_fusion.state().horizontal_position.active || m_gnss_fusion.state().velocity.active;
+        m_gnss.lifecycle.state().horizontal_position.active || m_gnss.lifecycle.state().velocity.active;
     std::uint64_t const now = hrt_absolute_time();
     if (m_vehicle_status.timestamp != 0U && m_vehicle_status.timestamp <= now &&
         now - m_vehicle_status.timestamp < profile::magnetic::context_maximum_age_us)

@@ -198,7 +198,7 @@ public:
         expect(m_filter.m_initialization.imu_samples == 1000U,
                "startup caps IMU accumulation without fabricating new samples");
         expect(m_filter.m_predictions > 0U, "post-startup ticks run prediction");
-        expect(m_filter.m_gps_updates > 0U, "post-startup ticks run GNSS correction");
+        expect(m_filter.m_gnss.corrections > 0U, "post-startup ticks run GNSS correction");
         snapshot("initialized");
     }
 
@@ -258,6 +258,434 @@ public:
             magnetic_values[4U + i] = m_filter.m_quaternion_reset_delta.coefficients()(i);
         }
         trace_bytes(magnetic_values.data(), sizeof(magnetic_values));
+        auto const & gnss = m_filter.m_gnss.lifecycle.state();
+        for (auto const & group : {gnss.velocity, gnss.horizontal_position})
+        {
+            std::fprintf(trace_file, "gnss %u %u %u %u %llu %llu %llu\n", unsigned(group.active),
+                         unsigned(group.action), unsigned(group.recovery_required), unsigned(group.stop_reason),
+                         static_cast<unsigned long long>(group.last_fuse_time_us),
+                         static_cast<unsigned long long>(group.last_reset_time_us),
+                         static_cast<unsigned long long>(group.start_time_us));
+        }
+        std::fprintf(trace_file, "navigation %u %u %u %u %u %llu %llu\n", m_filter.m_gnss.corrections,
+                     m_filter.m_baro_updates, unsigned(m_filter.m_height_aiding.reference()),
+                     unsigned(m_filter.m_height_reset_counter), unsigned(m_filter.m_vertical_velocity_reset_counter),
+                     static_cast<unsigned long long>(m_filter.m_gnss.sample_time_us),
+                     static_cast<unsigned long long>(m_filter.m_height_aiding.progress_time()));
+        std::array<double, 7U> navigation_values{m_filter.m_gnss.position_test_ratio,
+                                                 m_filter.m_gnss.velocity_test_ratio,
+                                                 m_filter.m_height_ratio,
+                                                 m_filter.m_gps_height_ratio,
+                                                 m_filter.m_height_reset_delta,
+                                                 m_filter.m_vertical_velocity_reset_delta,
+                                                 m_filter.m_gnss.previous_altitude};
+        trace_bytes(navigation_values.data(), sizeof(navigation_values));
+        for (auto source : {FormalEskf::height_type::Source::barometer, FormalEskf::height_type::Source::gnss})
+        {
+            auto const & aid = m_filter.m_height_aiding.session(source);
+            std::fprintf(
+                trace_file, "height %u %u %u %u %u %u %llu %llu %llu %llu\n", unsigned(aid.active), unsigned(aid.fault),
+                unsigned(aid.fusion_reset), unsigned(aid.stop_reason), aid.device_id, unsigned(aid.calibration_count),
+                static_cast<unsigned long long>(aid.sample_time), static_cast<unsigned long long>(aid.data_time),
+                static_cast<unsigned long long>(aid.progress_time), static_cast<unsigned long long>(aid.fused_time));
+            std::array<double, 9U> height_values{
+                aid.bias.value,        aid.bias.variance,      aid.bias.maximum_variance,
+                aid.bias.signed_ratio, aid.bias.positive_time, aid.bias.negative_time,
+                aid.bias.dt,           aid.fusion_innovation,  aid.fusion.test_ratio(0)};
+            trace_bytes(height_values.data(), sizeof(height_values));
+        }
+    }
+
+    void prepare_navigation()
+    {
+        auto & f = m_filter;
+        f.m_initialized = true;
+        f.m_time_us = clock_us;
+        f.m_covariance = FormalEskf::covariance_type::identity();
+        f.m_origin.projection.initReference(47.397742, 8.545594, clock_us);
+        f.m_origin.time_us = clock_us;
+        f.m_origin.altitude_msl_m = 488.;
+        f.m_origin.altitude_ellipsoid_m = 535.;
+        f.m_gps.device_id = 201U;
+        f.m_gps.latitude_deg = 47.397742;
+        f.m_gps.longitude_deg = 8.545594;
+        f.m_gps.altitude_msl_m = 488.;
+        f.m_gps.altitude_ellipsoid_m = 535.;
+        f.m_gps.fix_type = 3U;
+        f.m_gps.satellites_used = 12U;
+        f.m_gps.hdop = 0.7f;
+        f.m_gps.vdop = 0.9f;
+        f.m_gps.eph = 0.7f;
+        f.m_gps.epv = 1.f;
+        f.m_gps.s_variance_m_s = 0.2f;
+        f.m_gps.vel_ned_valid = true;
+        f.m_gnss.metadata_valid = true;
+        f.m_gnss.quality_result.decision = formal_eskf::runtime::GnssQualityDecision::accepted;
+        f.m_baro.baro_device_id = 401U;
+        f.m_baro.baro_alt_meter = 538.f;
+        expect(formal_eskf::succeeded(f.m_height_aiding.initialize(clock_us, 488.)), "initialize height datum");
+    }
+
+    void navigation_tick(bool gnss = true, bool barometer = true, std::uint64_t dt = 20000U)
+    {
+        auto & f = m_filter;
+        clock_us += dt;
+        f.m_time_us = clock_us;
+        f.m_gnss.sample = {};
+        if (gnss)
+        {
+            f.m_gps.timestamp_sample = clock_us;
+            f.m_gnss.sample = {clock_us, f.m_gnss.quality_result.decision};
+        }
+        if (barometer)
+        {
+            f.m_baro.timestamp_sample = clock_us;
+        }
+        f.fuse_gps();
+        if (!f.m_fault)
+        {
+            f.fuse_height();
+        }
+        f.publish(FormalEskf::imu_type{});
+        f.publish_status(clock_us);
+        capture_outputs();
+        snapshot("navigation");
+    }
+
+    void start_navigation()
+    {
+        prepare_navigation();
+        for (unsigned i = 0U; i < 23U; ++i)
+        {
+            navigation_tick();
+        }
+        expect(!m_filter.m_fault && m_filter.m_height_aiding.session(FormalEskf::height_type::Source::barometer).active,
+               "two-source navigation startup");
+    }
+
+    static void navigation_fusion(bool inhibit)
+    {
+        FormalEskfModuleTest test;
+        test.prepare_navigation();
+        test.navigation_tick();
+        auto & f = test.m_filter;
+        expect(f.m_position_reset_counter == 1U && f.m_velocity_reset_counter == 1U && f.m_height_reset_counter == 1U &&
+                   f.m_gnss.corrections == 0U,
+               "first qualified sample resets three groups without counting correction");
+        f.m_covariance = FormalEskf::covariance_type::identity();
+        f.m_covariance(3, 9) = f.m_covariance(9, 3) = 0.2;
+        f.m_covariance(0, 12) = f.m_covariance(12, 0) = 0.2;
+        f.m_gps.vel_n_m_s = 1.f;
+        f.m_gps.latitude_deg += 0.000005;
+        f.m_bias_learning_result.bias_update = {{!inhibit, !inhibit, !inhibit}, {!inhibit, !inhibit, !inhibit}};
+        test.navigation_tick();
+        expect(!f.m_fault && f.m_gnss.corrections == 3U && f.m_state.v_n(0) > 0.,
+               "velocity then position then height each count a correction");
+        expect((f.m_state.b_a(0) == 0.) == inhibit && (f.m_state.b_g(0) == 0.) == inhibit,
+               "permissions reach velocity and horizontal gain rows");
+        auto const position_progress = f.m_gnss.lifecycle.state().horizontal_position.last_fuse_time_us;
+        f.m_gps.latitude_deg += 1.;
+        f.m_gps.vel_n_m_s = 1.1f;
+        test.navigation_tick();
+        expect(!f.m_fault && f.m_gnss.lifecycle.state().velocity.last_fuse_time_us == clock_us &&
+                   f.m_gnss.lifecycle.state().horizontal_position.last_fuse_time_us == position_progress,
+               "position rejection does not undo successful velocity fusion");
+    }
+
+    enum class GnssInputCase
+    {
+        duplicate,
+        future,
+        stale,
+        velocity_invalid,
+        metadata_invalid,
+        receiver,
+        quality
+    };
+
+    static void navigation_admission(GnssInputCase scenario)
+    {
+        FormalEskfModuleTest test;
+        test.prepare_navigation();
+        auto & f = test.m_filter;
+        f.m_land.timestamp = clock_us;
+        f.m_land.landed = true;
+        f.m_land.at_rest = true;
+        for (unsigned i = 0U; i < 502U; ++i)
+        {
+            clock_us += 20000U;
+            f.m_time_us = clock_us;
+            f.m_gps.timestamp_sample = clock_us;
+            f.m_land.timestamp = clock_us;
+            f.update_gps_quality();
+        }
+        expect(f.gps_good(), "real monitor qualifies after ten seconds");
+        auto const seen = f.m_gnss.sample_time_us;
+        auto const previous = f.m_gnss.previous_fix.getProjectionReferenceTimestamp();
+        clock_us += 600000U;
+        f.m_time_us = clock_us;
+        f.m_gps.timestamp_sample = clock_us;
+        switch (scenario)
+        {
+        case GnssInputCase::duplicate:
+            f.m_gps.timestamp_sample = seen;
+            break;
+        case GnssInputCase::future:
+            f.m_gps.timestamp_sample = clock_us + 1U;
+            break;
+        case GnssInputCase::stale:
+            f.m_gps.timestamp_sample = clock_us - 500001U;
+            break;
+        case GnssInputCase::velocity_invalid:
+            f.m_gps.vel_ned_valid = false;
+            break;
+        case GnssInputCase::metadata_invalid:
+            f.m_gps.latitude_deg = std::numeric_limits<double>::quiet_NaN();
+            break;
+        case GnssInputCase::receiver:
+            ++f.m_gps.device_id;
+            break;
+        case GnssInputCase::quality:
+            f.m_gps.satellites_used = 1U;
+            break;
+        }
+        f.update_gps_quality();
+        bool const ignored = scenario == GnssInputCase::duplicate || scenario == GnssInputCase::future ||
+                             scenario == GnssInputCase::stale || scenario == GnssInputCase::velocity_invalid;
+        expect((f.m_gnss.sample.time_us == 0U) == ignored && !f.m_fault, "admission precedes qualification");
+        if (ignored)
+        {
+            expect(f.m_gnss.previous_fix.getProjectionReferenceTimestamp() == previous,
+                   "ignored arrival does not advance drift reference");
+        }
+        if (scenario == GnssInputCase::metadata_invalid)
+        {
+            expect(!f.m_gnss.metadata_valid && !f.m_gnss.sample.quality_available && f.m_rejections == 1U,
+                   "malformed coordinates revoke metadata, not a bad-fix substitute");
+        }
+        if (scenario == GnssInputCase::receiver || scenario == GnssInputCase::quality)
+        {
+            expect(!f.gps_good(), "changed receiver and failed checks cannot retain qualification");
+        }
+        test.snapshot("GNSS-admission");
+    }
+
+    static void navigation_outage()
+    {
+        FormalEskfModuleTest test;
+        test.start_navigation();
+        auto & f = test.m_filter;
+        auto const resets = f.m_height_reset_counter;
+        test.navigation_tick(false, true, 999999U);
+        expect(f.m_height_aiding.reference() == FormalEskf::height_type::Source::gnss, "height data grace");
+        test.navigation_tick(false, true, 1U);
+        expect(f.m_height_aiding.reference() == FormalEskf::height_type::Source::barometer &&
+                   f.m_height_reset_counter == resets,
+               "fallback switches reference without reset");
+        test.navigation_tick(false, true, 6000001U);
+        expect(!f.m_gnss.lifecycle.state().velocity.active && !f.gps_velocity_valid(), "seven-second GNSS stop");
+        f.m_gps.altitude_msl_m += 5.;
+        test.navigation_tick();
+        expect(!f.m_fault && f.m_height_reset_counter == std::uint8_t(resets + 1U) &&
+                   f.m_height_aiding.reference() == FormalEskf::height_type::Source::gnss,
+               "returning qualified GNSS reclaims height with real reset");
+    }
+
+    static void navigation_failure(bool reset)
+    {
+        FormalEskfModuleTest test;
+        test.prepare_navigation();
+        if (!reset)
+        {
+            test.navigation_tick();
+        }
+        auto & f = test.m_filter;
+        auto const velocity_resets = f.m_velocity_reset_counter;
+        auto const position_resets = f.m_position_reset_counter;
+        auto const corrections = f.m_gnss.corrections;
+        // Fault injection after metadata qualification: exercise partial failure of
+        // the second operation, not external-coordinate admission.
+        f.m_gps.latitude_deg = std::numeric_limits<double>::quiet_NaN();
+        f.m_gps.vel_n_m_s = 1.f;
+        test.navigation_tick();
+        expect(f.m_fault && f.m_errors == 1U && f.m_state.v_n(0) > 0.,
+               "position failure preserves preceding velocity result and faults once");
+        expect(f.m_position_reset_counter == position_resets &&
+                   f.m_velocity_reset_counter == velocity_resets + unsigned(reset) &&
+                   f.m_gnss.corrections == corrections + unsigned(!reset),
+               "only the completed velocity operation receives success bookkeeping");
+    }
+
+    enum class HeightInputCase
+    {
+        duplicate,
+        future,
+        stale,
+        invalid,
+        calibration,
+        unqualified
+    };
+
+    static void height_admission(HeightInputCase scenario)
+    {
+        FormalEskfModuleTest test;
+        test.start_navigation();
+        auto & f = test.m_filter;
+        auto const progress = f.m_height_aiding.progress_time();
+        auto const sample_time = f.m_height_aiding.session(FormalEskf::height_type::Source::barometer).sample_time;
+        clock_us += scenario == HeightInputCase::stale ? 220000U : 20000U;
+        f.m_time_us = clock_us;
+        f.m_gnss.sample = {};
+        f.m_baro.timestamp_sample = clock_us;
+        switch (scenario)
+        {
+        case HeightInputCase::duplicate:
+            f.m_baro.timestamp_sample = sample_time;
+            break;
+        case HeightInputCase::future:
+            f.m_baro.timestamp_sample = clock_us + 1U;
+            break;
+        case HeightInputCase::stale:
+            f.m_baro.timestamp_sample = clock_us - 200000U;
+            break;
+        case HeightInputCase::invalid:
+            f.m_baro.baro_alt_meter = std::numeric_limits<float>::quiet_NaN();
+            break;
+        case HeightInputCase::calibration:
+            ++f.m_baro.calibration_count;
+            break;
+        case HeightInputCase::unqualified:
+            f.m_gnss.sample = {clock_us, formal_eskf::runtime::GnssQualityDecision::rejected};
+            f.m_gnss.quality_result.decision = formal_eskf::runtime::GnssQualityDecision::rejected;
+            f.m_gps.timestamp_sample = clock_us;
+            break;
+        }
+        f.fuse_height();
+        expect(!f.m_fault, "height admission rejection is not an estimator fault");
+        if (scenario != HeightInputCase::unqualified)
+        {
+            expect(f.m_height_aiding.progress_time() == progress, "invalid/unready source cannot report progress");
+        }
+        else
+        {
+            expect(!f.m_height_aiding.session(FormalEskf::height_type::Source::gnss).active,
+                   "unqualified GNSS cannot claim height fusion");
+        }
+        test.snapshot("height-admission");
+    }
+
+    static void height_transaction_failure()
+    {
+        FormalEskfModuleTest test;
+        test.start_navigation();
+        auto & f = test.m_filter;
+        auto const prior = f.m_state;
+        auto const covariance = f.m_covariance;
+        auto const progress = f.m_height_aiding.progress_time();
+        auto const bias = f.m_height_aiding.session(FormalEskf::height_type::Source::barometer).bias.value;
+        auto const resets = f.m_height_reset_counter;
+        clock_us += 20000U;
+        f.m_time_us = clock_us;
+        f.m_gnss.sample = {clock_us, formal_eskf::runtime::GnssQualityDecision::accepted};
+        f.m_gps.timestamp_sample = clock_us;
+        f.m_baro.timestamp_sample = clock_us;
+        f.m_baro.baro_alt_meter += 1.f;
+        // Invalid covariance fails the first numerical operation but must also roll
+        // back the preceding tentative bias update and all source watermarks.
+        f.m_covariance(0, 0) = std::numeric_limits<double>::quiet_NaN();
+        f.fuse_height();
+        expect(f.m_fault && f.m_errors == 1U && f.m_height_aiding.progress_time() == progress &&
+                   f.m_height_reset_counter == resets &&
+                   f.m_height_aiding.session(FormalEskf::height_type::Source::barometer).bias.value == bias &&
+                   formal_eskf::linalg::max_abs(f.m_state.p_n - prior.p_n) == 0. &&
+                   f.m_covariance(2, 2) == covariance(2, 2),
+               "failed height transaction leaves estimator/history intact");
+        test.snapshot("height-rollback");
+    }
+
+    static void navigation_rejected_quality()
+    {
+        FormalEskfModuleTest test;
+        test.start_navigation();
+        auto & f = test.m_filter;
+        auto const progress = f.m_gnss.lifecycle.state().velocity.last_fuse_time_us;
+        auto const corrections = f.m_gnss.corrections;
+        f.m_gnss.quality_result.decision = formal_eskf::runtime::GnssQualityDecision::rejected;
+        f.m_gps.vel_d_m_s = 1.f;
+        test.navigation_tick();
+        expect(!f.m_fault && f.m_gnss.vertical_innovation.active && f.m_gnss.vertical_innovation.innovation < 0. &&
+                   f.m_gnss.velocity_test_ratio > 0. &&
+                   f.m_gnss.lifecycle.state().velocity.last_fuse_time_us == progress &&
+                   f.m_gnss.corrections == corrections,
+               "active rejected-quality source supplies health evidence without fusion");
+        f.m_gnss.metadata_valid = false;
+        test.navigation_tick();
+        expect(!f.m_gnss.vertical_innovation.active, "invalid metadata clears velocity evidence");
+    }
+
+    static void navigation_timeout()
+    {
+        FormalEskfModuleTest test;
+        test.start_navigation();
+        auto & f = test.m_filter;
+        auto const position_resets = f.m_position_reset_counter;
+        auto const velocity_resets = f.m_velocity_reset_counter;
+        f.m_gps.vel_n_m_s = 100.f;
+        f.m_gps.latitude_deg += 0.01;
+        for (unsigned i = 0U; i < 350U; ++i)
+        {
+            test.navigation_tick();
+        }
+        expect(f.m_position_reset_counter == position_resets && f.m_velocity_reset_counter == velocity_resets,
+               "coupled timeout is strict at seven seconds");
+        test.navigation_tick();
+        expect(!f.m_fault && f.m_position_reset_counter == position_resets + 1U &&
+                   f.m_velocity_reset_counter == velocity_resets + 1U,
+               "both horizontal decisions survive velocity-first reset feedback");
+    }
+
+    static void height_combined_resets()
+    {
+        FormalEskfModuleTest test;
+        test.start_navigation();
+        auto & f = test.m_filter;
+        f.m_gnss.quality_result.decision = formal_eskf::runtime::GnssQualityDecision::rejected;
+        test.navigation_tick();
+        f.m_baro.baro_alt_meter += 1000.f;
+        for (unsigned i = 0U; i < 250U; ++i)
+        {
+            test.navigation_tick(false);
+        }
+        auto const position = f.m_state.p_n(2);
+        auto const height_resets = f.m_height_reset_counter;
+        auto const vertical_resets = f.m_vertical_velocity_reset_counter;
+        f.m_gps.altitude_msl_m += 3.;
+        f.m_gnss.quality_result.decision = formal_eskf::runtime::GnssQualityDecision::accepted;
+        test.navigation_tick();
+        expect(!f.m_fault && f.m_height_reset_counter == std::uint8_t(height_resets + 2U) &&
+                   std::abs(f.m_height_reset_delta - (-3. - position)) < 1e-12 &&
+                   f.m_vertical_velocity_reset_counter == std::uint8_t(vertical_resets + 1U),
+               "pre-height Down reset and two height resets retain distinct counters and aggregate height delta");
+    }
+
+    static void navigation_context(bool fresh_land, bool armed)
+    {
+        FormalEskfModuleTest test;
+        test.prepare_navigation();
+        auto & f = test.m_filter;
+        f.m_vehicle_status.timestamp = clock_us;
+        f.m_vehicle_status.arming_state =
+            armed ? vehicle_status_s::ARMING_STATE_ARMED : vehicle_status_s::ARMING_STATE_DISARMED;
+        f.m_land.timestamp = fresh_land ? clock_us : clock_us - 3000000U;
+        f.m_land.landed = true;
+        f.m_land.at_rest = true;
+        f.m_gps.vel_n_m_s = 10.f;
+        f.m_gps.timestamp_sample = clock_us;
+        f.update_gps_quality();
+        // Ground/rest checks reject velocity; fresh land overrides armed state.
+        expect(!f.m_fault && f.m_gnss.quality_result.failures.horizontal_speed == fresh_land,
+               "fresh land context overrides arming; exactly three-second-old land is unavailable");
+        test.snapshot("GNSS-context");
     }
 
     void set_horizontal_aiding(bool enabled)
@@ -265,16 +693,16 @@ public:
         // Establish the preceding GNSS phase's lifecycle state. Magnetic tests
         // exercise fuse_mag(), not GNSS qualification or its numerical update.
         using Gnss = formal_eskf::runtime::GnssFusion;
-        m_filter.m_gnss_fusion.reset();
+        m_filter.m_gnss.lifecycle.reset();
         if (enabled)
         {
             Gnss::Conditions conditions;
             conditions.horizontal_position = {true, true, true};
-            expect(formal_eskf::succeeded(
-                       m_filter.m_gnss_fusion.update(clock_us, conditions, FormalEskf::gnss_fusion_parameters,
-                                                     {clock_us, formal_eskf::runtime::GnssQualityDecision::accepted})),
+            expect(formal_eskf::succeeded(m_filter.m_gnss.lifecycle.update(
+                       clock_us, conditions, formal_eskf::px4::profile::gnss::timing,
+                       {clock_us, formal_eskf::runtime::GnssQualityDecision::accepted})),
                    "prepare horizontal aiding context");
-            expect(formal_eskf::succeeded(m_filter.m_gnss_fusion.record_fusion(
+            expect(formal_eskf::succeeded(m_filter.m_gnss.lifecycle.record_fusion(
                        Gnss::Group::horizontal_position, clock_us, formal_eskf::runtime::FusionDecision::fused)),
                    "prepare preceding fusion feedback");
         }
@@ -1149,7 +1577,7 @@ public:
             test.m_filter.m_covariance(0U, 0U) = std::numeric_limits<double>::quiet_NaN();
             break;
         case Fault::quality:
-            test.m_filter.m_gnss_quality_parameters.velocity_limit = std::numeric_limits<double>::quiet_NaN();
+            test.m_filter.m_gnss.quality_parameters.velocity_limit = std::numeric_limits<double>::quiet_NaN();
             break;
         }
         test.tick();
@@ -1248,6 +1676,31 @@ int main(int argc, char ** argv)
     FormalEskfModuleTest::magnetic_model_lookup();
     FormalEskfModuleTest::magnetic_reference_change(false);
     FormalEskfModuleTest::magnetic_reference_change(true);
+    FormalEskfModuleTest::navigation_fusion(false);
+    FormalEskfModuleTest::navigation_fusion(true);
+    using GnssInputCase = FormalEskfModuleTest::GnssInputCase;
+    for (auto scenario :
+         {GnssInputCase::duplicate, GnssInputCase::future, GnssInputCase::stale, GnssInputCase::velocity_invalid,
+          GnssInputCase::metadata_invalid, GnssInputCase::receiver, GnssInputCase::quality})
+    {
+        FormalEskfModuleTest::navigation_admission(scenario);
+    }
+    FormalEskfModuleTest::navigation_outage();
+    FormalEskfModuleTest::navigation_failure(false);
+    FormalEskfModuleTest::navigation_failure(true);
+    using HeightInputCase = FormalEskfModuleTest::HeightInputCase;
+    for (auto scenario : {HeightInputCase::duplicate, HeightInputCase::future, HeightInputCase::stale,
+                          HeightInputCase::invalid, HeightInputCase::calibration, HeightInputCase::unqualified})
+    {
+        FormalEskfModuleTest::height_admission(scenario);
+    }
+    FormalEskfModuleTest::height_transaction_failure();
+    FormalEskfModuleTest::navigation_rejected_quality();
+    FormalEskfModuleTest::navigation_timeout();
+    FormalEskfModuleTest::height_combined_resets();
+    FormalEskfModuleTest::navigation_context(true, true);
+    FormalEskfModuleTest::navigation_context(false, true);
+    FormalEskfModuleTest::navigation_context(false, false);
     using Fault = FormalEskfModuleTest::Fault;
     for (auto fault :
          {Fault::non_finite, Fault::source_change, Fault::gyro_source_change, Fault::calibration_change,

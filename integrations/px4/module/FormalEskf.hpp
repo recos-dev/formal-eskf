@@ -63,6 +63,9 @@ private:
     using types_type = formal_eskf::EskfTypes<backend_type, formal_eskf::configuration::Ins>;
     using state_type = types_type::nominal_state_type;
     using covariance_type = types_type::error_covariance_type;
+    using gnss_lifecycle_type = formal_eskf::runtime::GnssFusion;
+    using vector2_type = formal_eskf::linalg::Vector<backend_type, 2>;
+    using matrix2_type = formal_eskf::linalg::Matrix<backend_type, 2, 2>;
     using vector3_type = formal_eskf::linalg::Vector<backend_type, 3>;
     using matrix3_type = formal_eskf::linalg::Matrix<backend_type, 3, 3>;
     using imu_type = types_type::imu_sample_type;
@@ -136,6 +139,31 @@ private:
         double altitude_ellipsoid_m{};
     };
 
+    struct Gnss
+    {
+        MapProjection previous_fix{};
+        formal_eskf::runtime::GnssQuality<backend_type> quality{};
+        formal_eskf::runtime::GnssQualityParameters<double> quality_parameters{};
+        formal_eskf::runtime::GnssQualityResult<double> quality_result{};
+        gnss_lifecycle_type lifecycle{};
+        gnss_lifecycle_type::Sample sample{};
+        vertical_health_type::Innovation vertical_innovation{};
+        double previous_altitude{};
+        std::uint32_t device_id{};
+        std::uint64_t sample_time_us{};
+        bool metadata_valid{};
+        std::uint32_t corrections{};
+        double position_test_ratio{}, velocity_test_ratio{};
+    };
+
+    struct GnssVelocityObservation
+    {
+        vector3_type velocity_n{};
+        vector3_type variances{};
+        matrix3_type covariance{};
+        formal_eskf::runtime::GnssVelocityConditions<double> conditions{};
+    };
+
     struct Gravity
     {
         gravity_sampler_type sampler{};
@@ -185,6 +213,12 @@ private:
     bool accept_imu(ImuInput const & sample);
     void reset_imu_observations();
     void fuse_gps();
+    formal_eskf::runtime::GnssQualitySample<backend_type> gnss_quality_sample() const;
+    formal_eskf::runtime::GnssQualityMotion gnss_motion() const;
+    GnssVelocityObservation gnss_velocity_observation() const;
+    void check_gnss_velocity_observation(GnssVelocityObservation const & observation);
+    bool fuse_gps_velocity(GnssVelocityObservation const & observation);
+    bool fuse_gps_position();
     void fuse_mag();
     void initialize_magnetic_aiding(magnetic_lifecycle_type::Source const & source, std::uint64_t sample_time_us);
     magnetic_lifecycle_type::Conditions magnetic_conditions() const;
@@ -243,13 +277,14 @@ private:
     bool m_fault{};
 
     height_type m_height_aiding{};
+    double m_height_reset_delta{};
+    std::uint8_t m_height_reset_counter{};
     formal_eskf::runtime::TiltAlignment<backend_type> m_tilt_alignment{};
     Gravity m_gravity{};
     bool m_gravity_enabled = true;
     bias_learning_type m_bias_learning{bias_learning_parameters()};
     bias_learning_type::Result m_bias_learning_result{};
     vertical_health_type m_vertical_health{};
-    vertical_health_type::Innovation m_gps_velocity_innovation{};
     double m_average_imu_interval = formal_eskf::px4::profile::imu::nominal_interval_s;
     Magnetic m_magnetic{};
     bool m_heading_aligned{};
@@ -259,17 +294,7 @@ private:
     magnetic_model_type::Settings m_magnetic_settings{};
     uint64_t m_mag_model_origin_time{};
     uint32_t m_mag_model_unavailable{};
-    MapProjection m_gps_previous_fix{};
-    formal_eskf::runtime::GnssQuality<backend_type> m_gnss_quality{};
-    formal_eskf::runtime::GnssQualityParameters<double> m_gnss_quality_parameters{};
-    formal_eskf::runtime::GnssQualityResult<double> m_gnss_quality_result{};
-    formal_eskf::runtime::GnssFusion m_gnss_fusion{};
-    formal_eskf::runtime::GnssFusion::Sample m_gnss_sample{};
-    // Horizontal-only profile; HeightAiding owns GNSS/barometer height arbitration.
-    static constexpr formal_eskf::runtime::GnssFusion::Parameters gnss_fusion_parameters{7000000, 1000000, 5000000};
-    double m_gps_previous_alt{};
-    uint32_t m_gps_device_id{};
-    bool m_gps_metadata_valid{};
+    Gnss m_gnss{};
     formal_eskf::linalg::Vector<backend_type, 2> m_position_reset_delta{};
     vector3_type m_velocity_reset_delta{};
     uint8_t m_position_reset_counter{}, m_velocity_reset_counter{}, m_vertical_velocity_reset_counter{},
@@ -282,10 +307,10 @@ private:
     vehicle_land_detected_s m_land{};
     vehicle_status_s m_vehicle_status{};
     uint64_t m_last_status{}, m_last_output{};
-    uint64_t m_gps_seen{}, m_max_fusion_age{};
-    uint32_t m_predictions{}, m_gps_updates{}, m_baro_updates{};
+    uint64_t m_max_fusion_age{};
+    uint32_t m_predictions{}, m_baro_updates{};
     uint32_t m_rejections{}, m_errors{}, m_gaps{};
-    double m_pos_ratio{}, m_vel_ratio{}, m_height_ratio{}, m_gps_height_ratio{};
+    double m_height_ratio{}, m_gps_height_ratio{};
     // PX4 shell status runs on another thread; serialize diagnostic reads.
     std::mutex m_state_mutex;
     perf_counter_t m_cycle_perf{perf_alloc(PC_ELAPSED, "formal_eskf: cycle")};

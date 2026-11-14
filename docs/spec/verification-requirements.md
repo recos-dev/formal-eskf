@@ -2177,9 +2177,11 @@ Lean/ESBMC proof and does not establish complete EKF2 equivalence.
 ### R-HEIGHT-FUSION: PX4 GNSS/barometer height management
 
 `integrations/px4/module/HeightAiding.hpp` owns the two-source deployment policy;
-`HeightBias.hpp` holds separate scalar sensor offsets, outside the 15-state INS.
+its `HeightBias` type holds separate scalar sensor offsets, outside the 15-state INS.
 The module supplies calibrated MSL altitude, source identity, qualified GNSS,
-ordered IMU time and velocity-aiding activity. uORB, clocks and estimator ownership
+ordered IMU time and velocity-aiding activity. The helper returns applied reset
+counts/deltas; the module owns and publishes accumulated reset history only
+after the height transaction succeeds. uORB, clocks and estimator ownership
 remain in the module. No numerical-core equations or state dimensions change.
 The caller retains the core's finite-state, unit-quaternion and symmetric-PSD
 covariance preconditions; this helper does not prove or recheck positive semidefiniteness.

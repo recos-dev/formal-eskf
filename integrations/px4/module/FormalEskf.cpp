@@ -498,8 +498,8 @@ bool FormalEskf::update_imu_health(std::uint8_t accelerometer_clipping)
     vertical_health_type::Observations observations;
     observations.barometer_height = m_height_aiding.vertical_innovation(height_type::Source::barometer);
     observations.gnss_height = m_height_aiding.vertical_innovation(height_type::Source::gnss);
-    observations.gnss_velocity_down = m_gps_velocity_innovation;
-    observations.gnss_velocity_down.active &= m_gnss_fusion.state().velocity.active;
+    observations.gnss_velocity_down = m_gnss.vertical_innovation;
+    observations.gnss_velocity_down.active &= m_gnss.lifecycle.state().velocity.active;
     vertical_health_type::Sample health_sample;
     health_sample.time_us = m_time_us;
     health_sample.average_interval_s = m_average_imu_interval;

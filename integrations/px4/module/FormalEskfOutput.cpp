@@ -44,8 +44,8 @@ void FormalEskf::publish(imu_type const & imu)
     local.xy_valid = local.v_xy_valid = nav_valid;
     local.z_valid = m_height_aiding.valid(m_time_us);
     local.v_z_valid = gps_velocity_valid() || local.z_valid;
-    local.delta_z = m_height_aiding.reset_delta();
-    local.z_reset_counter = m_height_aiding.reset_counter();
+    local.delta_z = m_height_reset_delta;
+    local.z_reset_counter = m_height_reset_counter;
     for (size_t axis = 0; axis < 2; ++axis)
     {
         local.delta_xy[axis] = m_position_reset_delta(axis);
@@ -144,11 +144,11 @@ void FormalEskf::publish_status(uint64_t now)
     {
         status.control_mode_flags |= (1ULL << status.CS_MAG_HDG);
     }
-    if (healthy && m_gnss_fusion.state().horizontal_position.active)
+    if (healthy && m_gnss.lifecycle.state().horizontal_position.active)
     {
         status.control_mode_flags |= (1ULL << status.CS_GNSS_POS);
     }
-    if (healthy && m_gnss_fusion.state().velocity.active)
+    if (healthy && m_gnss.lifecycle.state().velocity.active)
     {
         status.control_mode_flags |= (1ULL << status.CS_GNSS_VEL);
     }
@@ -169,16 +169,17 @@ void FormalEskf::publish_status(uint64_t now)
     status.reset_count_pos_ne = m_position_reset_counter;
     status.reset_count_vel_ne = m_velocity_reset_counter;
     status.reset_count_vel_d = m_vertical_velocity_reset_counter;
-    status.reset_count_pod_d = m_height_aiding.reset_counter();
+    status.reset_count_pod_d = m_height_reset_counter;
     status.filter_fault_flags = (m_fault || m_vertical_health.state().bad_vertical_acceleration) ? (1U << 16) : 0U;
     status.hdg_test_ratio = m_magnetic.test_ratio;
-    status.vel_test_ratio = m_vel_ratio;
-    status.pos_test_ratio = m_pos_ratio;
+    status.vel_test_ratio = m_gnss.velocity_test_ratio;
+    status.pos_test_ratio = m_gnss.position_test_ratio;
     status.hgt_test_ratio =
         m_height_aiding.reference() == height_type::Source::gnss ? m_gps_height_ratio : m_height_ratio;
     status.pre_flt_fail_innov_heading = !mag_valid || m_magnetic.test_ratio > 1.;
-    status.pre_flt_fail_innov_vel_horiz = status.pre_flt_fail_innov_vel_vert = !gps_vel_valid || m_vel_ratio > 1.;
-    status.pre_flt_fail_innov_pos_horiz = !gps_pos_valid || m_pos_ratio > 1.;
+    status.pre_flt_fail_innov_vel_horiz = status.pre_flt_fail_innov_vel_vert =
+        !gps_vel_valid || m_gnss.velocity_test_ratio > 1.;
+    status.pre_flt_fail_innov_pos_horiz = !gps_pos_valid || m_gnss.position_test_ratio > 1.;
     status.pre_flt_fail_innov_height =
         !m_height_aiding.valid(m_time_us) ||
         !((baro_active && m_height_ratio <= 1.) || (gps_height_active && m_gps_height_ratio <= 1.));
@@ -200,8 +201,8 @@ void FormalEskf::publish_status(uint64_t now)
     flags.cs_tilt_align = healthy && m_tilt_alignment.aligned();
     flags.cs_gravity_vector = healthy && m_gravity.active;
     flags.cs_yaw_align = healthy && m_heading_aligned;
-    flags.cs_gnss_pos = healthy && m_gnss_fusion.state().horizontal_position.active;
-    flags.cs_gnss_vel = healthy && m_gnss_fusion.state().velocity.active;
+    flags.cs_gnss_pos = healthy && m_gnss.lifecycle.state().horizontal_position.active;
+    flags.cs_gnss_vel = healthy && m_gnss.lifecycle.state().velocity.active;
     flags.cs_gps_hgt = gps_height_active;
     flags.cs_mag = healthy && m_magnetic.lifecycle.state().active;
     flags.cs_mag_hdg = mag_aiding;
@@ -214,8 +215,8 @@ void FormalEskf::publish_status(uint64_t now)
     flags.cs_in_air = !m_land.landed;
     flags.cs_inertial_dead_reckoning = !(healthy && (gps_position_valid(1000000) || gps_velocity_valid(1000000)));
     flags.fs_bad_acc_vertical = m_vertical_health.state().bad_vertical_acceleration;
-    flags.reject_hor_pos = m_pos_ratio > 1.;
-    flags.reject_hor_vel = flags.reject_ver_vel = m_vel_ratio > 1.;
+    flags.reject_hor_pos = m_gnss.position_test_ratio > 1.;
+    flags.reject_hor_vel = flags.reject_ver_vel = m_gnss.velocity_test_ratio > 1.;
     flags.reject_ver_pos = status.hgt_test_ratio > 1.f;
     flags.reject_yaw = m_magnetic.observation.fusion.diagnostics_valid && m_magnetic.test_ratio > 1.;
     m_flags_pub.publish(flags);
@@ -246,11 +247,11 @@ int FormalEskf::print_status()
     std::lock_guard<std::mutex> guard(m_state_mutex);
     PX4_INFO("formal-eskf INS / PX4 matrix / binary64 / C++20 / single instance");
     PX4_INFO("initialized=%d fault=%d predictions=%u gps=%u mag=%u baro=%u", m_initialized, m_fault, m_predictions,
-             m_gps_updates, m_magnetic.corrections, m_baro_updates);
+             m_gnss.corrections, m_magnetic.corrections, m_baro_updates);
     PX4_INFO("gnss_quality=%d qualified=%d metadata_valid=%d fail_flags=0x%x pos_active=%d vel_active=%d resets=%u/%u",
-             int(m_gnss_quality_result.decision), m_gnss_quality_result.qualified, m_gps_metadata_valid,
-             unsigned(gps_failure_flags()), m_gnss_fusion.state().horizontal_position.active,
-             m_gnss_fusion.state().velocity.active, unsigned(m_position_reset_counter),
+             int(m_gnss.quality_result.decision), m_gnss.quality_result.qualified, m_gnss.metadata_valid,
+             unsigned(gps_failure_flags()), m_gnss.lifecycle.state().horizontal_position.active,
+             m_gnss.lifecycle.state().velocity.active, unsigned(m_position_reset_counter),
              unsigned(m_velocity_reset_counter));
     PX4_INFO("rejections=%u numerical_errors=%u gap_holds=%u max_gps_age_us=%llu", m_rejections, m_errors, m_gaps,
              (unsigned long long)m_max_fusion_age);
@@ -269,7 +270,7 @@ int FormalEskf::print_status()
     auto const & gps = m_height_aiding.session(height_type::Source::gnss);
     PX4_INFO("height: ref=%u baro=%u gnss=%u baro_fault=%u resets=%u vz_resets=%u",
              unsigned(m_height_aiding.reference()), unsigned(baro.active), unsigned(gps.active), unsigned(baro.fault),
-             unsigned(m_height_aiding.reset_counter()), unsigned(m_vertical_velocity_reset_counter));
+             unsigned(m_height_reset_counter), unsigned(m_vertical_velocity_reset_counter));
     PX4_INFO("height bias: baro=%.3f gnss=%.3f m", baro.bias.value, gps.bias.value);
     unsigned accel_mask{}, gyro_mask{};
     for (size_t axis = 0; axis < 3; ++axis)

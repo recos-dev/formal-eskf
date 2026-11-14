@@ -13,6 +13,56 @@ See the [integration guide](README.md) for current setup and behavior,
 [review criteria](../../docs/spec/formal-verification-traceability-and-review-criteria.md)
 for requirement/evidence acceptance.
 
+## Navigation ownership refactor validation: 2026-11-14
+
+A-01 batch 4 uses `ec85c36` as its baseline. GNSS history is grouped in one
+plain record; quality conversion, motion context, velocity diagnostics and
+velocity/position execution are named operations. `HeightAiding` retains its
+source arbitration, datum/offset history and transactional state/P update.
+Admission, barometer preparation and recovery have separate responsibilities;
+its sole-use `HeightBias` type is consolidated into that header. Applied height
+reset deltas/counts return to the estimator, which owns published reset history.
+Fixed settings move to `DeploymentProfile` without changing values or arithmetic.
+
+| Check | Result |
+| --- | --- |
+| Original/current/installed production module | 78 scenarios passed; 30,382,040 trace bytes identical |
+| Native CTest, three backends | 119 passed |
+| Module and fixture ASan/UBSan | 78 scenarios passed |
+| Package tests; installed identity | 8 passed; 58 files verified |
+| Repository Cppcheck unix32/unix64; formatting; pinned PX4 build | Passed |
+| Independent ULog checks; ground fault/recovery checks | 18/18; 20/20 passed |
+| SIH position / velocity / attitude RMSE | 0.164 m / 0.257 m/s / 1.678 degrees |
+
+The 25 additional production scenarios cover GNSS quality/admission, receiver
+changes, context precedence, independent rejection and bias permissions, coupled
+resets, degraded-quality health evidence, height fallback/re-entry, source and
+calibration changes, combined height/Down-velocity resets and numerical failures.
+The same assertions run against baseline/current sources; only private-member
+access changes. Traces include complete nominal state/covariance, navigation and
+magnetic history/diagnostics/reset data and seven uORB payloads. Native height
+tests retain scalar/backend coverage and now account for returned reset results
+at the caller, as the module does.
+
+GNSS operations retain partial success if a later group fails; the two-source
+height update still commits only after all operations succeed. Observation bias
+is frozen before offset learning, barometer precedes GNSS, and velocity consumes
+preceding height/health evidence. GNSS admission includes the 500 ms boundary;
+height admission rejects its 200/500 ms boundaries. An initial new fixture
+incorrectly expected the GNSS boundary to expire; its assertion/input was corrected
+against the unchanged baseline before comparison. A native build also caught a
+narrowing counter accumulation, fixed with an explicit modulo-256 conversion.
+Neither required changing estimator behavior or loosening numerical assertions.
+
+Evidence is in `output/px4-navigation-refactor-20261114/summary.json`. Stack
+reports contain only static or bounded frames with unchanged largest frames;
+this does not bound the full target call chain. Advisory analysis of the four
+module units retains the existing CLI `constParameter` finding and dependency
+findings. Sanitizers cover the module/fixture, not all PX4 archives; leak detection
+is disabled. Shared core/runtime, replay and Lean/ESBMC bodies are unchanged.
+These checks do not establish hardware, concurrency, WCET, delayed-fusion or
+complete PX4-RT acceptance.
+
 ## Magnetic ownership refactor validation: 2026-11-14
 
 A-01 batch 3 uses `5c781f7`, including the separately committed replay fix,

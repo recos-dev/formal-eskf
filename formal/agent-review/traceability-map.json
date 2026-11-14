@@ -3677,6 +3677,14 @@
           {
             "file": "integrations/px4/module/FormalEskf.cpp",
             "symbol": "void FormalEskf::process_imu("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "bool FormalEskf::fuse_gps_velocity("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "bool FormalEskf::fuse_gps_position("
           }
         ],
         "esbmc": []
@@ -3917,6 +3925,14 @@
           {
             "file": "integrations/px4/module/HeightAiding.hpp",
             "symbol": "void HeightAiding<Linalg>::process("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "bool FormalEskf::fuse_gps_velocity("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "void FormalEskf::check_gnss_velocity_observation("
           }
         ],
         "esbmc": []
@@ -3969,6 +3985,14 @@
           {
             "file": "integrations/px4/module/FormalEskfNavigation.cpp",
             "symbol": "void FormalEskf::fuse_gps()"
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "bool FormalEskf::fuse_gps_velocity("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "bool FormalEskf::fuse_gps_position("
           }
         ],
         "esbmc": []
@@ -4085,6 +4109,14 @@
           {
             "file": "integrations/px4/module/FormalEskfNavigation.cpp",
             "symbol": "void FormalEskf::fuse_gps()"
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "bool FormalEskf::fuse_gps_velocity("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "bool FormalEskf::fuse_gps_position("
           }
         ],
         "esbmc": []
@@ -4107,7 +4139,7 @@
             "symbol": "class HeightAiding"
           },
           {
-            "file": "integrations/px4/module/HeightBias.hpp",
+            "file": "integrations/px4/module/HeightAiding.hpp",
             "symbol": "struct HeightBias"
           },
           {
@@ -4129,6 +4161,10 @@
           {
             "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
             "symbol": "struct VerticalAccelerationTimes"
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "bool FormalEskf::fuse_gps_velocity("
           }
         ],
         "esbmc": []
@@ -4185,6 +4221,14 @@
           {
             "file": "integrations/px4/module/FormalEskfNavigation.cpp",
             "symbol": "void FormalEskf::update_gps_quality()"
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "FormalEskf::gnss_quality_sample() const"
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "FormalEskf::gnss_motion() const"
           }
         ],
         "esbmc": []

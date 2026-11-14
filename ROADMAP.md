@@ -289,3 +289,33 @@ verification, numerical error bounds, and certification remain separate work.
 Keep implementation status, formal evidence and physical validation separate.
 Do not turn historical notes, test counts or a successful demo into a whole-project
 completion percentage or an implicit full-EKF2-parity requirement.
+
+## Defensive-check and computation cleanup
+
+Baseline: `9efbf77`; authorized on 2026-11-15 for sequential implementation,
+self-review and commits. This is the implementation follow-up to the nine-group
+call-graph audit (194 predicates: 147 retained, 47 conditional candidates;
+78 distinct computation entries). It does not change the F-series priorities.
+The numbered candidates below refer to the fixed 28-item review list.
+
+| Batch | Candidates | Work | Status |
+|---|---|---|---|
+| DC-01 | 5, 9, 11, 12, 20, 22, 23, 27, 28 | Construction-based scans, local reuse and fixed Jacobians | Pending |
+| DC-02 | 1, 2 | Symmetry validation and residual computation | Pending |
+| DC-03 | 3, 7, 13, 16, 17 | Transactional forwarding and state initialization | Pending |
+| DC-04 | 8, 19, 21, 26 | Numerical implication and innovation comparisons | Pending |
+| DC-05 | 6, 10 | Prediction input ownership and common mathematics | Pending |
+| DC-06 | 14, 15 | Injection/reset validation and angle computations | Pending |
+| DC-07 | 4, 18, 24, 25 | Same-call gate/correction and magnetic model preparation | Pending |
+| DC-08 | All; three sparse-algebra proposals | Cross-profile acceptance and final disposition | Pending |
+
+Execute in this order. For each batch, record what changed, correctness evidence,
+and behavior equivalence in [the acceptance record](docs/validation-cleanup-20261115.md).
+Commit only after its self-review passes. Preserve input validation/status order,
+IEEE arithmetic semantics, aliases, failure atomicity, defaults and public APIs.
+Update affected proof/traceability references, and run the applicable existing
+checks. Native tests are not new formal proof. Contract-changing candidates need
+producer/caller evidence before adoption. A candidate can be retained with a
+specific technical reason; a deferred or unproved proposal is not an implemented
+optimization. Sparse propagation/reset/selector algebra requires separate numerical
+acceptance and must not be silently substituted for the existing arithmetic.

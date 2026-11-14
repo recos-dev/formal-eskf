@@ -3027,7 +3027,7 @@
             "symbol": "class MagneticAiding"
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
             "symbol": "void FormalEskf::fuse_mag()"
           }
         ],
@@ -3083,11 +3083,11 @@
             "symbol": "class MagneticModel"
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
             "symbol": "FormalEskf::lookup_magnetic_model("
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
             "symbol": "void FormalEskf::update_magnetic_model()"
           }
         ],
@@ -3215,7 +3215,7 @@
             "symbol": "class MagneticAiding"
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
             "symbol": "void FormalEskf::fuse_mag()"
           }
         ],
@@ -3287,15 +3287,15 @@
             "symbol": "class MagneticAiding"
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
             "symbol": "void FormalEskf::fuse_mag()"
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
             "symbol": "void FormalEskf::publish("
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
             "symbol": "void FormalEskf::publish_status("
           }
         ],
@@ -3555,7 +3555,7 @@
             "symbol": "GravityAiding<Linalg>::fuse_observation("
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
             "symbol": "void FormalEskf::fuse_gravity("
           }
         ],
@@ -3623,6 +3623,18 @@
         "lean": [],
         "cpp": [
           {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "FormalEskf::ImuInput FormalEskf::decode_imu("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "bool FormalEskf::accept_imu("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "FormalEskf::imu_type FormalEskf::ImuInput::mean_rates()"
+          },
+          {
             "file": "include/formal_eskf/runtime/imu.hpp",
             "symbol": "class ImuBiasInhibition"
           },
@@ -3639,7 +3651,7 @@
             "symbol": "bool FormalEskf::update_imu_health("
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
             "symbol": "void FormalEskf::fuse_gps()"
           },
           {
@@ -3779,12 +3791,12 @@
             "symbol": "void limit_bias("
           },
           {
-            "file": "integrations/px4/module/BiasLimits.hpp",
-            "symbol": "Status limit_imu_bias("
+            "file": "integrations/px4/module/DeploymentProfile.hpp",
+            "symbol": "runtime::BiasLimits<Scalar> bias_limits()"
           },
           {
-            "file": "integrations/px4/module/FormalEskf.hpp",
-            "symbol": "bool record_gps_fusion("
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "bool FormalEskf::record_gps_fusion("
           },
           {
             "file": "integrations/px4/module/HeightAiding.hpp",
@@ -3891,7 +3903,7 @@
             "symbol": "void replay("
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
             "symbol": "void FormalEskf::fuse_gps("
           },
           {
@@ -3947,7 +3959,7 @@
             "symbol": "reset_velocity(configuration::Ins::NominalState<Linalg> const & state"
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
             "symbol": "void FormalEskf::fuse_gps()"
           }
         ],
@@ -4063,7 +4075,7 @@
             "symbol": "auto record_fusion ="
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
             "symbol": "void FormalEskf::fuse_gps()"
           }
         ],
@@ -4091,19 +4103,19 @@
             "symbol": "struct HeightBias"
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
             "symbol": "void FormalEskf::fuse_height()"
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
             "symbol": "void FormalEskf::record_vertical_velocity_reset("
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
             "symbol": "void FormalEskf::fuse_gps()"
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
             "symbol": "void FormalEskf::publish("
           },
           {
@@ -4163,7 +4175,7 @@
             "symbol": "GnssQuality::Result check_gnss_quality("
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
             "symbol": "void FormalEskf::update_gps_quality()"
           }
         ],

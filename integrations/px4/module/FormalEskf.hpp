@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: BSD-3-Clause
 #pragma once
 
-#include <algorithm>
-#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <mutex>
+#include <optional>
 #include <px4_platform_common/module.h>
 #include <px4_platform_common/px4_work_queue/ScheduledWorkItem.hpp>
 #include <drivers/drv_hrt.h>
@@ -32,7 +33,7 @@
 #include <formal_eskf/runtime/navigation.hpp>
 #include <formal_eskf/runtime/imu.hpp>
 
-#include "BiasLimits.hpp"
+#include "DeploymentProfile.hpp"
 #include "GravityAiding.hpp"
 #include "HeightAiding.hpp"
 #include "ImuPrediction.hpp"
@@ -54,6 +55,8 @@ public:
     bool init();
 
 private:
+    friend class FormalEskfModuleTest;
+
     using backend_type = formal_eskf::linalg::Px4MatrixBackend<double>;
     using types_type = formal_eskf::EskfTypes<backend_type, formal_eskf::configuration::Ins>;
     using state_type = types_type::nominal_state_type;
@@ -68,18 +71,86 @@ private:
     using magnetic_type = formal_eskf::px4::MagneticAiding<backend_type>;
     using magnetic_model_type = formal_eskf::px4::MagneticModel<backend_type>;
 
+    struct Initialization
+    {
+        vector3_type accelerometer_sum{};
+        vector3_type gyroscope_sum{};
+        vector3_type magnetic_sum_gauss{};
+        std::uint32_t imu_samples{};
+        std::uint32_t magnetic_samples{};
+        std::uint64_t magnetic_time_us{};
+        magnetic_type::source_type magnetic_source{};
+
+        // Motion resets accumulated observations, not sensor identity/watermarks.
+        void reset_samples();
+    };
+
+    struct ImuSource
+    {
+        std::uint32_t accelerometer_id{};
+        std::uint32_t gyroscope_id{};
+        std::uint8_t accelerometer_calibration{};
+        std::uint8_t gyroscope_calibration{};
+
+        bool matches(ImuSource const & other) const;
+    };
+
+    // Integrated body-FRD input, independent of PX4 message layout. Keep both
+    // measured periods: gravity sampling consumes microseconds, not rounded dt.
+    struct ImuInput
+    {
+        vector3_type delta_angle_b{};    // rad
+        vector3_type delta_velocity_b{}; // m/s
+        std::uint64_t time_us{};
+        std::uint32_t angular_period_us{};
+        std::uint32_t acceleration_period_us{};
+        std::uint8_t accelerometer_clipping{};
+        std::uint8_t gyroscope_clipping{};
+        ImuSource source{};
+
+        double angular_interval_s() const;
+        double acceleration_interval_s() const;
+        imu_type mean_rates() const; // Requires admitted, positive periods.
+    };
+
+    struct ImuHistory
+    {
+        imu_type measurement{};
+        std::uint64_t time_us{};
+        ImuSource source{};
+
+        void record(ImuInput const & sample, imu_type const & imu);
+    };
+
+    struct NavigationOrigin
+    {
+        MapProjection projection{};
+        std::uint64_t time_us{};
+        double altitude_msl_m{};
+        double altitude_ellipsoid_m{};
+    };
+
     void Run() override;
-    void process_imu(vehicle_imu_s const & sample);
-    void predict_and_fuse(vehicle_imu_s const & sample, imu_type const & imu, double dt, double accel_dt,
-                          uint64_t previous_time);
-    void initialize(vehicle_imu_s const & sample, imu_type const & imu);
+    static ImuInput decode_imu(vehicle_imu_s const & sample);
+    void process_imu(ImuInput const & sample);
+    void predict_and_fuse(ImuInput const & sample, imu_type const & imu);
+    void initialize(ImuInput const & sample, imu_type const & imu);
+    bool collect_initialization_samples(imu_type const & imu);
+    bool initialization_ready() const;
+    bool initialize_attitude(double & yaw);
+    void initialize_navigation();
+    static types_type::parameter_type estimator_parameters();
+    static bias_learning_type::Parameters bias_learning_parameters();
+    bool load_startup_parameters();
+    bool accept_imu(ImuInput const & sample);
+    void reset_imu_observations();
     void fuse_gps();
     void fuse_mag();
     void fuse_height();
-    void fuse_gravity(vehicle_imu_s const & sample, imu_type const & imu);
+    void fuse_gravity(ImuInput const & sample, imu_type const & imu);
     void record_vertical_velocity_reset(double delta);
-    bool update_imu_bias(vehicle_imu_s const & sample, imu_type const & imu);
-    bool update_imu_health(vehicle_imu_s const & sample);
+    bool update_imu_bias(ImuInput const & sample, imu_type const & imu);
+    bool update_imu_health(std::uint8_t accelerometer_clipping);
     void publish(imu_type const & imu);
     void publish_status(uint64_t now);
     void update_gps_quality();
@@ -90,38 +161,13 @@ private:
     uint16_t gps_failure_flags() const;
     bool gps_position_valid(uint64_t max_age = 5000000) const;
     bool gps_velocity_valid(uint64_t max_age = 5000000) const;
-    template <size_t N>
+    template <std::size_t N>
     bool record_gps_fusion(formal_eskf::runtime::GnssFusion::Group group,
-                           formal_eskf::runtime::FusionResult<backend_type, N> const & result, double & ratio)
-    {
-        ratio = result.diagnostics_valid ? 0. : double(INFINITY);
-        for (size_t axis = 0; result.diagnostics_valid && axis < N; ++axis)
-        {
-            ratio = std::max(ratio, result.test_ratio(axis));
-        }
-        if (!check(m_gnss_fusion.record_fusion(group, m_gnss_sample.time_us, result.decision)) || !check(result.status))
-        {
-            return false;
-        }
-        if (result.decision == formal_eskf::runtime::FusionDecision::rejected)
-        {
-            ++m_rejections;
-        }
-        else if (result.decision == formal_eskf::runtime::FusionDecision::fused)
-        {
-            if (!check(formal_eskf::px4::limit_imu_bias(m_state)))
-            {
-                return false;
-            }
-            ++m_gps_updates;
-        }
-        return true;
-    }
+                           formal_eskf::runtime::FusionResult<backend_type, N> const & result, double & ratio);
     bool check(status_type status);
     bool recent(uint64_t sample, uint64_t max_age = 1000000) const;
     static vector3_type vector3(double x, double y, double z) { return vector3_type::from_row_major({x, y, z}); }
     static double square(double x) { return x * x; }
-    static constexpr double minimum_quaternion_norm = 1e-6;
 
     uORB::SubscriptionCallbackWorkItem m_imu_sub{this, ORB_ID(vehicle_imu)};
     uORB::Subscription m_gps_sub{ORB_ID(vehicle_gps_position)};
@@ -139,27 +185,30 @@ private:
 
     state_type m_state{};
     covariance_type m_covariance{};
-    types_type::parameter_type m_parameters{};
-    imu_type m_previous_imu{};
-    vector3_type m_accel_sum{}, m_gyro_sum{}, m_mag_sum{};
+    types_type::parameter_type m_parameters = estimator_parameters();
+    Initialization m_initialization{};
+    ImuHistory m_imu_history{};
+    NavigationOrigin m_origin{};
+    std::uint64_t m_time_us{}; // Last admitted IMU horizon, not wall-clock time.
+    bool m_initialized{};
+    bool m_fault{};
+
     height_type m_height_aiding{};
     formal_eskf::px4::GravityAiding<backend_type> m_gravity_aiding{};
     bool m_gravity_enabled = true;
     uint32_t m_gravity_samples{}, m_gravity_updates{};
     uint64_t m_gravity_interval{};
-    bias_learning_type m_bias_learning{{25., 3., 0.5, true, true}};
+    bias_learning_type m_bias_learning{bias_learning_parameters()};
     bias_learning_type::Result m_bias_learning_result{};
     vertical_health_type m_vertical_health{};
     vertical_health_type::Innovation m_gps_velocity_innovation{};
-    static constexpr double nominal_imu_interval = 0.004; // Pinned vehicle_imu integration cadence, 250 Hz.
-    double m_average_imu_interval = nominal_imu_interval;
+    double m_average_imu_interval = formal_eskf::px4::profile::imu::nominal_interval_s;
     magnetic_type m_magnetic_aiding{};
     magnetic_model_type m_magnetic_model{};
     magnetic_model_type::Settings m_magnetic_settings{};
-    magnetic_type::source_type m_mag_init_source{};
     uint64_t m_mag_model_origin_time{};
     uint32_t m_mag_model_unavailable{};
-    MapProjection m_projection{}, m_gps_previous_fix{};
+    MapProjection m_gps_previous_fix{};
     formal_eskf::runtime::GnssQuality<backend_type> m_gnss_quality{};
     formal_eskf::runtime::GnssQualityParameters<double> m_gnss_quality_parameters{};
     formal_eskf::runtime::GnssQualityResult<double> m_gnss_quality_result{};
@@ -176,20 +225,16 @@ private:
         m_odometry_reset_counter{};
     double m_vertical_velocity_reset_delta{};
     uint64_t m_vertical_velocity_reset_time{};
-    vehicle_imu_s m_last_imu{};
     sensor_gps_s m_gps{};
     vehicle_magnetometer_s m_mag{};
     vehicle_air_data_s m_baro{};
     vehicle_land_detected_s m_land{};
     vehicle_status_s m_vehicle_status{};
-    uint64_t m_time{}, m_origin_time{}, m_last_status{}, m_last_output{};
-    uint64_t m_gps_seen{}, m_mag_seen{}, m_mag_init_seen{}, m_max_fusion_age{};
-    uint32_t m_init_samples{}, m_init_mag_samples{}, m_predictions{}, m_gps_updates{}, m_mag_updates{},
-        m_baro_updates{};
+    uint64_t m_last_status{}, m_last_output{};
+    uint64_t m_gps_seen{}, m_mag_seen{}, m_max_fusion_age{};
+    uint32_t m_predictions{}, m_gps_updates{}, m_mag_updates{}, m_baro_updates{};
     uint32_t m_rejections{}, m_errors{}, m_gaps{};
-    double m_origin_alt{}, m_origin_ellipsoid{};
     double m_pos_ratio{}, m_vel_ratio{}, m_height_ratio{}, m_gps_height_ratio{}, m_mag_ratio{};
-    bool m_initialized{}, m_fault{};
     // PX4 shell status runs on another thread; serialize diagnostic reads.
     std::mutex m_state_mutex;
     perf_counter_t m_cycle_perf{perf_alloc(PC_ELAPSED, "formal_eskf: cycle")};

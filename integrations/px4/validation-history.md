@@ -13,6 +13,96 @@ See the [integration guide](README.md) for current setup and behavior,
 [review criteria](../../docs/spec/formal-verification-traceability-and-review-criteria.md)
 for requirement/evidence acceptance.
 
+## Module input boundary validation: 2026-11-14
+
+A-01 batch 1 follow-up against the architecture spec at `4a7478c` keeps the
+previous uncommitted refactor and completes its IMU input boundary. `Run()`
+decodes the PX4 message once; admission precedes rate division, and downstream
+operations consume explicit internal input. Queue settings are named without
+changing their values. Core/runtime numerical code and proof bodies are unchanged.
+
+| Check | Result |
+| --- | --- |
+| Original module versus current production `Run()` | 14 scenarios passed; 3,222,747 trace bytes identical |
+| Native CTest, three backends | 125 passed |
+| Module and fixture ASan/UBSan | 14 scenarios passed |
+| Package installation/export; installed source identity | 8 tests passed; 61 files verified |
+| Formatting; pinned PX4 module/executable build | Passed |
+| Independent ULog checks; ground fault/recovery scenarios | 18/18; 20/20 passed |
+| SIH position / velocity / attitude RMSE | 0.163 m / 0.256 m/s / 1.552 degrees |
+
+The comparison runs the expanded fixture against the actual original module at
+`acca7a49c40313abe1dad7f344ce5babe8d5b10d` and the refactor, on the same pinned PX4
+host as below. It includes all six FRD components, independent measured periods,
+inclusive period limits, rejection ordering and source/calibration changes.
+State, covariance, counters and seven uORB topic payloads match byte-for-byte.
+
+Evidence is in `output/px4-module-entry-spec-20261114/`; `summary.json` binds the
+source hashes, comparison, build/test logs and `sitl-local/` flight provenance.
+The initial build failure from missed output identity-field renames, package-test
+CLI error and sandbox UDP restriction are retained alongside successful reruns.
+These are bounded regression checks, not exhaustive equivalence or real-time
+acceptance. The fixture uses controlled time and does not start the work queue;
+ASan/UBSan instruments the module and fixture, not linked PX4 platform archives,
+and disables leak detection. No new Lean/ESBMC proof or Cppcheck run is claimed.
+The existing mutex, immediate fusion and publication order remain for later work.
+
+## Module entry refactor validation: 2026-11-14
+
+A-01 batch 1 compares the module at `acca7a49c40313abe1dad7f344ce5babe8d5b10d`
+with the uncommitted refactor, using PX4
+`54f0455ffcd755534539a7cf33a09a20bf71d29d`. The actual original module was
+retained before editing; the baseline fixture adds only friend access, with no
+behavior/layout change. Both versions execute the same fixture with the same
+platform libraries. Core/runtime numerical headers and proof bodies are unchanged.
+
+| Check | Result |
+| --- | --- |
+| Controlled production module scenarios | 13 passed; original/refactored traces byte-identical |
+| Compared trace | State, covariance, status counters and seven uORB topic payloads; 2,954,099 bytes |
+| Retained navigation/attitude/output methods | 16 bodies matched after explicit member/settings renames |
+| Native CTest, three backends | 125 passed |
+| ASan/UBSan, affected helper suites | 6 passed |
+| ASan/UBSan, all four module translation units and fixture | 13 scenarios passed |
+| Package installation/export | 8 passed |
+| Offline agent-review tool regressions | 100 passed; no AI audit |
+| Existing Cppcheck unix32/unix64 configuration | Passed |
+| C++ formatting | Passed |
+| Pinned PX4 module and executable build | Passed |
+| Final SITL ground failure/recovery scenarios | 20 passed |
+| Final independent ULog acceptance checks | 18 passed |
+| Final SIH position / velocity RMSE | 0.173 m / 0.244 m/s |
+| Final SIH attitude RMSE / maximum error | 1.426 / 3.674 degrees |
+
+The fixture covers startup parameter validation and accumulation, IMU rejection,
+gap/overlap boundaries, independent integration periods, held previous rates,
+source/calibration changes, fault latching and watchdog output. It uses real
+uORB and production `Run()` with controlled time/timer dispatch. It deliberately
+does not start the work queue; expected queue/fault messages are retained.
+This comparison is bounded scenario evidence, not scheduler/concurrency proof
+or a claim about every possible input. The sanitizer build instruments the
+module and fixture, not the linked PX4 platform archives; leak detection was
+disabled. No new Lean/ESBMC proof is claimed or executed for this change.
+
+An additional Cppcheck scan of the four module translation units is advisory,
+not a clean whole-module result. It reports upstream/generated-header findings
+and one existing unused CLI-argument `constParameter` finding in
+`FormalEskf::custom_command`. The initial scan could not parse glibc declaration
+macros; the retained rerun supplies their actual C++ expansions. It does not
+suppress the findings or extend the scope of the passing repository check.
+
+Evidence is in `output/px4-module-entry-20261114/`: `summary.json` records source
+hashes and evidence links; `comparison.json`, baseline/final traces, build/test
+logs and `retained-bodies.json` retain the controlled comparison. The final
+`sitl-final/` contains source/package provenance, binary hash, flight/fault
+records, ULog and analysis. Its production package files and binary match the
+final refactor; only the test fixture gained additional nonzero-rate cases
+after that flight, then passed comparison and sanitizers again.
+The first sandboxed SITL attempt could not bind localhost UDP and is retained
+in `sitl-run.log`. A successful intermediate flight is in `sitl-local/`; final
+acceptance uses `sitl-final/`, which includes the final production changes.
+SIH results do not establish physical-aircraft accuracy or real-time budgets.
+
 ## Local validation: 2026-11-06
 
 Built and flown using the installed current headers and the pinned PX4 host.

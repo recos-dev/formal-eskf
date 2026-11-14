@@ -33,6 +33,28 @@ The numerical library supports INS and rotation-only AHRS. The in-tree PX4 modul
 | PX4 module | [FormalEskf.hpp](../../integrations/px4/module/FormalEskf.hpp), [FormalEskf.cpp](../../integrations/px4/module/FormalEskf.cpp) | Owns the INS state/covariance, runtime/helper instances, geographic origin, sensor subscriptions, sample times, fault state and published reset counters. |
 | Host replay | [examples/](../../examples/) | Owns log decoding, replay scheduling and output. Calling the same core does not establish equivalence to the PX4 module's timing or integration. |
 
+The PX4 module remains one class. Its entry, initialization and IMU path are in
+`FormalEskf.cpp`; [navigation](../../integrations/px4/module/FormalEskfNavigation.cpp),
+[attitude aiding](../../integrations/px4/module/FormalEskfAttitude.cpp) and
+[output](../../integrations/px4/module/FormalEskfOutput.cpp) definitions are grouped
+by responsibility. They do not introduce additional estimator owners.
+
+`Run()` converts `vehicle_imu_s` once through `decode_imu()` into `ImuInput`:
+body-FRD increments, separate measured periods, sample time, clipping and an
+`ImuSource` identity/calibration record. IMU admission precedes mean-rate division.
+Initialization, prediction, bias and gravity operations consume these internal
+values; vertical health receives only the clipping mask it needs. This input
+boundary does not introduce downsampling or change the fusion/publication order.
+
+`Initialization` owns startup accumulators and the magnetic source/watermark;
+motion clears the accumulators while retaining that source history. `ImuHistory`
+owns the previous measured rate, sample time and source/calibration identity used
+for continuity, held-rate prediction and reporting. `NavigationOrigin` owns the
+projection and its timestamp/MSL/ellipsoid datum. Entry and IMU deployment
+settings are defined in
+[DeploymentProfile.hpp](../../integrations/px4/module/DeploymentProfile.hpp),
+separately from platform effects and the aiding controllers' policies.
+
 ```mermaid
 flowchart TD
     U["PX4 sensor/context messages"] --> A["FormalEskf: time, state, scheduling, publication"]
@@ -67,6 +89,11 @@ sequence above. A failed stage prevents later aiding and estimate publication.
 After entering this prediction path, the caller stores the admitted sample as
 previous-IMU metadata even if prediction or fusion fails; earlier admission,
 finite-data and GNSS-quality failures retain the previous metadata.
+For a healthy initialized tick, the previous admitted horizon equals the recorded
+IMU history time. A consuming early failure latches a fault and prevents entry
+into prediction, so gap calculation uses that history directly. Initialization
+records it before enabling normal prediction. These invariants do not authorize
+resetting the fault latch independently of estimator reinitialization.
 Numerical failure or a discontinuity can latch a module fault requiring restart. Rejected observations and failed numerical operations have different meanings. Individual checked-operation guarantees do not establish that the entire tick is one failure-atomic transaction.
 
 The [integration guide](../../integrations/px4/README.md#adapter-behavior-and-verification-boundary) owns the pinned target, setup, deployment settings and current limitations. Core/runtime contracts remain in the specifications; the guide's SITL results do not extend their formal proof boundaries.

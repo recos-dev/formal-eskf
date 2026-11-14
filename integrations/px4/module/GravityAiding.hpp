@@ -4,7 +4,7 @@
 #include <formal_eskf/runtime/accelerometer.hpp>
 #include <formal_eskf/runtime/tilt_alignment.hpp>
 
-#include "BiasLimits.hpp"
+#include "DeploymentProfile.hpp"
 
 namespace formal_eskf::px4
 {
@@ -105,7 +105,7 @@ GravityAiding<Linalg>::update(ImuSample<Linalg> const & imu, std::uint64_t angul
     result.status = result.fusion.status;
     if (result.fusion.decision == runtime::FusionDecision::fused)
     {
-        result.status = limit_imu_bias(state);
+        result.status = runtime::limit_bias(state, profile::bias_limits<value_type>());
     }
     return result;
 }

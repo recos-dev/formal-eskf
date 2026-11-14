@@ -285,6 +285,27 @@ python3 integrations/px4/test_package.py --px4 "$PX4_ROOT"
 
 Package checks exercise a clean pinned PX4 fixture, standalone export/install, repeat installation, update handling, conflict preservation, revision rejection and exclusion of editor scratch files. Core checks use the existing native suite with the PX4 matrix backend. Run the flight and analyzer above after rebuilding to validate the complete control loop.
 
+To test the module's actual initialization and update paths after installing:
+
+```bash
+cmake -S "$PX4_ROOT" -B "$PX4_ROOT/build/px4_sitl_formal_eskf" \
+    -DFORMAL_ESKF_MODULE_TESTS=ON
+cmake --build "$PX4_ROOT/build/px4_sitl_formal_eskf" \
+    --target formal_eskf_module_test --parallel 2
+ctest --test-dir "$PX4_ROOT/build/px4_sitl_formal_eskf/src/modules/formal_eskf" \
+    --output-on-failure
+```
+
+The tests execute production `Run()` with real PX4 messages and uORB. They
+control the clock and timer dispatch, covering startup settings, accumulation,
+IMU admission, gap boundaries, separate integration periods, source/calibration
+changes, failure latching and watchdog output. The work-queue manager is not
+started; its unavailable-queue messages and deliberately injected fault messages
+are expected. These tests do not establish scheduler or concurrent-access
+correctness. The executable optionally takes a trace filename to record state,
+covariance and the seven topic payloads for deterministic before/after comparison.
+The test target is opt-in and is not linked into the flight binary.
+
 ## Validation evidence
 
 [Dated validation records](validation-history.md) retain the native, sanitizer,

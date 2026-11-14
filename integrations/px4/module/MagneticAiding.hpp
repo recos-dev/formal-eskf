@@ -7,7 +7,7 @@
 #include <formal_eskf/runtime/magnetometer.hpp>
 #include <formal_eskf/runtime/magnetometer_lifecycle.hpp>
 
-#include "BiasLimits.hpp"
+#include "DeploymentProfile.hpp"
 
 namespace formal_eskf::px4
 {
@@ -230,7 +230,7 @@ MagneticAiding<Linalg>::update(std::uint64_t now_us, Sample const & sample, Cont
         }
         if (result.fused)
         {
-            result.status = limit_imu_bias(state);
+            result.status = runtime::limit_bias(state, profile::bias_limits<value_type>());
             if (!succeeded(result.status))
             {
                 return result;

@@ -3,6 +3,8 @@
 
 #include <cstdint>
 
+#include "DeploymentProfile.hpp"
+
 #include <formal_eskf/eskf/eskf.hpp>
 #include <formal_eskf/runtime/imu.hpp>
 
@@ -36,7 +38,8 @@ template <typename Linalg>
     }
     // Start from configured noise each time; selection must not latch an override.
     auto step_parameters = parameters;
-    constexpr value_type fault_variance = static_cast<value_type>(4.9 * 4.9); // m^2/s^4, sampled acceleration.
+    constexpr value_type fault_variance =
+        static_cast<value_type>(profile::imu::faulty_specific_force_variance); // m^2/s^4, sampled acceleration.
     auto status = runtime::select_imu_process_noise(parameters.process_noise, conditions, fault_variance,
                                                     step_parameters.process_noise);
     if (!succeeded(status))

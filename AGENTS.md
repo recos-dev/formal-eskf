@@ -9,6 +9,7 @@ formal-eskf is a portable C++20 error-state Kalman filter with INS and rotation-
 Read the relevant specifications in `docs/spec/` before changing behavior. Keep detailed contracts and equations there, not in this entry file:
 
 - Core/runtime/adapter boundaries: `eskf-software-architecture-and-verification-boundaries.md`.
+- PX4 module target architecture and real-time contracts: `px4-module-architecture.md`.
 - Language and runtime constraints: `cpp-portability-and-constraints.md`.
 - State conventions: `eskf-state-conventions.md`.
 - Linear algebra: `eskf-linear-algebra-abstraction-layer.md`.

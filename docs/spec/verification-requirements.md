@@ -13,6 +13,7 @@ Evidence mappings belong to the [traceability map](../../formal/agent-review/tra
 | State, prediction, correction and covariance | [ESKF core](#eskf-core), with detailed [prediction](#e-pred-nominal-prediction-requirements) and [composition](#e-step-composed-operation-requirements) clauses |
 | Magnetic observations, health and recovery | [Magnetic aiding](#magnetic-aiding), including explicitly named replay and PX4 module profiles |
 | GNSS, height, gravity and IMU/bias policies | [Portable runtime](#portable-runtime), including explicitly named deployment profiles |
+| PX4 module target architecture | [Module design clauses](px4-module-architecture.md), covering ownership, execution, timing, lifecycle, output and real-time acceptance; distinct from the currently mapped integration profiles |
 | Rotation mathematics | [Quaternion and SO(3)](#quaternion-and-so3) |
 | Scalar and linear-algebra dependencies | [Supporting operations](#supporting-operations) |
 

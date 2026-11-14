@@ -4,6 +4,11 @@ The numerical core computes estimator operations; portable runtime components ma
 
 Verification claims follow the [Formal Verification Strategy](formal-verification-strategy.md); implementation constraints follow the [C++ subset](cpp-portability-and-constraints.md). The source map below describes the existing implementation, not an approved refactor or proof of the full module.
 
+The [PX4 module architecture](px4-module-architecture.md) defines the target
+execution, timing, output and real-time contracts for review. The current-source
+description below remains the refactor baseline; it does not override that target
+or imply that delayed fusion/output prediction are already implemented.
+
 ## Architecture
 
 | Layer | Responsibility | Must not own |

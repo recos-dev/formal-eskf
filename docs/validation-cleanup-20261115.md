@@ -6,8 +6,8 @@ the review list; they are work items, not proof requirements or measured speedup
 
 | Item | Audit origin | Candidate | Disposition |
 |---|---|---|---|
-| 1 | G01 | Reuse finite input premises in symmetry checks | Pending |
-| 2 | G01-C02 | Pairwise symmetry residual | Pending |
+| 1 | G01 | Reuse finite input premises in symmetry checks | Implemented in DC-02 |
+| 2 | G01-C02 | Pairwise symmetry residual | Implemented in DC-02 |
 | 3 | G01-C01 | Forward gain solve output | Pending |
 | 4 | G01-C03, G06-C8, G08-C7 | Same-call PHt/S reuse after gating | Pending |
 | 5 | G01-C04 | Hoist bias permissions out of column loops | Implemented in DC-01 |
@@ -92,3 +92,32 @@ numerical reason; a missing proof is not a pass.
   changed E-PCOV boundary; no Lean theorem, target-libm claim or backend proof
   has been added. The original call-graph audit remains historical baseline
   evidence; its source hashes must not be presented as current acceptance.
+
+
+### DC-02: symmetry validation — accepted
+
+- Changed: stream each residual coefficient and the original row-major maximum
+  instead of constructing transpose and difference matrices. Public
+  `is_symmetric` retains its input/tolerance checks. Correction's two inputs and
+  the solve's system use one private finite-input helper after their own checks.
+- Correctness review: both subtraction directions, diagonal differences,
+  absolute values and reduction order remain unchanged. Finite operands can
+  still overflow during subtraction; that residual remains rejected. Caller
+  harnesses now assert the helper's finite-input premise instead of assuming it.
+  Tolerance is checked at the public entry or is the literal zero at callers.
+- Behavior review: all 1,248 cumulative baseline/current comparison digests match;
+  no API, status, alias, tolerance or output-publication change. The three
+  repeated complete input scans disappear on the accepted correction path;
+  this does not remove the first input validation or claim a measured speedup.
+- Validation: 92/92 scoped ESBMC profiles (16 F-LINALG, 20 correction, 56 solve),
+  13 native executables across Eigen/PX4/CMSIS-DSP, 3 ASan/UBSan tests, configured
+  unix32/unix64 Cppcheck, formatting and mapped-symbol checks pass. The first
+  CTest regex omitted the differently named SPD test; it was run separately.
+- A prototype lemma for eliminating the second subtraction direction exceeded
+  the 4 GiB solver limit. That prototype is not adopted and is not proof
+  evidence. The implemented stream preserves both directions and needs no new
+  floating-point antisymmetry premise; no switch to coefficient equality or
+  relaxed tolerance is made.
+- Self-review: correct under the existing contracts; observed functionality
+  unchanged. Commit accepted. Lean mathematics and runner profile inventory are
+  unchanged; source-level helper preconditions are covered by the caller checks.

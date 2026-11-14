@@ -48,7 +48,7 @@ template <typename Linalg, std::size_t Size, std::size_t RightColumns>
     {
         return Status::non_finite_input;
     }
-    if (!is_symmetric(system, value_type{0}))
+    if (!detail::is_symmetric_finite(system, value_type{0}))
     {
         return Status::not_positive_definite;
     }

@@ -196,6 +196,7 @@ product(formal_eskf::linalg::Matrix<Backend, Rows, Inner> const & left,
 template <std::size_t Size>
 bool symmetry(formal_eskf::linalg::Matrix<Backend, Size, Size> const & input, Scalar tolerance)
 {
+    __ESBMC_assert(finite_matrix(input), "E-CORRECT: caller establishes finite symmetry-helper input");
     __ESBMC_assert(same(tolerance, Scalar{0}) && Calls::products == 0U,
                    "E-CORRECT: exact input symmetry is validated before arithmetic");
     unsigned const call = Calls::symmetries++;
@@ -364,8 +365,8 @@ CORRECTION_PRODUCT(FORMAL_ESKF_PROOF_STATE_SIZE, FORMAL_ESKF_PROOF_MEASUREMENT_S
 
 #define CORRECTION_SYMMETRY(N)                                                                                         \
     template <>                                                                                                        \
-    inline bool is_symmetric<correction_proof::Backend, N>(Matrix<correction_proof::Backend, N, N> const & input,      \
-                                                           correction_proof::Scalar tolerance)                         \
+    inline bool detail::is_symmetric_finite<correction_proof::Backend, N>(                                             \
+        Matrix<correction_proof::Backend, N, N> const & input, correction_proof::Scalar tolerance)                     \
     {                                                                                                                  \
         return correction_proof::symmetry<N>(input, tolerance);                                                        \
     }

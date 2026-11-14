@@ -81,7 +81,8 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
         return Status::non_finite_input;
     }
     if (!(minimum_quaternion_norm > value_type{0}) || minimum_quaternion_norm > value_type{1} ||
-        !linalg::is_symmetric(covariance, value_type{0}) || !linalg::is_symmetric(V, value_type{0}))
+        !linalg::detail::is_symmetric_finite(covariance, value_type{0}) ||
+        !linalg::detail::is_symmetric_finite(V, value_type{0}))
     {
         return Status::domain_error;
     }

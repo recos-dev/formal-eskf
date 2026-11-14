@@ -149,10 +149,13 @@ inline Status Cholesky<solve_proof::Backend>::solve<solve_proof::size, solve_pro
     return SolveContract::status;
 }
 template <>
-inline bool is_symmetric<solve_proof::Backend, solve_proof::size>(solve_proof::SystemMatrix const & input,
-                                                                  solve_proof::Scalar tolerance)
+inline bool
+detail::is_symmetric_finite<solve_proof::Backend, solve_proof::size>(solve_proof::SystemMatrix const & input,
+                                                                     solve_proof::Scalar tolerance)
 {
     using namespace solve_proof;
+    __ESBMC_assert(finite_cells(MatrixAccess::storage(input).values),
+                   "F-SOLVE: caller establishes finite symmetry-helper input");
     __ESBMC_assert(SymmetryContract::calls == 0U && equal_matrix(input, SymmetryContract::input) &&
                        same(tolerance, Scalar{0}),
                    "F-SOLVE: complete original system and zero symmetry tolerance");

@@ -161,6 +161,38 @@ Matrix<Linalg, Size, Size> symmetrize(Matrix<Linalg, Size, Size> const & matrix)
     return typename Linalg::value_type{0.5} * (matrix + transpose(matrix));
 }
 
+namespace detail
+{
+
+/** Residual check after the matrix and nonnegative tolerance are known finite. */
+template <typename Linalg, std::size_t Size>
+bool is_symmetric_finite(Matrix<Linalg, Size, Size> const & matrix, typename Linalg::value_type tolerance)
+{
+    using value_type = typename Linalg::value_type;
+    using scalar_math_type = typename Linalg::scalar_math_type;
+    value_type maximum{0};
+    // Preserve both subtraction directions and the row-major reduction.
+    // Evaluate coefficients directly instead of materializing A - transpose(A).
+    for (std::size_t row = 0U; row < Size; ++row)
+    {
+        for (std::size_t column = 0U; column < Size; ++column)
+        {
+            auto const magnitude = scalar::absolute<scalar_math_type>(matrix(row, column) - matrix(column, row));
+            if (!scalar::is_finite<scalar_math_type>(magnitude))
+            {
+                return false;
+            }
+            if (magnitude > maximum)
+            {
+                maximum = magnitude;
+            }
+        }
+    }
+    return maximum <= tolerance;
+}
+
+} /* end namespace detail */
+
 template <typename Linalg, std::size_t Size>
 bool is_symmetric(Matrix<Linalg, Size, Size> const & matrix, typename Linalg::value_type tolerance)
 {
@@ -170,7 +202,7 @@ bool is_symmetric(Matrix<Linalg, Size, Size> const & matrix, typename Linalg::va
     {
         return false;
     }
-    return max_abs(matrix - transpose(matrix)) <= tolerance;
+    return detail::is_symmetric_finite(matrix, tolerance);
 }
 
 template <typename Linalg, std::size_t Rows, std::size_t Inner>

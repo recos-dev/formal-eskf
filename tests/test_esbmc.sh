@@ -236,6 +236,28 @@ check_plan()
         fail 'scalar dependency profile is not in the full inventory'
 }
 
+check_prediction_rejection_arguments()
+(
+    local PRODUCERS=0 CALLERS=0
+    verify()
+    {
+        local FUNCTION_NAME="$1"
+        shift
+        case "${FUNCTION_NAME}" in
+            verify_attitude_non_finite)
+                [[ " $* " != *" FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT="* ]] ||
+                    fail 'private rejection producer must execute the actual helper'
+                ((PRODUCERS += 1)) ;;
+            verify_prediction_attitude_non_finite)
+                [[ " $* " == *" -D FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT=1 "* ]] ||
+                    fail 'public rejection caller requires its matched private producer summary'
+                ((CALLERS += 1)) ;;
+        esac
+    }
+    run_prediction_suite
+    [[ "${PRODUCERS}" == 4 && "${CALLERS}" == 4 ]] || fail 'prediction rejection pairing changed'
+)
+
 check_observations_arguments()
 (
     verify()
@@ -1403,6 +1425,7 @@ case "${1:-}" in
 esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
+check_prediction_rejection_arguments
 check_jacobian_arguments
 check_reset_arguments
 check_pcov_arguments

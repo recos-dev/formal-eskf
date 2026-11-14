@@ -11,11 +11,11 @@ the review list; they are work items, not proof requirements or measured speedup
 | 3 | G01-C01 | Forward gain solve output | Implemented in DC-03 |
 | 4 | G01-C03, G06-C8, G08-C7 | Same-call PHt/S reuse after gating | Pending |
 | 5 | G01-C04 | Hoist bias permissions out of column loops | Implemented in DC-01 |
-| 6 | G02-C1 | Reuse validated prior quaternion | Pending |
+| 6 | G02-C1 | Reuse validated prior quaternion | Implemented in DC-05 |
 | 7 | G02-C2 | AHRS nominal output forwarding | Implemented in DC-03 |
 | 8 | G02-021.1 | Acceleration finite check subsumption | Implemented in DC-04 |
 | 9 | G03-C1 | Diagonal-only process-noise result scan | Implemented in DC-01 |
-| 10 | G02-C3, G03-C2, G04-C1–C3 | Shared prediction validation and mathematics | Pending |
+| 10 | G02-C3, G03-C2, G04-C1–C3 | Shared prediction validation and mathematics | Retained in DC-05 |
 | 11 | G04-C4 | Scan only variable F_x blocks | Implemented in DC-01 |
 | 12 | G04-C5 | Reuse -R | Implemented in DC-01 |
 | 13 | G04-C6 | Forward covariance prediction output | Implemented in DC-03 |
@@ -192,3 +192,41 @@ numerical reason; a missing proof is not a pass.
   functionality is unchanged. Commit accepted. Local arithmetic implication
   evidence does not close the outstanding complete E-INNOV/E-MAG-TILT proof
   boundaries, and does not constitute a deployed-backend proof. Lean is unchanged.
+
+### DC-05: prediction validation ownership — accepted
+
+- Changed (#6): the existing private attitude helper requires finite q and
+  validated time/norm parameters. The two public overloads retain prior
+  validation; remove only the repeated four-coefficient private scan. Rate,
+  increment, normalization and result checks remain.
+- Correctness review: actual public caller proofs assert the finite-q premise;
+  actual helper proofs use precisely that private premise, retaining their
+  equations, alias and rollback assertions. Public non-finite input coverage
+  is retained. The rejection caller is paired with the actual same-backend
+  finite-q/non-finite-rate producer (the caller uses its checked dt/norm values).
+  It asserts the producer's delegation domain instead of assuming rejection.
+- Validation: 76 selected caller/helper profiles pass across both scalar formats,
+  prediction modes, coefficients and aliases. Twelve native default/alternate
+  Eigen/PX4 test executions, prediction ASan/UBSan, formatting, ShellCheck and
+  both offline verification-tool suites pass. All 1248 baseline/current digests
+  match over 29,952 calls. Runner inventory remains 1554 profiles/127 entry points.
+  The new offline check protects the actual-producer/summary-caller pairing.
+- Initial monolithic public rejection execution exceeded its existing 120 s
+  cap with CVC5, Bitwuzla and Z3; the prior source passed. Full incremental SMT
+  also timed out. The accepted composition preserves the same input domain and
+  original public assertions, and passes without increasing limits. A deliberate
+  isolated removal of public quaternion rejection fails the new caller-premise
+  assertion. Failed attempts and this negative control remain local evidence;
+  neither is counted as a successful production check.
+- Retained (#10): keep independently checked nominal/covariance/noise operations.
+  A combined-only prepared path could reuse dt, bias differences, old R and the
+  default-mode Exp result. It would also need to carry stage-specific outcomes
+  while preserving nominal-first failure order, old-state linearization and the
+  distinct normalized-Euler / I-hat(theta) approximation rules. Choose the direct
+  checked composition over a second prepared execution path in this cleanup.
+  Repeated mathematics remains; it is not claimed impossible or eliminated.
+  Core determinism is already specified, but current opaque scalar summaries
+  would need relational producer evidence for a future shared implementation.
+- Self-review: the local private-premise change is correct under the paired
+  contracts; observed public functionality is unchanged. Commit accepted.
+  No new public API, validation token or prediction workspace is introduced.

@@ -90,12 +90,13 @@ template <typename Linalg>
     return Status::success;
 }
 
+/** Requires finite q_nb and validated time/norm parameters; rate/result checks remain here. */
 template <typename Linalg>
 [[nodiscard]] Status predict_attitude(so3::UnitQuaternion<Linalg> const & q_nb,
                                       linalg::Vector<Linalg, 3U> const & angular_rate_b, typename Linalg::value_type dt,
                                       typename Linalg::value_type minimum_norm, so3::UnitQuaternion<Linalg> & output)
 {
-    if (!linalg::all_finite(q_nb.coefficients()) || !linalg::all_finite(angular_rate_b))
+    if (!linalg::all_finite(angular_rate_b))
     {
         return Status::non_finite_input;
     }

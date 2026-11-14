@@ -318,9 +318,10 @@ run_prediction_suite()
                 verify_attitude_non_finite verify_prediction_attitude_non_finite \
                 verify_ahrs_zero_rate verify_ins_gyro_bias verify_attitude_norm_failure; do
                 if [[ "${FUNCTION_NAME}" == verify_prediction_attitude_non_finite ]]; then
-                    # CVC5 prunes the checked-prior/non-finite-rate paths without
-                    # Bitwuzla's binary64 symex timeout; the domain is unchanged.
-                    verify "${FUNCTION_NAME}" --proof-unwind "${PREDICTION_UNWIND}" "${PROFILE_ARGUMENTS[@]}" --cvc5
+                    # Pair the public rejection path with the actual private
+                    # non-finite-rate producer above; retain all caller assertions.
+                    verify "${FUNCTION_NAME}" --proof-unwind "${PREDICTION_UNWIND}" "${PROFILE_ARGUMENTS[@]}" \
+                        -D FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT=1 --cvc5
                 else
                     verify "${FUNCTION_NAME}" --proof-unwind "${PREDICTION_UNWIND}" "${PROFILE_ARGUMENTS[@]}"
                 fi

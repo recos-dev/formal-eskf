@@ -414,7 +414,9 @@ Status predict_attitude<prediction_proof::Linalg>(prediction_proof::Quaternion c
     using namespace prediction_proof;
     __ESBMC_assert(AttitudeContract::enabled, "Runner error: attitude summary requires an explicit caller harness");
     __ESBMC_assert(!AttitudeContract::called, "E-PRED contract: caller delegates at most once");
-    // Actual helper profiles quantify over all IEEE quaternion/rate values.
+    // Public callers establish the private finite-quaternion premise.
+    __ESBMC_assert(finite_vector(q.coefficients()), "E-PRED: caller validates the prior before attitude prediction");
+    // Actual helper profiles cover finite q and all IEEE rate values.
     __ESBMC_assert(Math::is_finite(dt) && dt > Scalar{0} && Math::is_finite(minimum) && minimum > Scalar{0} &&
                        minimum <= Scalar{1},
                    "E-PRED contract: caller meets the proved time and normalization domain");
@@ -1063,14 +1065,14 @@ void verify_ins_translation_execution()
                    "E-PRED: nonzero bounded translation succeeds in place with independent exact coordinates");
 }
 
-// All IEEE quaternion/rate values that fail the consumed-input finite check.
+// The private helper receives finite q; non-finite rates remain its responsibility.
 void verify_attitude_non_finite(Quaternion q, Vector rate, Quaternion output)
 {
-    __ESBMC_assume(!finite_vector(q.coefficients()) || !finite_vector(rate));
+    __ESBMC_assume(finite_vector(q.coefficients()) && !finite_vector(rate));
     auto const before = output;
     Status const status = formal_eskf::detail::predict_attitude(q, rate, Scalar{0.5}, Scalar{0.125}, output);
     __ESBMC_assert(status == Status::non_finite_input && preserved_vector(output.coefficients(), before.coefficients()),
-                   "E-PRED: non-finite attitude/rate is rejected before arithmetic");
+                   "E-PRED: non-finite rate is rejected before arithmetic with a validated prior");
 }
 
 // Check the public callers as well as the helper: non-finite attitude/rate
@@ -1078,6 +1080,9 @@ void verify_attitude_non_finite(Quaternion q, Vector rate, Quaternion output)
 void verify_prediction_attitude_non_finite(Quaternion q, Vector rate, bool alias, Ins::nominal_state_type oi,
                                            Ahrs::nominal_state_type oa)
 {
+    __ESBMC_assert(FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT,
+                   "Runner error: public input rejection pairs with the actual private rejection producer");
+    AttitudeContract::prepare(Quaternion{}, Status::non_finite_input);
     __ESBMC_assume(!finite_vector(q.coefficients()) || !finite_vector(rate));
     Ins::nominal_state_type ins;
     Ahrs::nominal_state_type ahrs;
@@ -1091,6 +1096,11 @@ void verify_prediction_attitude_non_finite(Quaternion q, Vector rate, bool alias
     auto const prior_result = prior_status(q, pi.quaternion_squared_norm_tolerance);
     auto const si = formal_eskf::predict_nominal(ins, imu, Scalar{0.5}, pi, alias ? ins : oi);
     auto const sa = formal_eskf::predict_nominal(ahrs, imu, Scalar{0.5}, pa, alias ? ahrs : oa);
+    // The summary's failure is justified by verify_attitude_non_finite with
+    // this same backend, dt and norm bound, not by an assumed-valid rate.
+    __ESBMC_assert(AttitudeContract::called == (prior_result == Status::success) &&
+                       (!AttitudeContract::called || !finite_vector(AttitudeContract::received_rate)),
+                   "E-PRED: rejection delegation meets the actual finite-prior/non-finite-rate producer domain");
     auto const expected = prior_result == Status::success ? Status::non_finite_input : prior_result;
     __ESBMC_assert(si == expected && sa == expected && preserved_state(alias ? ins : oi, before_i) &&
                        preserved_state(alias ? ahrs : oa, before_a),
@@ -1176,6 +1186,8 @@ void verify_attitude_euler(Quaternion const q, Vector sample, Scalar dt, Scalar 
 #if ESKF_QUAT_APPROX
     __ESBMC_assert(!FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT, "Runner error: Euler proof must execute the REAL helper");
     assume_prediction_parameters(dt, minimum_norm);
+    // Private precondition, asserted at both actual public caller boundaries.
+    __ESBMC_assume(finite_vector(q.coefficients()));
     auto const rate = sample;
     Scalar const x = (rate(0U) * dt) * Scalar{0.5};
     Scalar const y = (rate(1U) * dt) * Scalar{0.5};
@@ -1275,6 +1287,8 @@ void verify_attitude_exp_general(Quaternion const q, Vector const sample, Scalar
 #if !ESKF_QUAT_APPROX && FORMAL_ESKF_PROOF_EXP_CONTRACT
     __ESBMC_assert(!FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT, "Runner error: Exp proof must execute the REAL helper");
     assume_prediction_parameters(dt, minimum_norm);
+    // Private precondition, asserted at both actual public caller boundaries.
+    __ESBMC_assume(finite_vector(q.coefficients()));
     ExpContract::prepare(increment, exp_status);
     Vector theta;
     for (std::size_t j = 0U; j < 3U; ++j)

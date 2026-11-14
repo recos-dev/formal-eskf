@@ -8,21 +8,21 @@ the review list; they are work items, not proof requirements or measured speedup
 |---|---|---|---|
 | 1 | G01 | Reuse finite input premises in symmetry checks | Implemented in DC-02 |
 | 2 | G01-C02 | Pairwise symmetry residual | Implemented in DC-02 |
-| 3 | G01-C01 | Forward gain solve output | Pending |
+| 3 | G01-C01 | Forward gain solve output | Implemented in DC-03 |
 | 4 | G01-C03, G06-C8, G08-C7 | Same-call PHt/S reuse after gating | Pending |
 | 5 | G01-C04 | Hoist bias permissions out of column loops | Implemented in DC-01 |
 | 6 | G02-C1 | Reuse validated prior quaternion | Pending |
-| 7 | G02-C2 | AHRS nominal output forwarding | Pending |
+| 7 | G02-C2 | AHRS nominal output forwarding | Implemented in DC-03 |
 | 8 | G02-021.1 | Acceleration finite check subsumption | Pending |
 | 9 | G03-C1 | Diagonal-only process-noise result scan | Implemented in DC-01 |
 | 10 | G02-C3, G03-C2, G04-C1–C3 | Shared prediction validation and mathematics | Pending |
 | 11 | G04-C4 | Scan only variable F_x blocks | Implemented in DC-01 |
 | 12 | G04-C5 | Reuse -R | Implemented in DC-01 |
-| 13 | G04-C6 | Forward covariance prediction output | Pending |
+| 13 | G04-C6 | Forward covariance prediction output | Implemented in DC-03 |
 | 14 | G05-C1–C2 | Reuse injection/reset input premises | Pending |
 | 15 | G05-C3 | Share Exp/Jr angle intermediates | Pending |
-| 16 | G05-C6 | Forward covariance reset output | Pending |
-| 17 | G05-C8 | Avoid copied-and-overwritten INS candidate | Pending |
+| 16 | G05-C6 | Forward covariance reset output | Implemented in DC-03 |
+| 17 | G05-C8 | Avoid copied-and-overwritten INS candidate | Implemented in DC-03 |
 | 18 | G06-C1 | Reuse runtime innovation premises | Pending |
 | 19 | G06-C2 | Simplify innovation range comparisons | Pending |
 | 20 | G07-C1, C5 | Construction-valid H and delayed construction | Implemented in DC-01 |
@@ -121,3 +121,42 @@ numerical reason; a missing proof is not a pass.
 - Self-review: correct under the existing contracts; observed functionality
   unchanged. Commit accepted. Lean mathematics and runner profile inventory are
   unchanged; source-level helper preconditions are covered by the caller checks.
+
+### DC-03: transaction outputs — accepted
+
+- Changed: forward the final solve/covariance result to the caller's output;
+  forward AHRS attitude output directly; initialize the INS injection candidate
+  without copying the old state that will be completely overwritten. Keep
+  nominal scratch storage whenever covariance work can still fail.
+- Correctness review: forwarding depends on the final callee's unchanged-on-
+  failure contract. Matching actual producer checks cover right solve,
+  prediction/reset and attitude aliases. The correction transaction uses a
+  different proof backend: its actual reset frame now explicitly checks failure
+  preservation too. Intermediate summaries may still overwrite scratch on
+  failure. All caller rollback, status, order and input-preservation assertions
+  remain. The specification now states this permitted final-callee composition
+  instead of prescribing unnecessary scratch everywhere.
+- Validation: 306/306 selected ESBMC profiles pass: 100 step, 40 prediction,
+  12 correction, 50 right solve, 4 INS injection, 16 reset and 84 correction-step
+  profiles. Native tests pass in 20 executions across Eigen/PX4/CMSIS-DSP,
+  including alternate approximation/projection configuration; 4 ASan/UBSan
+  tests, unix32/unix64 Cppcheck, formatting and ShellCheck pass. Both offline
+  verification-tool suites pass; all 589 mapped C++/ESBMC symbol references
+  resolve. Attitude producer alias coverage adds 16 profiles (1554 total,
+  still 127 entry points); this is not 1554 mathematical requirements.
+- Behavior review: all 1248 baseline/current digests match over 29,952 native
+  calls. Public APIs, arithmetic, complete-output aliases and failure behavior
+  are unchanged. Preservation covers values, signed zero and NaN classification,
+  not NaN payload or floating-point exception flags. No whole-backend or target
+  timing claim follows from these checks.
+- Failed attempts are retained locally: reference-selected alias harnesses
+  exhausted the existing prediction memory cap; the final concrete compile-time
+  alias representation passes without removing numerical/failure assertions.
+  An experimental NaN-payload comparison exceeded the preservation contract and
+  was removed. A running shell observed an edited runner and failed parsing;
+  its profile was rerun after the runner stabilized. Interrupted or failed runs
+  are not counted as passes. Solver memory limits were not raised (prediction
+  already uses 8 GiB; other suites retain their existing limits).
+- Self-review: final-callee forwarding is correct under the independently checked
+  frames; observed functionality is unchanged. Commit accepted. Lean equations
+  are unchanged. Local manifest: `dc03-manifest.json` in the evidence directory.

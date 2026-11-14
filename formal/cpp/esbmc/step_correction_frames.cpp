@@ -83,7 +83,10 @@ void verify_correction_reset_frame(Error error, Covariance covariance, Covarianc
     ProductResult::calls = 0U;
     solve_proof::Math::sqrt = {};
     solve_proof::Math::sqrt.results.head = root;
-    (void)formal_eskf::reset_covariance(error, covariance, output);
+    auto const old_output = output;
+    auto const status = formal_eskf::reset_covariance(error, covariance, output);
+    __ESBMC_assert(status == Status::success || same_matrix(output, old_output),
+                   "E-STEP-CORRECT frame: actual reset preserves its complete output on failure");
     __ESBMC_assert(solve_proof::Math::sqrt.calls <= 1U && same_error(error, old_error) &&
                        same_matrix(covariance, old_covariance),
                    "E-STEP-CORRECT frame: actual reset preserves every error and prior covariance coordinate");

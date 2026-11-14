@@ -182,15 +182,8 @@ template <typename Linalg>
         return quaternion_status;
     }
 
-    auto candidate = state;
-    Status const status = detail::predict_attitude(state.q_nb, imu.angular_rate_b, dt,
-                                                   parameters.minimum_quaternion_norm, candidate.q_nb);
-    if (!succeeded(status))
-    {
-        return status;
-    }
-    output = candidate;
-    return Status::success;
+    return detail::predict_attitude(state.q_nb, imu.angular_rate_b, dt, parameters.minimum_quaternion_norm,
+                                    output.q_nb);
 }
 
 /**

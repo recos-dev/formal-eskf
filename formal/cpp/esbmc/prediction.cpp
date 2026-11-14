@@ -414,7 +414,6 @@ Status predict_attitude<prediction_proof::Linalg>(prediction_proof::Quaternion c
     using namespace prediction_proof;
     __ESBMC_assert(AttitudeContract::enabled, "Runner error: attitude summary requires an explicit caller harness");
     __ESBMC_assert(!AttitudeContract::called, "E-PRED contract: caller delegates at most once");
-    __ESBMC_assert(&q != &output, "E-PRED contract: caller supplies a distinct attitude candidate");
     // Actual helper profiles quantify over all IEEE quaternion/rate values.
     __ESBMC_assert(Math::is_finite(dt) && dt > Scalar{0} && Math::is_finite(minimum) && minimum > Scalar{0} &&
                        minimum <= Scalar{1},
@@ -428,7 +427,7 @@ Status predict_attitude<prediction_proof::Linalg>(prediction_proof::Quaternion c
     {
         output = AttitudeContract::result;
     }
-    // No write to output on failure, or to either input on any return. These
+    // No write on failure; inputs disjoint from output are preserved. These
     // frame conditions are also proved for the actual helper and arbitrary
     // initial output; nothing else in the caller is summarized.
     return AttitudeContract::status;
@@ -1170,8 +1169,10 @@ void verify_ins_gyro_bias(Vector bias, Scalar dt)
 // status correspondence claim, not a premise that every q here is unit.
 // Independent numerator equations correspond to eulerCandidate_coefficients.
 // A passive observer records the actual norm input/result, not a model return.
-void verify_attitude_euler(Quaternion q, Vector sample, Scalar dt, Scalar minimum_norm, Quaternion output)
+void verify_attitude_euler(Quaternion const q, Vector sample, Scalar dt, Scalar minimum_norm, Quaternion output)
 {
+    static_assert(FORMAL_ESKF_PROOF_ALIAS == 0 || FORMAL_ESKF_PROOF_ALIAS == 1);
+    constexpr bool output_alias = FORMAL_ESKF_PROOF_ALIAS == 1;
 #if ESKF_QUAT_APPROX
     __ESBMC_assert(!FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT, "Runner error: Euler proof must execute the REAL helper");
     assume_prediction_parameters(dt, minimum_norm);
@@ -1184,13 +1185,27 @@ void verify_attitude_euler(Quaternion q, Vector sample, Scalar dt, Scalar minimu
     expected[1] = q.q1() + q.q0() * x + q.q2() * z - q.q3() * y;
     expected[2] = q.q2() + q.q0() * y + q.q3() * x - q.q1() * z;
     expected[3] = q.q3() + q.q0() * z + q.q1() * y - q.q2() * x;
-    auto const before = output;
+#if FORMAL_ESKF_PROOF_ALIAS
+    auto target = q;
+#else
+    auto target = output;
+#endif
+    auto const unused_before = output;
+    auto const before = target;
     auto const q_before = q;
     auto const rate_before = sample;
     NormObserver::start();
-    Status const status = formal_eskf::detail::predict_attitude(q, sample, dt, minimum_norm, output);
+#if FORMAL_ESKF_PROOF_ALIAS
+    Status const status = formal_eskf::detail::predict_attitude(target, sample, dt, minimum_norm, target);
+#else
+    Status const status = formal_eskf::detail::predict_attitude(q, sample, dt, minimum_norm, target);
+#endif
+    __ESBMC_assert(preserved_vector(q.coefficients(), q_before.coefficients()) && preserved_vector(sample, rate_before),
+                   "E-PRED: the attitude helper preserves inputs disjoint from output");
+    __ESBMC_assert(!output_alias || preserved_vector(output.coefficients(), unused_before.coefficients()),
+                   "E-PRED: in-place attitude leaves the unused output unchanged");
     Status expected_status;
-    if (!finite_vector(q.coefficients()) || !finite_vector(sample))
+    if (!finite_vector(q_before.coefficients()) || !finite_vector(sample))
     {
         expected_status = Status::non_finite_input;
     }
@@ -1217,15 +1232,13 @@ void verify_attitude_euler(Quaternion q, Vector sample, Scalar dt, Scalar minimu
     }
     __ESBMC_assert(status == expected_status,
                    "E-PRED: Euler reports the exact input, arithmetic, norm-threshold or division outcome");
-    __ESBMC_assert(preserved_vector(q.coefficients(), q_before.coefficients()) && preserved_vector(sample, rate_before),
-                   "E-PRED: the attitude helper preserves both distinct input objects");
-    __ESBMC_assert(status != Status::success || finite_vector(output.coefficients()),
+    __ESBMC_assert(status != Status::success || finite_vector(target.coefficients()),
                    "E-PRED: successful Euler prediction has finite output coefficients");
     __ESBMC_assert(status != Status::success || NormObserver::count == 1U,
                    "E-PRED: successful Euler prediction has exactly one normalization");
     if (NormObserver::count == 1U)
     {
-        auto const coefficients = output.coefficients();
+        auto const coefficients = target.coefficients();
         constexpr std::size_t i = FORMAL_ESKF_PROOF_COEFFICIENT;
         static_assert(i < 4U);
         // All four profiles share the same symbolic input domain.
@@ -1239,7 +1252,7 @@ void verify_attitude_euler(Quaternion q, Vector sample, Scalar dt, Scalar minimu
             }
         }
     }
-    __ESBMC_assert(status == Status::success || preserved_vector(output.coefficients(), before.coefficients()),
+    __ESBMC_assert(status == Status::success || preserved_vector(target.coefficients(), before.coefficients()),
                    "E-PRED: unsuccessful Euler prediction leaves output unchanged");
 #else
     (void)q;
@@ -1257,6 +1270,8 @@ void verify_attitude_euler(Quaternion q, Vector sample, Scalar dt, Scalar minimu
 void verify_attitude_exp_general(Quaternion const q, Vector const sample, Scalar dt, Scalar minimum_norm,
                                  Quaternion increment, Status exp_status, Quaternion output)
 {
+    static_assert(FORMAL_ESKF_PROOF_ALIAS == 0 || FORMAL_ESKF_PROOF_ALIAS == 1);
+    constexpr bool output_alias = FORMAL_ESKF_PROOF_ALIAS == 1;
 #if !ESKF_QUAT_APPROX && FORMAL_ESKF_PROOF_EXP_CONTRACT
     __ESBMC_assert(!FORMAL_ESKF_PROOF_ATTITUDE_CONTRACT, "Runner error: Exp proof must execute the REAL helper");
     assume_prediction_parameters(dt, minimum_norm);
@@ -1271,13 +1286,27 @@ void verify_attitude_exp_general(Quaternion const q, Vector const sample, Scalar
     expected[1] = q.q0() * increment.q1() + q.q1() * increment.q0() + q.q2() * increment.q3() - q.q3() * increment.q2();
     expected[2] = q.q0() * increment.q2() - q.q1() * increment.q3() + q.q2() * increment.q0() + q.q3() * increment.q1();
     expected[3] = q.q0() * increment.q3() + q.q1() * increment.q2() - q.q2() * increment.q1() + q.q3() * increment.q0();
-    auto const before = output;
+#if FORMAL_ESKF_PROOF_ALIAS
+    auto target = q;
+#else
+    auto target = output;
+#endif
+    auto const unused_before = output;
+    auto const before = target;
     auto const q_before = q;
     auto const rate_before = sample;
     NormObserver::start();
-    auto const status = formal_eskf::detail::predict_attitude(q, sample, dt, minimum_norm, output);
+#if FORMAL_ESKF_PROOF_ALIAS
+    auto const status = formal_eskf::detail::predict_attitude(target, sample, dt, minimum_norm, target);
+#else
+    auto const status = formal_eskf::detail::predict_attitude(q, sample, dt, minimum_norm, target);
+#endif
+    __ESBMC_assert(preserved_vector(q.coefficients(), q_before.coefficients()) && preserved_vector(sample, rate_before),
+                   "E-PRED: the attitude helper preserves inputs disjoint from output");
+    __ESBMC_assert(!output_alias || preserved_vector(output.coefficients(), unused_before.coefficients()),
+                   "E-PRED: in-place attitude leaves the unused output unchanged");
     Status expected_status;
-    bool const finite_inputs = finite_vector(q.coefficients()) && finite_vector(sample);
+    bool const finite_inputs = finite_vector(q_before.coefficients()) && finite_vector(sample);
     bool const finite_theta = finite_vector(theta);
     __ESBMC_assert(ExpContract::called == (finite_inputs && finite_theta),
                    "E-PRED: Exp is reached exactly after finite input and increment checks");
@@ -1310,9 +1339,7 @@ void verify_attitude_exp_general(Quaternion const q, Vector const sample, Scalar
     }
     __ESBMC_assert(status == expected_status,
                    "E-PRED: attitude propagates Exp failure or the exact composition outcome");
-    __ESBMC_assert(preserved_vector(q.coefficients(), q_before.coefficients()) && preserved_vector(sample, rate_before),
-                   "E-PRED: the attitude helper preserves both distinct input objects");
-    __ESBMC_assert(status != Status::success || finite_vector(output.coefficients()),
+    __ESBMC_assert(status != Status::success || finite_vector(target.coefficients()),
                    "E-PRED: successful Exp prediction has finite output coefficients");
     constexpr std::size_t i = FORMAL_ESKF_PROOF_COEFFICIENT;
     static_assert(i < 4U);
@@ -1322,13 +1349,13 @@ void verify_attitude_exp_general(Quaternion const q, Vector const sample, Scalar
                        "E-PRED: composition normalizes OLD quaternion times the unchanged Exp result");
         if (status == Status::success)
         {
-            __ESBMC_assert(preserved_scalar(output.coefficients()(i), expected[i] / NormObserver::norms[0]),
+            __ESBMC_assert(preserved_scalar(target.coefficients()(i), expected[i] / NormObserver::norms[0]),
                            "E-PRED: attitude publishes the checked normalized Hamilton coefficient");
         }
     }
     __ESBMC_assert(status != Status::success || NormObserver::count == 1U,
                    "E-PRED: successful Exp attitude completes its composition normalization");
-    __ESBMC_assert(status == Status::success || preserved_vector(output.coefficients(), before.coefficients()),
+    __ESBMC_assert(status == Status::success || preserved_vector(target.coefficients(), before.coefficients()),
                    "E-PRED: every failed Exp attitude preserves the output");
 #else
     (void)q;

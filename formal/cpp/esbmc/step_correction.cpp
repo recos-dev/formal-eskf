@@ -10,7 +10,8 @@
 
 namespace step_correction_proof
 {
-// Summaries write only their separate scratch outputs, even on failure.
+// Intermediate summaries may overwrite scratch on failure. The final reset
+// uses the same-backend public failure-atomic frame proved separately.
 // No finite/unit/PSD/success premise is imposed. Their same-type input frames
 // are established by E-CORRECT and step_correction_frames.cpp, not inferred
 // from the older contract_proof::Linalg injection/reset instantiations.
@@ -130,10 +131,13 @@ inline Status reset_covariance<step_correction_proof::Backend>(step_correction_p
                    "E-STEP-CORRECT: reset occurs once only after successful injection");
     __ESBMC_assert(unpacked(error, Calls::results->delta) && same_matrix(covariance, Calls::results->joseph),
                    "E-STEP-CORRECT: reset uses the complete Joseph covariance and error BEFORE zeroing");
-    __ESBMC_assert(&output != &covariance && &output != Calls::covariance_target,
-                   "E-STEP-CORRECT: covariance reset writes separate scratch");
+    __ESBMC_assert(&output != &covariance && &output == Calls::covariance_target,
+                   "E-STEP-CORRECT: final reset receives caller output, disjoint from Joseph P");
     unpublished();
-    output = Calls::results->reset;
+    if (Calls::results->reset_status == Status::success)
+    {
+        output = Calls::results->reset;
+    }
     return Calls::results->reset_status;
 }
 } // namespace formal_eskf

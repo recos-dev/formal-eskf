@@ -18,7 +18,7 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1538 '^PLAN'
+    check_count 1554 '^PLAN'
     check_count 2 'observations-.*-rotation-producer'
     check_count 16 'observations-.*-jacobian'
     check_count 64 'observations-.*-caller-alias'
@@ -64,14 +64,14 @@ check_plan()
     check_count 106 '[[:space:]]correction-binary64'
     check_count 42 'step-correction-binary32'
     check_count 42 'step-correction-binary64'
-    check_count 74 'prediction-binary32|state-binary32|scalar-contract-binary32'
-    check_count 74 'prediction-binary64|state-binary64|scalar-contract-binary64'
+    check_count 82 'prediction-binary32|state-binary32|scalar-contract-binary32'
+    check_count 82 'prediction-binary64|state-binary64|scalar-contract-binary64'
     check_count 0 'shared'
     check_count 24 'attitude-summary-translation'
     check_count 8 'attitude-summary-ahrs'
     check_count 32 'approx[01].*attitude-summary'
-    check_count 8 'approx1.*actual-helper-coefficient'
-    check_count 8 'approx0.*exp-summary-helper-coefficient'
+    check_count 16 'approx1.*actual-helper-coefficient'
+    check_count 16 'approx0.*exp-summary-helper-coefficient'
     check_count 16 'approx0.*actual-exp-coefficient'
     check_count 66 'approx[01]-standard'
     for BINARY64 in 0 1; do
@@ -199,24 +199,26 @@ check_plan()
             done
         done
         for COEFFICIENT in 0 1 2 3; do
-            check_count 1 "${BASE_PROFILE}-approx1.*actual-helper-coefficient${COEFFICIENT}"
-            check_count 1 "${BASE_PROFILE}-approx0.*exp-summary-helper-coefficient${COEFFICIENT}"
+            for ALIAS in 0 1; do
+                check_count 1 "${BASE_PROFILE}-approx1.*actual-helper-coefficient${COEFFICIENT}-alias${ALIAS}"
+                check_count 1 "${BASE_PROFILE}-approx0.*exp-summary-helper-coefficient${COEFFICIENT}-alias${ALIAS}"
+            done
             for TAYLOR in 0 1; do
                 check_count 1 "${BASE_PROFILE}-approx0.*actual-exp-coefficient${COEFFICIENT}-taylor${TAYLOR}"
             done
         done
     done
     [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 127 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1538 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1554 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
     diff -u <(printf '%s\n' "${PLAN}" | sort) <(printf '%s' "${SHARDED}" | sort)
     [[ "$("${RUNNER}" quaternion --list | wc -l)" == 74 ]] || fail 'quaternion selection changed'
     [[ "$("${RUNNER}" rotation --list | wc -l)" == 10 ]] || fail 'rotation dependencies are missing'
-    [[ "$("${RUNNER}" prediction --list | wc -l)" == 148 ]] || fail 'prediction selection changed'
-    [[ "$("${RUNNER}" prediction32 --list | wc -l)" == 74 ]] || fail 'binary32 selection changed'
-    [[ "$("${RUNNER}" prediction64 --list | wc -l)" == 74 ]] || fail 'binary64 selection changed'
+    [[ "$("${RUNNER}" prediction --list | wc -l)" == 164 ]] || fail 'prediction selection changed'
+    [[ "$("${RUNNER}" prediction32 --list | wc -l)" == 82 ]] || fail 'binary32 selection changed'
+    [[ "$("${RUNNER}" prediction64 --list | wc -l)" == 82 ]] || fail 'binary64 selection changed'
     [[ "$("${RUNNER}" noise --list | wc -l)" == 6 ]] || fail 'noise configuration/dependency coverage changed'
     [[ "$("${RUNNER}" injection --list | wc -l)" == 8 ]] || fail 'injection configuration/alias coverage changed'
     [[ "$("${RUNNER}" jacobian --list | wc -l)" == 10 ]] || fail 'Jacobian flow/entries/dependency coverage changed'
@@ -1412,7 +1414,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1538 profiles; 127 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1554 profiles; 127 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

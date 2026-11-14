@@ -171,15 +171,7 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
         return innovation_status;
     }
     // Sola (274): solve K S = P H^T; do not form S^-1.
-    linalg::Matrix<Linalg, Size, MeasurementSize> K;
-    Status const solve_status = linalg::right_solve_spd(PHt, S, K);
-    if (!succeeded(solve_status))
-    {
-        return solve_status;
-    }
-
-    gain_output = K;
-    return Status::success;
+    return linalg::right_solve_spd(PHt, S, gain_output);
 }
 
 /**

@@ -99,8 +99,8 @@ bool zero_error(Error const & error)
     return zero;
 }
 
-// Universal output-only callees. Even FAILURE writes arbitrary candidate data:
-// these transactions must not depend on the callee preserving its own output.
+// Nominal callees may overwrite scratch even on failure. The final covariance
+// callee uses its proved public failure-atomic contract and may alias old P.
 // No success, finite, unit, PSD or numerical-result assumption is made.
 // Matching input-purity evidence: verify_nominal_prediction_frame, E-PCOV,
 // E-INJECT and E-RESET, all with contract_proof::Linalg and actual storage.
@@ -155,8 +155,7 @@ void covariance_request(Matrix const & covariance, Matrix & output)
                        Calls::covariance_calls++ == 0U,
                    "E-STEP: covariance callee executes once, only after nominal success");
     __ESBMC_assert(same_matrix(covariance, *Calls::covariance), "E-STEP: covariance callee receives complete old P");
-    __ESBMC_assert(&output != &covariance && &output != Calls::covariance_target,
-                   "E-STEP: covariance callee writes a separate scratch object");
+    __ESBMC_assert(&output == Calls::covariance_target, "E-STEP: final covariance callee receives the caller output");
     check_unpublished();
 }
 
@@ -198,7 +197,11 @@ inline Status predict_covariance<contract_proof::Linalg>(
     __ESBMC_assert(same_imu(imu, *Calls::imu) && same_parameters(parameters, *Calls::parameters) &&
                        same(dt, Calls::scalar),
                    "E-STEP: covariance prediction receives the same IMU, parameters and dt");
-    output = Calls::results->covariance;
+    // E-PCOV/E-RESET prove this frame for the same backend and alias modes.
+    if (Calls::results->covariance_status == Status::success)
+    {
+        output = Calls::results->covariance;
+    }
     return Calls::results->covariance_status;
 }
 
@@ -222,7 +225,11 @@ inline Status reset_covariance<contract_proof::Linalg>(step_proof::Error const &
     using namespace step_proof;
     covariance_request(covariance, output);
     __ESBMC_assert(same_error(error, *Calls::error), "E-STEP: covariance reset receives the error BEFORE zeroing");
-    output = Calls::results->covariance;
+    // E-PCOV/E-RESET prove this frame for the same backend and alias modes.
+    if (Calls::results->covariance_status == Status::success)
+    {
+        output = Calls::results->covariance;
+    }
     return Calls::results->covariance_status;
 }
 } // namespace formal_eskf

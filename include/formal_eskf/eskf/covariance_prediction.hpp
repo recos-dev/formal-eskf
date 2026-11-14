@@ -225,14 +225,12 @@ template <typename Linalg>
     {
         return nominal_status;
     }
-    linalg::Matrix<Linalg, 3U, 3U> covariance_candidate;
-    Status const covariance_status = predict_covariance(covariance, imu, dt, parameters, covariance_candidate);
+    Status const covariance_status = predict_covariance(covariance, imu, dt, parameters, covariance_output);
     if (!succeeded(covariance_status))
     {
         return covariance_status;
     }
     state_output = state_candidate;
-    covariance_output = covariance_candidate;
     return Status::success;
 }
 
@@ -250,14 +248,12 @@ template <typename Linalg>
     {
         return nominal_status;
     }
-    linalg::Matrix<Linalg, 15U, 15U> covariance_candidate;
-    Status const covariance_status = predict_covariance(state, covariance, imu, dt, parameters, covariance_candidate);
+    Status const covariance_status = predict_covariance(state, covariance, imu, dt, parameters, covariance_output);
     if (!succeeded(covariance_status))
     {
         return covariance_status;
     }
     state_output = state_candidate;
-    covariance_output = covariance_candidate;
     return Status::success;
 }
 

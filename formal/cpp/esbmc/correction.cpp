@@ -388,7 +388,11 @@ right_solve_spd<correction_proof::Backend, correction_proof::state_size, correct
                    "E-CORRECT: K*S=PHt uses finalized innovation, once after successful finalization");
     __ESBMC_assert(&output != &right && static_cast<void const *>(&output) != &system,
                    "E-CORRECT: gain uses a separate solve workspace");
-    output = Calls::results->gain;
+    // F-SOLVE proves unchanged output on failure for this right-solve shape.
+    if (Calls::results->solve_status == Status::success)
+    {
+        output = Calls::results->gain;
+    }
     return Calls::results->solve_status;
 }
 #define CORRECTION_SANDWICH(K)                                                                                         \

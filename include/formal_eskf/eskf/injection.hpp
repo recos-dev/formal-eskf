@@ -136,7 +136,7 @@ template <typename Linalg>
     {
         return Status::non_finite_input;
     }
-    auto candidate = state;
+    configuration::Ins::NominalState<Linalg> candidate;
     Status const status =
         detail::inject_attitude(state.q_nb, error.delta_theta_b, minimum_quaternion_norm, candidate.q_nb);
     if (!succeeded(status))
@@ -217,14 +217,12 @@ template <typename Linalg>
     {
         return nominal_status;
     }
-    linalg::Matrix<Linalg, 3U, 3U> covariance_candidate;
-    Status const covariance_status = reset_covariance(error, covariance, covariance_candidate);
+    Status const covariance_status = reset_covariance(error, covariance, covariance_output);
     if (!succeeded(covariance_status))
     {
         return covariance_status;
     }
     state_output = state_candidate;
-    covariance_output = covariance_candidate;
     error_output = {};
     return Status::success;
 }
@@ -245,14 +243,12 @@ template <typename Linalg>
     {
         return nominal_status;
     }
-    linalg::Matrix<Linalg, 15U, 15U> covariance_candidate;
-    Status const covariance_status = reset_covariance(error, covariance, covariance_candidate);
+    Status const covariance_status = reset_covariance(error, covariance, covariance_output);
     if (!succeeded(covariance_status))
     {
         return covariance_status;
     }
     state_output = state_candidate;
-    covariance_output = covariance_candidate;
     error_output = {};
     return Status::success;
 }

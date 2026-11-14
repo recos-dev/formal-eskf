@@ -281,7 +281,7 @@ run_prediction_callers()
 
 run_prediction_suite()
 {
-    local BINARY64 APPROX FUNCTION_NAME COEFFICIENT BASE_PROFILE PREDICTION_UNWIND TAYLOR TIME_LIMIT MEMORY_LIMIT
+    local BINARY64 APPROX FUNCTION_NAME COEFFICIENT ALIAS BASE_PROFILE PREDICTION_UNWIND TAYLOR TIME_LIMIT MEMORY_LIMIT
     local -a PROFILE_ARGUMENTS
     SOURCE_FILE="${PROOF_DIR}/prediction.cpp"
 
@@ -352,18 +352,22 @@ run_prediction_suite()
             # Exp and its composition caller are separate obligations. Every
             # summary depends on the matching actual-callee coefficient proofs.
             for COEFFICIENT in 0 1 2 3; do
-                PROFILE="${BASE_PROFILE}-actual-helper-coefficient${COEFFICIENT}"
-                if [[ "${APPROX}" == 1 ]]; then
-                    verify verify_attitude_euler --proof-unwind "${PREDICTION_UNWIND}" \
-                        --proof-timeout "${TIME_LIMIT}" --proof-memory "${MEMORY_LIMIT}" "${PROFILE_ARGUMENTS[@]}" \
-                        -D "FORMAL_ESKF_PROOF_COEFFICIENT=${COEFFICIENT}" --cvc5
-                    continue
-                fi
-                PROFILE="${BASE_PROFILE}-exp-summary-helper-coefficient${COEFFICIENT}"
-                verify verify_attitude_exp_general --proof-unwind "${PREDICTION_UNWIND}" \
-                    --proof-timeout "${TIME_LIMIT}" --proof-memory "${MEMORY_LIMIT}" "${PROFILE_ARGUMENTS[@]}" \
-                    -D "FORMAL_ESKF_PROOF_COEFFICIENT=${COEFFICIENT}" -D FORMAL_ESKF_PROOF_EXP_CONTRACT=1 \
-                    --bitwuzla --multi-property
+                # Separate whole-object aliases keep pointer selection out of the FP query.
+                for ALIAS in 0 1; do
+                    if [[ "${APPROX}" == 1 ]]; then
+                        PROFILE="${BASE_PROFILE}-actual-helper-coefficient${COEFFICIENT}-alias${ALIAS}"
+                        verify verify_attitude_euler --proof-unwind "${PREDICTION_UNWIND}" \
+                            --proof-timeout "${TIME_LIMIT}" --proof-memory "${MEMORY_LIMIT}" "${PROFILE_ARGUMENTS[@]}" \
+                            -D "FORMAL_ESKF_PROOF_COEFFICIENT=${COEFFICIENT}" -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" --cvc5
+                    else
+                        PROFILE="${BASE_PROFILE}-exp-summary-helper-coefficient${COEFFICIENT}-alias${ALIAS}"
+                        verify verify_attitude_exp_general --proof-unwind "${PREDICTION_UNWIND}" \
+                            --proof-timeout "${TIME_LIMIT}" --proof-memory "${MEMORY_LIMIT}" "${PROFILE_ARGUMENTS[@]}" \
+                            -D "FORMAL_ESKF_PROOF_COEFFICIENT=${COEFFICIENT}" -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" \
+                            -D FORMAL_ESKF_PROOF_EXP_CONTRACT=1 --bitwuzla --multi-property
+                    fi
+                done
+                if [[ "${APPROX}" == 1 ]]; then continue; fi
                 for TAYLOR in 0 1; do
                     PROFILE="${BASE_PROFILE}-actual-exp-coefficient${COEFFICIENT}-taylor${TAYLOR}"
                     verify verify_exp_general --proof-unwind "${PREDICTION_UNWIND}" \

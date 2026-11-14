@@ -9,7 +9,7 @@ the review list; they are work items, not proof requirements or measured speedup
 | 1 | G01 | Reuse finite input premises in symmetry checks | Implemented in DC-02 |
 | 2 | G01-C02 | Pairwise symmetry residual | Implemented in DC-02 |
 | 3 | G01-C01 | Forward gain solve output | Implemented in DC-03 |
-| 4 | G01-C03, G06-C8, G08-C7 | Same-call PHt/S reuse after gating | Pending |
+| 4 | G01-C03, G06-C8, G08-C7 | Same-call PHt/S reuse after gating | Retained in DC-07 |
 | 5 | G01-C04 | Hoist bias permissions out of column loops | Implemented in DC-01 |
 | 6 | G02-C1 | Reuse validated prior quaternion | Implemented in DC-05 |
 | 7 | G02-C2 | AHRS nominal output forwarding | Implemented in DC-03 |
@@ -23,14 +23,14 @@ the review list; they are work items, not proof requirements or measured speedup
 | 15 | G05-C3 | Share Exp/Jr angle intermediates | Retained in DC-06 |
 | 16 | G05-C6 | Forward covariance reset output | Implemented in DC-03 |
 | 17 | G05-C8 | Avoid copied-and-overwritten INS candidate | Implemented in DC-03 |
-| 18 | G06-C1 | Reuse runtime innovation premises | Pending |
+| 18 | G06-C1 | Reuse runtime innovation premises | Retained in DC-07 |
 | 19 | G06-C2 | Simplify innovation range comparisons | Implemented in DC-04 |
 | 20 | G07-C1, C5 | Construction-valid H and delayed construction | Implemented in DC-01 |
 | 21 | G07-C2 | Accel h/z finite check subsumption | Implemented in DC-04 |
 | 22 | G07-C3, G08-C4 | Finite vector nonzero checks | Implemented in DC-01 |
 | 23 | G08-C1 | Build runtime magnetic H from existing h | Implemented in DC-01 |
-| 24 | G08-C2–C3 | Share magnetic model preparation across gate/core | Pending |
-| 25 | G08-C6 | Share magnetic prediction/projection rotation | Pending |
+| 24 | G08-C2–C3 | Share magnetic model preparation across gate/core | Retained in DC-07 |
+| 25 | G08-C6 | Share magnetic prediction/projection rotation | Implemented in DC-07 |
 | 26 | G08-C5 | Magnetic h/u finite check subsumption | Implemented in DC-04 |
 | 27 | G09-C1 | Direct constant selector Jacobians | Implemented in DC-01 |
 | 28 | G09-C3 | Reuse height local H | Implemented in DC-01 |
@@ -255,3 +255,45 @@ numerical reason; a missing proof is not a pass.
 - Self-review: no production change and no new proof claim. These two candidates
   are deliberately retained for the stated interface/semantic boundaries,
   not marked as implemented optimizations or passing missing proofs.
+
+### DC-07: observation preparation — accepted
+
+- Changed (#25): one private per-call magnetic observation contains status,
+  the prior R, predicted field and residual. The magnetic prediction and Down
+  projector share R; each retains the original transpose/product arithmetic.
+  Tilt-enabled core correction constructs R once instead of twice. Field/range
+  validation, projected-gain checks, bias permissions, Joseph update and
+  injection/reset order remain. No public API or runtime policy changes.
+- Retained (#4, #24): gate and correction remain independently checked, as
+  R-MEASUREMENT-FUSION specifies. A shared same-call PHt/S/model workspace is
+  possible, but requires ownership of the exact prior and raw/applied residual,
+  preserving magnetic projection and bias permissions before Joseph. A gate
+  pass alone establishes neither full S validity nor conditioning or unit q.
+  Prefer direct checked composition over an additional prepared correction
+  path in this cleanup; repeated products are acknowledged, not eliminated.
+- Retained (#18): keep the checked innovation entry point. Reusing runtime's
+  finite sigma/r/diagonal facts could skip up to seven scalar inspections for
+  Size=3, but would add another private bypass interface across this boundary.
+  Preserve the single checked operation, early invalid-sigma ordering and
+  diagnostics semantics instead.
+- Correctness review: both core overloads consume observation fields only after
+  success; the shared rotation comes from the same unchanged prior. Full dense
+  Down multiplication is retained, including signed-zero/overflow behavior.
+  E-OBS's original equations, arbitrary rotation-result model, status/rollback
+  and aliases remain unchanged. No weakened assertion or new input assumption.
+- Validation: 18 selected ESBMC profiles pass (16 magnetic callers and the two
+  matching rotation producers, binary32/binary64, four output aliases).
+  Nineteen native executions across Eigen/PX4/CMSIS-DSP, including all reset/
+  projection combinations on Eigen/PX4, pass. Existing native tests exercise
+  all 64 bias-permission masks, aliases and the independent projected-gain/
+  Joseph oracle. Both magnetic core/runtime ASan/UBSan tests, configured
+  unix32/unix64 Cppcheck, formatting and mapped-symbol checks pass.
+  All 1248 baseline/current digests match over 29,952 calls.
+- Cost review: with host GCC -O2, Eigen/binary64, the INS correction's own stack
+  frame changes from 3232 to 3280 bytes (+48). This is not whole-call-chain stack
+  usage, a target budget or a timing benchmark. Local bounded R storage avoids
+  recomputation; no heap allocation, persistent cache or validation token.
+- Self-review: correct under the existing deterministic numerical contracts;
+  observed functionality is unchanged. Commit accepted. E-OBS remains the
+  full-vector (tilt=0) proof boundary; projected-mode native evidence does not
+  close E-MAG-TILT's outstanding formal coverage or prove deployed backends.

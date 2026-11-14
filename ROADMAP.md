@@ -305,8 +305,8 @@ The numbered candidates below refer to the fixed 28-item review list.
 | DC-03 | 3, 7, 13, 16, 17 | Transactional forwarding and state initialization | Complete: `6241853` |
 | DC-04 | 8, 19, 21, 26 | Numerical implication and innovation comparisons | Complete: `095a6d4` |
 | DC-05 | 6, 10 | Prediction input ownership and common mathematics | Complete: `94c00a1` |
-| DC-06 | 14, 15 | Injection/reset validation and angle computations | Complete; retained with DC-06 rationale |
-| DC-07 | 4, 18, 24, 25 | Same-call gate/correction and magnetic model preparation | Pending |
+| DC-06 | 14, 15 | Injection/reset validation and angle computations | Complete: `f220141` (retained) |
+| DC-07 | 4, 18, 24, 25 | Same-call gate/correction and magnetic model preparation | Complete; DC-07 acceptance record |
 | DC-08 | All; three sparse-algebra proposals | Cross-profile acceptance and final disposition | Pending |
 
 Execute in this order. For each batch, record what changed, correctness evidence,

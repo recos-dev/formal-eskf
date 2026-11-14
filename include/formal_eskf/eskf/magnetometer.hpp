@@ -45,46 +45,56 @@ template <std::size_t AttitudeOffset, typename Linalg, std::size_t Size, std::si
 }
 #endif
 
-/** Checked field prediction and residual, independent of the estimator configuration. */
+/** One observation's old rotation, predicted field and residual. */
+template <typename Linalg> struct MagneticObservation
+{
+    Status status = Status::success;
+    linalg::Matrix<Linalg, 3U, 3U> R;
+    linalg::Vector<Linalg, 3U> h_m_b;
+    linalg::Vector<Linalg, 3U> r;
+};
+
+/** Validate the fields and prepare the shared mathematics for this correction. */
 template <typename Linalg>
-[[nodiscard]] Status
-magnetometer_residual(so3::UnitQuaternion<Linalg> const & q_nb, linalg::Vector<Linalg, 3U> const & m_b,
-                      linalg::Vector<Linalg, 3U> const & m_n, linalg::Vector<Linalg, 3U> & prediction_output,
-                      linalg::Vector<Linalg, 3U> & residual_output)
+[[nodiscard]] MagneticObservation<Linalg> prepare_magnetic_observation(so3::UnitQuaternion<Linalg> const & q_nb,
+                                                                       linalg::Vector<Linalg, 3U> const & m_b,
+                                                                       linalg::Vector<Linalg, 3U> const & m_n)
 {
     using value_type = typename Linalg::value_type;
+    MagneticObservation<Linalg> result;
     if (!linalg::all_finite(q_nb.coefficients()) || !linalg::all_finite(m_b) || !linalg::all_finite(m_n))
     {
-        return Status::non_finite_input;
+        result.status = Status::non_finite_input;
+        return result;
     }
     // Reject absent field vectors without squaring their magnitudes. Field
-    // strength, inclination and disturbance thresholds belong to future gating.
+    // strength, inclination and disturbance thresholds belong to runtime gating.
     if ((m_b(0U) == value_type{0} && m_b(1U) == value_type{0} && m_b(2U) == value_type{0}) ||
         (m_n(0U) == value_type{0} && m_n(1U) == value_type{0} && m_n(2U) == value_type{0}))
     {
-        return Status::domain_error;
+        result.status = Status::domain_error;
+        return result;
     }
-    auto const h_m_b = so3::inverse_rotate(q_nb, m_n);
-    auto const r = m_b - h_m_b;
-    if (!linalg::all_finite(r))
+    result.R = so3::to_rotation_matrix(q_nb);
+    result.h_m_b = linalg::transpose(result.R) * m_n;
+    result.r = m_b - result.h_m_b;
+    if (!linalg::all_finite(result.r))
     {
-        return Status::non_finite_result;
+        result.status = Status::non_finite_result;
     }
-    prediction_output = h_m_b;
-    residual_output = r;
-    return Status::success;
+    return result;
 }
 
 #if ESKF_MAG_TILT
 /** Construct the navigation-Down projector before constraining attitude gain rows. */
 template <typename Linalg>
-[[nodiscard]] Status magnetic_tilt_projector(so3::UnitQuaternion<Linalg> const & q_nb,
+[[nodiscard]] Status magnetic_tilt_projector(linalg::Matrix<Linalg, 3U, 3U> const & R,
                                              linalg::Matrix<Linalg, 3U, 3U> & projector_output)
 {
     using value_type = typename Linalg::value_type;
     using vector_type = linalg::Vector<Linalg, 3U>;
     auto const down_n = vector_type::from_row_major({value_type{0}, value_type{0}, value_type{1}});
-    auto const down_b = so3::inverse_rotate(q_nb, down_n);
+    auto const down_b = linalg::transpose(R) * down_n;
     // Unit prior remains a caller precondition, as in the full-field model.
     // Do not normalize/repair the prior or replace the observation Jacobian.
     auto const projector = down_b * linalg::transpose(down_b);
@@ -167,22 +177,22 @@ template <typename Linalg>
     linalg::Matrix<Linalg, 3U, 3U> const & V, typename Linalg::value_type minimum_quaternion_norm,
     configuration::Ahrs::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 3U, 3U> & covariance_output)
 {
-    linalg::Vector<Linalg, 3U> h_m_b, r;
-    Status const observation_status = detail::magnetometer_residual(state.q_nb, m_b, m_n, h_m_b, r);
-    if (!succeeded(observation_status))
+    auto const observation = detail::prepare_magnetic_observation(state.q_nb, m_b, m_n);
+    if (!succeeded(observation.status))
     {
-        return observation_status;
+        return observation.status;
     }
-    auto const H = so3::hat<Linalg>(h_m_b);
+    auto const H = so3::hat<Linalg>(observation.h_m_b);
 #if ESKF_MAG_TILT
     linalg::Matrix<Linalg, 3U, 3U> projector;
-    Status const projection_status = detail::magnetic_tilt_projector(state.q_nb, projector);
+    Status const projection_status = detail::magnetic_tilt_projector(observation.R, projector);
     if (!succeeded(projection_status))
     {
         return projection_status;
     }
     linalg::Matrix<Linalg, 3U, 3U> K;
-    Status const gain_status = detail::compute_correction_gain(covariance, r, H, V, minimum_quaternion_norm, K);
+    Status const gain_status =
+        detail::compute_correction_gain(covariance, observation.r, H, V, minimum_quaternion_norm, K);
     if (!succeeded(gain_status))
     {
         return gain_status;
@@ -194,7 +204,8 @@ template <typename Linalg>
     }
     linalg::Vector<Linalg, 3U> delta_x;
     linalg::Matrix<Linalg, 3U, 3U> P_corrected;
-    Status const correction_status = detail::apply_correction_gain(covariance, r, H, V, K, delta_x, P_corrected);
+    Status const correction_status =
+        detail::apply_correction_gain(covariance, observation.r, H, V, K, delta_x, P_corrected);
     if (!succeeded(correction_status))
     {
         return correction_status;
@@ -204,7 +215,7 @@ template <typename Linalg>
     return inject_and_reset(state, P_corrected, error, minimum_quaternion_norm, state_output, covariance_output,
                             reset_error);
 #else
-    return correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output);
+    return correct(state, covariance, observation.r, H, V, minimum_quaternion_norm, state_output, covariance_output);
 #endif
 }
 
@@ -226,23 +237,23 @@ template <typename Linalg>
     configuration::Ins::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
     configuration::Ins::BiasUpdate const & bias_update = {})
 {
-    linalg::Vector<Linalg, 3U> h_m_b, r;
-    Status const observation_status = detail::magnetometer_residual(state.q_nb, m_b, m_n, h_m_b, r);
-    if (!succeeded(observation_status))
+    auto const observation = detail::prepare_magnetic_observation(state.q_nb, m_b, m_n);
+    if (!succeeded(observation.status))
     {
-        return observation_status;
+        return observation.status;
     }
     linalg::Matrix<Linalg, 3U, 15U> H;
-    H.template set_block<0U, 6U>(so3::hat<Linalg>(h_m_b));
+    H.template set_block<0U, 6U>(so3::hat<Linalg>(observation.h_m_b));
 #if ESKF_MAG_TILT
     linalg::Matrix<Linalg, 3U, 3U> projector;
-    Status const projection_status = detail::magnetic_tilt_projector(state.q_nb, projector);
+    Status const projection_status = detail::magnetic_tilt_projector(observation.R, projector);
     if (!succeeded(projection_status))
     {
         return projection_status;
     }
     linalg::Matrix<Linalg, 15U, 3U> K;
-    Status const gain_status = detail::compute_correction_gain(covariance, r, H, V, minimum_quaternion_norm, K);
+    Status const gain_status =
+        detail::compute_correction_gain(covariance, observation.r, H, V, minimum_quaternion_norm, K);
     if (!succeeded(gain_status))
     {
         return gain_status;
@@ -255,7 +266,8 @@ template <typename Linalg>
     }
     linalg::Vector<Linalg, 15U> delta_x;
     linalg::Matrix<Linalg, 15U, 15U> P_corrected;
-    Status const correction_status = detail::apply_correction_gain(covariance, r, H, V, K, delta_x, P_corrected);
+    Status const correction_status =
+        detail::apply_correction_gain(covariance, observation.r, H, V, K, delta_x, P_corrected);
     if (!succeeded(correction_status))
     {
         return correction_status;
@@ -265,7 +277,8 @@ template <typename Linalg>
     return inject_and_reset(state, P_corrected, error, minimum_quaternion_norm, state_output, covariance_output,
                             reset_error);
 #else
-    return correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output, bias_update);
+    return correct(state, covariance, observation.r, H, V, minimum_quaternion_norm, state_output, covariance_output,
+                   bias_update);
 #endif
 }
 

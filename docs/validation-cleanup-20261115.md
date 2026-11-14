@@ -19,8 +19,8 @@ the review list; they are work items, not proof requirements or measured speedup
 | 11 | G04-C4 | Scan only variable F_x blocks | Implemented in DC-01 |
 | 12 | G04-C5 | Reuse -R | Implemented in DC-01 |
 | 13 | G04-C6 | Forward covariance prediction output | Implemented in DC-03 |
-| 14 | G05-C1–C2 | Reuse injection/reset input premises | Pending |
-| 15 | G05-C3 | Share Exp/Jr angle intermediates | Pending |
+| 14 | G05-C1–C2 | Reuse injection/reset input premises | Retained in DC-06 |
+| 15 | G05-C3 | Share Exp/Jr angle intermediates | Retained in DC-06 |
 | 16 | G05-C6 | Forward covariance reset output | Implemented in DC-03 |
 | 17 | G05-C8 | Avoid copied-and-overwritten INS candidate | Implemented in DC-03 |
 | 18 | G06-C1 | Reuse runtime innovation premises | Pending |
@@ -230,3 +230,28 @@ numerical reason; a missing proof is not a pass.
 - Self-review: the local private-premise change is correct under the paired
   contracts; observed public functionality is unchanged. Commit accepted.
   No new public API, validation token or prediction workspace is introduced.
+
+### DC-06: injection/reset boundaries — retained, review complete
+
+- Retained (#14): use the same checked injection/reset/SO(3) paths for standalone
+  and correction callers. Correction establishes finite error and Joseph P,
+  but not all old nominal fields; standalone inject_and_reset has not validated
+  P when it reaches reset. Reset consumes theta only, while injection also
+  consumes the additive error fields. Bypassing their checks requires distinct
+  prepared paths with different premises, not one common unchecked entry.
+  Choose the existing independently callable operations over those extra paths.
+  The repeated input scans on qualified correction paths are acknowledged.
+- Retained (#15): Exp and J_r have different formulas, Taylor thresholds and
+  failure stages. Exp switches at machine epsilon in theta squared; J_r uses
+  1/256. At theta=1/64 only Exp uses trig; at 1/4 both use trig. Approximate reset
+  has no J_r trig at all. Sharing raw intermediates is possible, but would
+  couple these independent operations through a new prepared-angle interface.
+  Keep them separate; normalized quaternion coefficients cannot replace raw
+  trig, and the two normalizations act on different operands.
+- Validation: four native probe executions on current unchanged injection/SO(3)
+  sources (Eigen/PX4, reset=0/1, each float/double) preserve status precedence,
+  consumed-field differences, mode-dependent domains and rollback. They confirm
+  the recorded norm/trig counts; those are operation counts, not target timings.
+- Self-review: no production change and no new proof claim. These two candidates
+  are deliberately retained for the stated interface/semantic boundaries,
+  not marked as implemented optimizations or passing missing proofs.

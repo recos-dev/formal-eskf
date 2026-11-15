@@ -1458,3 +1458,74 @@ module code and unrelated drafts are unchanged. Evidence:
 `output/runtime-proof-continuation-20261115/observation-manifest.json`,
 `magnetic-observation-final/results.json`, `observation-native-mutations.json`,
 `observation-esbmc-mutations.json` and native/tooling logs.
+
+## Continuation totals and stopping boundary — 2026-11-16
+
+Baseline `9f34ce2` to proof head `3fa7460`: 27 self-reviewed proof commits,
+80 new Lean theorems and 291 new accepted ESBMC execution profiles. The 27 group
+manifests reconcile to 291 distinct registered profiles; every accepted log's
+success marker and SHA-256 was checked. The theorem count independently matches
+the added declarations, with no new `sorry`, `admit` or axiom. Counts denote
+separate evidence kinds, not interchangeable proofs or a whole-estimator coverage
+percentage. Ten ESBMC profiles check scoped library/storage models (eight height
+models and two IMU max models); 281 cover numerical operations, control flow and
+their dependencies through the recorded proof boundaries.
+
+| Area | New Lean theorems | New ESBMC profiles | Principal scope |
+|---|---:|---:|---|
+| IMU, vertical health and GNSS policies | 0 | 49 | Admission, permissions, initialized/inductive histories, quality/lifecycle and actual IMU prediction composition |
+| Navigation reset and vertical recovery | 23 | 74 | Exact covariance/reset/limiter algebra, coefficient and transaction contracts |
+| Height producers | 7 | 32 | Bias/offset, source admission, warmup/filter and library models |
+| Accelerometer runtime | 14 | 32 | Filter, conditions, tilt alignment, fusion transactions and endpoint integration |
+| Magnetic runtime and dependencies | 36 | 104 | Field/reference/heading/lifecycle, AHRS reset, module model scheduling, frame algebra and observation preparation |
+| **Total** | **80** | **291** | Scoped component evidence; incomplete owners remain below |
+
+The current runner inventory is 2,079 profiles / 229 entry points. Its inventory
+test passes; the entire 2,079-profile suite was not rerun in this continuation.
+All 50 registered requirements now have ESBMC references, but an entry containing
+a helper proof is not evidence that every requirement clause is complete. The
+map is not a denominator for all source functions. No full AI semantic audit or
+machine-checked Lean-to-C++ refinement is claimed.
+
+The dependency-ordered continuation has reached the following concrete boundaries.
+Further work requires new proof decompositions or explicit environment contracts,
+not deleting a failed query, assuming a producer's desired result or changing
+production solely to make the checker pass.
+
+| Remaining obligation | Established boundary / reason it is still open | Required continuation |
+|---|---|---|
+| Vertical-health numerical classification | History safety is proved; complete source ratios, epsilon floor and reference classification exhausted resources in the recorded probes | Independently check scalar classification/ratio lemmas, then reconnect all verdict branches |
+| Complete height-manager transactions | Admission/filter/reset producers are proved; composed recovery/reset/output-history queries reached solver limits | Split result/history and state/P frames with verified producer contracts, then establish owner initialization and induction |
+| Adaptive accelerometer sample owner | Endpoint integration is proved; round/division/conversion/timing composition exhausted solver resources | Close interval calculation and its conversion bounds, then the complete owner's history invariant |
+| INS magnetic heading reset | Exact-real algebra, AHRS execution and required rectangular products/blocks are proved; INS execution is not | Reduce symbolic storage/control expansion with justified producer boundaries before public INS transaction coverage |
+| Complete magnetic fusion | Field-first observation and gate/correction components are proved separately; their scalar/backend boundary is not yet closed | Separate general field-norm contracts from the Cholesky positive-pivot observer and verify the same-type dependency chain, then AHRS/INS gate/correction/publication aliases |
+| Actual PX4/replay composition | Actual `ImuPrediction` and `MagneticModel` helpers are covered; host acquisition, scheduling, lifecycle feedback, fault latch, publication and C++ geographic conversion are not thereby covered | Define executable uORB/clock/WMM/platform contracts and check the actual module/replay translation units; target timing and library accuracy need target evidence |
+
+For INS reset, additional product-only, product-plus-block and exploratory flat
+storage/reduction cuts each timed out in symbolic execution at 120 seconds with
+Z3. Their maximum RSS was respectively 419,044 / 515,700 / 490,392 KiB, with about
+120 CPU seconds and no swap. This is an expansion/CPU bottleneck, not evidence
+that larger host RAM alone will close the obligation. The last experiment also
+introduced an unaccepted reduction boundary; it would need its producer proved
+before any positive composition result could be accepted. None of these
+experiments was added to the registered suite or counted as a pass. Logs:
+`mag-reset-cut-probe.log`, `mag-reset-block-cut-probe.log` and
+`mag-reset-flat-cut-probe.log` in the continuation evidence directory.
+
+Unselected numerical error budgets, external backend/library internals, physical
+sensor validity, compiler/machine-code correctness and ARM/STM32 real-time
+qualification remain separate target claims. This stopping boundary retains the
+existing functionality/backlog order. No shared-core or PX4-module production
+source changed; pre-existing `FEATURE_TODO.md`, `ROADMAP.md` and other drafts were
+preserved. Reconciliation data: `output/runtime-proof-continuation-20261115/continuation-summary.json`.
+
+Final closure audit: the complete Lean build passes with `--wfail` (3,430 jobs).
+All 20 earlier vertical-health/IMU-inhibition profiles were rerun successfully
+against the current shared `<numbers>` model after its additive `std::numbers::pi`
+declaration. These are refreshed results, not additional profiles. The earlier
+40 default navigation-reset configurations retain their recorded preprocessed
+token equivalence after the optional backend selector was introduced. All mapped
+source/symbol references resolve; protected drafts and production hashes match
+the continuation baseline. Current evidence: `closure-vertical-current/results.json`,
+`closure-imu-current/results.json`, `closure-lean-current.log` and
+`continuation-closure-manifest.json` in the same local evidence directory.

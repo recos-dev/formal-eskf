@@ -883,3 +883,35 @@ directory. Experimental harnesses remain outside the accepted proof suite.
 Further composition needs smaller independently justified scalar/frame lemmas;
 no failed path or public input was removed to force acceptance. Independent
 accelerometer obligations proceeded while this gap remained explicit.
+
+## Accelerometer fusion callers
+
+Sixteen profiles / one entry point verify both actual AHRS/INS fusion overloads,
+binary32/binary64 and four independent whole-state/P alias modes. The actual
+condition predicate remains inline. Same-type `E-OBS` and `E-BIAS-UPDATE` atomic
+correction frames admit every status and arbitrary successful outputs. Exact
+arguments, all six INS permissions, output identities/sentinels and invocation
+count are checked. Failed evaluation, ineligible rejection and failed correction
+remain distinct; only correction success publishes state/P. Every borrowed input
+and unused/disjoint output is preserved. No finite/successful-input assumption
+removes failure paths. This closes this portable wrapper, not sample integration,
+condition freshness, target numerical libraries or module/replay scheduling.
+
+Accepted checks: 16/16 in 97.81 s, cgroup peak 302,788,608 bytes (289 MiB), no
+OOM/swap. Eight mutation patterns produce 30 failing native executions and
+30 passing controls across both formats/configurations (permission mutation is
+INS-only); eight fixed ESBMC mutants and eight controls give the expected
+outcomes. Patterns cover bypassed eligibility, false success, swapped vectors,
+wrong threshold, dropped permissions, early output writes, ignored magnitude
+failure and rejection mislabeled fused. Native Eigen/PX4-matrix fusion tests,
+runner inventory, 100 offline review-tool tests, references, formatting and
+ShellCheck pass. Inventory: 1,965 profiles / 191 entry points. No additional
+Lean theorem is needed for this control composition; no full AI audit was run.
+
+Self-review checked producer/consumer backend/scalar identity, dimensions,
+all alias modes, every forwarding argument, failure priority, input frames and
+negative assertion witnesses. Production and unrelated drafts are unchanged.
+Evidence: `output/runtime-proof-continuation-20261115/accelerometer-fusion-manifest.json`,
+`accelerometer-fusion-final/results.json`,
+`accelerometer-fusion-native-mutations.json`,
+`accelerometer-fusion-esbmc-mutations.json` and native/tooling logs.

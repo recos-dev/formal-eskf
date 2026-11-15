@@ -3799,7 +3799,7 @@
     },
     {
       "id": "R-ACCELEROMETER-FUSION",
-      "title": "Conditional AHRS/INS gravity correction without innovation gating; Lean and ESBMC evidence pending",
+      "title": "AHRS/INS gravity-fusion caller frames and permissions verified; sample integration and adapter correspondence remain separate",
       "references": {
         "spec": [
           {
@@ -3846,7 +3846,16 @@
             "symbol": "void FormalEskf::fuse_gravity("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/accelerometer_fusion.cpp",
+            "symbol": "void verify_accelerometer_fusion("
+          },
+          {
+            "file": "formal/cpp/esbmc/observations.cpp",
+            "symbol": "void verify_observation("
+          }
+        ]
       }
     },
     {

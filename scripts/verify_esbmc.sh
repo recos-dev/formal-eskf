@@ -977,6 +977,35 @@ run_magnetic_runtime_suite()
         done
     done
 
+    # Close the field/observation boundary on the backend used by correction.
+    for BINARY64 in 0 1; do
+        SOURCE_FILE="${PROOF_DIR}/magnetic_scalar.cpp"
+        for KIND in general_root root_observer_equivalence general_angle general_geometry general_heading; do
+            PROFILE="magnetic-runtime-solve-binary$((32 + 32 * BINARY64))-${KIND}"
+            verify "verify_${KIND}" --proof-unwind 16 --cvc5 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        done
+        SOURCE_FILE="${PROOF_DIR}/magnetic_check.cpp"
+        PROFILE="magnetic-runtime-solve-binary$((32 + 32 * BINARY64))-forward_frame"
+        verify verify_magnetic_forward_frame --proof-unwind 16 --cvc5 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+            -D FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND=1
+        for ALIAS in 0 1 2 3; do
+            for VALUES in 0 1; do
+                PROFILE="magnetic-runtime-solve-binary$((32 + 32 * BINARY64))-check-alias${ALIAS}-values${VALUES}"
+                verify verify_magnetic_check --proof-unwind 16 --cvc5 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                    -D FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND=1 -D FORMAL_ESKF_PROOF_MAG_CHECK_CONTRACT=1 \
+                    -D "FORMAL_ESKF_PROOF_MAG_HEALTH_ALIAS=${ALIAS}" -D "FORMAL_ESKF_PROOF_MAG_CHECK_VALUES=${VALUES}"
+            done
+        done
+        SOURCE_FILE="${PROOF_DIR}/magnetic_observation.cpp"
+        for CONTRACT in 0 1; do
+            ENTRY=verify_magnetic_inverse_frame
+            if ((CONTRACT)); then ENTRY=verify_magnetic_observation; fi
+            PROFILE="magnetic-runtime-solve-binary$((32 + 32 * BINARY64))-observation-contract${CONTRACT}"
+            verify "${ENTRY}" --proof-unwind 16 --cvc5 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                -D FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND=1 -D "FORMAL_ESKF_PROOF_MAG_OBSERVATION_CONTRACT=${CONTRACT}"
+        done
+    done
+
     SOURCE_FILE="${PROOF_DIR}/magnetic_model.cpp"
     for BINARY64 in 0 1; do
         for KIND in initialization update; do

@@ -18,8 +18,8 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 2079 '^PLAN'
-    check_count 96 'magnetic-runtime-'
+    check_count 2111 '^PLAN'
+    check_count 128 'magnetic-runtime-'
     check_count 32 'height-'
     check_count 32 'accelerometer-binary'
     check_count 28 'navigation-recovery-'
@@ -239,8 +239,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 229 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2079 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 234 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2111 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -280,6 +280,24 @@ check_magnetic_runtime_arguments()
     {
         local ENTRY="$1"
         shift
+        if [[ "${PROFILE}" == magnetic-runtime-solve-* ]]; then
+            local BASE="--proof-unwind 16 --cvc5 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+            case "${SOURCE_FILE}" in
+                "${PROOF_DIR}/magnetic_scalar.cpp")
+                    [[ "${ENTRY}" == "verify_${KIND}" && "$*" == "${BASE}" ]] || fail 'wrong general scalar bridge arguments' ;;
+                "${PROOF_DIR}/magnetic_check.cpp")
+                    if [[ "${ENTRY}" == verify_magnetic_forward_frame ]]; then
+                        [[ "$*" == "${BASE} -D FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND=1" ]] || fail 'wrong solve-backend rotation arguments'
+                    else
+                        [[ "${ENTRY}" == verify_magnetic_check && "$*" == "${BASE} -D FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND=1 -D FORMAL_ESKF_PROOF_MAG_CHECK_CONTRACT=1 -D FORMAL_ESKF_PROOF_MAG_HEALTH_ALIAS=${ALIAS} -D FORMAL_ESKF_PROOF_MAG_CHECK_VALUES=${VALUES}" ]] || fail 'wrong solve-backend field arguments'
+                    fi ;;
+                "${PROOF_DIR}/magnetic_observation.cpp")
+                    [[ "${ENTRY}" == "$([[ "${CONTRACT}" == 0 ]] && printf verify_magnetic_inverse_frame || printf verify_magnetic_observation)" && "$*" == "${BASE} -D FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND=1 -D FORMAL_ESKF_PROOF_MAG_OBSERVATION_CONTRACT=${CONTRACT}" ]] || fail 'wrong solve-backend observation arguments' ;;
+                *) fail 'unknown solve-backend magnetic source' ;;
+            esac
+            COUNT=$((COUNT + 1))
+            return
+        fi
         if [[ "${SOURCE_FILE}" == "${PROOF_DIR}/magnetic_observation.cpp" ]]; then
             [[ "${ENTRY}" == verify_magnetic_inverse_frame && "${CONTRACT}" == 0 || "${ENTRY}" == verify_magnetic_observation && "${CONTRACT}" == 1 ]] || fail 'wrong magnetic observation producer/caller'
             [[ "$*" == "--proof-unwind 16 --cvc5 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_MAG_OBSERVATION_CONTRACT=${CONTRACT}" ]] || fail 'wrong magnetic observation arguments'
@@ -352,7 +370,7 @@ check_magnetic_runtime_arguments()
         COUNT=$((COUNT + 1))
     }
     run_magnetic_runtime_suite
-    [[ "${COUNT}" == 96 ]] || fail 'magnetic runtime matrix incomplete'
+    [[ "${COUNT}" == 128 ]] || fail 'magnetic runtime matrix incomplete'
 )
 
 check_accelerometer_arguments()
@@ -1964,7 +1982,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (2079 profiles; 229 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (2111 profiles; 234 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

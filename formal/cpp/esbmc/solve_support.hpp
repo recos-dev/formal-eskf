@@ -43,6 +43,10 @@ static_assert(columns == size || columns == 3U || columns == 15U);
 // ordered recurrences; neither claim treats an opaque root as a real square root.
 struct Math : formal_eskf::scalar::StandardMath<Scalar>
 {
+    // Pivot eligibility is a passive F-SOLVE observer, not a general libm
+    // precondition. Field geometry also takes roots of zero. Keep the same
+    // unconstrained return sequence while checking those producers separately.
+    inline static bool observe_pivots = true;
 #if FORMAL_ESKF_PROOF_ARITHMETIC_CONTRACT
     static bool is_finite(Scalar value);
     static void record_root(Scalar input, Scalar result, unsigned index);
@@ -52,12 +56,17 @@ struct Math : formal_eskf::scalar::StandardMath<Scalar>
     {
         ScalarArray<Scalar, 3U> results;
         unsigned calls;
+        Scalar argument;
         Scalar operator()(Scalar value)
         {
-            __ESBMC_assert(calls < size, "F-SOLVE: one root per successful diagonal step at most");
-            __ESBMC_assert(std::isfinite(value) && value > Scalar{0},
-                           "F-SOLVE factor: scalar root receives a finite positive pivot");
+            __ESBMC_assert(calls < (observe_pivots ? size : 3U), "scalar root: bounded return sequence");
+            if (observe_pivots)
+            {
+                __ESBMC_assert(std::isfinite(value) && value > Scalar{0},
+                               "F-SOLVE factor: scalar root receives a finite positive pivot");
+            }
             Scalar const result = results[calls];
+            argument = value;
 #if FORMAL_ESKF_PROOF_ARITHMETIC_CONTRACT
             Math::record_root(value, result, calls);
 #endif
@@ -66,6 +75,25 @@ struct Math : formal_eskf::scalar::StandardMath<Scalar>
         }
     };
     inline static Roots sqrt{};
+
+    struct Angles
+    {
+        ScalarArray<Scalar, 3U> results;
+        unsigned calls;
+        Scalar y, x;
+        Scalar operator()(Scalar input_y, Scalar input_x)
+        {
+            if (observe_pivots)
+            {
+                return formal_eskf::scalar::StandardMath<Scalar>::atan2(input_y, input_x);
+            }
+            __ESBMC_assert(calls < 3U, "scalar angle: bounded return sequence");
+            y = input_y;
+            x = input_x;
+            return results[calls++];
+        }
+    };
+    inline static Angles atan2{};
 };
 class Backend
     : public formal_eskf::verification::FixedArrayLinalg<Scalar, formal_eskf::verification::NoNormObserver<Scalar>,

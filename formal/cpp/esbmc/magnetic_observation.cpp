@@ -6,6 +6,12 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "contracts.hpp"
+#ifndef FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND
+#define FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND 0
+#endif
+#if FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND
+#include "step_correction_support.hpp"
+#endif
 #include <formal_eskf/runtime/magnetometer.hpp>
 #ifndef FORMAL_ESKF_PROOF_MAG_OBSERVATION_CONTRACT
 #define FORMAL_ESKF_PROOF_MAG_OBSERVATION_CONTRACT 0
@@ -13,12 +19,18 @@
 namespace magnetic_observation_proof
 {
 using contract_proof::finite_vector;
+#if FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND
+using Linalg = solve_proof::Backend;
+using Quaternion = formal_eskf::so3::UnitQuaternion<Linalg>;
+using Vector3 = formal_eskf::linalg::Vector<Linalg, 3U>;
+#else
 using contract_proof::Linalg;
 using contract_proof::Quaternion;
+using contract_proof::Vector3;
+#endif
 using contract_proof::same;
 using contract_proof::same_vector;
 using contract_proof::Scalar;
-using contract_proof::Vector3;
 using formal_eskf::Status;
 using Parameters = formal_eskf::runtime::MagneticFieldParameters<Scalar>;
 using Checks = formal_eskf::runtime::MagneticFieldChecks;
@@ -98,6 +110,9 @@ inverse_rotate<magnetic_observation_proof::Linalg>(magnetic_observation_proof::Q
 void verify_magnetic_inverse_frame(magnetic_observation_proof::Quaternion q, magnetic_observation_proof::Vector3 v)
 {
     using namespace magnetic_observation_proof;
+#if FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND
+    solve_proof::Math::observe_pivots = false;
+#endif
     __ESBMC_assert(!FORMAL_ESKF_PROOF_MAG_OBSERVATION_CONTRACT, "Runner error: inverse action must be actual");
     auto const old_q = q;
     auto const old_v = v;
@@ -117,6 +132,9 @@ void verify_magnetic_observation(magnetic_observation_proof::Quaternion q, magne
                                  magnetic_observation_proof::Vector3 residual)
 {
     using namespace magnetic_observation_proof;
+#if FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND
+    solve_proof::Math::observe_pivots = false;
+#endif
     __ESBMC_assert(FORMAL_ESKF_PROOF_MAG_OBSERVATION_CONTRACT,
                    "Runner error: observation needs paired producer summaries");
     __ESBMC_assume(health_source < 4U);

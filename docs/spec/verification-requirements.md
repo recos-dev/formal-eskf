@@ -279,6 +279,16 @@ complete diagnostics and borrowed-input purity. They do not establish accurate
 math-library results, trustworthy sensor/reference data, observability or actual
 adapter correspondence.
 
+The solver-backed field/observation instantiation used by magnetic correction has
+its own scalar-wrapper, geometry/heading frame, rotation, plausibility and
+observation profiles. Its general scalar boundary admits zero root arguments
+and arbitrary IEEE root/angle returns. The Cholesky positive-pivot observer stays
+enabled in F-SOLVE; a raw-root equivalence check and factor regression establish
+that changing this passive observer does not change values on the proved pivot
+domain. This closes the backend boundary for field preparation, not the complete
+public fusion transaction or library-accuracy claim. See the
+[continuation evidence](../verification-extensions-20261116.md).
+
 ### R-MAGNETIC-HEADING: aided heading consistency
 
 `runtime::MagneticHeading` tracks heading consistency separately from field

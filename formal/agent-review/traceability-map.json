@@ -352,6 +352,14 @@
           {
             "file": "formal/cpp/esbmc/prediction.cpp",
             "symbol": "void verify_scalar_boundary_dispatch("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_scalar.cpp",
+            "symbol": "void verify_general_root("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_scalar.cpp",
+            "symbol": "void verify_general_angle("
           }
         ]
       }
@@ -2680,6 +2688,10 @@
           {
             "file": "formal/cpp/esbmc/solve_flow.cpp",
             "symbol": "void verify_right_solve("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_scalar.cpp",
+            "symbol": "void verify_root_observer_equivalence("
           }
         ]
       }
@@ -3098,6 +3110,26 @@
           {
             "file": "formal/cpp/esbmc/imu_inhibition.cpp",
             "symbol": "void verify_imu_rotation("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_scalar.cpp",
+            "symbol": "void verify_general_root("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_scalar.cpp",
+            "symbol": "void verify_root_observer_equivalence("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_scalar.cpp",
+            "symbol": "void verify_general_angle("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_scalar.cpp",
+            "symbol": "void verify_general_geometry("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_scalar.cpp",
+            "symbol": "void verify_general_heading("
           }
         ]
       }

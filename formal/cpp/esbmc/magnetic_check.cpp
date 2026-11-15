@@ -6,6 +6,12 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "contracts.hpp"
+#ifndef FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND
+#define FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND 0
+#endif
+#if FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND
+#include "step_correction_support.hpp"
+#endif
 #include <limits>
 #include <formal_eskf/runtime/magnetic_field.hpp>
 #ifndef FORMAL_ESKF_PROOF_MAG_CHECK_CONTRACT
@@ -20,13 +26,18 @@
 namespace field_proof
 {
 using contract_proof::finite_vector;
+#if FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND
+using Linalg = solve_proof::Backend;
+using Quaternion = formal_eskf::so3::UnitQuaternion<Linalg>;
+#else
 using contract_proof::Linalg;
 using contract_proof::Quaternion;
+#endif
 using contract_proof::same;
 using contract_proof::same_vector;
 using contract_proof::Scalar;
 using formal_eskf::Status;
-using Vector = contract_proof::Vector3;
+using Vector = formal_eskf::linalg::Vector<Linalg, 3U>;
 using Geometry = formal_eskf::runtime::detail::MagneticFieldGeometry<Scalar>;
 using Parameters = formal_eskf::runtime::MagneticFieldParameters<Scalar>;
 using Checks = formal_eskf::runtime::MagneticFieldChecks;
@@ -152,6 +163,9 @@ inline Status magnetic_heading_error<field_proof::Linalg>(field_proof::Vector co
 void verify_magnetic_forward_frame(field_proof::Quaternion q, field_proof::Vector vector)
 {
     using namespace field_proof;
+#if FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND
+    solve_proof::Math::observe_pivots = false;
+#endif
     __ESBMC_assert(!FORMAL_ESKF_PROOF_MAG_CHECK_CONTRACT, "Runner error: actual forward action required");
     auto const old_q = q;
     auto const old_vector = vector;
@@ -179,6 +193,9 @@ void verify_magnetic_check(field_proof::Quaternion q, field_proof::Vector body, 
                            field_proof::Status heading_status, field_proof::Scalar heading)
 {
     using namespace field_proof;
+#if FORMAL_ESKF_PROOF_MAG_SOLVE_BACKEND
+    solve_proof::Math::observe_pivots = false;
+#endif
     __ESBMC_assert(FORMAL_ESKF_PROOF_MAG_CHECK_CONTRACT, "Runner error: field caller requires proved callee frames");
     static_assert(FORMAL_ESKF_PROOF_MAG_HEALTH_ALIAS < 4);
     // Producer success guarantees these finite fields. No premise constrains

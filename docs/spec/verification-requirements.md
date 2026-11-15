@@ -760,8 +760,16 @@ explicit source-change alignment recovery retains its separate reset policy.
 Native tests cover strict health/freshness boundaries, sample count, active versus
 startup behavior, data outages, both timeout actions, retry, real AHRS/INS gated
 correction, source changes, failure atomicity and unsigned-time extremes.
-Lean/ESBMC evidence remains pending. Physical health, covariance consistency,
-deployed reset notifications are not proved here.
+Scoped ESBMC profiles now call the actual constructor/reset/restart, complete
+update, fusion feedback and reset feedback. All transitive controller helpers
+remain inline. Initialized and inductive invariants cover ordered clocks,
+saturated sample count, active-session progress and consumable permissions.
+Exact transition/frame checks include invalid inputs, strict boundary equalities,
+source/reference priorities and unsuccessful-fusion timing. One-use feedback
+follows from permission consumption plus rejection of every missing-permission
+call. These integer/Boolean source obligations do not add a separate Lean model.
+Physical health, caller repair/condition truth, estimator covariance consistency,
+actual adapter sequencing and deployed reset notifications are not proved here.
 
 Source detection and filter/count reset follow PX4 v1.16.2
 [EKF2 input](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF2.cpp#L2481)

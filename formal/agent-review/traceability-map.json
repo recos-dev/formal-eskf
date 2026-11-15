@@ -3400,7 +3400,7 @@
     },
     {
       "id": "R-MAGNETOMETER-LIFECYCLE",
-      "title": "Magnetic lifecycle with optional health delay, timeout and source/reference reinitialization; Lean and ESBMC evidence pending",
+      "title": "Portable magnetic lifecycle transitions and inductive clock/permission invariants verified; caller truth and adapter sequencing remain separate",
       "references": {
         "spec": [
           {
@@ -3463,7 +3463,24 @@
             "symbol": "void FormalEskf::fuse_mag()"
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/magnetometer_lifecycle.cpp",
+            "symbol": "void verify_mag_lifecycle_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetometer_lifecycle.cpp",
+            "symbol": "void verify_mag_lifecycle_update("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetometer_lifecycle.cpp",
+            "symbol": "void verify_mag_lifecycle_fusion("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetometer_lifecycle.cpp",
+            "symbol": "void verify_mag_lifecycle_reset("
+          }
+        ]
       }
     },
     {

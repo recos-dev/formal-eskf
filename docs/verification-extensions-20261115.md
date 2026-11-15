@@ -1175,3 +1175,51 @@ complementary failure coverage and preservation of production/unrelated drafts.
 Evidence: `output/runtime-proof-continuation-20261115/heading-manifest.json`,
 `heading-final/results.json`, `heading-native-mutations.json`,
 `heading-esbmc-mutations.json` and Lean/native/tooling logs.
+
+## Magnetic fusion lifecycle
+
+Four profiles / four entry points check actual construction/reset/restart,
+complete update, fusion feedback and reset feedback. Every transitive controller
+helper remains inline; no alternate controller or callee summary replaces it.
+Integer/Boolean obligations are independent of scalar format/backend, so no
+float/double duplicates or separate mathematical Lean model are added.
+
+Initialized and inductive invariants cover ordered clocks, bounded/saturating
+sample count, active-session progress, recovery and consumable permissions.
+Complete transition/frame checks cover parameter/time/enum errors, disabled and
+no-data ticks, four-sample/health/freshness equalities, source/calibration/reference
+priorities, heading inhibition, timeout policies, numerical-repair latches and
+actual feedback. Permissions cannot fabricate success timestamps. Feedback
+consumption plus missing-permission rejection establishes one-use authority
+without duplicating a whole second transition in each query. Caller condition
+truth, physical health, repair eligibility, state/P and adapter execution remain
+outside these source claims.
+
+Accepted checks: 4/4 in 35.84 s, cgroup peak 133,390,336 bytes (127 MiB), no
+OOM/swap. Mixed feedback queries exhausted CVC5/Bitwuzla memory; splitting enum
+cases did not close rejected feedback. Z3 with unsliced SSA closes the complete
+unpartitioned feedback domain, so temporary partitions were removed. Direct
+initial diagnostic invocations omitted the runner's `--assign-param-nondet`;
+their apparent counterexamples are invalid evidence. Correctly configured Z3
+and the final runner pass. A native 200,000-case rejected-feedback check also
+passed, but is only supporting diagnosis, not symbolic coverage.
+
+Twenty-two native mutants and twenty-two controls, plus twelve fixed ESBMC
+mutants and twelve controls, have expected outcomes. Native lifecycle tests,
+runner inventory, 100 offline review-tool tests, references, formatting and
+ShellCheck pass. Inventory: 2,041 profiles / 221 entry points. No full AI audit.
+
+Self-review caught a tooling regression from the preceding heading commit:
+a broad count replacement changed the unchanged correction-suite expectation
+from 212 to 217. Its empty stdout had incorrectly been described as an inventory
+pass above. This commit restores 212; the complete inventory now passes, including
+all new heading/lifecycle profiles. Other retained runner logs were checked for
+an explicit pass marker. The heading ESBMC/Lean/native evidence was unaffected;
+this correction does not retroactively turn the old tooling invocation into a pass.
+
+Review also checked every owned field, base/inductive closure, no invented
+progress, complete invalid-input paths and preservation of production/unrelated
+drafts. Evidence: `output/runtime-proof-continuation-20261115/mag-lifecycle-manifest.json`,
+`mag-lifecycle-final/results.json`, `lifecycle-native-mutations.json`,
+`lifecycle-esbmc-mutations.json` and native/tooling logs. Failed/invalid diagnostic
+attempts remain separate from accepted evidence.

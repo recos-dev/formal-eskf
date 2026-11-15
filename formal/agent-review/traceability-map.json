@@ -4568,7 +4568,7 @@
     },
     {
       "id": "R-GNSS-QUALITY",
-      "title": "GNSS quality checks and health qualification; Lean and ESBMC evidence pending",
+      "title": "Portable GNSS quality policy and inductive health transitions verified under scalar-root boundary; adapter and physical evidence remain open",
       "references": {
         "spec": [
           {
@@ -4627,7 +4627,36 @@
             "symbol": "FormalEskf::gnss_motion() const"
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/gnss_quality.cpp",
+            "symbol": "void verify_gnss_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/gnss_quality.cpp",
+            "symbol": "void verify_gnss_validation("
+          },
+          {
+            "file": "formal/cpp/esbmc/gnss_quality.cpp",
+            "symbol": "void verify_gnss_health("
+          },
+          {
+            "file": "formal/cpp/esbmc/gnss_quality.cpp",
+            "symbol": "void verify_gnss_norm("
+          },
+          {
+            "file": "formal/cpp/esbmc/gnss_quality.cpp",
+            "symbol": "void verify_gnss_motion_frame("
+          },
+          {
+            "file": "formal/cpp/esbmc/gnss_quality.cpp",
+            "symbol": "void verify_gnss_motion("
+          },
+          {
+            "file": "formal/cpp/esbmc/gnss_quality.cpp",
+            "symbol": "void verify_gnss_transition("
+          }
+        ]
       }
     }
   ]

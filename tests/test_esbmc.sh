@@ -18,7 +18,8 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1816 '^PLAN'
+    check_count 1830 '^PLAN'
+    check_count 14 'gnss-quality-binary'
     check_count 8 'imu-prediction-binary'
     check_count 14 'imu-inhibition-binary'
     check_count 6 'vertical-health-binary'
@@ -232,8 +233,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 152 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1816 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 159 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1830 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -265,6 +266,29 @@ check_plan()
     [[ -z "$(comm -23 <("${RUNNER}" scalar --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] ||
         fail 'scalar dependency profile is not in the full inventory'
 }
+
+check_gnss_quality_arguments()
+(
+    local COUNT=0
+    verify()
+    {
+        local ENTRY="$1" BITS=0 KIND BOUNDARY=0 SOLVER=""
+        shift
+        [[ "${PROFILE}" == gnss-quality-binary64-* ]] && BITS=1
+        KIND="${PROFILE#gnss-quality-binary*-}"
+        case "${KIND}" in
+            initialization|validation|health|norm) ;;
+            motion_frame|motion) BOUNDARY=1 ;;
+            transition) BOUNDARY=2; SOLVER=" --cvc5" ;;
+            *) fail 'unknown GNSS quality profile' ;;
+        esac
+        [[ "${ENTRY}" == "verify_gnss_${KIND}" && "${SOURCE_FILE}" == "${PROOF_DIR}/gnss_quality.cpp" ]] || fail 'wrong GNSS quality entry/source'
+        [[ "$*" == "--proof-unwind 16${SOLVER} -D FORMAL_ESKF_PROOF_BINARY64=${BITS} -D FORMAL_ESKF_PROOF_GNSS_BOUNDARY=${BOUNDARY}" ]] || fail 'wrong GNSS quality arguments'
+        COUNT=$((COUNT + 1))
+    }
+    run_gnss_quality_suite
+    [[ "${COUNT}" == 14 ]] || fail 'GNSS quality matrix incomplete'
+)
 
 check_imu_prediction_arguments()
 (
@@ -1692,6 +1716,7 @@ case "${1:-}" in
 esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
+check_gnss_quality_arguments
 check_imu_prediction_arguments
 check_imu_inhibition_arguments
 check_vertical_health_arguments
@@ -1712,7 +1737,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1816 profiles; 152 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1830 profiles; 159 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

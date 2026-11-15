@@ -2121,7 +2121,22 @@ Define portable GNSS quality checks and health qualification without platform me
 - Invalid configuration, zero/duplicate/backward sample time, a sample beyond `now_us`, or backward `now_us` returns `invalid_call` without changing the monitor. When a position delta is consumed, its `position_reference_time_us` must equal the preceding consumed sample's timestamp; mismatch also returns `invalid_call`. Only `decision` and `status` are meaningful in that result. Time is unsigned microseconds; validate ordering before subtraction. No wall clock is read.
 - The adapter provides NED velocity and the current-minus-previous fix displacement with its reference timestamp: north/east projected about the preceding consumed fix, down = old MSL altitude minus new MSL altitude. Advance that reference only when the monitor consumes a sample. The adapter owns geographic validity, PDOP calculation, velocity-validity and spoof-state conversion, receiver identity, freshness and projection continuity. Reset on receiver/configuration changes or lost continuity. Stationary detection must not be inferred from GNSS being checked. Sample gaps do not independently revoke the health latch; freshness and fusion stop/recovery remain separate work.
 
-Native temporal/boundary tests are supporting evidence only. Lean and ESBMC evidence is pending. This monitor does not implement innovation gating, source-specific fusion lifecycle, stationary-motion detection, jamming detection or platform adapter wiring.
+The `gnss-quality` ESBMC suite covers specified defaults, all named check
+selections, parameter/sample domains, ordered IEEE filter/clamp equations, mode
+priorities, strict health timers and the composed public update. Initialization,
+reset, health restart and arbitrary-prior update checks establish ordered clocks
+and historical qualification; invalid public inputs are not assumed away.
+Private motion checks use the actual public validation premises (including the
+standard clamp domain), with arbitrary prior filters and arithmetic failures.
+The actual two-axis norm producer checks its reduction and pure scalar-return
+boundary; root outputs remain unconstrained, so accurate libm and physical
+norm accuracy are not claimed. A separately checked motion-producer frame
+supports the public transition, including numerical rejection, history
+consumption and input purity. Native tests remain supporting evidence.
+Adapter metadata, coordinate conversion, caller chronology and physical sensor
+validity remain open. This monitor does not implement innovation gating,
+source-specific fusion lifecycle, stationary-motion detection or jamming detection.
+See the [verification record](../verification-extensions-20261115.md#gnss-quality-policy-and-health).
 
 #### Replay GNSS quality
 

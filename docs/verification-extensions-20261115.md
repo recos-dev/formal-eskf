@@ -327,7 +327,7 @@ The ten-profile matrix took 21.79 seconds sequentially, with aggregate
 cgroup peak 166,232,064 bytes and no OOM. It retained 120 s / 4 GiB internal
 limits, a 150 s outer deadline and the enforced 6 GiB group cap without swap.
 
-## Accepted totals for this sequence
+## Initial five-group totals
 
 | Group | New Lean theorems | New ESBMC profiles | Detected mutations |
 |---|---:|---:|---:|
@@ -506,3 +506,55 @@ actual PX4 Matrix, the estimator loop, real/gap admission, health chronology,
 fault latch and publication remain separate. Evidence: `output/runtime-proof-continuation-20261115/imu-prediction-manifest.json`,
 `imu-prediction-bitwuzla/results.json`, `imu-prediction-mutations.json`, native
 and tooling logs, plus failed attempts.
+
+## GNSS quality policy and health
+
+Fourteen binary32/binary64 profiles cover `R-GNSS-QUALITY`'s portable monitor:
+specified defaults and ten named checks, all parameter/sample domains, actual
+IEEE motion/filter equations, raw-speed restrictions, initial/recovery health
+timers and the composed public update. Constructor/reset and health restart
+establish/preserve ordered history. An arbitrary prior satisfying that invariant
+is used for every public update, including invalid calls and consumed numerical
+rejections; qualification remains latched until reset. No bounded sequence is
+presented as evidence for arbitrary-duration operation.
+
+Private motion profiles use the premises established by public validation: valid
+parameters, valid consumed sample fields and a positive sample-time difference.
+These ensure standard clamp bounds are ordered; they do not assume finite prior
+filters or exclude arithmetic failures. Public invalid inputs remain unrestricted
+and checked. The actual two-axis norm producer verifies ordered reduction, scalar
+call/input purity and return forwarding. Its arbitrary root returns are an
+explicit library boundary, not an accurate sqrt or physical drift guarantee.
+Norm arguments/order are checked against the independently computed filtered
+vectors. The motion frame permits only filter and motion-diagnostic writes,
+including failure; the public caller admits arbitrary such outputs/statuses.
+No target/backend error bound, adapter projection or actual replay/module
+chronology is claimed.
+
+Accepted final checks: 14/14 profiles in 106.12 s sequentially, cgroup peak
+782,020,608 bytes (746 MiB), no OOM/swap. Eighteen assertion counterexamples and
+eighteen passing controls cover mandatory fix removal, wrong check enablement,
+inclusive initial-health timing, lost qualification, invalid-time consumption,
+first-delta use, unclipped velocity filtering, cleared ground-motion flags and
+inverted raw-speed comparison. Native GNSS-quality tests, runner inventory,
+100 offline agent-review tests, formatting and ShellCheck pass. The inventory
+now has 1,830 profiles and 159 entry points. No new Lean theorem or full AI
+semantic audit is claimed.
+
+Retained failures: the known ESBMC conditional aggregate-reference issue appeared
+again in a norm-argument comparison. Boolean selection between the two complete
+comparisons proves the same property without changing production or the input
+domain. The first Bitwuzla public-transition query reached its internal memory
+limit; the accepted transition profiles use non-incremental CVC5. Other profiles
+use default Bitwuzla. Every profile retains 120 s / 4 GiB internal limits and a
+6 GiB no-swap cgroup. Failed attempts are not passes.
+
+Self-review added explicit default-parameter and restart-invariant assertions,
+and froze the named-check oracle inputs before invoking the producer. Rechecked
+all fourteen profiles and all mutation controls after those improvements.
+The public transition establishes every private motion premise, preserves all
+borrowed inputs and distinguishes invalid-call rollback from consumed rejection.
+Production headers, module sources and unrelated drafts are unchanged.
+Evidence: `output/runtime-proof-continuation-20261115/gnss-quality-manifest.json`,
+`gnss-quality-final/results.json`, `gnss-quality-mutations.json`, native/tooling
+logs and the retained unsuccessful attempts.

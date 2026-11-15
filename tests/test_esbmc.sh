@@ -18,7 +18,7 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 2148 '^PLAN'
+    check_count 2154 '^PLAN'
     check_count 160 'magnetic-runtime-'
     check_count 32 'height-'
     check_count 36 'accelerometer-binary'
@@ -29,7 +29,10 @@ check_plan()
     check_count 14 'gnss-quality-binary'
     check_count 8 'imu-prediction-binary'
     check_count 14 'imu-inhibition-binary'
-    check_count 6 'vertical-health-binary'
+    check_count 12 'vertical-health-binary'
+    check_count 2 'vertical-health-.*-likelihood_protocol'
+    check_count 2 'vertical-health-.*-likelihood_classification'
+    check_count 2 'vertical-health-.*-likelihood_ratio'
     check_count 2 'vertical-health-.*-likelihood_frame'
     check_count 2 'vertical-health-.*-initialization'
     check_count 2 'vertical-health-.*-transition'
@@ -240,8 +243,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 239 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2148 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 240 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2154 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -626,6 +629,18 @@ check_vertical_health_arguments()
         shift
         [[ "${PROFILE}" == vertical-health-binary64-* ]] && BITS=1
         KIND="${PROFILE#vertical-health-binary*-}"
+        if [[ "${KIND}" == likelihood_protocol || "${KIND}" == likelihood_classification || "${KIND}" == likelihood_ratio ]]; then
+            [[ "${ENTRY}" == verify_vertical_likelihood && "${SOURCE_FILE}" == "${PROOF_DIR}/vertical_health.cpp" ]] || fail 'wrong likelihood producer entry/source'
+            if [[ "${KIND}" == likelihood_ratio ]]; then
+                [[ "${PROPERTY}" == 2 && "$*" == "--proof-unwind 7 --proof-timeout 1200s --z3 --multi-property -D FORMAL_ESKF_PROOF_BINARY64=${BITS} -D FORMAL_ESKF_PROOF_HEALTH_PROPERTY=2" ]] || fail 'wrong ratio arguments'
+            else
+                [[ "${KIND}" == likelihood_protocol && "${PROPERTY}" == 0 || "${KIND}" == likelihood_classification && "${PROPERTY}" == 1 ]] || fail 'wrong likelihood property'
+                [[ "${PROPERTY}" == 1 ]] && EXTRA=" --proof-timeout 600s"
+                [[ "$*" == "--proof-unwind 7${EXTRA} --bitwuzla -D FORMAL_ESKF_PROOF_BINARY64=${BITS} -D FORMAL_ESKF_PROOF_HEALTH_PROPERTY=${PROPERTY}" ]] || fail 'wrong likelihood arguments'
+            fi
+            COUNT=$((COUNT + 1))
+            return
+        fi
         [[ "${KIND}" == initialization || "${KIND}" == likelihood_frame || "${KIND}" == transition ]] || fail 'unknown vertical health profile'
         [[ "${ENTRY}" == "verify_vertical_${KIND}" && "${SOURCE_FILE}" == "${PROOF_DIR}/vertical_health.cpp" ]] || fail 'wrong vertical health entry/source'
         [[ "${KIND}" == transition ]] && EXTRA=" -D FORMAL_ESKF_PROOF_HEALTH_CALLER=1"
@@ -633,7 +648,7 @@ check_vertical_health_arguments()
         COUNT=$((COUNT + 1))
     }
     run_vertical_health_suite
-    [[ "${COUNT}" == 6 ]] || fail 'vertical health matrix incomplete'
+    [[ "${COUNT}" == 12 ]] || fail 'vertical health matrix incomplete'
 )
 
 check_imu_policies_arguments()
@@ -2017,7 +2032,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (2148 profiles; 239 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (2154 profiles; 240 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

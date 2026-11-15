@@ -166,3 +166,55 @@ Evidence: `sample-final/results.json`, `sample-linalg-refresh/results.json`,
 `sample-owner-native-results.json`, `sample-clear-native-results.json`,
 `sample-inventory.log`, `sample-format.log`, `sample-offline-review.log` and
 `sample-manifest.json` under the execution directory above.
+
+## Vertical-health source equations
+
+The actual `falling_likelihood` body now has separate protocol, classification
+and IEEE-ratio profiles for binary32/binary64. The protocol proof admits arbitrary
+observations, old output and independent IEEE root returns, with no input-domain
+assumptions. It establishes source order, scalar arguments, the FLT_EPSILON floor,
+first-failure priority, complete validation and atomic failure. Classification and
+ratio consumers reuse only those proved prefix invariants. Neither quotient
+identity nor the desired verdict is assumed. Both numeric consumers and the
+protocol producer retain default safety checks and complete unwinding.
+
+The oracle records six independent source slots, then combines them into pressure,
+GNSS and ground references. It checks signed division, strict >1/>3 thresholds,
+same-reference exclusion and high/medium/low publication. Scalar equality includes
+signed zero and NaN classification, without a NaN-payload guarantee. The passive
+observer returns the original scalar results and writes no production state.
+Existing initialization/frame and inductive clipping/timestamp/hold proofs are
+refreshed against this observer. Accurate sqrt, physical falling detection and
+module/replay sequencing remain separate claims.
+
+Monolithic ratio attempts exhausted solver resources, including an 8 GiB-capped
+experiment; smaller helper/prefix attempts also failed. These are retained as
+failed experiments, not accepted coverage. The accepted decomposition uses Z3's
+non-incremental multi-property mode for ratios, with a longer time budget and the
+normal 4 GiB solver allocation. No bounds, pointer, alignment or unwinding check
+is disabled. The final source has no experimental source selector, prefix cut,
+cached-quotient variant or production rewrite. Earlier observer traversal traces
+are not used as evidence of a production bug.
+
+Native checks use all assertions together, with no protocol assumptions: two
+original controls pass and 32 intentionally changed executions fail at the intended
+assertions. Four additional ESBMC negative witnesses reject multiplication in
+place of division and an incorrect GNSS reference, in both formats. These negative
+witnesses establish that the targeted assertions detect those errors; they are
+not additional passing proof profiles.
+
+Six new profiles and six affected existing profiles all pass in 1314.15 s.
+The 6 GiB-capped, swap-disabled scope peaks at 1,523,425,280 bytes
+(1.42 GiB). The inventory is 2,154 profiles / 240 entry
+points. Self-review checked the non-circular protocol dependency, all six source
+slots, complete failure paths and the observed IEEE arithmetic. Formatting,
+ShellCheck, inventory checks, all 1,203 traceability references and 100 offline
+review-tool tests pass. Production and pre-existing draft hashes match baseline.
+No new Lean theorem or AI semantic audit is claimed.
+
+Evidence: `vertical-final/results.json`, `vertical-native-results.json`,
+`vertical-negative-results.json`, `vertical-inventory.log`, `vertical-format.log`,
+`vertical-shellcheck.log`, `vertical-offline-review.log` and
+`vertical-manifest.json` under the execution directory above. Exploratory logs,
+including `round35-results.json` and `round39-results.json`, retain the rejected
+resource-limited runs separately.

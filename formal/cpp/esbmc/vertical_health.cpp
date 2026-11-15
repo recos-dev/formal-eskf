@@ -20,17 +20,17 @@ using contract_proof::same;
 using contract_proof::Scalar;
 using formal_eskf::Status;
 
-// All scalar-library returns are admitted, independently at every call.
-// The frame proof claims only enum range, atomic output and input purity;
-// source threshold/reference equations remain a separate, unaccepted obligation.
+// Every IEEE root return is admitted independently. The optional observer only
+// records scalar calls; it never changes a primitive's return or production state.
 extern Scalar nondet_health_root();
 struct HealthMath : formal_eskf::scalar::StandardMath<Scalar>
 {
     struct Root
     {
-        Scalar operator()(Scalar) { return nondet_health_root(); }
+        Scalar operator()(Scalar value);
     };
     inline static Root sqrt{};
+    static bool is_finite(Scalar value);
 };
 struct Profile
 {
@@ -41,6 +41,144 @@ using Monitor = formal_eskf::runtime::VerticalAccelerationHealth<Profile>;
 using History = Monitor::State;
 using Likelihood = Monitor::Likelihood;
 
+// 0: protocol/failure; 1: classification; 2: all source IEEE ratios.
+// 3 retains all assertions for native mutation witnesses.
+#ifndef FORMAL_ESKF_PROOF_HEALTH_PROPERTY
+#define FORMAL_ESKF_PROOF_HEALTH_PROPERTY 3
+#endif
+static_assert(FORMAL_ESKF_PROOF_HEALTH_PROPERTY >= 0 && FORMAL_ESKF_PROOF_HEALTH_PROPERTY <= 3);
+
+void check_likelihood_protocol(bool condition, char const * message)
+{
+#if FORMAL_ESKF_PROOF_HEALTH_PROPERTY == 0 || FORMAL_ESKF_PROOF_HEALTH_PROPERTY == 3
+    __ESBMC_assert(condition, message);
+#else
+    // Property 0 proves these exact prefix invariants with no assumptions.
+    // Consumers reuse that same-type producer. No verdict or quotient equality
+    // is assumed here; those are the separate assertions below.
+    (void)message;
+    __ESBMC_assume(condition);
+#endif
+}
+
+bool same_likelihood_scalar(Scalar a, Scalar b)
+{
+    using Bits = std::conditional_t<sizeof(Scalar) == 4, std::uint32_t, std::uint64_t>;
+    return __builtin_bit_cast(Bits, a) == __builtin_bit_cast(Bits, b) || (std::isnan(a) && std::isnan(b));
+}
+struct LikelihoodTrace
+{
+    inline static bool enabled = false;
+    inline static bool active[6]{};
+    inline static Scalar innovations[6]{}, variances[6]{};
+    inline static bool minimum[6]{}, limit[6]{};
+    enum class Stage
+    {
+        innovation,
+        variance,
+        checked_variance,
+        root_call,
+        root_result,
+        ratio,
+    };
+    inline static unsigned cursor{};
+    inline static unsigned next_source[6]{};
+    inline static Stage stage{};
+    inline static Scalar root{}, consumed_innovation{};
+    inline static Status status{};
+};
+Scalar HealthMath::Root::operator()(Scalar value)
+{
+    if (!LikelihoodTrace::enabled)
+    {
+        return nondet_health_root();
+    }
+    check_likelihood_protocol(LikelihoodTrace::cursor < 6 &&
+                                  LikelihoodTrace::stage == LikelihoodTrace::Stage::root_call &&
+                                  LikelihoodTrace::status == Status::success,
+                              "root order");
+    check_likelihood_protocol(same_likelihood_scalar(value, LikelihoodTrace::variances[LikelihoodTrace::cursor]),
+                              "root argument");
+    LikelihoodTrace::stage = LikelihoodTrace::Stage::root_result;
+    LikelihoodTrace::root = nondet_health_root();
+    return LikelihoodTrace::root;
+}
+bool HealthMath::is_finite(Scalar value)
+{
+    if (!LikelihoodTrace::enabled)
+    {
+        return std::isfinite(value);
+    }
+    bool const valid = std::isfinite(value);
+    check_likelihood_protocol(LikelihoodTrace::status == Status::success, "no consumption after first failure");
+    check_likelihood_protocol(LikelihoodTrace::cursor < 6, "all checks belong to active source");
+    Scalar const innovation = LikelihoodTrace::innovations[LikelihoodTrace::cursor];
+    Scalar const variance = LikelihoodTrace::variances[LikelihoodTrace::cursor];
+    if (LikelihoodTrace::stage == LikelihoodTrace::Stage::innovation)
+    {
+        check_likelihood_protocol(same_likelihood_scalar(value, innovation), "source innovation order");
+        LikelihoodTrace::consumed_innovation = value;
+        if (!valid)
+        {
+            LikelihoodTrace::status = Status::non_finite_input;
+        }
+        LikelihoodTrace::stage = LikelihoodTrace::Stage::variance;
+    }
+    else if (LikelihoodTrace::stage == LikelihoodTrace::Stage::variance)
+    {
+        check_likelihood_protocol(same_likelihood_scalar(value, variance), "source variance order");
+        if (!valid)
+        {
+            LikelihoodTrace::status = Status::non_finite_input;
+        }
+        else if (value < Scalar{0})
+        {
+            LikelihoodTrace::status = Status::domain_error;
+        }
+        else if (value < static_cast<Scalar>(std::numeric_limits<float>::epsilon()))
+        {
+            LikelihoodTrace::cursor = LikelihoodTrace::next_source[LikelihoodTrace::cursor];
+            LikelihoodTrace::stage = LikelihoodTrace::Stage::innovation;
+        }
+        else
+        {
+            LikelihoodTrace::stage = LikelihoodTrace::Stage::checked_variance;
+        }
+    }
+    else if (LikelihoodTrace::stage == LikelihoodTrace::Stage::checked_variance)
+    {
+        check_likelihood_protocol(same_likelihood_scalar(value, variance), "checked root revalidates variance");
+        LikelihoodTrace::stage = LikelihoodTrace::Stage::root_call;
+    }
+    else if (LikelihoodTrace::stage == LikelihoodTrace::Stage::root_result)
+    {
+        check_likelihood_protocol(same_likelihood_scalar(value, LikelihoodTrace::root),
+                                  "checked root validates raw result");
+        if (!valid)
+        {
+            LikelihoodTrace::status = Status::non_finite_result;
+        }
+        LikelihoodTrace::stage = LikelihoodTrace::Stage::ratio;
+    }
+    else
+    {
+        check_likelihood_protocol(LikelihoodTrace::stage == LikelihoodTrace::Stage::ratio,
+                                  "ratio follows checked root");
+#if FORMAL_ESKF_PROOF_HEALTH_PROPERTY == 2 || FORMAL_ESKF_PROOF_HEALTH_PROPERTY == 3
+        __ESBMC_assert(same_likelihood_scalar(value, LikelihoodTrace::consumed_innovation / LikelihoodTrace::root),
+                       "exact signed source innovation / root ratio");
+#endif
+        if (!valid)
+        {
+            LikelihoodTrace::status = Status::non_finite_result;
+        }
+        LikelihoodTrace::minimum[LikelihoodTrace::cursor] = value > Scalar{1};
+        LikelihoodTrace::limit[LikelihoodTrace::cursor] = value > Scalar{3};
+        LikelihoodTrace::cursor = LikelihoodTrace::next_source[LikelihoodTrace::cursor];
+        LikelihoodTrace::stage = LikelihoodTrace::Stage::innovation;
+    }
+    return valid;
+}
 bool same_history(History const & a, History const & b)
 {
     return a.likelihood == b.likelihood && a.clip_count == b.clip_count && a.bad_clipping == b.bad_clipping &&
@@ -104,6 +242,74 @@ inline Status VerticalAccelerationHealth<Profile>::falling_likelihood(Observatio
 } // namespace formal_eskf::runtime
 #endif
 #if !FORMAL_ESKF_PROOF_HEALTH_CALLER
+void verify_vertical_likelihood(Monitor::Observations observations, Monitor::Likelihood output)
+{
+    LikelihoodTrace::enabled = true;
+    LikelihoodTrace::active[0] = observations.barometer_height.active;
+    LikelihoodTrace::innovations[0] = observations.barometer_height.innovation;
+    LikelihoodTrace::variances[0] = observations.barometer_height.variance;
+    LikelihoodTrace::active[1] = observations.gnss_height.active;
+    LikelihoodTrace::innovations[1] = observations.gnss_height.innovation;
+    LikelihoodTrace::variances[1] = observations.gnss_height.variance;
+    LikelihoodTrace::active[2] = observations.gnss_velocity_down.active;
+    LikelihoodTrace::innovations[2] = observations.gnss_velocity_down.innovation;
+    LikelihoodTrace::variances[2] = observations.gnss_velocity_down.variance;
+    LikelihoodTrace::active[3] = observations.range_height.active;
+    LikelihoodTrace::innovations[3] = observations.range_height.innovation;
+    LikelihoodTrace::variances[3] = observations.range_height.variance;
+    LikelihoodTrace::active[4] = observations.vision_height.active;
+    LikelihoodTrace::innovations[4] = observations.vision_height.innovation;
+    LikelihoodTrace::variances[4] = observations.vision_height.variance;
+    LikelihoodTrace::active[5] = observations.vision_velocity_down.active;
+    LikelihoodTrace::innovations[5] = observations.vision_velocity_down.innovation;
+    LikelihoodTrace::variances[5] = observations.vision_velocity_down.variance;
+    for (unsigned i = 0; i < 6; ++i)
+    {
+        LikelihoodTrace::minimum[i] = false;
+        LikelihoodTrace::limit[i] = false;
+    }
+    // Next active source depends only on the original activity flags. Build it
+    // once; floating-point validation must never change which source comes next.
+    unsigned next = 6;
+    for (unsigned i = 6; i > 0; --i)
+    {
+        LikelihoodTrace::next_source[i - 1] = next;
+        if (LikelihoodTrace::active[i - 1])
+        {
+            next = i - 1;
+        }
+    }
+    LikelihoodTrace::cursor = next;
+    LikelihoodTrace::stage = LikelihoodTrace::Stage::innovation;
+    LikelihoodTrace::status = Status::success;
+    auto const old = output;
+    auto const status = Monitor::falling_likelihood(observations, output);
+    check_likelihood_protocol(status == LikelihoodTrace::status, "first failure matches source validation");
+    if (status != Status::success)
+    {
+        check_likelihood_protocol(output == old, "failure atomicity");
+        return;
+    }
+    check_likelihood_protocol(LikelihoodTrace::cursor == 6 &&
+                                  LikelihoodTrace::stage == LikelihoodTrace::Stage::innovation,
+                              "all active inputs validated before verdict");
+#if FORMAL_ESKF_PROOF_HEALTH_PROPERTY == 1 || FORMAL_ESKF_PROOF_HEALTH_PROPERTY == 3
+    // Build reference membership from the six independent source records.
+    // A high verdict requires a >3 source and a >1 source in another group.
+    bool const minimum[3]{LikelihoodTrace::minimum[0], LikelihoodTrace::minimum[1] || LikelihoodTrace::minimum[2],
+                          LikelihoodTrace::minimum[3] || LikelihoodTrace::minimum[4] || LikelihoodTrace::minimum[5]};
+    bool const limit[3]{LikelihoodTrace::limit[0], LikelihoodTrace::limit[1] || LikelihoodTrace::limit[2],
+                        LikelihoodTrace::limit[3] || LikelihoodTrace::limit[4] || LikelihoodTrace::limit[5]};
+    bool const high = (limit[0] && (minimum[1] || minimum[2])) || (limit[1] && (minimum[0] || minimum[2])) ||
+                      (limit[2] && (minimum[0] || minimum[1]));
+    bool const medium = limit[0] || limit[1] || limit[2];
+    auto const expected = high     ? Monitor::Likelihood::high
+                          : medium ? Monitor::Likelihood::medium
+                                   : Monitor::Likelihood::low;
+    __ESBMC_assert(output == expected, "strict signed thresholds and distinct reference pairing");
+#endif
+}
+
 void verify_vertical_likelihood_frame(Monitor::Observations observations, Likelihood output)
 {
     auto const before = observations;

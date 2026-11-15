@@ -4431,7 +4431,7 @@
     },
     {
       "id": "R-PX4-IMU-BIAS",
-      "title": "PX4 IMU bias: shared inhibition verified; health classification and actual module sequencing remain open",
+      "title": "PX4 IMU bias: shared inhibition and vertical-health source contracts verified; actual module sequencing remains open",
       "references": {
         "spec": [
           {
@@ -4753,7 +4753,7 @@
     },
     {
       "id": "R-VERTICAL-ACCELERATION",
-      "title": "Vertical health initialization, verdict frame and inductive state transitions; source-ratio equations and caller wiring remain open",
+      "title": "Vertical health IEEE source equations, reference classification and inductive state transitions verified; root accuracy and caller wiring remain open",
       "references": {
         "spec": [
           {
@@ -4796,6 +4796,10 @@
           {
             "file": "formal/cpp/esbmc/vertical_health.cpp",
             "symbol": "void verify_vertical_likelihood_frame("
+          },
+          {
+            "file": "formal/cpp/esbmc/vertical_health.cpp",
+            "symbol": "void verify_vertical_likelihood("
           },
           {
             "file": "formal/cpp/esbmc/vertical_health.cpp",

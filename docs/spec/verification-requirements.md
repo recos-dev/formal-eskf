@@ -1960,8 +1960,9 @@ Bias-value limiting, gravity correction and height-reset exceptions are specifie
 in their respective requirements and wired into this module. Shared inhibition
 has the scoped ESBMC evidence described under `R-REPLAY-BIAS`; this does not close
 the module's admission, history invalidation, ordering, forwarding or publication
-clauses. Vertical-health state safety is separately covered; its complete
-numerical classification remains open. Native backend/correction tests and SITL
+clauses. Vertical-health source equations and state safety are separately covered
+under `R-VERTICAL-ACCELERATION`; that does not prove this module's use of the
+verdict. Native backend/correction tests and SITL
 are empirical evidence; actual module proof and physical disturbance validation
 remain pending.
 
@@ -2256,11 +2257,22 @@ history and inductive timestamp/three-second-hold invariants. Arbitrary samples,
 including failures and timestamp boundaries, remain admitted; the prior-history
 premise is established at initialization and preserved by update/reset.
 
-The source-ratio/FLT_EPSILON equations, cross-reference classification, scalar-root
-accuracy and module/replay sequencing remain **open**. A complete numerical-source
-oracle did not finish within the retained resource limits; the enum/frame proof is
-not a substitute for those equations. No new Lean algebra is needed for the scoped
-state-transition properties. See the [execution record](../verification-extensions-20261115.md#vertical-health-state-safety).
+The actual likelihood producer also has binary32/binary64 source-equation checks:
+ordered source/scalar arguments, the fixed FLT_EPSILON floor, signed IEEE division,
+strict thresholds, distinct-reference grouping, first-failure priority and atomic
+publication. Every IEEE root return remains admitted independently, including
+negative, zero and non-finite values. The observer preserves scalar returns and
+production state. A separate protocol proof establishes its prefix invariants
+without assumptions; the classification and ratio profiles reuse exactly those
+proved invariants. They do not assume their numerical conclusions, successful
+inputs or successful results. Default safety and complete-unwinding checks remain
+enabled in all profiles; the ratio profile uses non-incremental multi-property
+solving to bound memory.
+
+Scalar-root accuracy, physical detection validity and module/replay sequencing
+remain **open**. No new Lean algebra is needed for the scoped state-transition
+properties. See the [state-safety record](../verification-extensions-20261115.md#vertical-health-state-safety)
+and [source-equation completion](../verification-extensions-20261116.md#vertical-health-source-equations).
 
 Replay integration:
 

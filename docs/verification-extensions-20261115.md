@@ -1223,3 +1223,29 @@ drafts. Evidence: `output/runtime-proof-continuation-20261115/mag-lifecycle-mani
 `mag-lifecycle-final/results.json`, `lifecycle-native-mutations.json`,
 `lifecycle-esbmc-mutations.json` and native/tooling logs. Failed/invalid diagnostic
 attempts remain separate from accepted evidence.
+
+## Exact magnetic heading reset algebra
+
+Fifteen Lean theorems establish the Down-axis quaternion Exp and rotation matrix,
+unit norm and normalization identity for a unit prior, tilt preservation,
+wrapped/unwrapped rotation equivalence and horizontal polar-field alignment.
+They also prove that the local covariance transform removes prior navigation
+yaw, its new yaw axis is unit for a unit attitude, and the full covariance
+congruence plus floored rank-one noise is symmetric PSD. The block decomposition
+retains other-state covariance and transforms the two cross blocks exactly.
+The block model places attitude first; production INS uses offset six.
+
+Lean passes with `--wfail` (3,429 jobs). These exact-real results are independent
+of the ongoing C++ reset probes. No ESBMC profile is newly accepted in this
+commit; arbitrary floating-point execution/PSD, libm accuracy, physical field
+truth and reset authorization are not established by these theorems. The
+horizontal-alignment theorem states the prior rotated field's polar form;
+it does not infer a correct physical heading from a bad measurement.
+
+Self-review checked the left navigation-axis composition, explicit prior-unit
+premise for normalization, all signed angles including zero, single-wrap
+periodicity, local error coordinates, variance floor and non-attitude block.
+All source references resolve, and production/unrelated drafts remain unchanged.
+Evidence: `output/runtime-proof-continuation-20261115/mag-reset-lean-manifest.json`
+and `mag-reset-lean.log`. C++ experiments remain uncommitted until independently
+accepted; they do not contribute to this mathematical claim.

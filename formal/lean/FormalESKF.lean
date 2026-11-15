@@ -41,3 +41,5 @@ import FormalESKF.TiltAlignment
 import FormalESKF.AccelerometerSample
 import FormalESKF.MagneticReference
 import FormalESKF.MagneticHeading
+
+import FormalESKF.MagneticReset

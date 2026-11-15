@@ -856,7 +856,14 @@ PX4's global left-error definition is explicit in
 The primitive consumes the caller-supplied body field. Replay now supplies the
 reset LPF after current field qualification, as PX4 does; PX4 additionally resets
 estimated magnetic states. Native AHRS/INS float/double and replay
-tests cover this narrower operation; Lean/ESBMC and floating-point bounds are pending.
+tests cover this narrower operation. Lean now proves exact Down-axis Exp,
+normalized unit-attitude composition, tilt preservation, horizontal alignment
+under the stated polar-field premise, wrap invariance, yaw-axis removal, and
+covariance block equations/symmetry/PSD through congruence plus rank-one noise.
+The block model places attitude first; INS uses its explicit production offset.
+These real statements do not establish C++ execution, IEEE PSD, libm accuracy or
+physical field validity. ESBMC reset composer/caller and floating-point bounds
+remain separate obligations.
 
 #### PX4 module magnetic aiding
 

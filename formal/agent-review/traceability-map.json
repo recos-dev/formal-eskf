@@ -3543,7 +3543,7 @@
     },
     {
       "id": "R-MAGNETOMETER-RESET",
-      "title": "Fixed-field heading reset with local attitude covariance transformation; Lean and ESBMC evidence pending",
+      "title": "Exact magnetic heading alignment, tilt and covariance reset algebra proved; C++ reset and floating-point bounds remain separate",
       "references": {
         "spec": [
           {
@@ -3559,7 +3559,68 @@
             "symbol": "#### PX4 module geographic magnetic reference"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/MagneticReset.lean",
+            "symbol": "theorem magneticResetAttitude_unit"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticReset.lean",
+            "symbol": "theorem magneticResetAttitude_tilt"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticReset.lean",
+            "symbol": "theorem magneticResetAttitude_normalized"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticReset.lean",
+            "symbol": "theorem quaternionExp_down"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticReset.lean",
+            "symbol": "theorem rotationMatrix_exp_down"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticReset.lean",
+            "symbol": "theorem navigationYawMatrix_polar"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticReset.lean",
+            "symbol": "theorem magneticHeadingWrap_trig"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticReset.lean",
+            "symbol": "theorem magneticResetAttitude_alignment"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticReset.lean",
+            "symbol": "theorem magneticTilt_removes_down"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticReset.lean",
+            "symbol": "theorem magneticResetTransform_removes_yaw"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticReset.lean",
+            "symbol": "theorem magneticResetAxis_unit"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticReset.lean",
+            "symbol": "theorem magneticResetCovariance_posSemidef"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticReset.lean",
+            "symbol": "theorem magneticResetCovariance_symmetric"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticReset.lean",
+            "symbol": "theorem magneticResetCovariance_blocks"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticReset.lean",
+            "symbol": "theorem magneticResetTransform_identity"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/runtime/magnetometer.hpp",

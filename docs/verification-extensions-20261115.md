@@ -1103,3 +1103,39 @@ drafts remain unchanged. Evidence:
 `output/runtime-proof-continuation-20261115/magnetic-field-manifest.json`,
 `magnetic-field-producers-final/results.json`, `field-native-mutations.json`,
 `field-esbmc-mutations.json` and Lean/native/tooling logs.
+
+## Public magnetic plausibility and reference selection
+
+Eighteen profiles / two entry points check the actual forward action and public
+field-plausibility caller in both scalar formats. Health reference partitions
+cover null, observation-identical, independent and body-aliased pointers.
+Unconditional status/call/failure frames compose with successful-computation
+numeric diagnostics; rejected fields remain included. Actual validation stays
+inline. Same-type geometry/heading contracts bind every request and publication.
+Checks include all flag combinations, unused health data, reference reuse,
+observability, horizontal thresholds, inclusive fallback limits, tolerance
+equalities, complete diagnostics and borrowed-input purity. Forward action is
+bound to ordered IEEE matrix products and its existing coefficient producer.
+Existing Lean unit-rotation and wrapping theorems are reused; no new theorem or
+physical sensor/model/libm accuracy claim is added.
+
+Accepted matrix: 18/18 in 130.69 s, cgroup peak 456,962,048 bytes (436 MiB), no
+OOM/swap. Earlier combined queries and conditional successful-output summaries
+exhausted the solver limit. Final complementary profiles retain all failure
+paths and assert every callee-success premise before unconditional successful
+publication; no failed run contributes to coverage. Sixteen mutation patterns
+fail in both native formats with passing controls (32 + 32); twelve fixed ESBMC
+mutants and twelve controls have expected outcomes. Patterns cover selection,
+unused invalid health, reference identity, fallback/threshold equality, heading
+reference binding, rejection and complete failure diagnostics. Existing native
+Eigen/PX4-matrix fusion/heading evidence remains source-identical. Runner
+inventory, 100 offline review-tool tests, references, formatting and ShellCheck
+pass. Inventory: 2,023 profiles / 212 entry points. No full AI audit.
+
+Self-review checked every public failure, the complementary numeric premise,
+exact-type producers, alias partitions, mutation sensitivity and preservation
+of production/unrelated drafts. Stateful heading/lifecycle and adapter wiring
+remain separate. Evidence:
+`output/runtime-proof-continuation-20261115/magnetic-check-manifest.json`,
+`magnetic-check-final-v2/results.json`, `check-native-mutations.json`,
+`check-esbmc-mutations.json` and native/tooling logs.

@@ -2990,7 +2990,7 @@
     },
     {
       "id": "R-MAGNETIC-FIELD",
-      "title": "Magnetic input/geometry/scalar contracts verified; full plausibility caller and physical disturbance validity remain separate",
+      "title": "Portable magnetic plausibility, geometry and reference-selection contracts verified; external math accuracy and adapter/physical validity remain separate",
       "references": {
         "spec": [
           {
@@ -3014,6 +3014,10 @@
           {
             "file": "formal/lean/FormalESKF/MagneticHeading.lean",
             "symbol": "theorem magneticHeadingWrap_difference"
+          },
+          {
+            "file": "formal/lean/FormalESKF/SO3.lean",
+            "symbol": "theorem vectorNormSquared_rotate_of_unit"
           }
         ],
         "cpp": [
@@ -3082,6 +3086,18 @@
           {
             "file": "formal/cpp/esbmc/magnetic_field.cpp",
             "symbol": "void verify_magnetic_heading_value("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_check.cpp",
+            "symbol": "void verify_magnetic_forward_frame("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_check.cpp",
+            "symbol": "void verify_magnetic_check("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_inhibition.cpp",
+            "symbol": "void verify_imu_rotation("
           }
         ]
       }

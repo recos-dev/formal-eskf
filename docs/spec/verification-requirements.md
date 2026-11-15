@@ -266,8 +266,18 @@ The exact IEEE heading relation and failure frame use complementary successful
 scalar and general failure profiles. Principal-range/finite guarantees separately
 require atan2 results in the encoded [-pi,pi] range; finiteness alone is not that
 contract. Lean proves corresponding exact real wrap/boundary properties.
-The full plausibility caller, including optional reference selection and final
-threshold/diagnostic composition, remains a separate proof obligation.
+The actual public plausibility caller is checked in both formats with null,
+observation-identical, separate and body-aliased health references. Unconditional
+status/call/failure frames compose with successful-computation diagnostics;
+rejected fields remain included. All selection flags and numerical inputs are
+symbolic. Same-type geometry/heading contracts bind every request and publication.
+Input validation and health-data checks remain inline. Forward rotation is checked
+against ordered R-times-body dots and its same-type matrix-coefficient producer;
+real strength preservation reuses the unit-rotation norm theorem. These claims
+cover reference reuse, unselected-data non-use, fallback limits, all thresholds,
+complete diagnostics and borrowed-input purity. They do not establish accurate
+math-library results, trustworthy sensor/reference data, observability or actual
+adapter correspondence.
 
 ### R-MAGNETIC-HEADING: aided heading consistency
 

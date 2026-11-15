@@ -39,3 +39,4 @@ import FormalESKF.AccelerometerFilter
 
 import FormalESKF.TiltAlignment
 import FormalESKF.AccelerometerSample
+import FormalESKF.MagneticReference

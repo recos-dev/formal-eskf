@@ -332,8 +332,18 @@ The schedule and change thresholds follow
 This API additionally reports invalid domain/time and scalar failures explicitly,
 and preserves history on failure. Native tests cover
 binary32/binary64, two backends, axes/units, timing, thresholds and failure
-preservation. Lean/ESBMC evidence and the physical accuracy/version of the
-externally supplied model remain separate obligations.
+preservation. Lean proves the real NED conversion's squared strength, horizontal
+magnitude, north-axis and Down-component identities. ESBMC checks actual
+initialization/reset, validation, checked trigonometry, adoption and update in
+both scalar formats with the fixed-array proof backend. The scalar boundary
+admits every IEEE sine/cosine return. All failure frames/statuses are checked;
+the successful-wrapper path separately proves each ordered IEEE coefficient.
+Revision overflow, strict timing/change boundaries, skipped checks, caller-input
+purity and the complete owner frame are covered. Clock order, finite field and
+adopted-model domain have an initialization base and inductive public update
+step. No successful-public-input assumption removes invalid calls.
+Target libm accuracy, external model accuracy/version and actual adapter
+lookup/origin correspondence remain separate obligations.
 
 ### R-MAGNETOMETER-FUSION: field checks and gated magnetic correction
 

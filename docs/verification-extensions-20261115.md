@@ -1014,3 +1014,52 @@ correspondence. Production and unrelated drafts remain unchanged. Evidence:
 `output/runtime-proof-continuation-20261115/mag-filter-manifest.json`,
 `mag-filter-final/results.json`, `mag-filter-native-mutations.json`,
 `mag-filter-esbmc-mutations.json` and native/tooling logs.
+
+## Geographic magnetic reference
+
+Four Lean theorems prove real NED conversion: squared strength, horizontal
+magnitude, north-axis specialization and Down component. Twelve profiles / six
+entry points check actual construction/reset, sample validation, checked
+trigonometry, adoption frames, ordered IEEE coefficients and public update in
+both scalar formats. No physical accuracy is assigned to the model or libm.
+
+Adoption failures and successful trigonometry are separate complementary
+obligations. The actual checked sin/cos producer establishes the latter's finite
+angle/result preconditions; every other scalar outcome remains in the adoption
+frame profile. The numerical profile retains revision saturation and nonfinite
+field rejection. The public controller composes the exact-type atomic adoption
+frame and actual validation: strict time/position/origin/change admission,
+checked/changed diagnostics, all failure/skipped-check frames and input purity.
+Construction/reset plus every public update establish inductive clock ordering,
+finite field and valid adopted-model domain; revisions cannot wrap.
+
+Accepted matrix: 12/12 in 27.78 s, cgroup peak 315,621,376 bytes (301 MiB), no
+OOM/swap. Lean passes with `--wfail` (3,427 jobs). Earlier combined numerical and
+failure-path attempts exceeded the 4 GiB solver limit with CVC5/Bitwuzla; these
+are not passes. Complementary scalar-success and failure-frame composition
+closed the obligations without changing production or dropping failure paths.
+An ESBMC aggregate conditional issue in a preliminary proof summary was removed
+by selecting scalar fields explicitly. Experimental alternate backends and
+path partitions are not part of the accepted suite.
+
+Seventeen mutation patterns fail in both native formats with passing controls
+(34 + 34); twelve fixed ESBMC mutants and twelve controls have expected outcomes.
+Patterns cover reset/domain, overflow, trigonometric angle binding, all three
+coefficients, result finiteness, premature model writes, revision increments,
+time equality, strict 10 s/strength boundaries, origin priority and unchanged/
+skipped/failed check clocks. A first symbolic witness expanded real libm and
+hit the external timeout; final witnesses use explicit finite primitive returns
+at the already-declared boundary. The nonfinite-field witness deliberately
+allows finite trig returns outside [-1,1], consistent with this source proof's
+unconstrained libm boundary; it does not assert physical trigonometric behavior.
+Native Eigen/PX4-matrix reference tests, runner inventory, 100 offline review-tool
+tests, references, formatting and ShellCheck pass. Inventory: 1,991 profiles /
+204 entry points. No full AI audit or Lean-to-C++ refinement claim.
+
+Self-review checked every scalar-success/failure partition, exact-type producer
+closure, both clocks/revision induction, all state fields, meaningful negative
+witnesses and preservation of production/unrelated drafts. Evidence:
+`output/runtime-proof-continuation-20261115/mag-reference-manifest.json`,
+`mag-reference-complete-final/results.json`, `reference-native-mutations.json`,
+`reference-esbmc-mutations.json` and Lean/native/tooling logs. Failed experiments
+are retained separately; none contributes to accepted coverage.

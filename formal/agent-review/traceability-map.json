@@ -3118,7 +3118,7 @@
     },
     {
       "id": "R-MAGNETIC-REFERENCE",
-      "title": "Geographic magnetic reference adoption and replay source ownership; Lean and ESBMC evidence pending",
+      "title": "Geographic field conversion, adoption atomicity and inductive reference clocks/revisions verified; external model accuracy and adapter wiring remain separate",
       "references": {
         "spec": [
           {
@@ -3134,7 +3134,24 @@
             "symbol": "#### PX4 module geographic magnetic reference"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/MagneticReference.lean",
+            "symbol": "theorem magneticReferenceField_normSquared"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticReference.lean",
+            "symbol": "theorem magneticReferenceField_north"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticReference.lean",
+            "symbol": "theorem magneticReferenceField_down"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticReference.lean",
+            "symbol": "theorem magneticReferenceField_horizontal"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/runtime/magnetic_reference.hpp",
@@ -3173,7 +3190,32 @@
             "symbol": "void FormalEskf::update_magnetic_model()"
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/magnetic_reference.cpp",
+            "symbol": "void verify_reference_trig("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_reference.cpp",
+            "symbol": "void verify_reference_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_reference.cpp",
+            "symbol": "void verify_reference_validation("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_reference.cpp",
+            "symbol": "void verify_reference_adoption_frame("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_reference.cpp",
+            "symbol": "void verify_reference_coefficients("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_reference.cpp",
+            "symbol": "void verify_reference_update("
+          }
+        ]
       }
     },
     {

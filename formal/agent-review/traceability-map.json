@@ -3684,7 +3684,7 @@
     },
     {
       "id": "R-ACCELEROMETER-MAGNITUDE",
-      "title": "Fixed-coefficient accelerometer LPF and gravity-band diagnostic; Lean and ESBMC evidence pending",
+      "title": "Accelerometer filter algebra and inductive IEEE history verified; physical gravity and target backends remain separate",
       "references": {
         "spec": [
           {
@@ -3692,7 +3692,40 @@
             "symbol": "### R-ACCELEROMETER-MAGNITUDE: filtered gravity-band diagnostic"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/AccelerometerFilter.lean",
+            "symbol": "def forceLowPass"
+          },
+          {
+            "file": "formal/lean/FormalESKF/AccelerometerFilter.lean",
+            "symbol": "theorem forceLowPass_affine"
+          },
+          {
+            "file": "formal/lean/FormalESKF/AccelerometerFilter.lean",
+            "symbol": "theorem forceLowPass_constant"
+          },
+          {
+            "file": "formal/lean/FormalESKF/AccelerometerFilter.lean",
+            "symbol": "theorem forceLowPass_error"
+          },
+          {
+            "file": "formal/lean/FormalESKF/AccelerometerFilter.lean",
+            "symbol": "theorem forceLowPass_bounds"
+          },
+          {
+            "file": "formal/lean/FormalESKF/AccelerometerFilter.lean",
+            "symbol": "theorem forceLowPass_residual"
+          },
+          {
+            "file": "formal/lean/FormalESKF/AccelerometerFilter.lean",
+            "symbol": "def forceFilterRepeated"
+          },
+          {
+            "file": "formal/lean/FormalESKF/AccelerometerFilter.lean",
+            "symbol": "theorem forceFilterRepeated_error"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/runtime/accelerometer.hpp",
@@ -3703,12 +3736,21 @@
             "symbol": "AccelerometerMagnitude<Linalg>::update("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/accelerometer_runtime.cpp",
+            "symbol": "void verify_accelerometer_magnitude_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/accelerometer_runtime.cpp",
+            "symbol": "void verify_accelerometer_magnitude("
+          }
+        ]
       }
     },
     {
       "id": "R-ACCELEROMETER-CONDITIONS",
-      "title": "Gravity-fusion activation and pre-innovation sample conditions; Lean and ESBMC evidence pending",
+      "title": "Exhaustive gravity-fusion predicate verified; condition producers, tilt and adapter correspondence remain separate",
       "references": {
         "spec": [
           {
@@ -3747,7 +3789,12 @@
             "symbol": "void FormalEskf::fuse_gravity("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/accelerometer_runtime.cpp",
+            "symbol": "void verify_accelerometer_conditions("
+          }
+        ]
       }
     },
     {

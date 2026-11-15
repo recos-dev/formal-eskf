@@ -828,3 +828,58 @@ No production change. Evidence:
 `output/runtime-proof-continuation-20261115/height-filter-manifest.json`,
 `height-filter-final/results.json`, `height-filter-native-mutations.json`,
 `height-filter-esbmc-mutations.json` and native/tooling logs.
+
+## Accelerometer filter and fusion conditions
+
+Six Lean theorems establish the component-wise real LPF's affine form,
+constant-input preservation, convex bounds, one-step residual contraction and
+exact error after any number of constant-input steps. Six ESBMC profiles / three
+entry points check the actual magnitude constructor/reset/update and stateless
+fusion predicate in both scalar formats. The implementation checks exact encoded
+coefficients, vector-before-norm order, strict band limits, status priority,
+rollback, borrowed-input frames and accessor identity. Finite history has an
+initialization base and an inductive public-update step. The predicate exhausts
+all eight flags and statuses, including arbitrary unused IEEE diagnostics.
+This does not identify physical rest/gravity, establish caller freshness, verify
+target libraries or close the sample-integration/fusion/module chain.
+
+Accepted checks: 6/6 in 6.98 s, cgroup peak 165,519,360 bytes (158 MiB), no OOM/swap.
+Lean passes with `--wfail` (3,424 jobs). Twelve mutation patterns in both native
+formats fail their intended assertions with all controls passing (24 + 24);
+six fixed ESBMC mutants and six controls give the expected outcomes. These cover
+wrong coefficient/seed/norm, early writes, missing finite checks, inclusive band,
+incomplete reset, ignored enable/clipping/aiding/status. Native Eigen/PX4-matrix
+magnitude/condition tests, runner inventory, 100 offline review-tool tests,
+reference resolution, formatting and ShellCheck pass. Missing native executables
+on the first CTest attempt were built, then all four tests rerun successfully;
+the initial not-run log is retained. Inventory: 1,949 profiles / 190 entry points.
+No full AI audit or machine-checked Lean-to-C++ refinement.
+
+Self-review checked exact expression order and scalar/backend identity, all
+history fields, all status paths, boolean truth-table rows and negative witnesses.
+Production and unrelated drafts are unchanged. Evidence:
+`output/runtime-proof-continuation-20261115/accelerometer-runtime-manifest.json`,
+`accelerometer-runtime-final/results.json`,
+`accelerometer-runtime-native-mutations.json`,
+`accelerometer-runtime-esbmc-mutations.json` and Lean/native/tooling logs.
+
+### Retained height-composition gap
+
+The reset dependencies and filter producers above are complete within scope;
+whole `HeightAiding::reset_height/recover/process/update` composition is not.
+The scratch recovery query hit the 4 GiB solver limit with CVC5 and Bitwuzla.
+Using the proved reset write frame and arbitrary-row/column quantification let
+the isolated state/P claims pass, but the grouped result/history arithmetic
+still exhausted Bitwuzla memory; CVC5/Z3 attempts timed out. Individual passed
+claims from an incomplete run are not counted as a completed profile. The
+initial independent health oracle also lacked future/inconsistent-time guards;
+that was corrected before later attempts, without claiming the earlier run.
+
+Retained evidence includes `height-recovery-probe.log`,
+`height-recovery-bitwuzla.log`, `height-recovery-frame.log`,
+`height-reset-producer-probe.log`, `height-reset-producer-properties.log`,
+`height-reset-indexed.log` and `height-reset-indexed-z3.log` under the same output
+directory. Experimental harnesses remain outside the accepted proof suite.
+Further composition needs smaller independently justified scalar/frame lemmas;
+no failed path or public input was removed to force acceptance. Independent
+accelerometer obligations proceeded while this gap remained explicit.

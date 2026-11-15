@@ -18,8 +18,9 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1943 '^PLAN'
+    check_count 1949 '^PLAN'
     check_count 32 'height-'
+    check_count 6 'accelerometer-binary'
     check_count 28 'navigation-recovery-'
     check_count 46 'navigation-reset-'
     check_count 7 'gnss-lifecycle-'
@@ -237,8 +238,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 187 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1943 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 190 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1949 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -270,6 +271,25 @@ check_plan()
     [[ -z "$(comm -23 <("${RUNNER}" scalar --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] ||
         fail 'scalar dependency profile is not in the full inventory'
 }
+
+check_accelerometer_arguments()
+(
+    local COUNT=0
+    verify()
+    {
+        local ENTRY="$1"
+        shift
+        case "${KIND}" in
+            magnitude_initialization|magnitude|conditions) ;;
+            *) fail 'unknown accelerometer proof' ;;
+        esac
+        [[ "${SOURCE_FILE}" == "${PROOF_DIR}/accelerometer_runtime.cpp" && "${ENTRY}" == "verify_accelerometer_${KIND}" ]] || fail 'wrong accelerometer source/entry'
+        [[ "$*" == "--proof-unwind 16 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" ]] || fail 'wrong accelerometer arguments'
+        COUNT=$((COUNT + 1))
+    }
+    run_accelerometer_suite
+    [[ "${COUNT}" == 6 ]] || fail 'accelerometer matrix incomplete'
+)
 
 check_height_arguments()
 (
@@ -1819,6 +1839,7 @@ case "${1:-}" in
 esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
+check_accelerometer_arguments
 check_height_arguments
 check_navigation_recovery_arguments
 check_navigation_reset_arguments
@@ -1844,7 +1865,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1943 profiles; 187 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1949 profiles; 190 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

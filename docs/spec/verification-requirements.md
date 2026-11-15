@@ -1440,7 +1440,18 @@ PX4 fusion equivalence, or a backend-independent bitwise equivalence claim.
 
 `tests/test_accelerometer_magnitude.cpp` checks both scalar formats, recurrence,
 startup/reset, strict band boundaries, vector-before-magnitude behavior and
-failure preservation. These are native tests; Lean and ESBMC evidence is pending.
+failure preservation. Separate Lean theorems prove the real affine recurrence,
+constant-input preservation, convex bounds, one-step residual contraction and
+exact residual after any number of constant-input updates. These do not prove
+that the signal is gravity or bound floating-point error.
+
+ESBMC checks the actual constructor/reset, exact scalar-format filter/norm/band
+expressions, failure statuses and complete history/input frames in binary32 and
+binary64 with the fixed-array proof backend. Finite history is established by
+construction/reset and preserved inductively by every public update, including
+failures; successful diagnostics are finite and nonnegative. Accessor identity
+is checked. Target backend arithmetic, cadence and physical interpretation remain
+outside this source claim.
 
 ### R-ACCELEROMETER-CONDITIONS: gravity-fusion prerequisites
 
@@ -1471,7 +1482,13 @@ Its additional innovation rejection remains a separate deferred task here.
 The same predicate supports INS and AHRS; any configuration without horizontal
 aiding supplies false for that flag. Native tests enumerate all 256 boolean
 combinations with all declared statuses, and exercise real magnitude-result
-consumption in both scalar formats. Lean and ESBMC evidence is pending.
+consumption in both scalar formats. ESBMC additionally checks the actual
+stateless predicate for all eight flags, every status and arbitrary unused IEEE
+diagnostics, including input purity, in both formats. Rest cannot bypass failed
+magnitude evaluation or clipping; horizontal aiding prevents activation. No
+separate Lean state-machine theorem is needed for this predicate. Actual
+condition producers, sample/horizon correspondence, tilt alignment and complete
+fusion/module composition retain their own obligations.
 
 #### Replay condition sources (host demo)
 

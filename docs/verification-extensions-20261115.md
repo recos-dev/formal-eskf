@@ -601,3 +601,60 @@ and numerical reset remain separate obligations. Production and unrelated drafts
 are unchanged. Evidence: `output/runtime-proof-continuation-20261115/gnss-lifecycle-manifest.json`,
 `gnss-lifecycle-single-transition/results.json`, `gnss-lifecycle-mutations.json`,
 native/tooling logs and failed attempts.
+
+## Navigation reset mathematics and C++
+
+Sixteen Lean theorems cover `R-GNSS-RESET`: covariance reset decomposes into
+`D P Dᵀ` plus a nonnegative replacement diagonal; all four operations preserve
+PSD, with the specified retained/decoupled entries and variance policies.
+Nominal attitude and biases are retained. PSD is not strengthened to SPD.
+The exact-real decimal floor and scalar-format encoded C++ floor are distinct.
+
+Forty ESBMC profiles (three source entry points) check both scalar formats:
+finite zero-residual/equality arithmetic, actual input validation for sizes
+1/2/3, and four reset callers with all four independent state/P alias modes.
+The validation summary is matched to its actual same-type producer, checks the
+complete original request exactly once and admits any returned status. Actual
+numerical reset bodies, coordinate writes and covariance storage remain inline.
+An arbitrary bounded row/column quantifies every output coefficient; no public
+input is assumed valid or restricted to representative coordinates. Checks cover
+exact statuses, overflow, new-minus-old delta, floor/decorrelation, rollback and
+input purity. Comparisons preserve values, signed zeros and NaN classification,
+not NaN payloads.
+
+Accepted results: 40/40 profiles in 739.46 s; cgroup peak 1,566,097,408 bytes
+(1.46 GiB), no OOM/swap, 120 s / 4 GiB per profile and 6 GiB group limits.
+Full Lean build passes with `--wfail` (3,421 jobs). Twenty-four native mutation
+failures and twenty-four positive controls exercise twelve fault patterns in
+both formats: floor, variance summation, delta direction, negative diagonal,
+asymmetry, both overflow paths, premature publication, missed column clearing,
+wrong height coordinate, lost Down-position variance and retained position
+correlations. Seven of these concrete mutations and eight positive controls
+also completed under ESBMC. These counts are distinct from symbolic proof
+profiles; interrupted mutation runs are not passes. Native navigation-reset
+tests, 100 offline agent-review tests, inventory, formatting and ShellCheck pass.
+Inventory: 1,877 profiles / 169 entry points. No full AI audit.
+
+Retained failures: full expansion timed out; asking one query to establish
+225 zero-residual/equality relations exhausted its internal solver budget.
+The accepted split proves the scalar relation once and uses an independent
+row-major residual oracle for the actual validator. A conditional aggregate-
+reference binding then reproduced the already recorded ESBMC model issue;
+explicit pointer selection preserved all alias cases and passed. The initial
+all-entry assertion loop was replaced by universal symbolic indices, preserving
+the complete coefficient obligation. No production change or weaker contract.
+Concrete mutation fixtures initially repeated expensive symbolic expansion;
+all fixed witnesses were then checked natively, with completed ESBMC controls
+retained separately. The original and reduced fixtures and interrupted logs
+remain in the evidence directory.
+
+Self-review checked real/source coordinate masks, the full validation-to-caller
+chain, IEEE error precedence, independent aliases and every mutation failure
+message. Confirmed the live protected production/draft hashes and limited the
+commit to proof, runner, traceability and execution evidence descriptions.
+External backends, real-data quality, caller permission/acknowledgment and
+publication remain separate; this is not a machine-checked Lean-to-C++ refinement.
+Evidence: `output/runtime-proof-continuation-20261115/navigation-reset-manifest.json`,
+`navigation-reset-final/results.json`, `navigation-reset-native-mutations.json`,
+`navigation-reset-mutations.json`, `navigation-reset-lean.log`, native/tooling
+logs and retained unsuccessful attempts.

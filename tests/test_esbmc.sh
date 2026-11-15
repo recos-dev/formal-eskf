@@ -18,7 +18,8 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1837 '^PLAN'
+    check_count 1877 '^PLAN'
+    check_count 40 'navigation-reset-'
     check_count 7 'gnss-lifecycle-'
     check_count 14 'gnss-quality-binary'
     check_count 8 'imu-prediction-binary'
@@ -73,8 +74,8 @@ check_plan()
     check_count 4 'injection-binary64'
     check_count 5 'jacobian-binary32'
     check_count 5 'jacobian-binary64'
-    check_count 23 'reset-binary32'
-    check_count 23 'reset-binary64'
+    check_count 23 '[[:space:]]reset-binary32'
+    check_count 23 '[[:space:]]reset-binary64'
     check_count 15 'pcov-binary32'
     check_count 15 'pcov-binary64'
     check_count 52 'step-binary32'
@@ -234,8 +235,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 166 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1837 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 169 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1877 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -267,6 +268,29 @@ check_plan()
     [[ -z "$(comm -23 <("${RUNNER}" scalar --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] ||
         fail 'scalar dependency profile is not in the full inventory'
 }
+
+check_navigation_reset_arguments()
+(
+    local COUNT=0
+    verify()
+    {
+        local ENTRY="$1"
+        shift
+        [[ "${SOURCE_FILE}" == "${PROOF_DIR}/navigation_reset.cpp" ]] || fail 'wrong navigation reset source'
+        case "${PROFILE}" in
+            *-symmetry-pair)
+                [[ "${ENTRY}" == verify_navigation_symmetry_pair && "$*" == "--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" ]] || fail 'wrong symmetry pair arguments' ;;
+            *-validation*)
+                [[ "${ENTRY}" == verify_navigation_validation && "$*" == "--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_NAVIGATION_RESET=${MODEL}" ]] || fail 'wrong navigation validation arguments' ;;
+            *-model*-alias*)
+                [[ "${ENTRY}" == verify_navigation_reset && "$*" == "--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_NAVIGATION_RESET=${MODEL} -D FORMAL_ESKF_PROOF_ALIAS=${ALIAS} -D FORMAL_ESKF_PROOF_NAVIGATION_CALLER=1" ]] || fail 'wrong navigation reset caller arguments' ;;
+            *) fail 'unknown navigation reset profile' ;;
+        esac
+        COUNT=$((COUNT + 1))
+    }
+    run_navigation_reset_suite
+    [[ "${COUNT}" == 40 ]] || fail 'navigation reset matrix incomplete'
+)
 
 check_gnss_lifecycle_arguments()
 (
@@ -1736,6 +1760,7 @@ case "${1:-}" in
 esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
+check_navigation_reset_arguments
 check_gnss_lifecycle_arguments
 check_gnss_quality_arguments
 check_imu_prediction_arguments
@@ -1758,7 +1783,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1837 profiles; 166 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1877 profiles; 169 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

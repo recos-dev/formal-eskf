@@ -974,10 +974,26 @@ API neither estimates nor changes sensor-height biases, terrain or output histor
   origin changes, output-predictor adjustment, height-reference/bias management,
   automatic height-failure decisions or yaw reset.
 
-Native tests cover both scalar formats, per-entry state/P behavior, floors,
-Down-delta sign, retained velocity/covariance, valid aliases, invalid inputs,
-both delta-overflow signs and failure atomicity. Lean/ESBMC
-evidence remains pending; existing `E-RESET` proofs do not cover these operations.
+Lean expresses navigation covariance reset as `D P Dᵀ` plus nonnegative
+replacement diagonal terms. It proves PSD preservation, untouched/decoupled
+coefficients, each operation's variance policy and retained nominal attitude/biases.
+The real model uses exact decimal `0.01²`; the C++ proof checks each scalar format's
+encoded constant and operation order. These are separate evidence layers.
+
+ESBMC verifies the actual input validator for observation sizes 1/2/3, a scalar
+lemma connecting finite zero subtraction residuals to exact equality, and all four
+reset callers in binary32/binary64 with every independent whole-prior state/P alias.
+The same-type validation summary is input-pure and allows every returned status;
+callers check its exact arguments and invocation. State/delta behavior, complete
+covariance decorrelation/floors, overflow errors, failure atomicity and preserved
+borrowed inputs are checked. An arbitrary bounded row/column quantifies every
+covariance output, not selected sample entries. Comparisons retain values, signed
+zero and NaN classification; NaN payload preservation is not claimed. Public invalid
+inputs are not assumed away; source/frame correctness, PSD and unit attitude retain their specified
+caller ownership. No target-backend proof, floating-point error bound or machine-
+checked Lean-to-C++ refinement is claimed. Native tests and mutation controls
+complement these proofs. Actual caller permission, acknowledgment and publication
+remain separate; `E-RESET` covers a different operation.
 
 ### R-GNSS-FUSION: GNSS fusion lifecycle
 

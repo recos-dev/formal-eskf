@@ -4320,7 +4320,7 @@
     },
     {
       "id": "R-GNSS-RESET",
-      "title": "Checked GNSS position, 3D-velocity and Down-only velocity resets, covariance decorrelation and atomic delta publication; Lean and ESBMC evidence pending",
+      "title": "Navigation resets: real PSD/coordinate preservation and scoped IEEE validation, decorrelation and atomic alias behavior; adapter acknowledgment remains separate",
       "references": {
         "spec": [
           {
@@ -4332,7 +4332,116 @@
             "symbol": "#### PX4 GNSS integration"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "def navigationCovariance"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "def navigationRetain"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "theorem navigationCovariance_decomposition"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "theorem navigationCovariance_posSemidef"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "theorem navigationCovariance_untouched"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "theorem navigationCovariance_decoupled"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "def navigationVariance"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "theorem navigationVariance_positive"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "def resetHorizontalPositionCovariance"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "def resetVerticalPositionCovariance"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "def resetVerticalVelocityCovariance"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "def resetVelocityCovariance"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "theorem resetHorizontalPositionCovariance_posSemidef"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "theorem resetVerticalPositionCovariance_posSemidef"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "theorem resetVerticalVelocityCovariance_posSemidef"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "theorem resetVelocityCovariance_posSemidef"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "theorem resetVerticalVelocityCovariance_position"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "theorem resetVelocityCovariance_position"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "theorem resetHorizontalPositionCovariance_variance"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "theorem resetVerticalPositionCovariance_variance"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "theorem resetVerticalVelocityCovariance_variance"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "theorem resetVelocityCovariance_variance"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "def resetHorizontalPositionState"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "def resetVerticalPositionState"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "def resetVerticalVelocityState"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "def resetVelocityState"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationReset.lean",
+            "symbol": "theorem navigationState_preserves_attitude_biases"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/runtime/navigation.hpp",
@@ -4375,7 +4484,20 @@
             "symbol": "bool FormalEskf::fuse_gps_position("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/navigation_reset.cpp",
+            "symbol": "void verify_navigation_symmetry_pair("
+          },
+          {
+            "file": "formal/cpp/esbmc/navigation_reset.cpp",
+            "symbol": "void verify_navigation_validation("
+          },
+          {
+            "file": "formal/cpp/esbmc/navigation_reset.cpp",
+            "symbol": "void verify_navigation_reset("
+          }
+        ]
       }
     },
     {

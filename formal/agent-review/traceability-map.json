@@ -4380,7 +4380,7 @@
     },
     {
       "id": "R-GNSS-FUSION",
-      "title": "GNSS-only lifecycle with timeout and continuous-acceleration height/Down-velocity recovery; Lean and ESBMC evidence pending",
+      "title": "Portable GNSS lifecycle and inductive feedback invariants verified; numerical reset and adapter chronology remain separate",
       "references": {
         "spec": [
           {
@@ -4499,7 +4499,36 @@
             "symbol": "bool FormalEskf::fuse_gps_position("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/gnss_lifecycle.cpp",
+            "symbol": "void verify_gnss_lifecycle_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/gnss_lifecycle.cpp",
+            "symbol": "void verify_gnss_lifecycle_update("
+          },
+          {
+            "file": "formal/cpp/esbmc/gnss_lifecycle.cpp",
+            "symbol": "void verify_gnss_lifecycle_fusion("
+          },
+          {
+            "file": "formal/cpp/esbmc/gnss_lifecycle.cpp",
+            "symbol": "void verify_gnss_lifecycle_reset_feedback("
+          },
+          {
+            "file": "formal/cpp/esbmc/gnss_lifecycle.cpp",
+            "symbol": "void verify_gnss_lifecycle_vertical_feedback("
+          },
+          {
+            "file": "formal/cpp/esbmc/gnss_lifecycle.cpp",
+            "symbol": "void verify_gnss_lifecycle_restart("
+          },
+          {
+            "file": "formal/cpp/esbmc/gnss_lifecycle.cpp",
+            "symbol": "void verify_gnss_lifecycle_health("
+          }
+        ]
       }
     },
     {

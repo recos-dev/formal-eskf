@@ -558,3 +558,46 @@ Production headers, module sources and unrelated drafts are unchanged.
 Evidence: `output/runtime-proof-continuation-20261115/gnss-quality-manifest.json`,
 `gnss-quality-final/results.json`, `gnss-quality-mutations.json`, native/tooling
 logs and the retained unsuccessful attempts.
+
+## GNSS lifecycle and feedback
+
+Seven profiles/entry points check the actual portable `GnssFusion` controller:
+construction/reset, update, fusion feedback, full reset feedback, Down-only reset
+feedback, explicit restart and acceleration-health time classification. This
+controller uses integer times and Boolean/enumeration state, so these profiles
+are not artificially duplicated by floating-point format. No callee summaries.
+
+The initialized, inductively preserved invariant orders progress/sample/quality
+clocks and relates permissions to active/recovery state. Each public transition
+is checked from an arbitrary invariant state with unrestricted public inputs.
+It proves exact validation and failure frames, data/quality deadlines, coupled
+horizontal progress, height/Down ordering, persistent repair requests and input
+purity. Only actual fused feedback advances fusion time; reset progress is
+separate. Accepted feedback consumes authority and the universal feedback guard
+rejects missing authority. This establishes one-use behavior by induction rather
+than treating a short repeated-call trace as arbitrary-duration evidence.
+
+Accepted checks: 7/7 profiles in 217.72 s, cgroup peak 937,943,040 bytes, no OOM or
+swap, non-incremental CVC5, 120 s / 4 GiB internal and 6 GiB group limits. Ten
+assertion counterexamples and ten passing controls cover freshness/deadline
+equality, reset/rejection masquerading as fusion, stale authority, height/velocity
+ordering, failed Down reset progress, premature quality restart, invalid-clock
+consumption and incomplete reset. Native GNSS-fusion tests, runner inventory,
+100 offline agent-review tests, formatting and ShellCheck pass. Inventory:
+1,837 profiles / 166 entry points. No new Lean theorem or full AI audit.
+
+Retained attempts: Bitwuzla update reached its internal memory limit; CVC5 with
+two expanded fusion calls timed out. The accepted proof uses the same universal
+transition plus the consumed-authority postcondition, eliminating redundant
+second-call expansion without weakening the one-use requirement or increasing
+the time limit. Failed queries are not passes.
+
+Self-review matched every public branch and all persistent fields, checked the
+initialization/induction chain and invalid-call domains, and confirmed mutation
+failures were target assertions. The invariant is an overapproximation of
+reachable history, not an assumption that every abstract state was reached.
+Actual external result honesty, quality/health validity, module/replay ordering
+and numerical reset remain separate obligations. Production and unrelated drafts
+are unchanged. Evidence: `output/runtime-proof-continuation-20261115/gnss-lifecycle-manifest.json`,
+`gnss-lifecycle-single-transition/results.json`, `gnss-lifecycle-mutations.json`,
+native/tooling logs and failed attempts.

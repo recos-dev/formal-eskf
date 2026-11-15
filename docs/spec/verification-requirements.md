@@ -1093,10 +1093,20 @@ still apply; an action does not execute an estimator operation.
   or restart preserves metadata. The controller cannot verify whether an
   external correction/reset actually ran.
 
-Native tests cover startup conditions, both data deadlines, strict fusion/quality
-boundaries, coupled horizontal progress, height reset/attempt ordering, safe re-entry,
-unavailable quality, invalid calls, same-tick samples and unsigned-time extremes.
-Lean/ESBMC evidence remains pending.
+ESBMC checks the actual portable controller over arbitrary uint64 times, flags,
+quality/result enums and an initialized, inductively preserved history invariant.
+Construction/reset establish ordered progress and permissions; every public update,
+feedback and restart preserves it. Checks cover exact validation/failure frames,
+strict freshness/deadlines, coupled progress, one-use feedback, height/Down ordering,
+recovery latches and unchanged borrowed inputs. Accepted feedback consumes its
+permission; the universal guard rejects feedback without permission, establishing
+one-use behavior without a fixed multi-call trace. No numerical/backend summary is
+used by this integer/Boolean controller. Native tests remain complementary.
+
+These source-level proofs do not establish that an external correction/reset ran,
+that quality/health metadata is physically valid, or that module/replay callers
+honor the required chronology. Numerical reset is `R-GNSS-RESET`; actual height
+coordination is `R-HEIGHT-FUSION`. No separate Lean state-machine proof is claimed.
 
 #### Continuous bad vertical acceleration
 

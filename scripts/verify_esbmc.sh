@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,7 +37,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -57,6 +57,7 @@ parse_arguments()
                 printf 'fusion selects public covariance preparation, portable check/fuse control flow and four navigation wrappers. It reuses E-INNOV/E-CORRECT/E-STEP/E-BIAS producer contracts; replay/module wiring remains separate.\n'
                 printf 'imu-policies selects actual portable fault-noise replacement, bias-noise inhibition and bias-value limits for both scalar formats and legal aliases. Detector policy, calibration and module/replay wiring are separate.\n'
                 printf 'vertical-health selects actual verdict frames, initialization/reset, clipping recurrence and inductive timestamp/hold safety. Source-ratio/reference equations, caller wiring and root accuracy remain open.\n'
+                printf 'gnss-lifecycle selects actual integer/Boolean lifecycle transitions and inductive permission/history safety. Estimator repair, external timestamps and actual caller scheduling remain separate.\n'
                 printf 'gnss-quality selects parameter/sample domains, actual motion filters, health timers and composed public-update invariants. Caller metadata, geographic projection and accurate libm remain separate.\n'
                 printf 'imu-prediction selects actual module clipping admission and noise-policy/prediction composition; E-STEP supplies the same-type terminal frame. Full module sequencing and target backend remain separate.\n'
                 printf 'imu-inhibition selects actual norm/rotation/decay producers, learning permissions and inductive public-update frames. Replay/module sequencing and physical observability are separate.\n'
@@ -876,6 +877,16 @@ run_observations_suite()
     done
 }
 
+run_gnss_lifecycle_suite()
+{
+    local KIND
+    SOURCE_FILE="${PROOF_DIR}/gnss_lifecycle.cpp"
+    for KIND in initialization update fusion reset_feedback vertical_feedback restart health; do
+        PROFILE="gnss-lifecycle-${KIND}"
+        verify "verify_gnss_lifecycle_${KIND}" --proof-unwind 16 --cvc5
+    done
+}
+
 run_gnss_quality_suite()
 {
     local BINARY64 KIND BOUNDARY
@@ -1213,6 +1224,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == gnss-quality ]]; then
         run_gnss_quality_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == gnss-lifecycle ]]; then
+        run_gnss_lifecycle_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

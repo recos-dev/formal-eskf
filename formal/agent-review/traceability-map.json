@@ -2990,7 +2990,7 @@
     },
     {
       "id": "R-MAGNETIC-FIELD",
-      "title": "Magnetic field checks with an explicit optional health reference and fallback; Lean and ESBMC evidence pending",
+      "title": "Magnetic input/geometry/scalar contracts verified; full plausibility caller and physical disturbance validity remain separate",
       "references": {
         "spec": [
           {
@@ -3010,7 +3010,12 @@
             "symbol": "#### PX4 module geographic magnetic reference"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/MagneticHeading.lean",
+            "symbol": "theorem magneticHeadingWrap_difference"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/runtime/magnetic_field.hpp",
@@ -3053,12 +3058,37 @@
             "symbol": "FormalEskf::prepare_magnetic_observation("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/magnetic_field.cpp",
+            "symbol": "void verify_magnetic_root("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_field.cpp",
+            "symbol": "void verify_magnetic_angle("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_field.cpp",
+            "symbol": "void verify_magnetic_validation("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_field.cpp",
+            "symbol": "void verify_magnetic_geometry("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_field.cpp",
+            "symbol": "void verify_magnetic_heading_error("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_field.cpp",
+            "symbol": "void verify_magnetic_heading_value("
+          }
+        ]
       }
     },
     {
       "id": "R-MAGNETIC-HEADING",
-      "title": "Aided magnetic heading consistency and maneuver history; Lean and ESBMC evidence pending",
+      "title": "Wrapped heading scalar/status/value contracts verified; heading-history recurrence and latch induction remain open",
       "references": {
         "spec": [
           {
@@ -3074,7 +3104,24 @@
             "symbol": "#### PX4 module geographic magnetic reference"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/MagneticHeading.lean",
+            "symbol": "theorem magneticHeadingWrap_principal"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticHeading.lean",
+            "symbol": "theorem magneticHeadingWrap_unchanged"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticHeading.lean",
+            "symbol": "theorem magneticHeadingWrap_difference"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticHeading.lean",
+            "symbol": "theorem magneticHeadingWrap_equal"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/runtime/magnetometer.hpp",
@@ -3113,7 +3160,20 @@
             "symbol": "void FormalEskf::fuse_mag()"
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/magnetic_field.cpp",
+            "symbol": "void verify_magnetic_angle("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_field.cpp",
+            "symbol": "void verify_magnetic_heading_error("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_field.cpp",
+            "symbol": "void verify_magnetic_heading_value("
+          }
+        ]
       }
     },
     {

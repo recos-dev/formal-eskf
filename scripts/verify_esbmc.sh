@@ -884,7 +884,7 @@ run_observations_suite()
 
 run_magnetic_runtime_suite()
 {
-    local BINARY64 KIND CONTRACT
+    local BINARY64 KIND CONTRACT MODE ENTRY
     SOURCE_FILE="${PROOF_DIR}/magnetometer_filter.cpp"
     for BINARY64 in 0 1; do
         for KIND in initialization update; do
@@ -900,6 +900,20 @@ run_magnetic_runtime_suite()
             PROFILE="magnetic-runtime-binary$((32 + 32 * BINARY64))-reference_${KIND}"
             verify "verify_reference_${KIND}" --proof-unwind 16 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
                 -D "FORMAL_ESKF_PROOF_MAG_REFERENCE_CONTRACT=${CONTRACT}" --cvc5
+        done
+        SOURCE_FILE="${PROOF_DIR}/magnetic_field.cpp"
+        for KIND in root angle validation geometry heading_error heading_value heading_range; do
+            MODE=0
+            ENTRY="verify_magnetic_${KIND}"
+            case "${KIND}" in
+                geometry) MODE=1 ;;
+                heading_error) MODE=2 ;;
+                heading_value) MODE=3 ;;
+                heading_range) MODE=4; ENTRY=verify_magnetic_heading_value ;;
+            esac
+            PROFILE="magnetic-runtime-binary$((32 + 32 * BINARY64))-field_${KIND}"
+            verify "${ENTRY}" --proof-unwind 16 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                -D "FORMAL_ESKF_PROOF_MAG_GEOMETRY_MODE=${MODE}"
         done
         SOURCE_FILE="${PROOF_DIR}/magnetometer_filter.cpp"
     done

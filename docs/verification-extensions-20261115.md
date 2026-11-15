@@ -1063,3 +1063,43 @@ witnesses and preservation of production/unrelated drafts. Evidence:
 `mag-reference-complete-final/results.json`, `reference-native-mutations.json`,
 `reference-esbmc-mutations.json` and Lean/native/tooling logs. Failed experiments
 are retained separately; none contributes to accepted coverage.
+
+## Magnetic geometry and wrapped heading producers
+
+Four Lean theorems establish single-wrap principal bounds, unchanged interior/
+endpoint values, principal-angle differences and zero same-heading residual.
+Fourteen profiles / six entry points check actual same-type checked sqrt/atan2,
+magnetic input validation, strength/horizontal/inclination geometry and wrapped
+heading helpers in both scalar formats. Scalar outputs remain arbitrary IEEE
+values. Geometry binds every argument/call order, squared-strength guard,
+failure priority, finite result and atomic local output; borrowed inputs remain
+unchanged. Helper output storage is disjoint, as in actual current callers.
+
+General heading failure/status/input-frame profiles compose with separate
+successful-scalar IEEE coefficient profiles. A further range profile explicitly
+assumes principal primitive angles; it proves finite encoded [-pi,pi] output.
+This premise is not inferred from finiteness, and no target-libm accuracy is
+claimed. The combined frame+numeric+range attempt exhausted both solvers; the
+complementary decomposition closes these claims without removing failure paths.
+The full plausibility caller and stateful heading monitor remain separate.
+
+Accepted checks: 14/14 in 14.16 s, cgroup peak 113,156,096 bytes (108 MiB), no
+OOM/swap. Lean passes with `--wfail` (3,428 jobs). Thirteen mutation patterns fail
+in both native formats with passing controls (26 + 26); eight fixed ESBMC
+mutants and eight controls have expected outcomes. Patterns cover finite/domain
+validation, angular/normal-floor equality, root/atan2 arguments, failure handling,
+publication, residual direction, wrap period and both pi endpoints. Native
+Eigen/PX4-matrix magnetic-fusion and heading tests pass (field tests are part of
+fusion; there is no standalone test_magnetic_field target). Runner inventory,
+100 offline review-tool tests, references, formatting and ShellCheck pass.
+Inventory: 2,005 profiles / 210 entry points. No full AI audit.
+
+Self-review checked exact backend/scalar dependencies, source scalar order,
+complete failure coverage, the extra range premise and disjoint-output boundary.
+A working-file naming collision with existing magnetic_geometry.cpp was caught
+and restored byte-for-byte before registering/running the final matrix; new
+checks live in magnetic_field.cpp. Existing proofs, production and unrelated
+drafts remain unchanged. Evidence:
+`output/runtime-proof-continuation-20261115/magnetic-field-manifest.json`,
+`magnetic-field-producers-final/results.json`, `field-native-mutations.json`,
+`field-esbmc-mutations.json` and Lean/native/tooling logs.

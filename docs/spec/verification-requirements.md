@@ -255,7 +255,19 @@ This section groups magnetic runtime policies and their explicitly scoped replay
 - Non-finite rotation or squared-magnitude arithmetic returns `non_finite_result`; total squared magnitude below the smallest positive normal value returns `zero_or_unsafe_divisor`. Propagate checked square-root/atan2 failures. These checks intentionally reject extreme arithmetic domains rather than promise arbitrary-scale geometry. Inputs remain unchanged.
 - Return fresh diagnostics only after all required arithmetic succeeds. On success, `diagnostics_valid` is true; named reference/strength/inclination/horizontal-field/heading failure flags determine `accepted`. Upper-threshold equality and minimum-horizontal equality pass. `strength_checked`, `inclination_checked` and `heading_checked` distinguish unperformed tests from passes. Unchecked inclination/heading errors are zero placeholders. `reference_strength` is the selected health-reference strength when available, the fallback center (45 microtesla) when unavailable, or zero when an available reference is unconsumed because both physical checks are disabled; it is not evidence that a WMM was supplied. Any failure returns `accepted=false` and invalid zero diagnostics. A current rejection is `success` with `accepted=false`, not a numerical failure.
 
-Physical disturbance detection, attitude/reference correctness and threshold tuning remain deployment assumptions. Native tests cover geometry, boundaries, frames, all eight selections with/without a reference, and invalid arithmetic in binary32/binary64; Lean/ESBMC evidence remains pending.
+Physical disturbance detection, attitude/reference correctness and threshold tuning
+remain deployment assumptions. Native tests cover geometry, boundaries, frames,
+all eight selections with/without a reference and invalid arithmetic in both
+formats. ESBMC checks actual validation, checked scalar producers, ordered
+strength/horizontal/inclination geometry and wrapped heading-error helpers.
+Failure status, call arguments/order, finite geometry publication, output
+atomicity and input purity are covered with the fixed-array proof backend.
+The exact IEEE heading relation and failure frame use complementary successful
+scalar and general failure profiles. Principal-range/finite guarantees separately
+require atan2 results in the encoded [-pi,pi] range; finiteness alone is not that
+contract. Lean proves corresponding exact real wrap/boundary properties.
+The full plausibility caller, including optional reference selection and final
+threshold/diagnostic composition, remains a separate proof obligation.
 
 ### R-MAGNETIC-HEADING: aided heading consistency
 
@@ -296,7 +308,10 @@ These rules follow [PX4 v1.16.2 heading consistency and reset](https://github.co
 and its [prediction acceleration filter](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/ekf.cpp).
 Our explicit weak-field/failure handling and absence of learned magnetic states
 are scoped differences. Native float/double backend tests are supporting
-evidence; Lean/ESBMC proof and deployment tuning remain pending.
+evidence. The shared wrapped-heading helper now has real wrap/range theorems
+and scoped ESBMC scalar, failure-frame, IEEE-value and conditional range checks.
+The stateful acceleration/innovation filters, consistency latch and their
+initialization/inductive history obligations remain open, as does deployment tuning.
 
 ### R-MAGNETIC-REFERENCE: geographic magnetic reference adoption
 

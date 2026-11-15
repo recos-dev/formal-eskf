@@ -900,6 +900,11 @@ run_height_suite()
             PROFILE="height-bias-binary$((32 + 32 * BINARY64))-${KIND}"
             verify "verify_height_bias_${KIND}" "${ARGUMENTS[@]}"
         done
+        SOURCE_FILE="${PROOF_DIR}/height_filter.cpp"
+        for KIND in filter filter_range; do
+            PROFILE="height-binary$((32 + 32 * BINARY64))-${KIND}"
+            verify "verify_height_${KIND}" "${ARGUMENTS[@]}" --cvc5
+        done
         SOURCE_FILE="${PROOF_DIR}/height_admission.cpp"
         PROFILE="height-binary$((32 + 32 * BINARY64))-initialization"
         verify verify_height_initialization "${ARGUMENTS[@]}"

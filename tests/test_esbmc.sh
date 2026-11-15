@@ -18,8 +18,8 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1939 '^PLAN'
-    check_count 28 'height-'
+    check_count 1943 '^PLAN'
+    check_count 32 'height-'
     check_count 28 'navigation-recovery-'
     check_count 46 'navigation-reset-'
     check_count 7 'gnss-lifecycle-'
@@ -237,8 +237,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 185 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1939 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 187 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1943 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -292,6 +292,7 @@ check_height_arguments()
                 local BASE="--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=1"
                 case "${PROFILE}" in
                     height-bias-*) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_bias.cpp" && "${ENTRY}" == "verify_height_bias_${KIND}" && "$*" == "${BASE}" ]] || fail 'wrong bias producer arguments' ;;
+                    *-filter|*-filter_range) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_filter.cpp" && "${ENTRY}" == "verify_height_${KIND}" && "$*" == "${BASE} --cvc5" ]] || fail 'wrong height filter arguments' ;;
                     *-initialization) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_admission.cpp" && "${ENTRY}" == verify_height_initialization && "$*" == "${BASE}" ]] || fail 'wrong height initialization arguments' ;;
                     *) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_admission.cpp" && "${ENTRY}" == "verify_height_${KIND}" && "$*" == "${BASE} -D FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}" ]] || fail 'wrong height source partition arguments' ;;
                 esac ;;
@@ -299,7 +300,7 @@ check_height_arguments()
         COUNT=$((COUNT + 1))
     }
     run_height_suite
-    [[ "${COUNT}" == 28 ]] || fail 'height producer matrix incomplete'
+    [[ "${COUNT}" == 32 ]] || fail 'height producer matrix incomplete'
 )
 
 check_navigation_recovery_arguments()
@@ -1843,7 +1844,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1939 profiles; 185 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1943 profiles; 187 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

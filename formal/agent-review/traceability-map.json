@@ -4803,6 +4803,14 @@
         ],
         "esbmc": [
           {
+            "file": "formal/cpp/esbmc/height_filter.cpp",
+            "symbol": "void verify_height_filter("
+          },
+          {
+            "file": "formal/cpp/esbmc/height_filter.cpp",
+            "symbol": "void verify_height_filter_range("
+          },
+          {
             "file": "formal/cpp/esbmc/navigation_reset.cpp",
             "symbol": "void verify_navigation_validation("
           },

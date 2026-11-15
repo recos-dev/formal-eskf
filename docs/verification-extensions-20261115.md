@@ -801,3 +801,30 @@ and unrelated drafts are unchanged. Evidence:
 `output/runtime-proof-continuation-20261115/height-reset-manifest.json`,
 `height-reset-final/results.json`, `height-reset-default-equivalence.json`,
 `height-reset-native-mutations.json` and runner/tooling logs.
+
+## Height warmup and bounded altitude filter
+
+Four additional height profiles prove the actual barometer warmup/filter's exact
+IEEE expression, all-field frame, fault rejection, first-sample handling and
+counter saturation at 21 in both formats. From an admitted altitude and a prior
+LPF within ±131072 m, a separate scalar lemma proves that the computed LPF stays
+finite and within that bound, including rounding. The loose bound is an
+induction aid, not an operational threshold. The complete owner must establish
+the count/range premises; this is not yet its public transition proof.
+
+Accepted checks: 4/4 in 19.53 s, cgroup peak 336,683,008 bytes (321 MiB), no
+OOM/swap. Five faulty variants (warmup boundary, counter saturation, gain,
+fault suppression and offset sign) fail with passing controls in both native
+formats (10 + 10); five fixed witnesses and five controls also produce the
+expected ESBMC outcomes. Native Eigen/PX4-matrix height tests, runner inventory,
+100 offline review-tool tests, references, formatting and ShellCheck pass.
+Inventory: 1,943 profiles / 187 entry points. No new Lean theorem or AI audit.
+The initial native fixture lacked an unused nondeterministic-math link symbol;
+it was corrected with an aborting definition and all controls rerun.
+
+Self-review checked the private premises, their pending owner responsibility,
+the actual producer-to-scalar formula correspondence and every preserved field.
+No production change. Evidence:
+`output/runtime-proof-continuation-20261115/height-filter-manifest.json`,
+`height-filter-final/results.json`, `height-filter-native-mutations.json`,
+`height-filter-esbmc-mutations.json` and native/tooling logs.

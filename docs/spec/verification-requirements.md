@@ -2374,7 +2374,11 @@ not assert that the C++ variance floor always decreases variance.
 
 The `height` ESBMC suite checks actual scalar-offset equations and field frames,
 explicit defaults, finite classification, both sources' admission/stop behavior
-and read-only timeout/innovation queries. Source branches and both scalar formats
+and read-only timeout/innovation queries. The actual barometer filter/warmup
+producer preserves its full field frame and saturates the counter at 21; a
+separate IEEE lemma proves the admitted LPF remains within ±131072 m from a
+prior within that bound. This bound is a verification invariant, not a new
+operational altitude limit. Source branches and both scalar formats
 are covered separately. Prediction's internal finite/nonnegative variance,
 ceiling and interval premises, and admission's ordered watermark premises must
 still be established by the complete public transition. These private producer

@@ -862,8 +862,11 @@ under the stated polar-field premise, wrap invariance, yaw-axis removal, and
 covariance block equations/symmetry/PSD through congruence plus rank-one noise.
 The block model places attitude first; INS uses its explicit production offset.
 These real statements do not establish C++ execution, IEEE PSD, libm accuracy or
-physical field validity. ESBMC reset composer/caller and floating-point bounds
-remain separate obligations.
+physical field validity. ESBMC checks the actual AHRS covariance reset in both
+scalar formats with separate/in-place outputs, including every ordered IEEE
+coefficient, failure priority and complete failure frame. The INS covariance
+query remains incomplete at symbolic expansion; reset composer/caller and
+floating-point bounds remain separate obligations.
 
 #### PX4 module magnetic aiding
 

@@ -884,7 +884,7 @@ run_observations_suite()
 
 run_magnetic_runtime_suite()
 {
-    local BINARY64 KIND CONTRACT MODE ENTRY ALIAS VALUES
+    local BINARY64 KIND CONTRACT MODE ENTRY ALIAS VALUES SIZE
     SOURCE_FILE="${PROOF_DIR}/magnetometer_filter.cpp"
     for BINARY64 in 0 1; do
         for KIND in initialization update; do
@@ -938,6 +938,18 @@ run_magnetic_runtime_suite()
         done
         SOURCE_FILE="${PROOF_DIR}/magnetometer_filter.cpp"
     done
+    SOURCE_FILE="${PROOF_DIR}/magnetic_reset.cpp"
+    # INS numeric producer remains a recorded gap; only AHRS is registered.
+    SIZE=3
+    for BINARY64 in 0 1; do
+        for ALIAS in 0 1; do
+            PROFILE="magnetic-runtime-binary$((32 + 32 * BINARY64))-reset_covariance${SIZE}-alias${ALIAS}"
+            verify verify_magnetic_reset_covariance --proof-unwind 226 --cvc5 \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_MAG_RESET_SIZE=${SIZE}" \
+                -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}"
+        done
+    done
+
     SOURCE_FILE="${PROOF_DIR}/magnetometer_lifecycle.cpp"
     for KIND in initialization update fusion reset; do
         PROFILE="magnetic-runtime-lifecycle-${KIND}"

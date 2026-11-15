@@ -3543,7 +3543,7 @@
     },
     {
       "id": "R-MAGNETOMETER-RESET",
-      "title": "Exact magnetic heading alignment, tilt and covariance reset algebra proved; C++ reset and floating-point bounds remain separate",
+      "title": "Exact magnetic reset algebra and AHRS IEEE covariance reset proved; INS covariance, reset caller and numerical bounds remain separate",
       "references": {
         "spec": [
           {
@@ -3663,7 +3663,12 @@
             "symbol": "void FormalEskf::publish_status_flags("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/magnetic_reset.cpp",
+            "symbol": "void verify_magnetic_reset_covariance"
+          }
+        ]
       }
     },
     {

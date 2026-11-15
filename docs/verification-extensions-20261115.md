@@ -1249,3 +1249,41 @@ All source references resolve, and production/unrelated drafts remain unchanged.
 Evidence: `output/runtime-proof-continuation-20261115/mag-reset-lean-manifest.json`
 and `mag-reset-lean.log`. C++ experiments remain uncommitted until independently
 accepted; they do not contribute to this mathematical claim.
+
+## AHRS magnetic covariance reset execution
+
+Four profiles / one entry point check the actual AHRS covariance-reset body in
+binary32/binary64, with separate and in-place output. An independent flat scalar
+oracle binds every ordered product, yaw-variance floor, old/new rotation frame,
+finite/negative-diagonal failure priority, half-before-add symmetrization
+(including diagonal subnormals), all output coefficients and complete failure
+frames. No finite, PSD, unit-rotation or successful-input premise is assumed.
+The private helper's arbitrary-input behavior is distinguished from the public
+reset's stronger caller contract. NaN payload preservation is not claimed.
+
+Accepted checks: 4/4 in 252.69 s, cgroup peak 3,957,407,744 bytes (3.69 GiB), no
+OOM/swap. Twenty-four native mutants and twenty-four controls pass their expected
+outcomes; eight fixed AHRS ESBMC mutants and eight controls do likewise. The
+native mutation set additionally exercises INS cross-block mirroring and retained
+non-attitude blocks; these native checks are not INS formal proof. Actual
+Eigen/PX4-matrix reset tests, inventory, 100 offline review-tool tests, references,
+formatting and ShellCheck pass. Inventory: 2,045 profiles / 222 entry points.
+No new Lean theorem or full AI audit is claimed by this group.
+
+The INS monolithic query remains a gap. CVC5 and Z3 probes timed out during
+symbolic expansion; flat oracle and shallow-storage experiments did not close
+it. One diagnostic 300-second limit still expired before solver entry, using
+472,588 KiB peak RSS, 99% CPU and no swap: this is expansion cost rather than
+host RAM exhaustion. The shallow storage experiment was removed. Only accepted
+AHRS profiles are registered; failed INS queries are neither passes nor covered
+by the exact-real Lean result. General INS products/block publication need a
+separately closed compositional proof before this numeric claim can expand.
+
+Self-review checked guard precedence, all IEEE/signed-zero cases, both legal
+aliases, unmodified actual arithmetic and storage, oracle independence and
+negative-control sensitivity. Production/module source and unrelated drafts are
+unchanged. Evidence: `output/runtime-proof-continuation-20261115/mag-reset-covariance-manifest.json`,
+`mag-reset-ahrs-final/results.json`, `reset-native-mutations.json`,
+`reset-esbmc-mutations.json` and native/tooling logs. The final runner drops only
+unproved INS entries from the execution plan; all accepted AHRS arguments and
+proof source remain identical to their retained runs.

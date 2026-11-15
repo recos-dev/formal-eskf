@@ -104,11 +104,13 @@ inline bool jacobian_matches(Jacobian const & H)
     constexpr std::size_t offset = state_size == 15U ? 6U : 0U;
     bool valid = true;
     for (std::size_t i = 0; i < 3; ++i)
+    {
         for (std::size_t j = 0; j < state_size; ++j)
         {
             Scalar const wanted = j >= offset && j < offset + 3U ? block[3U * i + j - offset] : Scalar{0};
             valid = same(H(i, j), wanted) && valid;
         }
+    }
     return valid;
 }
 inline Result observation_result()
@@ -119,9 +121,13 @@ inline Result observation_result()
     if (result.field.status == Status::success)
     {
         if (!result.field.accepted)
+        {
             result.fusion.decision = Decision::rejected;
+        }
         else
+        {
             result.fusion.status = Calls::replies->observation_status;
+        }
     }
     return result;
 }
@@ -238,9 +244,13 @@ void verify_magnetic_fusion(magnetic_fusion_proof::State state, magnetic_fusion_
     State * state_target = &state_output;
     Covariance * P_target = &P_output;
     if constexpr (FORMAL_ESKF_PROOF_STEP_ALIAS & 1U)
+    {
         state_target = &state;
+    }
     if constexpr (FORMAL_ESKF_PROOF_STEP_ALIAS & 2U)
+    {
         P_target = &P;
+    }
     auto const before_state = *state_target;
     auto const before_P = *P_target;
     Calls::prior = &old_state;
@@ -264,9 +274,13 @@ void verify_magnetic_fusion(magnetic_fusion_proof::State state, magnetic_fusion_
     bool const finite = finite_state(old_state);
     Result expected;
     if (!finite)
+    {
         expected.fusion.status = Status::non_finite_input;
+    }
     else
+    {
         expected = observation_result();
+    }
     bool const qualified = finite && expected.fusion.status == Status::success && replies.field.accepted;
     bool const finite_H = finite_matrix(replies.predicted);
     bool const gated = qualified && finite_H;
@@ -274,7 +288,9 @@ void verify_magnetic_fusion(magnetic_fusion_proof::State state, magnetic_fusion_
         gated && replies.gate.status == Status::success && replies.gate.diagnostics_valid && !replies.gate.rejected;
     bool const fused = corrected && replies.correction_status == Status::success;
     if (qualified && !finite_H)
+    {
         expected.fusion.status = Status::non_finite_result;
+    }
     if (gated)
     {
         expected.fusion.status = corrected ? replies.correction_status : replies.gate.status;
@@ -311,13 +327,21 @@ void verify_magnetic_fusion(magnetic_fusion_proof::State state, magnetic_fusion_
                          : (same_state(*state_target, before_state) && same_matrix(*P_target, before_P)),
                    "R-MAGNETOMETER-FUSION: only successful correction publishes both outputs for all aliases");
     if constexpr (!(FORMAL_ESKF_PROOF_STEP_ALIAS & 1U))
+    {
         __ESBMC_assert(same_state(state, old_state), "magnetic fusion: separate state input frame");
+    }
     else
+    {
         __ESBMC_assert(same_state(state_output, old_state_output), "magnetic fusion: unused state output frame");
+    }
     if constexpr (!(FORMAL_ESKF_PROOF_STEP_ALIAS & 2U))
+    {
         __ESBMC_assert(same_matrix(P, old_P), "magnetic fusion: separate covariance input frame");
+    }
     else
+    {
         __ESBMC_assert(same_matrix(P_output, old_P_output), "magnetic fusion: unused covariance output frame");
+    }
     __ESBMC_assert(same_matrix(body, old_body) && same_matrix(reference, old_reference) &&
                        same_matrix(health, old_health) && same_matrix(V, old_V) &&
                        same_parameters(parameters, old_parameters) && same_checks(checks, old_checks) &&

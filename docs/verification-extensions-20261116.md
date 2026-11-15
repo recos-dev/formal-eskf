@@ -218,3 +218,45 @@ Evidence: `vertical-final/results.json`, `vertical-native-results.json`,
 `vertical-manifest.json` under the execution directory above. Exploratory logs,
 including `round35-results.json` and `round39-results.json`, retain the rejected
 resource-limited runs separately.
+
+## Final cross-group review and totals
+
+Cross-group self-review found 12 unbraced control-flow bodies in the newly added
+magnetic-fusion harness. They now follow STYLE.md. All tokens other than braces
+and whitespace are unchanged; review confirmed that the braces only surround
+existing single bodies. Its 16 profiles were rerun successfully in 406.62 s,
+with peak 434,642,944 bytes and no swap. Sixteen native controls pass
+and 40 intentional changes are again rejected. This adds no obligation or input
+restriction and changes no production code. These refreshed results supersede
+only that harness's earlier execution identity. Other proof translation units
+and all production dependencies remain unchanged.
+
+| Completed group | New profiles | Previously existing profiles refreshed |
+|---|---:|---:|
+| Magnetic field/correction backend contracts | 32 | 6 |
+| Full AHRS/INS magnetic fusion | 16 | 0 |
+| INS magnetic heading reset | 16 | 12 |
+| Adaptive 10 ms accelerometer sampling owner/timing | 5 | 12 |
+| Vertical-health source equations | 6 | 6 |
+| **Total distinct profiles executed** | **75** | **36** |
+
+The accepted execution set contains **111 distinct profiles**. The 16 final
+magnetic-fusion rechecks bring the number of accepted executions to **127**;
+they are not new coverage. Final native witness sets contain 204 mutation checks
+and 76 controls, plus four ESBMC negative witnesses. The style refresh repeats
+40 of those mutations and 16 controls. Counts describe configured checks, not
+requirements, theorems, functions or a coverage percentage. Across the accepted
+executions, peak memory is 1,523,425,280 bytes (1.42 GiB).
+Failed exploratory runs are excluded from these totals and retained separately.
+
+The four previously listed portable-runtime obligations are now closed within
+their recorded scalar, state-size, interval and producer-contract boundaries.
+This does not close deployment `HeightAiding` transactions, full PX4/replay
+sequencing, target libm/backend accuracy, numerical error budgets, physical
+sensor validity, compiler/machine-code correctness or real-time qualification.
+No new Lean theorem or machine-checked Lean-to-C++ refinement is claimed.
+
+Final evidence: `fusion-style-final/results.json`,
+`fusion-style-native/fusion-native-results.json`, `fusion-style-manifest.json`
+and `completion-final-summary.json` in the execution directory. The original
+manifests remain historical records rather than being silently rewritten.

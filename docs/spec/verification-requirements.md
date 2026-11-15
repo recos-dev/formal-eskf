@@ -870,8 +870,13 @@ These real statements do not establish C++ execution, IEEE PSD, libm accuracy or
 physical field validity. ESBMC checks the actual AHRS covariance reset in both
 scalar formats with separate/in-place outputs, including every ordered IEEE
 coefficient, failure priority and complete failure frame. The INS covariance
-query remains incomplete at symbolic expansion; reset composer/caller and
-floating-point bounds remain separate obligations.
+query remains incomplete at symbolic expansion. AHRS composer checks cover
+input validation, every child failure, wrapped reference-minus-measured angle,
+left composition and old/new covariance frames using separately proved
+same-type producers. The public AHRS API proves simultaneous publication and
+complete rollback for all four state/P alias combinations, even with partially
+written helper scratch. INS execution and floating-point accuracy/PSD bounds
+remain separate obligations.
 
 #### PX4 module magnetic aiding
 

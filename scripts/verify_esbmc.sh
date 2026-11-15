@@ -950,6 +950,21 @@ run_magnetic_runtime_suite()
         done
     done
 
+    SOURCE_FILE="${PROOF_DIR}/magnetic_reset_flow.cpp"
+    for BINARY64 in 0 1; do
+        for VALUES in 0 1; do
+            PROFILE="magnetic-runtime-binary$((32 + 32 * BINARY64))-reset_flow-values${VALUES}"
+            verify verify_magnetic_reset_flow --proof-unwind 16 --cvc5 \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_RESET_VALUES=${VALUES}"
+        done
+        for ALIAS in 0 1 2 3; do
+            PROFILE="magnetic-runtime-binary$((32 + 32 * BINARY64))-reset_transaction-alias${ALIAS}"
+            verify verify_magnetic_reset_transaction --proof-unwind 16 --cvc5 \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_RESET_PUBLIC=1 \
+                -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}"
+        done
+    done
+
     SOURCE_FILE="${PROOF_DIR}/magnetometer_lifecycle.cpp"
     for KIND in initialization update fusion reset; do
         PROFILE="magnetic-runtime-lifecycle-${KIND}"

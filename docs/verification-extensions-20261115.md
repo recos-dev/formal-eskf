@@ -1307,3 +1307,46 @@ verified that no unsupported geographic or numerical premise became a theorem.
 Production/module source and unrelated drafts remain unchanged. Evidence:
 `output/runtime-proof-continuation-20261115/magnetic-frame-manifest.json` and
 `magnetic-frame-lean.log`.
+
+## AHRS magnetic reset composition and atomic publication
+
+Twelve profiles / two entry points check the actual AHRS reset helper and public
+API in both scalar formats. The helper checks input validation, exact covariance
+symmetry/diagonal rules, weak-field equality, each child's failure/stop priority,
+reference-minus-measured single wrap, Down-axis Exp, left composition and old/new
+covariance frames. Borrowed inputs remain pure; scratch outputs may be partial.
+The public wrapper publishes attitude/P/delta together and preserves all outputs
+on failure in all four independent state/P alias combinations. Its helper
+summary deliberately writes every scratch output even on failure, so rollback
+does not depend on an unjustified internal atomicity assumption.
+
+Same-type F-LINALG matrix/symmetry, scalar symmetry-equivalence, rotation,
+geometry/checked-angle, Exp, composition and AHRS covariance producers close the
+callee boundaries. The unconditional profile admits arbitrary child failures.
+The complementary numeric profile requires successful geometry/checked angles
+and finite angle returns, then checks the actual wrapped argument passed to Exp.
+These are established checked-wrapper premises, not an assumed principal-angle
+range or an assumption that the public reset succeeds. Every remaining child
+can still fail. No numerical unit-norm, IEEE PSD or libm accuracy claim is added.
+
+Accepted checks: 12/12 in 258.79 s, cgroup peak 1,104,773,120 bytes (1.03 GiB), no
+OOM/swap. Twenty-four native mutants and twenty-four controls, plus eight fixed
+ESBMC mutants and eight controls, have expected outcomes. They detect missing
+input/weak-field guards, wrong angle sign/wrap, reversed composition/frame,
+continued execution after failure, leaked scratch and missing publication.
+Actual Eigen/PX4-matrix reset tests, inventory, 100 offline review-tool tests,
+references, formatting and ShellCheck pass. Inventory: 2,057 profiles / 224 entry
+points. No new Lean theorem or full AI audit is claimed here.
+
+Combined flow/numeric probes exhausted solver memory or timed out. Separating
+unconditional flow from numeric success, and having numeric summaries assert
+their producer premises before unconditional result publication, closes the
+original obligations within the unchanged resource limits. Temporary stronger
+principal-range experiments are not used. Self-review checked that the union
+covers actual successful/failed calls, exact producer types, scratch versus
+public alias contracts, and unchanged production/module source and drafts.
+INS execution remains blocked by its separately recorded covariance producer
+gap; AHRS evidence is not silently transferred. Evidence:
+`output/runtime-proof-continuation-20261115/reset-flow-manifest.json`,
+`mag-reset-flow-final/results.json`, `reset-flow-native-mutations.json`,
+`reset-flow-esbmc-mutations.json` and native/tooling logs.

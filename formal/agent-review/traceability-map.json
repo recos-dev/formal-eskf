@@ -3579,7 +3579,7 @@
     },
     {
       "id": "R-MAGNETOMETER-RESET",
-      "title": "Exact magnetic reset algebra and AHRS IEEE covariance reset proved; INS covariance, reset caller and numerical bounds remain separate",
+      "title": "Exact magnetic reset algebra and AHRS covariance/composer/atomic API verified; INS execution and numerical bounds remain separate",
       "references": {
         "spec": [
           {
@@ -3703,6 +3703,46 @@
           {
             "file": "formal/cpp/esbmc/magnetic_reset.cpp",
             "symbol": "void verify_magnetic_reset_covariance"
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_reset_flow.cpp",
+            "symbol": "void verify_magnetic_reset_flow("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_reset_flow.cpp",
+            "symbol": "void verify_magnetic_reset_transaction("
+          },
+          {
+            "file": "formal/cpp/esbmc/linalg.cpp",
+            "symbol": "void verify_linalg_product("
+          },
+          {
+            "file": "formal/cpp/esbmc/linalg.cpp",
+            "symbol": "void verify_linalg_symmetry("
+          },
+          {
+            "file": "formal/cpp/esbmc/navigation_reset.cpp",
+            "symbol": "void verify_navigation_symmetry_pair("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_inhibition.cpp",
+            "symbol": "void verify_imu_rotation("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_field.cpp",
+            "symbol": "void verify_magnetic_geometry("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_field.cpp",
+            "symbol": "void verify_magnetic_angle("
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "void verify_exp_behavior("
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "void verify_composition_general("
           }
         ]
       }

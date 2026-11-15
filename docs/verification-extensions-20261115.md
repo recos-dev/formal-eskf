@@ -1350,3 +1350,48 @@ gap; AHRS evidence is not silently transferred. Evidence:
 `output/runtime-proof-continuation-20261115/reset-flow-manifest.json`,
 `mag-reset-flow-final/results.json`, `reset-flow-native-mutations.json`,
 `reset-flow-esbmc-mutations.json` and native/tooling logs.
+
+## Actual PX4 magnetic-model coordinator
+
+Ten profiles / three entry points check the actual `MagneticModel` header's
+construction, initialization, lookup predicate, update and public reference
+views, instantiated with the fixed-array proof backend in both scalar formats.
+Initialization validates inputs, selects geographic/saved/magnetic-north sources
+in order and commits atomically. Update rate-limits attempts, including missing
+or failed model results; health-only adoption leaves the observation/revision
+unchanged, and observation-revision overflow rejects adoption without losing the
+attempt clock. Actual `MagneticReference` proofs close the child transition;
+platform seed hypot/sin/cos remain explicit pure arbitrary-return boundaries.
+No finite seed-derived observation, raw-libm accuracy or host lookup claim is
+inferred from this control proof.
+
+Construction and both mutators establish/preserve reference clock ordering,
+settings/declination/source domains and lookup_count <= last_lookup_time. Thus a
+strictly increasing timestamp permits at most one increment and the uint64
+lookup counter cannot wrap, including the final representable timestamp.
+Public health/observation fields and revisions are checked independently, so
+valid internal storage alone cannot hide an accessor returning the wrong field.
+Borrowed optional presence/payload, settings, seed and complete failure frames
+are included. Seed input can be disjoint or borrow either owned field; success
+consumes its old value before changing the receiver, while failure preserves it.
+Update failure intentionally retains the attempted lookup's clock/count advancement.
+
+Accepted checks: 10/10 in 119.25 s, cgroup peak 584,310,784 bytes (557 MiB), no
+OOM/swap. Thirty native mutants and thirty controls, plus nine fixed ESBMC
+mutants and nine controls, have expected outcomes. They exercise construction,
+validation, source priority, horizontal equality, seed scalar selection,
+initialization rollback, strict scheduling, origin trigger, counter overflow,
+independent references, adoption, revision exhaustion and public field binding.
+Actual Eigen/PX4-matrix module-model tests, inventory, 100 offline review-tool
+tests, formatting and ShellCheck pass. Inventory: 2,067 profiles / 227 entry
+points. No new Lean theorem or full AI audit is claimed by this group.
+
+Self-review added independent public views, the borrowed optional itself and
+legal seed/receiver aliases before acceptance, then reran the complete profile/mutation matrix. It also checked base/inductive
+closure, exact child backend, model-input binding, failure-versus-attempt state
+and all four source-mask values. `to_origin_frame` C++/libm and actual host WMM/
+uORB sequencing remain separate from these coordinator proofs and the exact-real
+frame theorems. Production/module source and unrelated drafts are unchanged.
+Evidence: `output/runtime-proof-continuation-20261115/magnetic-model-manifest.json`,
+`magnetic-model-final-v4/results.json`, `model-native-mutations.json`,
+`model-esbmc-mutations.json` and native/tooling logs.

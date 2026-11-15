@@ -18,8 +18,8 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 2057 '^PLAN'
-    check_count 82 'magnetic-runtime-'
+    check_count 2067 '^PLAN'
+    check_count 92 'magnetic-runtime-'
     check_count 32 'height-'
     check_count 32 'accelerometer-binary'
     check_count 28 'navigation-recovery-'
@@ -239,8 +239,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 224 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2057 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 227 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2067 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -280,6 +280,15 @@ check_magnetic_runtime_arguments()
     {
         local ENTRY="$1"
         shift
+        if [[ "${SOURCE_FILE}" == "${PROOF_DIR}/magnetic_model.cpp" ]]; then
+            if [[ "${ENTRY}" == verify_model_initialize ]]; then
+                [[ "$*" == "--proof-unwind 16 --cvc5 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_MODEL_LEVEL_ALIAS=${ALIAS}" ]] || fail 'wrong magnetic model initialization arguments'
+            else
+                [[ "${ENTRY}" == "verify_model_${KIND}" && "$*" == "--proof-unwind 16 --cvc5 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" ]] || fail 'wrong magnetic model arguments'
+            fi
+            COUNT=$((COUNT + 1))
+            return
+        fi
         if [[ "${SOURCE_FILE}" == "${PROOF_DIR}/magnetic_reset_flow.cpp" ]]; then
             if [[ "${ENTRY}" == verify_magnetic_reset_flow ]]; then
                 [[ "$*" == "--proof-unwind 16 --cvc5 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_RESET_VALUES=${VALUES}" ]] || fail 'wrong magnetic reset flow arguments'
@@ -337,7 +346,7 @@ check_magnetic_runtime_arguments()
         COUNT=$((COUNT + 1))
     }
     run_magnetic_runtime_suite
-    [[ "${COUNT}" == 82 ]] || fail 'magnetic runtime matrix incomplete'
+    [[ "${COUNT}" == 92 ]] || fail 'magnetic runtime matrix incomplete'
 )
 
 check_accelerometer_arguments()
@@ -1949,7 +1958,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (2057 profiles; 224 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (2067 profiles; 227 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

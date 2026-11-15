@@ -965,6 +965,19 @@ run_magnetic_runtime_suite()
         done
     done
 
+    SOURCE_FILE="${PROOF_DIR}/magnetic_model.cpp"
+    for BINARY64 in 0 1; do
+        for KIND in initialization update; do
+            PROFILE="magnetic-runtime-binary$((32 + 32 * BINARY64))-model_${KIND}"
+            verify "verify_model_${KIND}" --proof-unwind 16 --cvc5 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        done
+        for ALIAS in 0 1 2; do
+            PROFILE="magnetic-runtime-binary$((32 + 32 * BINARY64))-model_initialize-alias${ALIAS}"
+            verify verify_model_initialize --proof-unwind 16 --cvc5 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                -D "FORMAL_ESKF_PROOF_MODEL_LEVEL_ALIAS=${ALIAS}"
+        done
+    done
+
     SOURCE_FILE="${PROOF_DIR}/magnetometer_lifecycle.cpp"
     for KIND in initialization update fusion reset; do
         PROFILE="magnetic-runtime-lifecycle-${KIND}"

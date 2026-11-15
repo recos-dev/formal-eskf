@@ -971,10 +971,23 @@ epoch remain external dependencies. No table is copied into formal-eskf.
   adoption follows the same real lifecycle/reset permission rules, not an implicit
   quaternion assignment. Reference changes retain the measurement LPF history.
 
+ESBMC checks the actual `MagneticModel` construction, initialization, lookup
+admission, update and public reference views with the fixed-array proof backend
+in both scalar formats. The independently checked `MagneticReference` transition
+closes its state contract. Initialization is atomic, including seeds borrowing
+the receiver's prior observation/health fields; successful commit consumes the
+old seed before changing that owned field. Update attempts advance the
+lookup clock even on absent/failed models, while health and observation revisions
+remain distinct. Construction and both mutators establish/preserve bounded lookup
+counts, clock order and source/declination domains. Raw seed hypot/sin/cos returns
+remain arbitrary pure platform boundaries: no finite-observation or libm accuracy
+claim follows from this control proof. C++ origin-frame conversion and host lookup
+I/O/sequencing remain separate.
+
 Native tests exercise source selection, timing, frame conversion, invalid/missing
 model retention and real correction/reset integration. SITL checks the selected
-source and advancing periodic lookup count. These are not Lean/ESBMC proofs,
-calibration evidence, model-epoch validation or long-distance flight qualification.
+source and advancing periodic lookup count. They complement the scoped proofs;
+none establishes calibration, model-epoch accuracy or long-distance flight qualification.
 
 ## Portable runtime
 

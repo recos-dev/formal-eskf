@@ -3238,7 +3238,7 @@
     },
     {
       "id": "R-MAGNETIC-REFERENCE",
-      "title": "Geographic field adoption and exact local-to-origin NED basis algebra verified; model accuracy, C++ frame conversion and adapter wiring remain separate",
+      "title": "Reference adoption, module model scheduling and exact NED frame algebra verified; C++ frame conversion, raw libm accuracy and host wiring remain separate",
       "references": {
         "spec": [
           {
@@ -3370,6 +3370,18 @@
           {
             "file": "formal/cpp/esbmc/magnetic_reference.cpp",
             "symbol": "void verify_reference_update("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_model.cpp",
+            "symbol": "void verify_model_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_model.cpp",
+            "symbol": "void verify_model_initialize("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_model.cpp",
+            "symbol": "void verify_model_update("
           }
         ]
       }

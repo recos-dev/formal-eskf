@@ -4803,6 +4803,14 @@
         ],
         "esbmc": [
           {
+            "file": "formal/cpp/esbmc/navigation_reset.cpp",
+            "symbol": "void verify_navigation_validation("
+          },
+          {
+            "file": "formal/cpp/esbmc/navigation_reset.cpp",
+            "symbol": "void verify_navigation_reset("
+          },
+          {
             "file": "formal/cpp/esbmc/height_bias.cpp",
             "symbol": "void verify_height_bias_initialization("
           },

@@ -18,10 +18,10 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1933 '^PLAN'
+    check_count 1939 '^PLAN'
     check_count 28 'height-'
     check_count 28 'navigation-recovery-'
-    check_count 40 'navigation-reset-'
+    check_count 46 'navigation-reset-'
     check_count 7 'gnss-lifecycle-'
     check_count 14 'gnss-quality-binary'
     check_count 8 'imu-prediction-binary'
@@ -82,8 +82,8 @@ check_plan()
     check_count 15 'pcov-binary64'
     check_count 52 'step-binary32'
     check_count 52 'step-binary64'
-    check_count 182 'solve-binary32'
-    check_count 182 'solve-binary64'
+    check_count 182 '[[:space:]]solve-binary32'
+    check_count 182 '[[:space:]]solve-binary64'
     check_count 106 '[[:space:]]correction-binary32'
     check_count 106 '[[:space:]]correction-binary64'
     check_count 42 'step-correction-binary32'
@@ -238,7 +238,7 @@ check_plan()
         done
     done
     [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 185 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1933 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1939 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -332,6 +332,10 @@ check_navigation_reset_arguments()
         shift
         [[ "${SOURCE_FILE}" == "${PROOF_DIR}/navigation_reset.cpp" ]] || fail 'wrong navigation reset source'
         case "${PROFILE}" in
+            navigation-reset-solve-*-validation)
+                [[ "${ENTRY}" == verify_navigation_validation && "$*" == "--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_NAVIGATION_RESET=1 -D FORMAL_ESKF_PROOF_NAVIGATION_SOLVE_BACKEND=1" ]] || fail 'wrong height reset validation arguments' ;;
+            navigation-reset-solve-*-model*)
+                [[ "${ENTRY}" == verify_navigation_reset && "$*" == "--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_NAVIGATION_RESET=${MODEL} -D FORMAL_ESKF_PROOF_ALIAS=3 -D FORMAL_ESKF_PROOF_NAVIGATION_CALLER=1 -D FORMAL_ESKF_PROOF_NAVIGATION_SOLVE_BACKEND=1" ]] || fail 'wrong height reset caller arguments' ;;
             *-symmetry-pair)
                 [[ "${ENTRY}" == verify_navigation_symmetry_pair && "$*" == "--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" ]] || fail 'wrong symmetry pair arguments' ;;
             *-validation*)
@@ -343,7 +347,7 @@ check_navigation_reset_arguments()
         COUNT=$((COUNT + 1))
     }
     run_navigation_reset_suite
-    [[ "${COUNT}" == 40 ]] || fail 'navigation reset matrix incomplete'
+    [[ "${COUNT}" == 46 ]] || fail 'navigation reset matrix incomplete'
 )
 
 check_gnss_lifecycle_arguments()
@@ -1839,7 +1843,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1933 profiles; 185 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1939 profiles; 185 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

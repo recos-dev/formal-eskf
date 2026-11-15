@@ -964,6 +964,18 @@ run_navigation_reset_suite()
             done
         done
     done
+    # HeightAiding uses this exact solver backend and in-place reset shape.
+    for BINARY64 in 0 1; do
+        PROFILE="navigation-reset-solve-binary$((32 + 32 * BINARY64))-validation"
+        verify verify_navigation_validation --proof-unwind 230 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+            -D FORMAL_ESKF_PROOF_NAVIGATION_RESET=1 -D FORMAL_ESKF_PROOF_NAVIGATION_SOLVE_BACKEND=1
+        for MODEL in 1 2; do
+            PROFILE="navigation-reset-solve-binary$((32 + 32 * BINARY64))-model${MODEL}"
+            verify verify_navigation_reset --proof-unwind 230 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                -D "FORMAL_ESKF_PROOF_NAVIGATION_RESET=${MODEL}" -D FORMAL_ESKF_PROOF_ALIAS=3 \
+                -D FORMAL_ESKF_PROOF_NAVIGATION_CALLER=1 -D FORMAL_ESKF_PROOF_NAVIGATION_SOLVE_BACKEND=1
+        done
+    done
 }
 
 run_gnss_lifecycle_suite()

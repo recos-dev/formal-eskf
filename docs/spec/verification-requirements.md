@@ -983,6 +983,9 @@ encoded constant and operation order. These are separate evidence layers.
 ESBMC verifies the actual input validator for observation sizes 1/2/3, a scalar
 lemma connecting finite zero subtraction residuals to exact equality, and all four
 reset callers in binary32/binary64 with every independent whole-prior state/P alias.
+The height owner additionally has exact `solve_proof::Backend` profiles for its
+size-one validator and in-place Down-position/Down-velocity resets; this avoids
+assuming equivalence with the original opaque-math backend.
 The same-type validation summary is input-pure and allows every returned status;
 callers check its exact arguments and invocation. State/delta behavior, complete
 covariance decorrelation/floors, overflow errors, failure atomicity and preserved

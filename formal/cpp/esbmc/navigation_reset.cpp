@@ -6,6 +6,9 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "covariance_oracle.hpp"
+#if defined(FORMAL_ESKF_PROOF_NAVIGATION_SOLVE_BACKEND) && FORMAL_ESKF_PROOF_NAVIGATION_SOLVE_BACKEND
+#include "step_correction_support.hpp"
+#endif
 #include <formal_eskf/runtime/navigation.hpp>
 
 #ifndef FORMAL_ESKF_PROOF_NAVIGATION_CALLER
@@ -15,7 +18,11 @@
 #ifndef FORMAL_ESKF_PROOF_NAVIGATION_RESET
 #define FORMAL_ESKF_PROOF_NAVIGATION_RESET 0
 #endif
+#if defined(FORMAL_ESKF_PROOF_NAVIGATION_SOLVE_BACKEND) && FORMAL_ESKF_PROOF_NAVIGATION_SOLVE_BACKEND
+using Linalg = solve_proof::Backend;
+#else
 using contract_proof::Linalg;
+#endif
 using contract_proof::same;
 using contract_proof::Scalar;
 using covariance_oracle::same_matrix;

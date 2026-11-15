@@ -778,3 +778,26 @@ messages. Production and unrelated drafts are unchanged. Evidence:
 `height-complete-producers/results.json`, `height-native-mutations.json`,
 `height-esbmc-mutations.json`, `height-producers-lean-minimal.log`, native
 library/storage/height logs, tooling logs and retained failed attempts.
+
+## Height caller's exact reset backend
+
+Six additional navigation-reset profiles close the backend-identity prerequisite
+for height composition: binary32/binary64 size-one validation and both in-place
+vertical resets with `solve_proof::Backend`. They reuse the existing exact-status,
+all-field frame, overflow, covariance-coefficient and argument assertions; no
+cross-backend equivalence is assumed. The previous 40 default configurations have
+identical preprocessed C++ tokens, and their runner arguments remain checked.
+
+Accepted checks: 6/6 in 80.28 s, cgroup peak 1,588,203,520 bytes (1.48 GiB), no
+OOM/swap. Four native mutated executions (wrong Down axis and lost position
+variance, both formats) fail their intended assertions; all four controls pass.
+Runner inventory, 100 offline review-tool tests, formatting, ShellCheck and
+reference checks pass. Inventory: 1,939 profiles / 185 entry points. No new Lean
+theorem or AI audit. Height transaction/history induction remains separate.
+
+Self-review confirmed exact backend/scalar identity, the actual in-place alias
+mode, the unchanged original evidence boundary and all source hashes. Production
+and unrelated drafts are unchanged. Evidence:
+`output/runtime-proof-continuation-20261115/height-reset-manifest.json`,
+`height-reset-final/results.json`, `height-reset-default-equivalence.json`,
+`height-reset-native-mutations.json` and runner/tooling logs.

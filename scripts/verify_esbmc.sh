@@ -57,7 +57,7 @@ parse_arguments()
                 printf 'fusion selects public covariance preparation, portable check/fuse control flow and four navigation wrappers. It reuses E-INNOV/E-CORRECT/E-STEP/E-BIAS producer contracts; replay/module wiring remains separate.\n'
                 printf 'imu-policies selects actual portable fault-noise replacement, bias-noise inhibition and bias-value limits for both scalar formats and legal aliases. Detector policy, calibration and module/replay wiring are separate.\n'
                 printf 'vertical-health selects actual verdict frames, initialization/reset, clipping recurrence and inductive timestamp/hold safety. Source-ratio/reference equations, caller wiring and root accuracy remain open.\n'
-                printf 'accelerometer selects actual magnitude history, fusion conditions and AHRS/INS fusion callers with all state/P aliases; sample integration and module/replay wiring remain separate.\n'
+                printf 'accelerometer selects actual magnitude history, tilt alignment, fusion conditions and AHRS/INS fusion callers with all state/P aliases; sample integration and module/replay wiring remain separate.\n'
                 printf 'height selects scalar offset equations, defaults and private source admission/read-only contracts for both sources and formats; full height transaction induction and platform publication remain separate.\n'
                 printf 'navigation-recovery selects actual gate diagnostic contracts, vertical limiter and both public recovery callers with every state/P alias. Same-type correction frames are reused; root accuracy and caller health/permission remain separate.\n'
                 printf 'navigation-reset selects exact-type validation, symmetry-pair arithmetic and all four numerical reset callers with independent state/P aliases. Real PSD is proved separately in Lean; source permission and target backends remain separate.\n'
@@ -889,6 +889,11 @@ run_accelerometer_suite()
         for KIND in magnitude_initialization magnitude conditions; do
             PROFILE="accelerometer-binary$((32 + 32 * BINARY64))-${KIND}"
             verify "verify_accelerometer_${KIND}" --proof-unwind 16 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        done
+        SOURCE_FILE="${PROOF_DIR}/tilt_alignment.cpp"
+        for KIND in initialization alignment; do
+            PROFILE="accelerometer-binary$((32 + 32 * BINARY64))-tilt_${KIND}"
+            verify "verify_tilt_${KIND}" --proof-unwind 16 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" --cvc5
         done
         SOURCE_FILE="${PROOF_DIR}/accelerometer_fusion.cpp"
         for SIZE in 3 15; do

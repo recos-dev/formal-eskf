@@ -1487,8 +1487,20 @@ stateless predicate for all eight flags, every status and arbitrary unused IEEE
 diagnostics, including input purity, in both formats. Rest cannot bypass failed
 magnitude evaluation or clipping; horizontal aiding prevents activation. No
 separate Lean state-machine theorem is needed for this predicate. Actual
-condition producers, sample/horizon correspondence, tilt alignment and complete
-fusion/module composition retain their own obligations.
+rest/aiding producers and sample/horizon correspondence retain their own
+obligations; the portable fusion composition is covered separately below.
+
+`TiltAlignment` has its own initialized inductive proof: finite nonnegative
+stored variance and a monotone alignment latch, with both fields preserved on
+failure. ESBMC checks the actual source in both formats, consuming the exact-type
+rotation and 3x3 product frame contracts. Observers bind `R_nb * P_theta_b * R_nbᵀ`,
+all operands and call order; the real transpose and all finite/negative checks
+remain inline. Success stores precisely the N/E diagonal sum and applies the
+strict encoded `(pi/60)^2` threshold. Numerical outputs may be arbitrary IEEE
+values, so overflow/nonfinite/negative-result paths are retained. Lean separately
+proves the real tilt projection's nonnegativity, trace decomposition/bound and
+identity-frame formula under PSD covariance. It does not establish the truth
+of covariance-based attitude confidence, floating-point PSD, or target libraries.
 
 #### Replay condition sources (host demo)
 

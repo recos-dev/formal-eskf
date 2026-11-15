@@ -915,3 +915,37 @@ Evidence: `output/runtime-proof-continuation-20261115/accelerometer-fusion-manif
 `accelerometer-fusion-final/results.json`,
 `accelerometer-fusion-native-mutations.json`,
 `accelerometer-fusion-esbmc-mutations.json` and native/tooling logs.
+
+## Tilt projection and alignment latch
+
+Four Lean theorems establish the real NED tilt-variance projection's
+nonnegativity under PSD covariance, trace decomposition/upper bound and
+identity-frame formula. Four ESBMC profiles / two entry points check actual
+`TiltAlignment` initialization and update in both scalar formats. Exact-type
+E-OBS rotation and E-CORRECT 3x3 product frame contracts are composed with
+operand/order observers; the actual transpose, input/result checks, N/E sum,
+strict encoded three-degree threshold and latch updates remain inline. All IEEE
+numerical outputs are admitted. Finite nonnegative stored variance has a base
+and inductive step; alignment is monotone, and failures preserve both fields.
+This does not certify attitude accuracy, floating-point PSD, target backends or
+the module's condition/horizon correspondence.
+
+Accepted checks: 4/4 in 32.13 s, cgroup peak 445,108,224 bytes (424 MiB), no
+OOM/swap. Lean passes with `--wfail` (3,425 jobs). Ten mutation patterns fail with
+passing controls in both native formats (20 + 20); six fixed ESBMC mutants and
+six controls have the expected outcomes. Patterns cover initialization, product
+order/transpose, selected axes, threshold equality, latch clearing, failure
+writes, negative variance and omitted finite/sum checks. The nonfinite product
+coefficient witness is explicitly adversarial at the numerical frame boundary;
+other numerical fixtures are constructed from explicit matrices. Native
+Eigen/PX4-matrix replay-condition tests, runner inventory, 100 offline review-tool
+tests, references, formatting and ShellCheck pass. Inventory: 1,969 profiles /
+193 entry points. No full AI audit or Lean-to-C++ refinement claim.
+
+Self-review checked exact backend/scalar/shape matching, the two-product
+composition, all nine transpose operands, every source branch, latch induction,
+real/IEEE claim separation and negative witnesses. Production and unrelated
+drafts are unchanged. Evidence:
+`output/runtime-proof-continuation-20261115/tilt-alignment-manifest.json`,
+`tilt-alignment-final/results.json`, `tilt-alignment-native-mutations.json`,
+`tilt-alignment-esbmc-mutations.json` and Lean/native/tooling logs.

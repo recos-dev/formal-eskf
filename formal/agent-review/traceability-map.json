@@ -3750,7 +3750,7 @@
     },
     {
       "id": "R-ACCELEROMETER-CONDITIONS",
-      "title": "Exhaustive gravity-fusion predicate verified; condition producers, tilt and adapter correspondence remain separate",
+      "title": "Gravity-fusion predicate and inductive tilt latch verified; rest/aiding producers and horizon correspondence remain separate",
       "references": {
         "spec": [
           {
@@ -3758,7 +3758,28 @@
             "symbol": "### R-ACCELEROMETER-CONDITIONS: gravity-fusion prerequisites"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/TiltAlignment.lean",
+            "symbol": "def tiltVariance"
+          },
+          {
+            "file": "formal/lean/FormalESKF/TiltAlignment.lean",
+            "symbol": "theorem tiltVariance_nonneg"
+          },
+          {
+            "file": "formal/lean/FormalESKF/TiltAlignment.lean",
+            "symbol": "theorem tiltVariance_trace"
+          },
+          {
+            "file": "formal/lean/FormalESKF/TiltAlignment.lean",
+            "symbol": "theorem tiltVariance_le_trace"
+          },
+          {
+            "file": "formal/lean/FormalESKF/TiltAlignment.lean",
+            "symbol": "theorem tiltVariance_identity"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/runtime/accelerometer.hpp",
@@ -3793,6 +3814,22 @@
           {
             "file": "formal/cpp/esbmc/accelerometer_runtime.cpp",
             "symbol": "void verify_accelerometer_conditions("
+          },
+          {
+            "file": "formal/cpp/esbmc/tilt_alignment.cpp",
+            "symbol": "void verify_tilt_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/tilt_alignment.cpp",
+            "symbol": "void verify_tilt_alignment("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_models.cpp",
+            "symbol": "void verify_observation_rotation("
+          },
+          {
+            "file": "formal/cpp/esbmc/correction_matrix.cpp",
+            "symbol": "void verify_correction_product("
           }
         ]
       }

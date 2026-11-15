@@ -18,9 +18,9 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1965 '^PLAN'
+    check_count 1969 '^PLAN'
     check_count 32 'height-'
-    check_count 22 'accelerometer-binary'
+    check_count 26 'accelerometer-binary'
     check_count 28 'navigation-recovery-'
     check_count 46 'navigation-reset-'
     check_count 7 'gnss-lifecycle-'
@@ -238,8 +238,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 191 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1965 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 193 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1969 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -279,6 +279,11 @@ check_accelerometer_arguments()
     {
         local ENTRY="$1"
         shift
+        if [[ "${SOURCE_FILE}" == "${PROOF_DIR}/tilt_alignment.cpp" ]]; then
+            [[ "${ENTRY}" == "verify_tilt_${KIND}" && "$*" == "--proof-unwind 16 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} --cvc5" ]] || fail 'wrong tilt alignment arguments'
+            COUNT=$((COUNT + 1))
+            return
+        fi
         if [[ "${SOURCE_FILE}" == "${PROOF_DIR}/accelerometer_fusion.cpp" ]]; then
             [[ "${ENTRY}" == verify_accelerometer_fusion && "$*" == "--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_STATE_SIZE=${SIZE} -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=3 -D FORMAL_ESKF_PROOF_STEP_ALIAS=${ALIAS}" ]] || fail 'wrong accelerometer fusion arguments'
             COUNT=$((COUNT + 1))
@@ -293,7 +298,7 @@ check_accelerometer_arguments()
         COUNT=$((COUNT + 1))
     }
     run_accelerometer_suite
-    [[ "${COUNT}" == 22 ]] || fail 'accelerometer matrix incomplete'
+    [[ "${COUNT}" == 26 ]] || fail 'accelerometer matrix incomplete'
 )
 
 check_height_arguments()
@@ -1870,7 +1875,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1965 profiles; 191 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1969 profiles; 193 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

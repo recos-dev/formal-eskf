@@ -418,3 +418,51 @@ Production sources and existing functional/roadmap drafts remain unchanged.
 Evidence: `output/runtime-proof-continuation-20261115/vertical-manifest.json`,
 `vertical-final/results.json`, `vertical-mutations.json` and the retained failed
 attempts. Other independent V-01 obligations continue.
+
+## Shared IMU bias inhibition
+
+`R-REPLAY-BIAS` and `R-PX4-IMU-BIAS` now include the portable policy, not the
+actual replay/module sequencing. Fourteen binary32/binary64 profiles check the
+actual norm and rotation producers, exact decay/max, finite nonnegative peak
+invariant, permission predicate and composed public update. Constructor peaks
+establish the base case; arbitrary valid prior peaks and every public update
+establish induction. Invalid samples are not assumed away. Caller summaries
+admit arbitrary root/rotation results and use only the separately proved peak
+postcondition, with assertions for each call's domain, order, sensor period and
+prior value. All borrowed inputs remain unchanged; failures preserve history
+and return disabled permissions. Equality permits learning; rest overrides only
+observability, not clipping, dynamics or vertical faults.
+
+Accepted checks: 14/14 profiles, 316.71 s sequentially, cgroup peak 511,578,112
+bytes (488 MiB), no OOM or swap. Binary64's peak invariant took 224.87 s; the
+formula and invariant are separate required profiles, not weaker replacements.
+Peak profiles use a 300 s internal limit; others retain 120 s. All use 4 GiB
+internal and 6 GiB group memory limits without swap. Six mutations across both
+formats yielded 12 assertion counterexamples and 12 passing controls: swapped
+integration periods, gyro dynamics coupling, wrong clipping axis, equality
+rejection, history clearing on failure and growing rather than decaying peaks.
+Native policy tests and 200 native `std::max` control pairs passed, alongside
+runner inventory, 100 offline agent-review tests, formatting and ShellCheck.
+No full AI semantic audit or new Lean theorem is claimed.
+
+A minimized counterexample exposed ESBMC 8.4.0's embedded `<algorithm>` model:
+its `max` selects the second equal argument and includes nonstandard by-value
+overloads. Native `std::max(-0,+0)` retains the first reference and negative
+zero; the embedded model does not. `algorithm_support.hpp` models the standard
+two-argument reference contract and alpha-renames only the selected header's
+calls, after dependency includes. Its symbolic checks include aliasing, both
+zero signs, NaN classification and input purity. This is an explicit STL
+contract boundary, not proof of the tool's original model or a deployed STL.
+The production implementation was not changed. Original counterexamples and
+unsuccessful solver attempts remain in local evidence; they are not core bugs
+or accepted passes. Existing numerical core proofs do not consume this max.
+
+Self-review: checked all assumptions against producer domains and initialized/
+preserved invariants; retained root, nonfinite and invalid-input failure paths.
+A slower binary64 query was decomposed by property without dropping either
+property. Both scalar formats, mutation controls, unchanged production hashes
+and exact staged scope were checked before commit. Physical observability,
+accurate libm, backend internals, replay metadata and actual module forwarding
+remain separate. Evidence: `output/runtime-proof-continuation-20261115/imu-manifest.json`,
+`imu-split-properties/results.json`, `imu-mutations.json`, native controls and
+the retained embedded-library counterexamples.

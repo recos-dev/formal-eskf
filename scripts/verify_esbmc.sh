@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,7 +37,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -57,6 +57,7 @@ parse_arguments()
                 printf 'fusion selects public covariance preparation, portable check/fuse control flow and four navigation wrappers. It reuses E-INNOV/E-CORRECT/E-STEP/E-BIAS producer contracts; replay/module wiring remains separate.\n'
                 printf 'imu-policies selects actual portable fault-noise replacement, bias-noise inhibition and bias-value limits for both scalar formats and legal aliases. Detector policy, calibration and module/replay wiring are separate.\n'
                 printf 'vertical-health selects actual verdict frames, initialization/reset, clipping recurrence and inductive timestamp/hold safety. Source-ratio/reference equations, caller wiring and root accuracy remain open.\n'
+                printf 'imu-inhibition selects actual norm/rotation/decay producers, learning permissions and inductive public-update frames. Replay/module sequencing and physical observability are separate.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -873,6 +874,27 @@ run_observations_suite()
     done
 }
 
+run_imu_inhibition_suite()
+{
+    local BINARY64 KIND PROPERTY
+    SOURCE_FILE="${PROOF_DIR}/imu_inhibition.cpp"
+    for BINARY64 in 0 1; do
+        for KIND in max_model norm rotation peak permissions inhibition; do
+            PROFILE="imu-inhibition-binary$((32 + 32 * BINARY64))-${KIND}"
+            if [[ "${KIND}" == peak ]]; then
+                for PROPERTY in 0 1; do
+                    PROFILE="imu-inhibition-binary$((32 + 32 * BINARY64))-peak${PROPERTY}"
+                    verify verify_imu_peak --proof-unwind 12 --proof-timeout 300s --z3 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_IMU_PEAK_PROPERTY=${PROPERTY}"
+                done
+            elif [[ "${KIND}" == inhibition ]]; then
+                verify verify_imu_inhibition --proof-unwind 12 --cvc5 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_IMU_CALLER=1
+            else
+                verify "verify_imu_${KIND}" --proof-unwind 12 --z3 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+            fi
+        done
+    done
+}
+
 run_vertical_health_suite()
 {
     local BINARY64 KIND
@@ -1145,6 +1167,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == vertical-health ]]; then
         run_vertical_health_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == imu-inhibition ]]; then
+        run_imu_inhibition_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

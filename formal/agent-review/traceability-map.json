@@ -3804,7 +3804,7 @@
     },
     {
       "id": "R-REPLAY-BIAS",
-      "title": "Replay decaying-peak bias inhibition and correction wiring; Lean and ESBMC evidence pending",
+      "title": "Replay bias inhibition: portable IEEE peak/permission invariants verified; replay sequencing and metadata remain open",
       "references": {
         "spec": [
           {
@@ -3847,12 +3847,37 @@
             "symbol": "def imu_flags("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/imu_inhibition.cpp",
+            "symbol": "void verify_imu_max_model("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_inhibition.cpp",
+            "symbol": "void verify_imu_norm("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_inhibition.cpp",
+            "symbol": "void verify_imu_rotation("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_inhibition.cpp",
+            "symbol": "void verify_imu_peak("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_inhibition.cpp",
+            "symbol": "void verify_imu_permissions("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_inhibition.cpp",
+            "symbol": "void verify_imu_inhibition("
+          }
+        ]
       }
     },
     {
       "id": "R-PX4-IMU-BIAS",
-      "title": "PX4 module IMU dynamics, vertical health and bias-permission wiring; Lean and ESBMC evidence pending",
+      "title": "PX4 IMU bias: shared inhibition verified; health classification and actual module sequencing remain open",
       "references": {
         "spec": [
           {
@@ -3919,7 +3944,32 @@
             "symbol": "bool FormalEskf::fuse_gps_position("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/imu_inhibition.cpp",
+            "symbol": "void verify_imu_max_model("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_inhibition.cpp",
+            "symbol": "void verify_imu_norm("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_inhibition.cpp",
+            "symbol": "void verify_imu_rotation("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_inhibition.cpp",
+            "symbol": "void verify_imu_peak("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_inhibition.cpp",
+            "symbol": "void verify_imu_permissions("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_inhibition.cpp",
+            "symbol": "void verify_imu_inhibition("
+          }
+        ]
       }
     },
     {

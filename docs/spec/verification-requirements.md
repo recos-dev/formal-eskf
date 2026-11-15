@@ -1691,8 +1691,17 @@ and [legacy parameter semantics](https://docs.px4.io/v1.13/en/advanced_config/pa
 This aligns the inhibition rule under supplied conditions, not all EKF2 behavior:
 replay uses its own IMU horizons and precision. Its variance-dependent bias noise
 selection, fault-dependent IMU noise and bias-value limits are specified below.
-GNSS overrides/resets and fake-aiding modes remain pending. Native tests support this integration;
-Lean/ESBMC evidence remains pending.
+GNSS overrides/resets and fake-aiding modes remain pending. Native tests support
+this integration. Scoped binary32/binary64 ESBMC checks now establish the shared
+policy's constructor, exact peak decay, finite/nonnegative peak invariant,
+permissions, failure atomicity and input purity. The actual norm/rotation producers
+are included, with arbitrary scalar-root returns (not an accurate-libm claim).
+The caller uses the separately proved peak invariant and checks every callee
+premise, including distinct integration periods. ESBMC's incorrect `std::max`
+tie model is replaced locally by an explicit standard-library contract model;
+this does not prove a deployed STL. Replay metadata parsing, same-horizon
+sequencing and forwarding remain open. No Lean-to-C++ refinement or physical
+observability claim is made. See the dated verification-extension record.
 
 ### R-PX4-IMU-BIAS: module health and bias-learning inhibition
 
@@ -1739,8 +1748,13 @@ No separate continuous-good recovery timer is used.
 
 Process-noise selection is specified separately in `R-IMU-PROCESS-NOISE`.
 Bias-value limiting, gravity correction and height-reset exceptions are specified
-in their respective requirements and wired into this module. Native backend/
-correction tests and SITL are empirical evidence; Lean/ESBMC and physical disturbance validation remain pending.
+in their respective requirements and wired into this module. Shared inhibition
+has the scoped ESBMC evidence described under `R-REPLAY-BIAS`; this does not close
+the module's admission, history invalidation, ordering, forwarding or publication
+clauses. Vertical-health state safety is separately covered; its complete
+numerical classification remains open. Native backend/correction tests and SITL
+are empirical evidence; actual module proof and physical disturbance validation
+remain pending.
 
 ### R-IMU-PROCESS-NOISE: fault-dependent sampled IMU variance
 

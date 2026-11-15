@@ -18,7 +18,8 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1794 '^PLAN'
+    check_count 1808 '^PLAN'
+    check_count 14 'imu-inhibition-binary'
     check_count 6 'vertical-health-binary'
     check_count 2 'vertical-health-.*-likelihood_frame'
     check_count 2 'vertical-health-.*-initialization'
@@ -230,8 +231,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 142 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1794 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 148 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1808 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -263,6 +264,36 @@ check_plan()
     [[ -z "$(comm -23 <("${RUNNER}" scalar --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] ||
         fail 'scalar dependency profile is not in the full inventory'
 }
+
+check_imu_inhibition_arguments()
+(
+    local COUNT=0
+    verify()
+    {
+        local ENTRY="$1" BITS=0 KIND
+        local -a EXPECTED
+        shift
+        [[ "${PROFILE}" == imu-inhibition-binary64-* ]] && BITS=1
+        KIND="${PROFILE#imu-inhibition-binary*-}"
+        [[ "${SOURCE_FILE}" == "${PROOF_DIR}/imu_inhibition.cpp" ]] || fail 'wrong IMU inhibition source'
+        case "${KIND}" in
+            peak0|peak1)
+                [[ "${ENTRY}" == verify_imu_peak ]] || fail 'wrong peak entry'
+                EXPECTED=(--proof-unwind 12 --proof-timeout 300s --z3 -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}" -D "FORMAL_ESKF_PROOF_IMU_PEAK_PROPERTY=${KIND#peak}") ;;
+            inhibition)
+                [[ "${ENTRY}" == verify_imu_inhibition ]] || fail 'wrong inhibition entry'
+                EXPECTED=(--proof-unwind 12 --cvc5 -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}" -D FORMAL_ESKF_PROOF_IMU_CALLER=1) ;;
+            max_model|norm|rotation|permissions)
+                [[ "${ENTRY}" == "verify_imu_${KIND}" ]] || fail 'wrong IMU producer entry'
+                EXPECTED=(--proof-unwind 12 --z3 -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}") ;;
+            *) fail 'unknown IMU inhibition profile' ;;
+        esac
+        [[ "$*" == "${EXPECTED[*]}" ]] || fail 'wrong IMU inhibition arguments'
+        COUNT=$((COUNT + 1))
+    }
+    run_imu_inhibition_suite
+    [[ "${COUNT}" == 14 ]] || fail 'IMU inhibition matrix incomplete'
+)
 
 check_vertical_health_arguments()
 (
@@ -1637,6 +1668,7 @@ case "${1:-}" in
 esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
+check_imu_inhibition_arguments
 check_vertical_health_arguments
 check_imu_policies_arguments
 check_fusion_arguments
@@ -1655,7 +1687,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1794 profiles; 142 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1808 profiles; 148 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

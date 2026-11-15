@@ -18,7 +18,11 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1788 '^PLAN'
+    check_count 1794 '^PLAN'
+    check_count 6 'vertical-health-binary'
+    check_count 2 'vertical-health-.*-likelihood_frame'
+    check_count 2 'vertical-health-.*-initialization'
+    check_count 2 'vertical-health-.*-transition'
     check_count 10 'imu-policies-binary'
     check_count 4 'imu-policies-.*-imu_noise-alias'
     check_count 4 'imu-policies-.*-bias_noise-alias'
@@ -226,8 +230,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 139 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1788 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 142 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1794 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -259,6 +263,25 @@ check_plan()
     [[ -z "$(comm -23 <("${RUNNER}" scalar --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] ||
         fail 'scalar dependency profile is not in the full inventory'
 }
+
+check_vertical_health_arguments()
+(
+    local COUNT=0
+    verify()
+    {
+        local ENTRY="$1" BITS=0 KIND EXTRA=""
+        shift
+        [[ "${PROFILE}" == vertical-health-binary64-* ]] && BITS=1
+        KIND="${PROFILE#vertical-health-binary*-}"
+        [[ "${KIND}" == initialization || "${KIND}" == likelihood_frame || "${KIND}" == transition ]] || fail 'unknown vertical health profile'
+        [[ "${ENTRY}" == "verify_vertical_${KIND}" && "${SOURCE_FILE}" == "${PROOF_DIR}/vertical_health.cpp" ]] || fail 'wrong vertical health entry/source'
+        [[ "${KIND}" == transition ]] && EXTRA=" -D FORMAL_ESKF_PROOF_HEALTH_CALLER=1"
+        [[ "$*" == "--proof-unwind 40 --cvc5 -D FORMAL_ESKF_PROOF_BINARY64=${BITS}${EXTRA}" ]] || fail 'wrong vertical health arguments'
+        COUNT=$((COUNT + 1))
+    }
+    run_vertical_health_suite
+    [[ "${COUNT}" == 6 ]] || fail 'vertical health matrix incomplete'
+)
 
 check_imu_policies_arguments()
 (
@@ -1614,6 +1637,7 @@ case "${1:-}" in
 esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
+check_vertical_health_arguments
 check_imu_policies_arguments
 check_fusion_arguments
 check_magnetic_arguments
@@ -1631,7 +1655,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1788 profiles; 139 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1794 profiles; 142 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

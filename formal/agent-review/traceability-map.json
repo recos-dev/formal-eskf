@@ -4109,7 +4109,7 @@
     },
     {
       "id": "R-VERTICAL-ACCELERATION",
-      "title": "Vertical acceleration health monitor and replay bias inhibition; Lean/ESBMC evidence pending",
+      "title": "Vertical health initialization, verdict frame and inductive state transitions; source-ratio equations and caller wiring remain open",
       "references": {
         "spec": [
           {
@@ -4144,7 +4144,20 @@
             "symbol": "void write_vertical_health("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/vertical_health.cpp",
+            "symbol": "void verify_vertical_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/vertical_health.cpp",
+            "symbol": "void verify_vertical_likelihood_frame("
+          },
+          {
+            "file": "formal/cpp/esbmc/vertical_health.cpp",
+            "symbol": "void verify_vertical_transition("
+          }
+        ]
       }
     },
     {

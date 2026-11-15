@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,7 +37,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -56,6 +56,7 @@ parse_arguments()
                 printf 'magnetic selects M1 projector/gain producers and AHRS/INS caller paths with symbolic INS bias masks, plus the reused rotation producer. E-CORRECT/F-SOLVE/injection/reset dependencies and numerical bounds remain separate.\n'
                 printf 'fusion selects public covariance preparation, portable check/fuse control flow and four navigation wrappers. It reuses E-INNOV/E-CORRECT/E-STEP/E-BIAS producer contracts; replay/module wiring remains separate.\n'
                 printf 'imu-policies selects actual portable fault-noise replacement, bias-noise inhibition and bias-value limits for both scalar formats and legal aliases. Detector policy, calibration and module/replay wiring are separate.\n'
+                printf 'vertical-health selects actual verdict frames, initialization/reset, clipping recurrence and inductive timestamp/hold safety. Source-ratio/reference equations, caller wiring and root accuracy remain open.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -872,6 +873,22 @@ run_observations_suite()
     done
 }
 
+run_vertical_health_suite()
+{
+    local BINARY64 KIND
+    SOURCE_FILE="${PROOF_DIR}/vertical_health.cpp"
+    for BINARY64 in 0 1; do
+        for KIND in initialization likelihood_frame transition; do
+            PROFILE="vertical-health-binary$((32 + 32 * BINARY64))-${KIND}"
+            if [[ "${KIND}" == transition ]]; then
+                verify verify_vertical_transition --proof-unwind 40 --cvc5 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_HEALTH_CALLER=1
+            else
+                verify "verify_vertical_${KIND}" --proof-unwind 40 --cvc5 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+            fi
+        done
+    done
+}
+
 run_imu_policies_suite()
 {
     local BINARY64 ALIAS KIND
@@ -1125,6 +1142,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == imu-policies ]]; then
         run_imu_policies_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == vertical-health ]]; then
+        run_vertical_health_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

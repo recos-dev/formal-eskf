@@ -351,3 +351,70 @@ completion. Existing producer contracts and exact-real premises remain part of
 the claims. Runtime lifecycle/caller sequencing, replay/PX4 module integration,
 numerical error bounds and deployed backend/toolchain behavior remain separate.
 The production implementation and the functional backlog were not changed.
+
+## Continuation scope
+
+The first five commits above complete only the initial stable components, not
+all currently implemented proof obligations. Continue the existing V-01 dependency
+order through the remaining IMU/health policies, GNSS quality/lifecycle and reset,
+height management, gravity sampling/eligibility/fusion, magnetic policy/lifecycle
+and reset, then the actual module/replay caller boundaries. Reuse existing
+mathematical dependencies; Boolean policies do not require artificial new Lean
+algebra. Do not change the functional F-series order or production behavior.
+
+A portable component pass does not close its requirement's caller clauses.
+For persistent components, distinguish bounded sequences from initialization and
+inductive preservation across public transitions. Retain failed attempts and
+mutations alongside accepted source/configuration identities. Continue independent
+work if one obligation is blocked; a blocker needs a concrete counterexample,
+frontend limitation, measured resource limit or missing design/platform premise.
+Future features, physical sensor validity, unselected deployment numerical bounds,
+external-backend internals and OS/WCET guarantees must not be silently labeled
+complete or replaced with component proofs.
+
+## Vertical health state safety
+
+`R-VERTICAL-ACCELERATION` now has a scoped state-safety proof; the complete
+requirement is **not closed**. Six binary32/binary64 profiles check the actual
+constructor/reset, the actual private likelihood producer's enum/failure frame,
+and the public update composed with that frame. They establish ordered time,
+interval and metadata validation, safe count-limit conversion, every clipping
+counter, verdict consumption, last-good/last-bad timestamps, strict three-second
+hold, input purity and atomic history on all failures.
+
+The clock/hold invariant is checked at initialization and preserved from an
+arbitrary prior satisfying it, including every failed update. Reset establishes
+the base case from arbitrary history. This is inductive state safety, not a
+short trace presented as arbitrary-duration evidence. The header's private access
+is widened only in the harness after loading dependencies, to call its actual
+producer; production bodies and layout are unchanged. The caller summary admits
+all statuses and all three verdicts, even candidate writes on failure. Its actual
+producer frame is proved separately with arbitrary scalar-root returns. No claim
+of source classification or accurate sqrt is hidden in that summary.
+
+Accepted checks: 6/6 profiles in 75.89 s, cgroup peak 1,022,902,272 bytes, no OOM
+or swap; six assertion counterexamples and six passing controls across both
+formats. Mutations change the hold boundary, increment at the clipping limit,
+or publish a timestamp on producer failure. The native vertical-health test,
+runner inventory, 100 offline agent-review tests, formatting and ShellCheck pass.
+The offline tests are not an AI semantic audit. No Lean files changed; no new
+mathematical theorem is needed for these source transition properties.
+
+The complete six-source numerical oracle remains unaccepted. Retained attempts
+include full and separated forms, two solvers, independent source classification
+and scalar storage variants. Queries timed out or reached the 4 GiB internal
+limit; incremental CVC5 also crashed on a caller query. These are tool/analysis
+limitations, not passes or production counterexamples. The accepted caller uses
+non-incremental CVC5. Source-ratio equations, the FLT_EPSILON floor and distinct
+reference classification remain open, alongside module/replay wiring and physical
+validity. Retiring a failed query from the accepted suite does not retire those
+requirements; its harness snapshots, commands and logs are retained locally.
+
+Self-review: verified that no sample-domain assumption hides invalid input or a
+failure; prior-state assumptions are initialized and preserved. Changed a mutation
+from candidate publication (potentially unobservable with the real callee's stronger
+failure frame) to an actual timestamp write before accepting its counterexamples.
+Production sources and existing functional/roadmap drafts remain unchanged.
+Evidence: `output/runtime-proof-continuation-20261115/vertical-manifest.json`,
+`vertical-final/results.json`, `vertical-mutations.json` and the retained failed
+attempts. Other independent V-01 obligations continue.

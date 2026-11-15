@@ -2015,7 +2015,19 @@ is claimed. The caller must match filter cadence, averaged interval and source
 diagnostic ordering for matching timelines. PX4 evaluates after GNSS velocity
 and before height fusion; bias/noise prediction consumes the preceding fault.
 Native tests cover source combinations, signed residual conversion, counters,
-recovery and failure atomicity. Lean/ESBMC evidence remains pending.
+recovery and failure atomicity. The `vertical-health` ESBMC suite additionally
+checks initialization/reset, the actual likelihood producer's enum/failure frame,
+and the actual public update under that frame, in binary32/binary64. It establishes
+ordered sample validation, clipping-count recurrence, verdict consumption, atomic
+history and inductive timestamp/three-second-hold invariants. Arbitrary samples,
+including failures and timestamp boundaries, remain admitted; the prior-history
+premise is established at initialization and preserved by update/reset.
+
+The source-ratio/FLT_EPSILON equations, cross-reference classification, scalar-root
+accuracy and module/replay sequencing remain **open**. A complete numerical-source
+oracle did not finish within the retained resource limits; the enum/frame proof is
+not a substitute for those equations. No new Lean algebra is needed for the scoped
+state-transition properties. See the [execution record](../verification-extensions-20261115.md#vertical-health-state-safety).
 
 Replay integration:
 

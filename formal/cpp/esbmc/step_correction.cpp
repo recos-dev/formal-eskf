@@ -7,6 +7,7 @@
  */
 
 #include "step_correction_support.hpp"
+#include "bias_support.hpp"
 
 namespace step_correction_proof
 {
@@ -35,6 +36,7 @@ struct Calls
     inline static Covariance const * covariance_target = nullptr;
     inline static State const * state_before = nullptr;
     inline static Covariance const * covariance_before = nullptr;
+    inline static bias_proof::permissions_type const * permissions = nullptr;
     inline static Scalar minimum{};
     inline static unsigned gain{}, correction{}, injection{}, reset{};
 };
@@ -85,8 +87,9 @@ inline Status apply_correction_gain<step_correction_proof::Backend, step_correct
                        Calls::injection == 0U && Calls::reset == 0U,
                    "E-STEP-CORRECT: error/Joseph update occurs once after successful gain");
     __ESBMC_assert(same_matrix(P, *Calls::covariance) && same_matrix(r, *Calls::residual) &&
-                       same_matrix(H, *Calls::H) && same_matrix(V, *Calls::V) && same_matrix(K, Calls::results->gain),
-                   "E-STEP-CORRECT: default permissions preserve the gain and original measurement/prior inputs");
+                       same_matrix(H, *Calls::H) && same_matrix(V, *Calls::V) &&
+                       bias_proof::constrained_gain(K, Calls::results->gain, *Calls::permissions),
+                   "E-STEP-CORRECT: error/Joseph receives precisely the permitted gain rows and original inputs");
     __ESBMC_assert(&output != &P && &output != Calls::covariance_target && static_cast<void const *>(&delta) != &r &&
                        static_cast<void const *>(&delta) != &output && static_cast<void const *>(&output) != &K &&
                        static_cast<void const *>(&delta) != &K,
@@ -146,7 +149,8 @@ inline Status reset_covariance<step_correction_proof::Backend>(step_correction_p
 using namespace step_correction_proof;
 
 void verify_correction_step(State state, Covariance covariance, Residual residual, Jacobian H, Noise V, Scalar minimum,
-                            State state_output, Covariance covariance_output, Results results)
+                            State state_output, Covariance covariance_output, Results results,
+                            bias_proof::permissions_type permissions = {})
 {
     constexpr bool configured = FORMAL_ESKF_PROOF_STEP_CONTRACT == 1 && !FORMAL_ESKF_PROOF_STEP_FRAME &&
                                 boundaries_clear && measurement_size <= 3U && FORMAL_ESKF_PROOF_STEP_ALIAS >= 0 &&
@@ -155,6 +159,13 @@ void verify_correction_step(State state, Covariance covariance, Residual residua
                    "Runner error: correction step requires only four component summaries and a valid alias");
     if constexpr (!configured)
         return;
+    static_assert(!FORMAL_ESKF_PROOF_BIAS_CONTROL || state_size == 15U);
+    if constexpr (!FORMAL_ESKF_PROOF_BIAS_CONTROL)
+    {
+        permissions = {};
+    }
+    auto const old_permissions = permissions;
+    Calls::permissions = &old_permissions;
     constexpr bool state_alias = (FORMAL_ESKF_PROOF_STEP_ALIAS & 1) != 0;
     constexpr bool covariance_alias = (FORMAL_ESKF_PROOF_STEP_ALIAS & 2) != 0;
     auto const old_state = state;
@@ -186,8 +197,14 @@ void verify_correction_step(State state, Covariance covariance, Residual residua
     Calls::state_before = &before_state;
     Calls::covariance_before = &before_covariance;
     Calls::gain = Calls::correction = Calls::injection = Calls::reset = 0U;
-    auto const status =
-        formal_eskf::correct(state, covariance, residual, H, V, minimum, target_state, target_covariance);
+    auto const status = formal_eskf::correct(state, covariance, residual, H, V, minimum, target_state, target_covariance
+#if FORMAL_ESKF_PROOF_BIAS_CONTROL
+                                             ,
+                                             permissions
+#endif
+    );
+    __ESBMC_assert(bias_proof::same_permissions(permissions, old_permissions),
+                   "E-BIAS-UPDATE: public correction preserves caller permissions");
     bool const gain_ok = results.gain_status == Status::success;
     bool const correction_ok = gain_ok && results.correction_status == Status::success;
     bool const injection_ok = correction_ok && results.injection_status == Status::success;

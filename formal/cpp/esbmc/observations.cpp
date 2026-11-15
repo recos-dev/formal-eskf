@@ -7,6 +7,7 @@
  */
 
 #include "observations_support.hpp"
+#include "bias_support.hpp"
 
 namespace observation_proof
 {
@@ -30,6 +31,7 @@ struct Call
     inline static covariance_type * covariance_target = nullptr;
     inline static state_type const * state_before = nullptr;
     inline static covariance_type const * covariance_before = nullptr;
+    inline static bias_proof::permissions_type const * permissions = nullptr;
     inline static value_type minimum{};
     inline static unsigned count{};
 };
@@ -56,11 +58,8 @@ inline Status correct<observation_proof::backend_type, observation_proof::measur
 {
     using namespace observation_proof;
 #if FORMAL_ESKF_PROOF_STATE_SIZE == 15
-    for (std::size_t axis = 0U; axis < 3U; ++axis)
-    {
-        __ESBMC_assert(bias_update.accelerometer[axis] && bias_update.gyroscope[axis],
-                       "E-OBS: sensor wrappers retain unrestricted bias updates");
-    }
+    __ESBMC_assert(bias_proof::same_permissions(bias_update, *Call::permissions),
+                   "E-BIAS-UPDATE: sensor wrappers forward every bias permission unchanged");
 #endif
     __ESBMC_assert(Call::count++ == 0U, "E-OBS: exactly one correction delegation");
     __ESBMC_assert(same_state(state, *Call::state) && same_matrix(covariance, *Call::covariance) &&
@@ -102,7 +101,7 @@ using observation_proof::vector_type;
 void verify_observation(state_type state, covariance_type covariance, residual_type measurement, noise_type V,
                         vector_type reference, value_type minimum, state_type state_output,
                         covariance_type covariance_output, observation_proof::Result result,
-                        observation_proof::rotation_type rotation_result)
+                        observation_proof::rotation_type rotation_result, bias_proof::permissions_type permissions = {})
 {
     using namespace observation_proof;
     constexpr bool valid = configured && model_boundaries && FORMAL_ESKF_PROOF_OBSERVATION_CONTRACT == 1 &&
@@ -112,6 +111,13 @@ void verify_observation(state_type state, covariance_type covariance, residual_t
     {
         return;
     }
+    static_assert(!FORMAL_ESKF_PROOF_BIAS_CONTROL || state_size == 15U);
+    if constexpr (!FORMAL_ESKF_PROOF_BIAS_CONTROL)
+    {
+        permissions = {};
+    }
+    auto const old_permissions = permissions;
+    Call::permissions = &old_permissions;
     constexpr bool state_alias = (FORMAL_ESKF_PROOF_ALIAS & 1) != 0;
     constexpr bool covariance_alias = (FORMAL_ESKF_PROOF_ALIAS & 2) != 0;
     auto const old_state = state;
@@ -171,25 +177,34 @@ void verify_observation(state_type state, covariance_type covariance, residual_t
     Call::covariance_before = &covariance_before;
     Call::count = 0U;
 
+// Keep the original omitted-argument profiles as well as explicit symbolic permissions.
+#if FORMAL_ESKF_PROOF_BIAS_CONTROL
+#define BIAS_ARGUMENT , permissions
+#else
+#define BIAS_ARGUMENT
+#endif
 #if FORMAL_ESKF_PROOF_OBSERVATION == 0
     Status const status = formal_eskf::correct_horizontal_position(state, covariance, measurement, V, minimum,
-                                                                   *state_pointer, *covariance_pointer);
+                                                                   *state_pointer, *covariance_pointer BIAS_ARGUMENT);
 #elif FORMAL_ESKF_PROOF_OBSERVATION == 1
     Status const status = formal_eskf::correct_vertical_position(state, covariance, measurement(0U), V(0U, 0U), minimum,
-                                                                 *state_pointer, *covariance_pointer);
+                                                                 *state_pointer, *covariance_pointer BIAS_ARGUMENT);
 #elif FORMAL_ESKF_PROOF_OBSERVATION == 2
     Status const status = formal_eskf::correct_horizontal_velocity(state, covariance, measurement, V, minimum,
-                                                                   *state_pointer, *covariance_pointer);
+                                                                   *state_pointer, *covariance_pointer BIAS_ARGUMENT);
 #elif FORMAL_ESKF_PROOF_OBSERVATION == 3
-    Status const status =
-        formal_eskf::correct_velocity(state, covariance, measurement, V, minimum, *state_pointer, *covariance_pointer);
+    Status const status = formal_eskf::correct_velocity(state, covariance, measurement, V, minimum, *state_pointer,
+                                                        *covariance_pointer BIAS_ARGUMENT);
 #elif FORMAL_ESKF_PROOF_OBSERVATION == 4 || FORMAL_ESKF_PROOF_OBSERVATION == 5
     Status const status = formal_eskf::correct_magnetometer(state, covariance, measurement, reference, V, minimum,
-                                                            *state_pointer, *covariance_pointer);
+                                                            *state_pointer, *covariance_pointer BIAS_ARGUMENT);
 #else
     Status const status = formal_eskf::correct_accelerometer(state, covariance, measurement, reference, V, minimum,
-                                                             *state_pointer, *covariance_pointer);
+                                                             *state_pointer, *covariance_pointer BIAS_ARGUMENT);
 #endif
+#undef BIAS_ARGUMENT
+    __ESBMC_assert(bias_proof::same_permissions(permissions, old_permissions),
+                   "E-BIAS-UPDATE: sensor correction preserves caller permissions");
     __ESBMC_assert(status == (prefix == Status::success ? result.status : prefix),
                    "E-OBS: exact validation failure or unchanged correction status");
     __ESBMC_assert(Call::count == (prefix == Status::success ? 1U : 0U),

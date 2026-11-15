@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,7 +37,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -52,6 +52,7 @@ parse_arguments()
                 printf 'scalar selects IEEE primitives, observed StandardMath dispatch and checked wrappers/aliases, plus reused wrapper/root dependencies. Pure libm summaries do not prove target library accuracy.\n'
                 printf 'observations selects eight sensor models/Jacobians and checked wrappers with ESKF_MAG_TILT=0 and all state/covariance aliases. all also runs the matching E-STEP-CORRECT/E-CORRECT/F-SOLVE dependencies; physical model validity and magnetic tilt protection are not claimed.\n'
                 printf 'innovation selects the actual componentwise gate for binary32/64, sizes 1/2/3 and all five vector alias partitions. No arithmetic summaries or restricted input ranges.\n'
+                printf 'bias selects actual row constraints, controlled INS correction transactions and M0 sensor forwarding, with all six permissions symbolic. M1 magnetic projection is a separate obligation.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -868,6 +869,43 @@ run_observations_suite()
     done
 }
 
+run_bias_suite()
+{
+    local BINARY64 SIZE ALIAS MODEL
+    local -a ARGUMENTS
+    for BINARY64 in 0 1; do
+        for SIZE in 1 2 3; do
+            ARGUMENTS=(--proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+                -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D "FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${SIZE}"
+                -D "FORMAL_ESKF_PROOF_SIZE=${SIZE}" -D FORMAL_ESKF_PROOF_BIAS_CONTROL=1)
+            SOURCE_FILE="${PROOF_DIR}/bias_gain.cpp"
+            PROFILE="bias-binary$((32 + 32 * BINARY64))-gain15x${SIZE}"
+            verify verify_bias_gain "${ARGUMENTS[@]}"
+            SOURCE_FILE="${PROOF_DIR}/step_correction.cpp"
+            for ALIAS in 0 1 2 3; do
+                PROFILE="bias-binary$((32 + 32 * BINARY64))-step15x${SIZE}-alias${ALIAS}"
+                verify verify_correction_step "${ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_STEP_ALIAS=${ALIAS}" \
+                    -D FORMAL_ESKF_PROOF_STEP_CONTRACT=1
+            done
+        done
+        SOURCE_FILE="${PROOF_DIR}/observations.cpp"
+        for MODEL in 0 1 2 3 5 7; do
+            SIZE=3
+            if ((MODEL == 0 || MODEL == 2)); then SIZE=2; fi
+            if ((MODEL == 1)); then SIZE=1; fi
+            ARGUMENTS=(--proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+                -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D "FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${SIZE}"
+                -D "FORMAL_ESKF_PROOF_SIZE=${SIZE}" -D "FORMAL_ESKF_PROOF_OBSERVATION=${MODEL}"
+                -D ESKF_MAG_TILT=0 -D FORMAL_ESKF_PROOF_OBSERVATION_CONTRACT=1 -D FORMAL_ESKF_PROOF_BIAS_CONTROL=1)
+            if ((MODEL >= 4)); then ARGUMENTS+=(-D FORMAL_ESKF_PROOF_OBSERVATION_ROTATION=1); fi
+            for ALIAS in 0 1 2 3; do
+                PROFILE="bias-binary$((32 + 32 * BINARY64))-observation${MODEL}-alias${ALIAS}"
+                verify verify_observation "${ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}"
+            done
+        done
+    done
+}
+
 run_innovation_suite()
 {
     local BINARY64 SIZE ALIAS
@@ -982,6 +1020,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == innovation ]]; then
         run_innovation_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == bias ]]; then
+        run_bias_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

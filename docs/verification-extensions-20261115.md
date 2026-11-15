@@ -66,3 +66,66 @@ external backends or whole-estimator verification. No full AI audit was run.
 Local evidence: `output/proof-extension-20261115/innovation-manifest.json`, the
 `innovation-accepted/` logs/results, Lean/native/tool logs and mutation records.
 The manifest records exact source/configuration identities and log hashes.
+
+## E-BIAS-UPDATE
+
+Nine exact-real theorems define the six INS permissions and constrained gain.
+They establish enabled/disabled rows, all-enabled equivalence, zero disabled-axis
+correction, retention of that row's prior variance in Joseph, unchanged disabled
+bias estimates after injection, and the existing unit-quaternion/PSD/reset-error
+invariants. PSD is exact algebra, not a floating-point invariant.
+
+The actual row-constraint producer accepts arbitrary IEEE gain coefficients and
+all six symbolic permissions together; it covers all 64 masks without creating
+64 execution profiles. It also checks the actual all-enabled default and, for
+finite residuals, zero numerical correction on disabled axes. Caller proofs
+check the same constrained gain enters both delta and Joseph, every old prior
+and correlated noise input is retained, all failures propagate, and both public
+outputs remain atomic. Six INS sensor wrappers forward all six permissions.
+The original omitted-argument profiles remain present.
+
+| Evidence | Result |
+|---|---|
+| Lean | Nine theorems; complete project build with `--wfail` passes |
+| New ESBMC profiles | 78/78: six actual row producers, 24 controlled correction transactions, 48 sensor-wrapper profiles |
+| Existing-path regression | 58/58 default caller profiles, including all AHRS aliases and every INS size/model |
+| Negative checks | Four mutations detected in both formats: 8/8 counterexamples |
+| Native regression | Correction and four sensor test executables rebuilt and passed in both reset modes; ten CTest entries |
+| Infrastructure | Offline ESBMC runner tests, 100 agent-review tests, formatting and ShellCheck pass |
+
+Every new profile covers binary32 or binary64; correction covers measurement
+sizes 1/2/3, and caller profiles cover all four independent state/covariance
+aliases. All state, covariance, measurement and intermediate-result coefficients
+remain symbolic. No successful-solve, finite-prior, unit-norm or PSD premise is
+used to exclude failure paths. The default regressions execute all AHRS aliases
+and the distinct-output INS defaults. The new symbolic-mask profiles additionally
+cover the all-enabled INS case for every alias; the actual default constructor
+is checked separately in each row producer.
+
+The compositional dependencies remain the same-backend `E-CORRECT` gain and
+arbitrary-gain delta/Joseph bodies, `F-SOLVE`, and the injection/reset frames in
+`step-correction`. Their accepted baseline evidence is reused; it was not all
+rerun in this group. Actual constraint arithmetic is not summarized. Magnetic
+wrapper profiles explicitly select M0: M1 and its combination with bias masks
+are the following E-MAG-TILT group, so this commit does not close that path.
+Prediction noise, learning policy, sensor health, IEEE PSD/error bounds and
+external backend execution remain separate requirements.
+
+The 78-profile positive matrix took 2,100.23 seconds sequentially, with aggregate
+cgroup peak 514,572,288 bytes and no OOM. The same 120 s / 4 GiB per-query limits,
+150 s outer deadline and enforced 6 GiB group cap with no group swap applied.
+Negative checks remove masking, select the wrong rows, disable a default
+permission or omit a sensor's forwarded permissions. An initial mutation
+command selected 3D velocity while mutating horizontal velocity; it correctly
+passed that unaffected API. The corrected model/shape produced counterexamples
+in both formats. The failed test setup remains recorded, not accepted evidence.
+
+Self-review: changes extend the existing caller assertions rather than replace
+them with success-only checks. Unrestricted calls still omit the optional
+argument. The six independent flags are checked symbolically, and failures
+cannot be bypassed by disabled learning. Native tests retain their independent
+constrained-gain/Joseph oracle, including cross-covariance, correlated noise and
+all 64 masks. No production source, API, default or numerical behavior changed.
+No full AI audit was run. Local evidence and hashes are in
+`output/proof-extension-20261115/bias-manifest.json`, `bias-accepted/`, the
+`bias-review*-results.json` records, and the Lean/native/tool logs.

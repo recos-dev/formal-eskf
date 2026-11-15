@@ -989,3 +989,28 @@ average-range probes succeeded, but do not close the actual owner's inductive
 history invariant. Retained logs: `sample-round-probe.log`,
 `sample-round-bitwuzla.log`, `sample-scalar-round.log` and
 `sample-scalar-average.log`. These probes remain outside the accepted suite.
+
+## Magnetic measurement filter
+
+Four profiles / two entry points check the actual magnetic-reset LPF in both
+scalar formats with the solve proof backend. First-sample/reseed precedence,
+fixed IEEE coefficient, exact filtering, input/result failure priority, complete
+history frames, input purity and accessor identity are covered. Finite field
+history has a constructor/reset base and an arbitrary-history inductive update
+step. Existing real affine-filter/bounds/residual theorems are reused
+component-wise; no duplicate Lean theorem is added. Cadence, source/lifecycle
+coordination and physical error bounds remain separate.
+
+Accepted checks: 4/4 in 4.59 s, cgroup peak 141,705,216 bytes (135 MiB), no
+OOM/swap. Eight mutation patterns fail in both native formats with passing
+controls (16 + 16); four fixed ESBMC mutants and four controls have expected
+outcomes. Native Eigen/PX4-matrix magnetic-reset tests, runner inventory,
+100 offline review-tool tests, references, formatting and ShellCheck pass.
+Inventory: 1,979 profiles / 198 entry points. No full AI audit.
+
+Self-review checked the direct production call, scalar-format coefficient,
+all reseed/failure paths, history base/induction and the reused real-model
+correspondence. Production and unrelated drafts remain unchanged. Evidence:
+`output/runtime-proof-continuation-20261115/mag-filter-manifest.json`,
+`mag-filter-final/results.json`, `mag-filter-native-mutations.json`,
+`mag-filter-esbmc-mutations.json` and native/tooling logs.

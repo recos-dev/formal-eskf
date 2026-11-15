@@ -3306,7 +3306,7 @@
     },
     {
       "id": "R-MAGNETOMETER-FILTER",
-      "title": "Magnetic reset LPF with source reseeding and failure atomicity; Lean and ESBMC evidence pending",
+      "title": "Magnetic reset LPF, reseeding and inductive finite history verified; adapter cadence and physical error bounds remain separate",
       "references": {
         "spec": [
           {
@@ -3318,7 +3318,28 @@
             "symbol": "#### PX4 module magnetic aiding"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/AccelerometerFilter.lean",
+            "symbol": "theorem forceLowPass_affine"
+          },
+          {
+            "file": "formal/lean/FormalESKF/AccelerometerFilter.lean",
+            "symbol": "theorem forceLowPass_constant"
+          },
+          {
+            "file": "formal/lean/FormalESKF/AccelerometerFilter.lean",
+            "symbol": "theorem forceLowPass_bounds"
+          },
+          {
+            "file": "formal/lean/FormalESKF/AccelerometerFilter.lean",
+            "symbol": "theorem forceLowPass_residual"
+          },
+          {
+            "file": "formal/lean/FormalESKF/AccelerometerFilter.lean",
+            "symbol": "theorem forceFilterRepeated_error"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/runtime/magnetometer.hpp",
@@ -3329,7 +3350,16 @@
             "symbol": "void FormalEskf::fuse_mag()"
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/magnetometer_filter.cpp",
+            "symbol": "void verify_magnetic_filter_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetometer_filter.cpp",
+            "symbol": "void verify_magnetic_filter_update("
+          }
+        ]
       }
     },
     {

@@ -750,7 +750,15 @@ its own and does not establish bitwise equivalence or a calibrated cutoff.
   correction input. Reset uses the filtered vector and the checked heading-reset
   operation; source/time/readiness/field qualification belongs to the lifecycle.
   Native float/double tests cover seeding, filtering, reseeding and failure
-  atomicity. Lean/ESBMC evidence and physical filtering-error bounds remain pending.
+  atomicity. ESBMC checks actual construction/reset and every update branch in
+  both formats with the fixed-array proof backend: reseed and first-sample
+  precedence, exact scalar-format recurrence, failure priority, complete history
+  frame, input purity and accessor identity. Finite history has a base and an
+  inductive update step, not a finite trace argument. The existing real affine
+  filter, constant-input, convex-bound and residual theorems apply component-wise
+  with this same fixed coefficient; they are reused, not counted as new theorems.
+  Adapter cadence/source coordination and physical filtering-error bounds remain
+  separate obligations.
 
 ### R-MAGNETOMETER-RESET: fixed-field heading and covariance reset
 

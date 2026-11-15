@@ -18,7 +18,8 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1975 '^PLAN'
+    check_count 1979 '^PLAN'
+    check_count 4 'magnetic-runtime-'
     check_count 32 'height-'
     check_count 32 'accelerometer-binary'
     check_count 28 'navigation-recovery-'
@@ -238,8 +239,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 196 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1975 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 198 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1979 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -271,6 +272,21 @@ check_plan()
     [[ -z "$(comm -23 <("${RUNNER}" scalar --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] ||
         fail 'scalar dependency profile is not in the full inventory'
 }
+
+check_magnetic_runtime_arguments()
+(
+    local COUNT=0
+    verify()
+    {
+        local ENTRY="$1"
+        shift
+        [[ "${SOURCE_FILE}" == "${PROOF_DIR}/magnetometer_filter.cpp" && "${ENTRY}" == "verify_magnetic_filter_${KIND}" ]] || fail 'wrong magnetic runtime source/entry'
+        [[ "$*" == "--proof-unwind 16 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" ]] || fail 'wrong magnetic runtime arguments'
+        COUNT=$((COUNT + 1))
+    }
+    run_magnetic_runtime_suite
+    [[ "${COUNT}" == 4 ]] || fail 'magnetic runtime matrix incomplete'
+)
 
 check_accelerometer_arguments()
 (
@@ -1854,6 +1870,7 @@ case "${1:-}" in
 esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
+check_magnetic_runtime_arguments
 check_accelerometer_arguments
 check_height_arguments
 check_navigation_recovery_arguments
@@ -1880,7 +1897,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1975 profiles; 196 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1979 profiles; 198 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

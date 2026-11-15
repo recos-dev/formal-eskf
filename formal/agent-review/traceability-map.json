@@ -3328,7 +3328,7 @@
     },
     {
       "id": "E-INNOV",
-      "title": "Componentwise innovation gate and atomic diagnostics; Lean and ESBMC evidence pending",
+      "title": "Componentwise innovation gate: exact-real interpretation and actual IEEE diagnostics, status and aliases",
       "references": {
         "spec": [
           {
@@ -3336,14 +3336,52 @@
             "symbol": "### E-INNOV: componentwise innovation gate"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/Innovation.lean",
+            "symbol": "def innovationRatio"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Innovation.lean",
+            "symbol": "def innovationRejected"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Innovation.lean",
+            "symbol": "theorem innovationRatio_nonneg"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Innovation.lean",
+            "symbol": "theorem innovationRatio_le_one_iff"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Innovation.lean",
+            "symbol": "theorem innovationRatio_boundary"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Innovation.lean",
+            "symbol": "theorem innovationRatio_neg"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Innovation.lean",
+            "symbol": "theorem innovationRejected_iff"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Innovation.lean",
+            "symbol": "theorem innovationAccepted_boundary"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/eskf/innovation.hpp",
             "symbol": "Status check_innovation("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/innovation.cpp",
+            "symbol": "void verify_innovation("
+          }
+        ]
       }
     },
     {

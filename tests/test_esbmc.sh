@@ -18,7 +18,8 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1554 '^PLAN'
+    check_count 1584 '^PLAN'
+    check_count 30 'innovation-binary'
     check_count 2 'observations-.*-rotation-producer'
     check_count 16 'observations-.*-jacobian'
     check_count 64 'observations-.*-caller-alias'
@@ -75,6 +76,11 @@ check_plan()
     check_count 16 'approx0.*actual-exp-coefficient'
     check_count 66 'approx[01]-standard'
     for BINARY64 in 0 1; do
+        for SIZE in 1 2 3; do
+            for ALIAS in 0 1 2 3 4; do
+                check_count 1 "innovation-binary$((32 + 32 * BINARY64))-size${SIZE}-alias${ALIAS}[[:space:]]"
+            done
+        done
         for SIZE in 3 15; do
             for COLUMNS in 1 2 3; do
                 BASE_PROFILE="step-correction-binary$((32 + 32 * BINARY64))-${SIZE}x${COLUMNS}"
@@ -208,8 +214,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 127 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1554 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 128 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1584 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -231,10 +237,33 @@ check_plan()
     [[ "$("${RUNNER}" linalg --list | wc -l)" == 348 ]] || fail 'linalg operation/backend/shape coverage changed'
     [[ "$("${RUNNER}" scalar --list | wc -l)" == 32 ]] || fail 'scalar format/alias/dependency coverage changed'
     [[ "$("${RUNNER}" observations --list | wc -l)" == 82 ]] || fail 'observation model/format/alias coverage changed'
+    [[ "$("${RUNNER}" innovation --list | wc -l)" == 30 ]] || fail 'innovation format/size/alias coverage changed'
     # The standalone scalar selection reuses, rather than duplicates, old proofs.
     [[ -z "$(comm -23 <("${RUNNER}" scalar --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] ||
         fail 'scalar dependency profile is not in the full inventory'
 }
+
+check_innovation_arguments()
+(
+    local COUNT=0
+    verify()
+    {
+        local BINARY64 SIZE ALIAS
+        local -a EXPECTED
+        BINARY64=$((COUNT / 15))
+        SIZE=$((COUNT / 5 % 3 + 1))
+        ALIAS=$((COUNT % 5))
+        EXPECTED=(--proof-unwind 6 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+            -D "FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${SIZE}" -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" --cvc5)
+        [[ "$1" == verify_innovation && "${SOURCE_FILE}" == "${PROOF_DIR}/innovation.cpp" ]] ||
+            fail 'innovation source or entry point changed'
+        shift
+        [[ "$*" == "${EXPECTED[*]}" ]] || fail "wrong innovation scalar, shape, alias or solver: ${PROFILE}"
+        COUNT=$((COUNT + 1))
+    }
+    run_innovation_suite
+    [[ "${COUNT}" == 30 ]] || fail 'innovation matrix incomplete'
+)
 
 check_prediction_rejection_arguments()
 (
@@ -1425,6 +1454,7 @@ case "${1:-}" in
 esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
+check_innovation_arguments
 check_prediction_rejection_arguments
 check_jacobian_arguments
 check_reset_arguments
@@ -1437,7 +1467,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1554 profiles; 127 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1584 profiles; 128 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

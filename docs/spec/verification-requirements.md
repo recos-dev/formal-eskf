@@ -235,7 +235,7 @@ This pure operation consumes a fixed-size innovation vector `r`, the diagonal of
 - On success, publish every finite nonnegative ratio and the aggregate rejection flag, even when rejected. `success` reports valid diagnostics, not permission to fuse. The caller must require both success and no rejection before treating the gate as passed.
 - On failure, preserve the entire diagnostic output. Its vector may alias either complete input vector; otherwise inputs are unchanged. Do not exit early on an outlier and miss invalid later axes. No estimator state or covariance is modified.
 
-Native tests cover binary32/binary64 and dimensions 1, 2 and 3. Lean and ESBMC evidence for this new requirement is pending; existing correction proofs do not cover it. `R-MEASUREMENT-FUSION` composes the gate with correction; sensor-specific settings and deployment wiring remain caller/runtime work.
+Lean establishes the exact-real ratio, sign invariance, inclusive boundary and componentwise aggregation. The `innovation` ESBMC suite checks the actual production body for binary32/binary64, dimensions 1/2/3 and all five whole-vector alias partitions, with arbitrary IEEE inputs and old diagnostics. It covers ordered statuses, every computed ratio and atomic publication; no arithmetic summary or success premise is used. Floating-point decisions need not agree with the exact-real boundary. Native tests provide additional regression evidence. `R-MEASUREMENT-FUSION` composes the gate with correction; sensor-specific settings and deployment wiring remain separate obligations. See the [execution and review record](../verification-extensions-20261115.md).
 
 ## Magnetic aiding
 

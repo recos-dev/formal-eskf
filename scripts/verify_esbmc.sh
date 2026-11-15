@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,7 +37,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -51,6 +51,7 @@ parse_arguments()
                 printf 'linalg selects actual storage/access, block/segment, arithmetic and reduction producers for the enumerated shapes. all also runs the reused normalization, product and covariance dependencies.\n'
                 printf 'scalar selects IEEE primitives, observed StandardMath dispatch and checked wrappers/aliases, plus reused wrapper/root dependencies. Pure libm summaries do not prove target library accuracy.\n'
                 printf 'observations selects eight sensor models/Jacobians and checked wrappers with ESKF_MAG_TILT=0 and all state/covariance aliases. all also runs the matching E-STEP-CORRECT/E-CORRECT/F-SOLVE dependencies; physical model validity and magnetic tilt protection are not claimed.\n'
+                printf 'innovation selects the actual componentwise gate for binary32/64, sizes 1/2/3 and all five vector alias partitions. No arithmetic summaries or restricted input ranges.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -867,6 +868,21 @@ run_observations_suite()
     done
 }
 
+run_innovation_suite()
+{
+    local BINARY64 SIZE ALIAS
+    SOURCE_FILE="${PROOF_DIR}/innovation.cpp"
+    for BINARY64 in 0 1; do
+        for SIZE in 1 2 3; do
+            for ALIAS in 0 1 2 3 4; do
+                PROFILE="innovation-binary$((32 + 32 * BINARY64))-size${SIZE}-alias${ALIAS}"
+                verify verify_innovation --proof-unwind 6 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                    -D "FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${SIZE}" -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" --cvc5
+            done
+        done
+    done
+}
+
 run_scalar_suite()
 {
     local BINARY64 KIND ALIAS MAX_ALIAS BASE_PROFILE
@@ -963,6 +979,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == observations ]]; then
         run_observations_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == innovation ]]; then
+        run_innovation_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

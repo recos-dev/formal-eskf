@@ -18,7 +18,8 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1877 '^PLAN'
+    check_count 1905 '^PLAN'
+    check_count 28 'navigation-recovery-'
     check_count 40 'navigation-reset-'
     check_count 7 'gnss-lifecycle-'
     check_count 14 'gnss-quality-binary'
@@ -235,8 +236,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 169 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1877 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 174 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1905 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -268,6 +269,27 @@ check_plan()
     [[ -z "$(comm -23 <("${RUNNER}" scalar --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] ||
         fail 'scalar dependency profile is not in the full inventory'
 }
+
+check_navigation_recovery_arguments()
+(
+    local COUNT=0
+    verify()
+    {
+        local ENTRY="$1" BASE="--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${SIZE:-1} -D ESKF_MAG_TILT=0"
+        shift
+        [[ "${SOURCE_FILE}" == "${PROOF_DIR}/navigation_recovery.cpp" ]] || fail 'wrong navigation recovery source'
+        case "${PROFILE}" in
+            *-limit_product|*-clamp) [[ "${ENTRY}" == "verify_navigation_${KIND}" && "$*" == "--proof-unwind 230 --cvc5 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=1 -D ESKF_MAG_TILT=0" ]] || fail 'wrong recovery scalar arguments' ;;
+            *-diagnostics) [[ "${ENTRY}" == verify_navigation_diagnostics && "$*" == "${BASE} -D FORMAL_ESKF_PROOF_RECOVERY_BOUNDARY=1" ]] || fail 'wrong recovery gate producer arguments' ;;
+            *-limit) [[ "${ENTRY}" == verify_navigation_limit && "$*" == "${BASE} --cvc5" ]] || fail 'wrong recovery limit arguments' ;;
+            *-caller-alias*) [[ "${ENTRY}" == verify_navigation_recovery && "$*" == "${BASE} -D FORMAL_ESKF_PROOF_RECOVERY_BOUNDARY=2 -D FORMAL_ESKF_PROOF_STEP_ALIAS=${ALIAS}" ]] || fail 'wrong recovery caller arguments' ;;
+            *) fail 'unknown recovery profile' ;;
+        esac
+        COUNT=$((COUNT + 1))
+    }
+    run_navigation_recovery_suite
+    [[ "${COUNT}" == 28 ]] || fail 'recovery matrix incomplete'
+)
 
 check_navigation_reset_arguments()
 (
@@ -1760,6 +1782,7 @@ case "${1:-}" in
 esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
+check_navigation_recovery_arguments
 check_navigation_reset_arguments
 check_gnss_lifecycle_arguments
 check_gnss_quality_arguments
@@ -1783,7 +1806,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1877 profiles; 169 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1905 profiles; 174 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

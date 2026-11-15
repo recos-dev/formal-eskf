@@ -1368,7 +1368,22 @@ Alignment covers predicates, limiting and fault-consumption order. Our grouped
 Joseph correction and latest-prior diagnostics differ from PX4's scalar update
 schedule; replay cadence/batching and missing-data safeguards also differ.
 Native backend and replay tests are evidence for these contracts, not flight
-accuracy or full EKF2 equivalence. Lean/ESBMC evidence remains pending.
+accuracy or full EKF2 equivalence. `NavigationRecovery.lean` proves exact-real
+clipping bounds, sign, idempotence, selected-axis isolation and the resulting
+ratio bound. This is not a rounded-boundary re-gating guarantee.
+
+`navigation_recovery.cpp` checks actual gate diagnostic production, the actual
+limiter and both public recovery callers in binary32/64 with all independent
+state/P alias modes. The limiter retains raw diagnostics, uses the selected
+variance for its root request and handles arbitrary scalar-library returns.
+The public callers preserve strict policy boundaries and publish only after
+successful correction. Same-type covariance/correction contracts and the
+separately checked exact limiter relation bound the composed caller proof;
+they are not proofs of external backend internals. Shared IEEE scalar lemmas
+establish nonnegative finite limits and sign/bounds under an explicit finite,
+nonnegative-root premise. Root accuracy, machine-checked real-to-C++ refinement,
+external source permission and actual module/replay health ordering remain
+separate obligations.
 
 The PX4 module connects the same checked velocity/height entry points.
 Velocity consumes the preceding detector verdict and receiver-reported speed

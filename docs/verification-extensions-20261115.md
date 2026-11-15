@@ -658,3 +658,55 @@ Evidence: `output/runtime-proof-continuation-20261115/navigation-reset-manifest.
 `navigation-reset-final/results.json`, `navigation-reset-native-mutations.json`,
 `navigation-reset-mutations.json`, `navigation-reset-lean.log`, native/tooling
 logs and retained unsuccessful attempts.
+
+## Vertical innovation recovery
+
+Seven Lean theorems cover real clipping bounds, unchanged in-bound values,
+sign, idempotence, axis isolation and the resulting innovation ratio. They do
+not justify re-gating a rounded boundary or establish sensor health.
+
+Twenty-eight ESBMC profiles (five entry points) cover binary32/64: shared scalar
+bound/sign lemmas, actual gate diagnostic production, actual vertical limiting,
+and both height/GNSS velocity callers with all four independent state/P aliases.
+The producer establishes positive finite variance and valid raw diagnostics.
+The limiter checks the exact root argument and arbitrary root return, its error
+paths, selected axis and unchanged raw diagnostics. Composed callers reuse the
+separately checked exact limiter relation and same-type covariance/correction
+contracts, checking complete arguments, strict fault/accuracy/ratio conditions,
+call order, no re-gating, failure frames and publication only after actual success.
+Public failures remain in scope. The proof backend is the same fixed-array
+`solve_proof::Backend` used by the correction dependencies.
+
+Accepted results: 28/28 profiles in 681.41 s, cgroup peak 1,049,473,024 bytes
+(0.98 GiB), no OOM/swap; 120 s / 4 GiB internal and 6 GiB group limits. Full Lean
+passes with `--wfail` (3,422 jobs). Fourteen ESBMC mutation counterexamples were
+found, with eight matching positive profiles reused from the completed matrix.
+All twelve mutation patterns also have passing native controls and failing
+native witnesses in both formats (24 + 24). Patterns cover wrong root/axis,
+ignored permission, overwritten raw diagnostics, ignored scalar failure,
+unbounded innovation, bypassed rejection, inclusive strict thresholds, ignored
+IMU fault, correcting with raw residual and misreporting correction failure.
+Native navigation-measurement tests, 100 offline review-tool tests, runner
+inventory, reference resolution, formatting and ShellCheck pass. Inventory:
+1,905 profiles / 174 entry points. No full AI audit.
+
+Retained failed attempts: Bitwuzla exhausted memory on the combined limiter;
+CVC5 exhausted memory on an expanded caller. The accepted split proves the
+actual limiter once, then composes its exact relation. Shared scalar bound
+lemmas avoid repeating identical arithmetic for every shape/alias. CVC5 is used
+for scalar/limiter obligations; Bitwuzla for diagnostics/callers. Initial native
+mutation linkage lacked an unused nondeterministic scalar symbol; the fixture
+now aborts if that unexpected path is called. Repeated symbolic mutation search
+was stopped after the recorded 14 counterexamples; all fixed witnesses were
+checked natively. Interrupted runs, parse/link failures and timeouts are not passes.
+
+Self-review checked every production branch, producer/consumer type and premise,
+all input/output fields, and target assertion failures. It caught and added the
+root-argument observer before the accepted matrix. IEEE boundedness requires a
+finite nonnegative scalar root; root accuracy, target backends, physical health,
+module/replay scheduling and machine-checked Lean-to-C++ refinement remain
+separate. Production and unrelated drafts are unchanged. Evidence:
+`output/runtime-proof-continuation-20261115/navigation-recovery-manifest.json`,
+`navigation-recovery-final/results.json`, `navigation-recovery-mutations.json`,
+`navigation-recovery-native-mutations.json`, Lean/native/tooling logs and retained
+unsuccessful attempts.

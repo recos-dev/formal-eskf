@@ -4252,7 +4252,7 @@
     },
     {
       "id": "R-GNSS-VERTICAL-RECOVERY",
-      "title": "Bounded vertical innovations during IMU faults, including PX4 module wiring; Lean and ESBMC evidence pending",
+      "title": "Vertical recovery: real clipping bounds and scoped IEEE diagnostics, limiter and atomic callers; module/replay health ordering and root accuracy remain separate",
       "references": {
         "spec": [
           {
@@ -4260,7 +4260,44 @@
             "symbol": "### R-GNSS-VERTICAL-RECOVERY: bounded vertical innovations during IMU faults"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/NavigationRecovery.lean",
+            "symbol": "def boundedInnovation"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationRecovery.lean",
+            "symbol": "theorem boundedInnovation_bounds"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationRecovery.lean",
+            "symbol": "theorem boundedInnovation_unchanged"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationRecovery.lean",
+            "symbol": "theorem boundedInnovation_sign"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationRecovery.lean",
+            "symbol": "theorem boundedInnovation_idempotent"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationRecovery.lean",
+            "symbol": "theorem boundedInnovation_gate"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationRecovery.lean",
+            "symbol": "def limitInnovationAxis"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationRecovery.lean",
+            "symbol": "theorem limitInnovationAxis_other"
+          },
+          {
+            "file": "formal/lean/FormalESKF/NavigationRecovery.lean",
+            "symbol": "theorem limitInnovationAxis_selected"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/runtime/navigation.hpp",
@@ -4315,7 +4352,28 @@
             "symbol": "void FormalEskf::check_gnss_velocity_observation("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/navigation_recovery.cpp",
+            "symbol": "void verify_navigation_limit_product"
+          },
+          {
+            "file": "formal/cpp/esbmc/navigation_recovery.cpp",
+            "symbol": "void verify_navigation_clamp"
+          },
+          {
+            "file": "formal/cpp/esbmc/navigation_recovery.cpp",
+            "symbol": "void verify_navigation_diagnostics"
+          },
+          {
+            "file": "formal/cpp/esbmc/navigation_recovery.cpp",
+            "symbol": "void verify_navigation_limit"
+          },
+          {
+            "file": "formal/cpp/esbmc/navigation_recovery.cpp",
+            "symbol": "void verify_navigation_recovery"
+          }
+        ]
       }
     },
     {

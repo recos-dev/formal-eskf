@@ -18,7 +18,11 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1686 '^PLAN'
+    check_count 1778 '^PLAN'
+    check_count 92 'fusion-binary'
+    check_count 12 'fusion-.*-preparation'
+    check_count 32 'fusion-.*-navigation'
+    check_count 48 'fusion-.*-[0-9]+x[0-9]+-alias'
     check_count 24 'magnetic-binary'
     check_count 6 'bias-binary.*-gain15x'
     check_count 24 'bias-binary.*-step15x'
@@ -218,8 +222,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 133 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1686 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 136 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1778 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -245,10 +249,50 @@ check_plan()
     [[ "$("${RUNNER}" bias --list | wc -l)" == 78 ]] || fail 'bias gain/transaction/wrapper coverage changed'
     [[ "$("${RUNNER}" magnetic --list | wc -l)" == 26 ]] || fail 'magnetic producer/caller coverage changed'
     [[ -z "$(comm -23 <("${RUNNER}" magnetic --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] || fail 'magnetic dependency missing from all'
+    [[ "$("${RUNNER}" fusion --list | wc -l)" == 92 ]] || fail 'fusion selection changed'
     # The standalone scalar selection reuses, rather than duplicates, old proofs.
     [[ -z "$(comm -23 <("${RUNNER}" scalar --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] ||
         fail 'scalar dependency profile is not in the full inventory'
 }
+
+check_fusion_arguments()
+(
+    local COUNT=0
+    verify()
+    {
+        local ENTRY="$1" BITS=0 REST SIZE MEASUREMENT MODEL
+        local -a EXPECTED
+        shift
+        [[ "${PROFILE}" == fusion-binary64-* ]] && BITS=1
+        REST="${PROFILE#fusion-binary*-}"
+        if [[ "${REST}" == navigation* ]]; then
+            MODEL="${REST#navigation}"; MODEL="${MODEL%%-*}"
+            case "${MODEL}" in 0|2) MEASUREMENT=2 ;; 1) MEASUREMENT=1 ;; 3) MEASUREMENT=3 ;; *) fail 'unknown navigation model' ;; esac
+            SIZE=15
+        else
+            SIZE="${REST%%x*}"; MEASUREMENT="${REST#*x}"; MEASUREMENT="${MEASUREMENT%%-*}"
+        fi
+        EXPECTED=(--proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}"
+            -D "FORMAL_ESKF_PROOF_STATE_SIZE=${SIZE}" -D "FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${MEASUREMENT}"
+            -D "FORMAL_ESKF_PROOF_SIZE=${MEASUREMENT}")
+        case "${REST}" in
+            navigation*)
+                [[ "${ENTRY}" == verify_navigation_fusion && "${SOURCE_FILE}" == "${PROOF_DIR}/navigation_fusion.cpp" ]] || fail 'wrong navigation entry/source'
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_OBSERVATION=${MODEL}" -D ESKF_MAG_TILT=0 -D "FORMAL_ESKF_PROOF_ALIAS=${REST##*alias}") ;;
+            *-preparation)
+                [[ "${ENTRY}" == verify_covariance_preparation && "${SOURCE_FILE}" == "${PROOF_DIR}/correction.cpp" ]] || fail 'wrong preparation entry/source'
+                EXPECTED+=(-D FORMAL_ESKF_PROOF_CORRECTION_CONTRACT=1) ;;
+            *-alias*)
+                [[ "${ENTRY}" == verify_measurement_fusion && "${SOURCE_FILE}" == "${PROOF_DIR}/measurement_fusion.cpp" ]] || fail 'wrong fusion entry/source'
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_STEP_ALIAS=${REST##*alias}") ;;
+            *) fail 'unknown fusion profile' ;;
+        esac
+        [[ "$*" == "${EXPECTED[*]}" ]] || fail "wrong fusion arguments: ${PROFILE}"
+        COUNT=$((COUNT + 1))
+    }
+    run_fusion_suite
+    [[ "${COUNT}" == 92 ]] || fail 'fusion matrix incomplete'
+)
 
 check_magnetic_arguments()
 (
@@ -1544,6 +1588,7 @@ case "${1:-}" in
 esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
+check_fusion_arguments
 check_magnetic_arguments
 check_bias_arguments
 check_innovation_arguments
@@ -1559,7 +1604,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1686 profiles; 133 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1778 profiles; 136 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

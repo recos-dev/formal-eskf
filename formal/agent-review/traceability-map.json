@@ -3578,7 +3578,7 @@
     },
     {
       "id": "R-MEASUREMENT-FUSION",
-      "title": "Same-prior gated correction and independent observation groups; Lean and ESBMC evidence pending",
+      "title": "Portable same-prior gated correction and four navigation groups; scoped ESBMC composition, replay/module wiring remains open",
       "references": {
         "spec": [
           {
@@ -3586,7 +3586,24 @@
             "symbol": "### R-MEASUREMENT-FUSION: gated correction of one observation group"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/Innovation.lean",
+            "symbol": "theorem innovationRejected_iff"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Innovation.lean",
+            "symbol": "theorem innovationRatio_le_one_iff"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Correction.lean",
+            "symbol": "theorem correctIns_invariants"
+          },
+          {
+            "file": "formal/lean/FormalESKF/Correction.lean",
+            "symbol": "theorem correctAhrs_invariants"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/runtime/measurement_fusion.hpp",
@@ -3641,7 +3658,28 @@
             "symbol": "void replay("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/correction.cpp",
+            "symbol": "void verify_covariance_preparation("
+          },
+          {
+            "file": "formal/cpp/esbmc/measurement_fusion.cpp",
+            "symbol": "void verify_measurement_fusion("
+          },
+          {
+            "file": "formal/cpp/esbmc/navigation_fusion.cpp",
+            "symbol": "void verify_navigation_fusion("
+          },
+          {
+            "file": "formal/cpp/esbmc/innovation.cpp",
+            "symbol": "void verify_innovation("
+          },
+          {
+            "file": "formal/cpp/esbmc/step_correction.cpp",
+            "symbol": "void verify_correction_step("
+          }
+        ]
       }
     },
     {

@@ -589,4 +589,58 @@ void verify_correction(Covariance prior, Residual residual, Jacobian H, Noise V,
                    "E-CORRECT: all original inputs remain unchanged");
 }
 
+// Public two-output preparation frame used by runtime innovation gating.
+// Uses the same independently discharged arithmetic/validation/finalizer
+// boundaries as verify_correction; it does not assume successful preparation.
+void verify_covariance_preparation(Covariance prior, Residual residual, Jacobian H, Noise V, Scalar minimum,
+                                   Gain cross_output, Noise innovation_output, Results results)
+{
+    constexpr bool configured = FORMAL_ESKF_PROOF_CORRECTION_CONTRACT == 1 && !FORMAL_ESKF_PROOF_ARITHMETIC_CONTRACT &&
+                                measurement_size <= 3U && !FORMAL_ESKF_PROOF_PRODUCT_BOUNDARY &&
+                                !FORMAL_ESKF_PROOF_FINITE_CONTRACT;
+    __ESBMC_assert(configured, "Runner error: covariance preparation requires only the existing correction boundaries");
+    if constexpr (!configured)
+    {
+        return;
+    }
+    auto const old_prior = prior;
+    auto const old_residual = residual;
+    auto const old_H = H;
+    auto const old_V = V;
+    auto const old_cross = cross_output;
+    auto const old_innovation = innovation_output;
+    Calls::observe = false;
+    Calls::prior = &old_prior;
+    Calls::H = &old_H;
+    Calls::V = &old_V;
+    Calls::r = &old_residual;
+    Calls::results = &results;
+    Calls::minimum = minimum;
+    Calls::correction_output = nullptr;
+    Calls::products = Calls::symmetries = Calls::finishes = Calls::solves = Calls::sandwiches = Calls::validations =
+        Calls::finites = Calls::adds = Calls::subtracts = 0U;
+    bool const validated = results.input_status == Status::success;
+    bool const prepared = validated && results.cross_finite;
+    Status const expected = !validated  ? results.input_status
+                            : !prepared ? Status::non_finite_result
+                                        : results.innovation_status;
+    auto const status =
+        formal_eskf::correction_covariances(prior, residual, H, V, minimum, cross_output, innovation_output);
+    __ESBMC_assert(
+        status == expected && Calls::validations == 1U && Calls::symmetries == 0U &&
+            Calls::products == (validated ? 1U : 0U) + (prepared ? 1U : 0U) &&
+            Calls::finites == (validated ? 1U : 0U) && Calls::adds == (prepared ? 1U : 0U) &&
+            Calls::finishes == (prepared ? 1U : 0U) && Calls::solves == 0U && Calls::sandwiches == 0U &&
+            Calls::subtracts == 0U,
+        "R-MEASUREMENT-FUSION: preparation propagates first failure and never solves for gain or performs Joseph");
+    __ESBMC_assert(
+        status == Status::success
+            ? same_matrix(cross_output, results.cross_covariance) && same_matrix(innovation_output, results.innovation)
+            : same_matrix(cross_output, old_cross) && same_matrix(innovation_output, old_innovation),
+        "R-MEASUREMENT-FUSION: actual covariance preparation publishes both results or preserves both outputs");
+    __ESBMC_assert(same_matrix(prior, old_prior) && same_matrix(residual, old_residual) && same_matrix(H, old_H) &&
+                       same_matrix(V, old_V),
+                   "R-MEASUREMENT-FUSION: covariance preparation preserves the entire original prior and observation");
+}
+
 int main() { return 0; }

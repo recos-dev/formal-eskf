@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,7 +37,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -54,6 +54,7 @@ parse_arguments()
                 printf 'innovation selects the actual componentwise gate for binary32/64, sizes 1/2/3 and all five vector alias partitions. No arithmetic summaries or restricted input ranges.\n'
                 printf 'bias selects actual row constraints, controlled INS correction transactions and M0 sensor forwarding, with all six permissions symbolic. M1 magnetic projection is a separate obligation.\n'
                 printf 'magnetic selects M1 projector/gain producers and AHRS/INS caller paths with symbolic INS bias masks, plus the reused rotation producer. E-CORRECT/F-SOLVE/injection/reset dependencies and numerical bounds remain separate.\n'
+                printf 'fusion selects public covariance preparation, portable check/fuse control flow and four navigation wrappers. It reuses E-INNOV/E-CORRECT/E-STEP/E-BIAS producer contracts; replay/module wiring remains separate.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -870,6 +871,44 @@ run_observations_suite()
     done
 }
 
+run_fusion_suite()
+{
+    local BINARY64 SIZE MEASUREMENT ALIAS MODEL
+    local -a ARGUMENTS
+    for BINARY64 in 0 1; do
+        for SIZE in 3 15; do
+            for MEASUREMENT in 1 2 3; do
+                ARGUMENTS=(--proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+                    -D "FORMAL_ESKF_PROOF_STATE_SIZE=${SIZE}" -D "FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${MEASUREMENT}"
+                    -D "FORMAL_ESKF_PROOF_SIZE=${MEASUREMENT}")
+                SOURCE_FILE="${PROOF_DIR}/correction.cpp"
+                PROFILE="fusion-binary$((32 + 32 * BINARY64))-${SIZE}x${MEASUREMENT}-preparation"
+                verify verify_covariance_preparation "${ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_CORRECTION_CONTRACT=1
+                SOURCE_FILE="${PROOF_DIR}/measurement_fusion.cpp"
+                for ALIAS in 0 1 2 3; do
+                    PROFILE="fusion-binary$((32 + 32 * BINARY64))-${SIZE}x${MEASUREMENT}-alias${ALIAS}"
+                    verify verify_measurement_fusion "${ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_STEP_ALIAS=${ALIAS}"
+                done
+            done
+        done
+        SOURCE_FILE="${PROOF_DIR}/navigation_fusion.cpp"
+        for MODEL in 0 1 2 3; do
+            case "${MODEL}" in
+                0|2) MEASUREMENT=2 ;;
+                1) MEASUREMENT=1 ;;
+                3) MEASUREMENT=3 ;;
+            esac
+            for ALIAS in 0 1 2 3; do
+                PROFILE="fusion-binary$((32 + 32 * BINARY64))-navigation${MODEL}-alias${ALIAS}"
+                verify verify_navigation_fusion --proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                    -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D "FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${MEASUREMENT}" \
+                    -D "FORMAL_ESKF_PROOF_SIZE=${MEASUREMENT}" -D "FORMAL_ESKF_PROOF_OBSERVATION=${MODEL}" \
+                    -D ESKF_MAG_TILT=0 -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}"
+            done
+        done
+    done
+}
+
 run_magnetic_suite()
 {
     local BINARY64 SIZE ALIAS
@@ -1061,6 +1100,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == magnetic ]]; then
         run_magnetic_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == fusion ]]; then
+        run_fusion_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

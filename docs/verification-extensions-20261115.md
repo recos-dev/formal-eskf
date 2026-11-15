@@ -184,3 +184,81 @@ Production code, API, defaults and numerical behavior are unchanged. Local
 commands, source/log hashes, producer dependencies and failed attempts are in
 `output/proof-extension-20261115/magnetic-manifest.json`, `magnetic-reviewed/`,
 mutation/witness records and native/Lean/tool logs.
+
+## R-MEASUREMENT-FUSION
+
+This group verifies the portable check/fuse APIs and four navigation wrappers.
+It does not close the requirement's replay GNSS parameter, variance-setting or
+module-wiring clauses. Caller sequencing, observation independence and timing
+remain caller obligations; the existing native sequential-fusion case supports
+those uses but is not a formal caller-loop proof.
+
+The new public covariance-preparation frame checks first failure and two-output
+publication under the existing E-CORRECT validation/product/finalizer producer
+contracts. Generic check/fuse proofs execute actual nominal-state/sigma checks,
+diagonal extraction, diagnostic/result construction, gate/correction routing
+and output forwarding. They require the identical prior, residual, H, full V,
+normalization threshold and six INS permissions at correction. Gate rejection
+must skip correction; later correction failure retains valid gate diagnostics.
+All paths preserve separate inputs, and only fused may change both outputs.
+Check-only has no FusionDecision; the harness also checks its `passed()` and
+rejection fields before using the result constructor as a common oracle.
+
+The four named wrappers execute their actual finite-input checks, residuals and
+selector Jacobians, then forward every decision/status/diagnostic unchanged.
+Their profiles select M0 to reuse the observation harness support; none of these
+four APIs depends on the magnetic-projection macro. This does not claim coverage
+of runtime magnetic fusion.
+No finite, unit, PSD/SPD, successful-input or successful-intermediate assumption
+restricts the positive input domain. Arbitrary failed scratch results are
+admitted to check that callers do not consume them. All four legal whole-state/
+covariance alias arrangements are explicit; every covariance coefficient is
+checked. Preservation distinguishes signed zero and NaN classification; NaN
+payloads and floating-point exception flags are not proved. The six permissions
+remain symbolic together, without a 64-fold
+execution-profile expansion.
+
+| Evidence | Result |
+|---|---|
+| ESBMC preparation | 12/12: binary32/64 × state 3/15 × observation 1/2/3 |
+| ESBMC check/fuse | 48/48: the same shapes × four output aliases; check-only is symbolic |
+| ESBMC named wrappers | 32/32: two formats × four navigation models × four aliases |
+| Negative checks | Four mutations × both formats: 8/8 assertion counterexamples |
+| Native regression | Rebuilt measurement-fusion CTest entry passes |
+| Infrastructure | Offline ESBMC inventory/argument checks and 100 agent-review regression tests pass; formatting and ShellCheck pass |
+
+There is no new mathematical formula in this group. The existing Lean gate and
+correction theorems are linked as dependencies, not counted again or presented
+as a Lean proof of C++ control flow. Same-backend E-INNOV, E-CORRECT/F-SOLVE,
+E-BIAS-UPDATE and injection/reset producer evidence is reused, not all rerun.
+Existing correction helper bodies and profiles are unchanged: the addition to
+`correction.cpp` is a separate entry for its public preparation frame.
+
+Mutation checks substitute diag(V) for diag(S), bypass rejection, erase valid
+diagnostics after correction fails, or substitute the wrong navigation
+Jacobian. They validate sensitivity of the compositional harness assertions;
+timeouts do not count as detection. The initial partial batch was stopped to
+finish explicit control-flow braces in the new harnesses; the reviewed source matrix was then executed. Its first 30 preparation/generic
+profiles passed. The first navigation profile exposed the same conditional
+aggregate-reference checker issue recorded above: an equivalent compile-time
+branch in the oracle passed, with a native control agreeing with the original
+expression. Only navigation_fusion.cpp changed; the first 30 results remain
+applicable because their roots, headers and flags did not change or include that
+file. All 32 navigation profiles and the remaining generic/preparation profiles
+were then run on the corrected source. The manifest keeps both execution
+records and the exact retained-prefix dependency check. Failed/interrupted
+attempts do not count as passes.
+
+Self-review found no production behavior change. Failure precedence, aliases,
+full correlated V, bias permissions and fresh diagnostics are covered rather
+than assuming successful correction. External backend/target execution,
+floating-point numerical bounds and runtime source health remain outside this
+scope. No full AI audit or machine-checked Lean-to-C++ refinement was run.
+Local commands, source/log identities, timings and retained attempts are in
+`output/proof-extension-20261115/fusion-manifest.json`, `fusion-reviewed/`,
+mutation records and native/tool logs.
+
+The accepted 92 profiles took 1564.72 seconds in total. The two accepted
+execution scopes recorded an aggregate peak of 480,735,232 bytes, with no OOM.
+All queries retained 120 s / 4 GiB internal limits, a 150 s outer deadline,
+and the enforced 6 GiB group cap with group swap disabled.

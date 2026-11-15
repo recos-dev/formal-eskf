@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,7 +37,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -53,6 +53,7 @@ parse_arguments()
                 printf 'observations selects eight sensor models/Jacobians and checked wrappers with ESKF_MAG_TILT=0 and all state/covariance aliases. all also runs the matching E-STEP-CORRECT/E-CORRECT/F-SOLVE dependencies; physical model validity and magnetic tilt protection are not claimed.\n'
                 printf 'innovation selects the actual componentwise gate for binary32/64, sizes 1/2/3 and all five vector alias partitions. No arithmetic summaries or restricted input ranges.\n'
                 printf 'bias selects actual row constraints, controlled INS correction transactions and M0 sensor forwarding, with all six permissions symbolic. M1 magnetic projection is a separate obligation.\n'
+                printf 'magnetic selects M1 projector/gain producers and AHRS/INS caller paths with symbolic INS bias masks, plus the reused rotation producer. E-CORRECT/F-SOLVE/injection/reset dependencies and numerical bounds remain separate.\n'
                 exit 0
                 ;;
             *) fail "unknown argument: $1" ;;
@@ -869,6 +870,40 @@ run_observations_suite()
     done
 }
 
+run_magnetic_suite()
+{
+    local BINARY64 SIZE ALIAS
+    local -a ARGUMENTS
+    for BINARY64 in 0 1; do
+        # Reuse the existing producer in this standalone suite; all already
+        # schedules it through observations, so do not duplicate its profile.
+        if [[ "${SUITE}" == magnetic ]]; then
+            SOURCE_FILE="${PROOF_DIR}/observation_models.cpp"
+            PROFILE="observations-binary$((32 + 32 * BINARY64))-rotation-producer"
+            verify verify_observation_rotation --proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                -D FORMAL_ESKF_PROOF_OBSERVATION=4 -D ESKF_MAG_TILT=0
+        fi
+        ARGUMENTS=(--proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+            -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=3 -D FORMAL_ESKF_PROOF_SIZE=3 -D ESKF_MAG_TILT=1)
+        SOURCE_FILE="${PROOF_DIR}/magnetic_geometry.cpp"
+        PROFILE="magnetic-binary$((32 + 32 * BINARY64))-observation"
+        verify verify_magnetic_observation "${ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_STATE_SIZE=3
+        PROFILE="magnetic-binary$((32 + 32 * BINARY64))-projector"
+        verify verify_magnetic_projector "${ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_STATE_SIZE=3
+        for SIZE in 3 15; do
+            SOURCE_FILE="${PROOF_DIR}/magnetic_geometry.cpp"
+            PROFILE="magnetic-binary$((32 + 32 * BINARY64))-gain${SIZE}"
+            verify verify_magnetic_gain "${ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_STATE_SIZE=${SIZE}"
+            SOURCE_FILE="${PROOF_DIR}/magnetic_correction.cpp"
+            for ALIAS in 0 1 2 3; do
+                PROFILE="magnetic-binary$((32 + 32 * BINARY64))-state${SIZE}-alias${ALIAS}"
+                verify verify_magnetic_correction --proof-timeout 180s "${ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_STATE_SIZE=${SIZE}" \
+                    -D "FORMAL_ESKF_PROOF_STEP_ALIAS=${ALIAS}"
+            done
+        done
+    done
+}
+
 run_bias_suite()
 {
     local BINARY64 SIZE ALIAS MODEL
@@ -1023,6 +1058,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == bias ]]; then
         run_bias_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == magnetic ]]; then
+        run_magnetic_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

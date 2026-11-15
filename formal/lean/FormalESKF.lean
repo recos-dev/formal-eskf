@@ -27,3 +27,5 @@ import FormalESKF.LinearAlgebra
 import FormalESKF.Scalar
 import FormalESKF.Innovation
 import FormalESKF.ConstrainedGain
+
+import FormalESKF.MagneticGain

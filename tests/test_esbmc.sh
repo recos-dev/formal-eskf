@@ -18,7 +18,8 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1662 '^PLAN'
+    check_count 1686 '^PLAN'
+    check_count 24 'magnetic-binary'
     check_count 6 'bias-binary.*-gain15x'
     check_count 24 'bias-binary.*-step15x'
     check_count 48 'bias-binary.*-observation'
@@ -217,8 +218,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 129 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1662 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 133 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1686 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -242,10 +243,49 @@ check_plan()
     [[ "$("${RUNNER}" observations --list | wc -l)" == 82 ]] || fail 'observation model/format/alias coverage changed'
     [[ "$("${RUNNER}" innovation --list | wc -l)" == 30 ]] || fail 'innovation format/size/alias coverage changed'
     [[ "$("${RUNNER}" bias --list | wc -l)" == 78 ]] || fail 'bias gain/transaction/wrapper coverage changed'
+    [[ "$("${RUNNER}" magnetic --list | wc -l)" == 26 ]] || fail 'magnetic producer/caller coverage changed'
+    [[ -z "$(comm -23 <("${RUNNER}" magnetic --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] || fail 'magnetic dependency missing from all'
     # The standalone scalar selection reuses, rather than duplicates, old proofs.
     [[ -z "$(comm -23 <("${RUNNER}" scalar --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] ||
         fail 'scalar dependency profile is not in the full inventory'
 }
+
+check_magnetic_arguments()
+(
+    local COUNT=0 SUITE=all
+    verify()
+    {
+        local FUNCTION_NAME="$1" BINARY64=0 REST SIZE=3
+        local -a EXPECTED
+        shift
+        [[ "${PROFILE}" == magnetic-binary64-* ]] && BINARY64=1
+        REST="${PROFILE#magnetic-binary*-}"
+        if [[ "${REST}" == gain* ]]; then SIZE="${REST#gain}"; fi
+        if [[ "${REST}" == state* ]]; then SIZE="${REST#state}"; SIZE="${SIZE%%-*}"; fi
+        EXPECTED=(--proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+            -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=3 -D FORMAL_ESKF_PROOF_SIZE=3 -D ESKF_MAG_TILT=1
+            -D "FORMAL_ESKF_PROOF_STATE_SIZE=${SIZE}")
+        case "${REST}" in
+            observation) [[ "${FUNCTION_NAME}" == verify_magnetic_observation ]] || fail 'wrong magnetic observation entry' ;;
+            projector) [[ "${FUNCTION_NAME}" == verify_magnetic_projector ]] || fail 'wrong projector entry' ;;
+            gain*) [[ "${FUNCTION_NAME}" == verify_magnetic_gain ]] || fail 'wrong magnetic gain entry' ;;
+            state*)
+                [[ "${FUNCTION_NAME}" == verify_magnetic_correction ]] || fail 'wrong magnetic correction entry'
+                EXPECTED=(--proof-timeout 180s "${EXPECTED[@]}")
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_STEP_ALIAS=${REST##*alias}") ;;
+            *) fail 'unknown magnetic profile' ;;
+        esac
+        if [[ "${REST}" == state* ]]; then
+            [[ "${SOURCE_FILE}" == "${PROOF_DIR}/magnetic_correction.cpp" ]] || fail 'wrong magnetic caller source'
+        else
+            [[ "${SOURCE_FILE}" == "${PROOF_DIR}/magnetic_geometry.cpp" ]] || fail 'wrong magnetic producer source'
+        fi
+        [[ "$*" == "${EXPECTED[*]}" ]] || fail "wrong magnetic arguments: ${PROFILE}"
+        COUNT=$((COUNT + 1))
+    }
+    run_magnetic_suite
+    [[ "${COUNT}" == 24 ]] || fail 'magnetic profile matrix incomplete'
+)
 
 check_bias_arguments()
 (
@@ -1504,6 +1544,7 @@ case "${1:-}" in
 esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
+check_magnetic_arguments
 check_bias_arguments
 check_innovation_arguments
 check_prediction_rejection_arguments
@@ -1518,7 +1559,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1662 profiles; 129 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1686 profiles; 133 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

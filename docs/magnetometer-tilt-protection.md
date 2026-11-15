@@ -3,8 +3,10 @@
 Implemented for AHRS and INS with compile-time `ESKF_MAG_TILT=1` by default.
 Set it to `0` to retain the original full-field correction. Protection restricts
 the attitude correction to rotation about navigation Down; it is not magnetic-disturbance detection or a
-complete heading-fusion policy. The new projection has native tests, but its
-Lean/ESBMC evidence and floating-point tilt-error bound remain pending.
+complete heading-fusion policy. Exact projection geometry and the scoped C++
+correction path now have Lean/ESBMC evidence; the floating-point tilt-error bound
+and runtime fusion/lifecycle proofs remain separate obligations. See the
+[verification record](verification-extensions-20261115.md#e-mag-tilt).
 
 ## Current behavior
 
@@ -342,13 +344,13 @@ remain possible and protected tilt variance is not spuriously reduced.
 Separate builds check projection enabled and disabled, projection overflow,
 ordinary correction failures and the original full-field behavior when disabled.
 Invalid macro values fail compilation, not a runtime status check. These are
-regression tests, not formal proofs. The traceability entry `E-MAG-TILT` records the missing Lean/ESBMC evidence:
-projection/tilt identities, consistent constrained gain, finite-precision failure
-and publication behavior. Existing `E-OBS` and correction profiles cover the
-unrestricted path only (`ESKF_MAG_TILT=0`); their results must not be extended to
-the default protected build. The ESBMC runner explicitly selects `0` for E-OBS,
-and the harness rejects a mismatched configuration instead of claiming projection
-coverage.
+regression tests, not formal proofs. The dedicated `E-MAG-TILT` evidence now
+covers exact projection/tilt identities and the M1 observation/projector/gain
+bodies, consistent constrained gain, status propagation and publication behavior.
+It reuses the existing correction and injection/reset producers; numerical tilt
+bounds remain open. E-OBS still explicitly selects `ESKF_MAG_TILT=0` and rejects
+a mismatched configuration. The `magnetic` suite separately selects M1, including
+all INS bias permissions; an unrestricted-path result alone does not prove it.
 
 Runtime-wrapper validation additionally covers field geometry and threshold
 boundaries, angle wrapping, weak horizontal fields, tilted/90-degree-pitch

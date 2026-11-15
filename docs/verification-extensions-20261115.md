@@ -129,3 +129,58 @@ all 64 masks. No production source, API, default or numerical behavior changed.
 No full AI audit was run. Local evidence and hashes are in
 `output/proof-extension-20261115/bias-manifest.json`, `bias-accepted/`, the
 `bias-review*-results.json` records, and the Lean/native/tool logs.
+
+## E-MAG-TILT
+
+Lean adds 14 exact-real theorems (12 public, two helpers): the body Down vector
+is unit for a unit prior, its outer product is symmetric/idempotent, projected
+corrections are parallel to Down, and right-multiplicative injection preserves
+tilt. The normalization theorem covers any nonzero parallel-axis quaternion
+candidate, including the Taylor candidate without equating its angle to Exp.
+The existing Joseph PSD theorem applies to the same constrained gain.
+
+ESBMC checks the actual M1 observation preparation, ordered projector product,
+and projected attitude block. Separate caller profiles cover AHRS/INS, both
+scalar formats, four independent state/covariance aliases and every symbolic
+INS bias mask. They check first failure, original rotation/residual/Jacobian,
+mask-before-projection, the same final gain for delta/Joseph, injection/reset
+arguments and atomic publication. Arbitrary IEEE inputs and intermediate
+results remain admitted, including failure cases; no finite/unit/PSD/success
+assumption removes a path. Private producer scratch buffers are disjoint.
+
+| Evidence | Result |
+|---|---|
+| Lean | 14 new theorems; full project `--wfail` build passes |
+| ESBMC | 24/24 new profiles and 2/2 reused rotation producer profiles |
+| Negative checks | Four mutations in both formats: 8/8 assertion counterexamples; unmutated caller witnesses pass in both formats |
+| Native regression | Two rebuilt M1 magnetometer CTest entries pass, covering both reset modes; M0 tests were run in the preceding group |
+| Infrastructure | Offline ESBMC inventory/argument checks and 100 agent-review regression tests pass; formatting and ShellCheck pass |
+
+The same-backend rotation result is connected through its actual producer. Gain,
+arbitrary-gain delta/Joseph, injection/reset and bias-row producer evidence is
+reused from the existing E-CORRECT/F-SOLVE/E-STEP/E-BIAS-UPDATE boundaries; these
+producers were not all rerun here. This does not prove external backends, target
+execution, floating-point tilt/PSD error bounds, sensor validity or runtime
+magnetic lifecycle behavior. No full AI audit or Lean-to-C++ refinement was run.
+
+The accepted 26-profile matrix took 955.42 seconds sequentially, with a cgroup
+peak of 623,935,488 bytes and no OOM. The 6 GiB group cap and zero group swap
+remain enforced. Caller profiles explicitly allow 180 s internal / 210 s outer time;
+other profiles retain 120 s internally. All use the existing 4 GiB internal memory
+limit. Full INS caller expansion takes approximately 110 seconds, so the extra
+time is headroom for that measured cost, not a domain restriction.
+
+Self-review retained full covariance-coefficient assertions and strengthened
+scratch/input disjointness. An attempted symbolic-coordinate optimization timed
+out and was discarded. A locally reproduced ESBMC 8.4.0 conditional aggregate-
+reference issue produced a false projector counterexample: replacing
+`same_matrix(output, valid ? expected : before)` with Boolean selection between
+the two comparisons passed the unchanged property/domain. An isolated checker
+reproducer and 200,000 native IEEE selections are retained; this is not a
+production defect or a vendor-confirmed diagnosis. Failed/interrupted attempts
+are recorded separately and do not count as proof passes.
+
+Production code, API, defaults and numerical behavior are unchanged. Local
+commands, source/log hashes, producer dependencies and failed attempts are in
+`output/proof-extension-20261115/magnetic-manifest.json`, `magnetic-reviewed/`,
+mutation/witness records and native/Lean/tool logs.

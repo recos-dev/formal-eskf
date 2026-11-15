@@ -124,3 +124,45 @@ Evidence: `reset-final/results.json`, `reset-ins-native-results.json`,
 `runtime-native-tests.log`, `reset-inventory.log`, `reset-format.log`,
 `reset-offline-review.log` and `reset-manifest.json`. The exploratory failed
 monolithic/solver queries remain separate from these accepted profiles.
+
+## Complete 10 ms adaptive accelerometer sampling owner
+
+Five new profiles close the actual interval-clear equations and public owner:
+binary32/64 clear and update, plus the double-precision rounding producer shared
+by both formats. Twelve existing initialization/integration, magnitude and
+same-backend vector-operation profiles were refreshed. All 17 pass in 33.68 s;
+the capped scope peaks at 401,453,056 bytes (383 MiB), with no swap. The inventory
+is now 2,148 profiles / 239 entry points.
+
+The owner checks every result/history field, validation priority, dt and interval
+denominators, strict readiness, unknown-clipping propagation, magnitude/clear
+order and complete failure atomicity. Its inductive invariant includes finite
+vector history, average period in [1, 50000] us, bounded thresholds and counters
+that cannot wrap. The deliberately broad power-of-two bounds include all actual
+reachable histories; they are proof bounds, not new public input restrictions.
+Actual clear verifies the round argument/domain, cast, minimum sample count,
+target/minimum equations and all cleared/preserved fields. The rounding producer
+checks nearest-integer behavior including positive half ties in the verifier's
+library model. Other template intervals and deployed libm remain outside scope.
+
+The owner uses independently proved same-type integration, magnitude, clear and
+vector-division contracts. Division replies admit every IEEE value, so overflow
+and non-finite rejection remain covered. This removes duplicated division bit
+circuits from the owner without assuming their outputs finite or successful.
+Earlier monolithic timeouts/memory failures are retained as failed experiments;
+only final complete profiles are accepted. No production change was needed.
+
+Native witnesses pass four original controls and reject 48 intentional changes
+at their intended assertions. These exercise input domains, strict timing edges,
+unknown clipping, division units, output selection, failure stops, average update
+and interval clearing/preservation. The witnesses use the final tracked harnesses.
+Self-review checked every assumption against its same-type producer, the initial
+base case, all inductive fields and complete result publication. Formatting,
+ShellCheck, inventory tests, all traceability references and 100 offline review
+tests pass. Protected production/draft hashes match baseline. No new Lean theorem
+or AI semantic audit is claimed.
+
+Evidence: `sample-final/results.json`, `sample-linalg-refresh/results.json`,
+`sample-owner-native-results.json`, `sample-clear-native-results.json`,
+`sample-inventory.log`, `sample-format.log`, `sample-offline-review.log` and
+`sample-manifest.json` under the execution directory above.

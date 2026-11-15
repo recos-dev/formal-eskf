@@ -4248,7 +4248,7 @@
     },
     {
       "id": "R-ACCELEROMETER-FUSION",
-      "title": "Gravity-fusion callers and rotation-integrator frames verified; adaptive sampling history and adapter correspondence remain open",
+      "title": "Gravity fusion and 10 ms adaptive sampling transactions verified under same-type numerical contracts; adapter correspondence remains open",
       "references": {
         "spec": [
           {
@@ -4332,6 +4332,26 @@
           {
             "file": "formal/cpp/esbmc/accelerometer_sample.cpp",
             "symbol": "void verify_sample_integration("
+          },
+          {
+            "file": "formal/cpp/esbmc/accelerometer_sample_timing.cpp",
+            "symbol": "void verify_sample_clear("
+          },
+          {
+            "file": "formal/cpp/esbmc/accelerometer_sample_timing.cpp",
+            "symbol": "void verify_sample_round("
+          },
+          {
+            "file": "formal/cpp/esbmc/accelerometer_sample_owner.cpp",
+            "symbol": "void verify_sample_transition("
+          },
+          {
+            "file": "formal/cpp/esbmc/accelerometer_runtime.cpp",
+            "symbol": "void verify_accelerometer_magnitude("
+          },
+          {
+            "file": "formal/cpp/esbmc/linalg.cpp",
+            "symbol": "void verify_linalg_elementwise("
           }
         ]
       }

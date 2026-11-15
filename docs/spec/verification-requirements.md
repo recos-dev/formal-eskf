@@ -1810,8 +1810,19 @@ trapezoidal expression, finite-result check, output atomicity and all history/in
 frames. Same-type Exp and inverse-action pure frames allow arbitrary numerical
 returns; this does not prove rotation accuracy or exact continuous integration.
 The inverse input frame is independently checked on its actual implementation.
-Adaptive threshold arithmetic and the public sampling owner's long-term history
-invariant remain open; numerical cadence claims require those additional checks.
+The 10 ms public sampling owner now has same-type compositional proofs of all
+result/history fields, strict readiness, unknown-clipping propagation, child-call
+ordering and failure atomicity. Initialization establishes a reachable-state
+superset; every update preserves finite vector history, average period in
+[1, 50000] us, bounded adaptive thresholds and counters with no integer wrap.
+The actual clear body verifies round/cast/count and target/minimum equations;
+a separate double-precision producer verifies nearest-integer rounding including
+positive half ties. Vector division is composed from the actual same-backend
+F-LINALG producer; arbitrary IEEE quotient replies include non-finite failures.
+Integration and magnitude producers supply the remaining same-type contracts.
+The proof is for `IntervalUs=10000`; it does not certify other template periods,
+exact 100 Hz cadence, target libm accuracy or module/replay sequencing. See the
+[completion record](../verification-extensions-20261116.md).
 
 ### R-IMU-DYNAMICS: instantaneous IMU magnitude check
 

@@ -18,10 +18,11 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 2143 '^PLAN'
+    check_count 2148 '^PLAN'
     check_count 160 'magnetic-runtime-'
     check_count 32 'height-'
-    check_count 32 'accelerometer-binary'
+    check_count 36 'accelerometer-binary'
+    check_count 1 'accelerometer-double-sample_round'
     check_count 28 'navigation-recovery-'
     check_count 46 'navigation-reset-'
     check_count 7 'gnss-lifecycle-'
@@ -239,8 +240,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 236 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2143 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 239 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2148 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -400,6 +401,20 @@ check_accelerometer_arguments()
     {
         local ENTRY="$1"
         shift
+        if [[ "${SOURCE_FILE}" == "${PROOF_DIR}/accelerometer_sample_timing.cpp" ]]; then
+            if [[ "${ENTRY}" == verify_sample_round ]]; then
+                [[ "${PROFILE}" == accelerometer-double-sample_round && "$*" == '--proof-unwind 16 --bitwuzla' ]] || fail 'wrong round producer arguments'
+            else
+                [[ "${ENTRY}" == verify_sample_clear && "$*" == "--proof-unwind 16 --bitwuzla -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" ]] || fail 'wrong interval clear arguments'
+            fi
+            COUNT=$((COUNT + 1))
+            return
+        fi
+        if [[ "${SOURCE_FILE}" == "${PROOF_DIR}/accelerometer_sample_owner.cpp" ]]; then
+            [[ "${ENTRY}" == verify_sample_transition && "$*" == "--proof-unwind 16 --bitwuzla --multi-property -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" ]] || fail 'wrong sample owner arguments'
+            COUNT=$((COUNT + 1))
+            return
+        fi
         if [[ "${SOURCE_FILE}" == "${PROOF_DIR}/accelerometer_sample.cpp" ]]; then
             [[ "${ENTRY}" == "verify_sample_${KIND}" && "$*" == "--proof-unwind 16 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_SAMPLE_CONTRACT=$([[ "${KIND}" == integration ]] && printf 1 || printf 0)" ]] || fail 'wrong accelerometer sample arguments'
             COUNT=$((COUNT + 1))
@@ -424,7 +439,7 @@ check_accelerometer_arguments()
         COUNT=$((COUNT + 1))
     }
     run_accelerometer_suite
-    [[ "${COUNT}" == 32 ]] || fail 'accelerometer matrix incomplete'
+    [[ "${COUNT}" == 37 ]] || fail 'accelerometer matrix incomplete'
 )
 
 check_height_arguments()
@@ -2002,7 +2017,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (2143 profiles; 236 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (2148 profiles; 239 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

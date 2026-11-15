@@ -3836,7 +3836,7 @@
     },
     {
       "id": "R-ACCELEROMETER-FUSION",
-      "title": "AHRS/INS gravity-fusion caller frames and permissions verified; sample integration and adapter correspondence remain separate",
+      "title": "Gravity-fusion callers and rotation-integrator frames verified; adaptive sampling history and adapter correspondence remain open",
       "references": {
         "spec": [
           {
@@ -3844,7 +3844,24 @@
             "symbol": "### R-ACCELEROMETER-FUSION: conditional gravity correction"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/AccelerometerSample.lean",
+            "symbol": "theorem accumulateForce_identity"
+          },
+          {
+            "file": "formal/lean/FormalESKF/AccelerometerSample.lean",
+            "symbol": "theorem accumulateForce_zero_increment"
+          },
+          {
+            "file": "formal/lean/FormalESKF/AccelerometerSample.lean",
+            "symbol": "theorem accumulateForce_zero_prior"
+          },
+          {
+            "file": "formal/lean/FormalESKF/AccelerometerSample.lean",
+            "symbol": "theorem accumulateForce_transport"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/runtime/accelerometer.hpp",
@@ -3891,6 +3908,18 @@
           {
             "file": "formal/cpp/esbmc/observations.cpp",
             "symbol": "void verify_observation("
+          },
+          {
+            "file": "formal/cpp/esbmc/accelerometer_sample.cpp",
+            "symbol": "void verify_sample_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/accelerometer_sample.cpp",
+            "symbol": "void verify_sample_inverse_frame("
+          },
+          {
+            "file": "formal/cpp/esbmc/accelerometer_sample.cpp",
+            "symbol": "void verify_sample_integration("
           }
         ]
       }

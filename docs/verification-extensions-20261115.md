@@ -949,3 +949,43 @@ drafts are unchanged. Evidence:
 `output/runtime-proof-continuation-20261115/tilt-alignment-manifest.json`,
 `tilt-alignment-final/results.json`, `tilt-alignment-native-mutations.json`,
 `tilt-alignment-esbmc-mutations.json` and Lean/native/tooling logs.
+
+## Accelerometer endpoint integration
+
+Four Lean theorems prove the discrete rotation-aware accumulation rule's
+identity-rotation, zero-increment, zero-prior and transported-sum identities.
+Six ESBMC profiles / three entry points check the actual 10 ms sampler's
+construction/reset, exact-type inverse-action input frame and integration helper
+in both scalar formats. The integration caller uses same-type SO3-EXP and
+inverse-action pure frames, allowing arbitrary IEEE returns/status. Assertions
+bind dt-scaled inputs, threshold, quaternion and both distinct vector operands,
+without assuming their C++ evaluation order. The actual trapezoidal scalar
+operations, finite checks, failure status, output atomicity and complete sampler
+history/IMU frames are checked. Numerical accuracy is not inferred from pure
+frames; cadence and whole-owner induction remain separate.
+
+Accepted checks: 6/6 in 8.75 s, cgroup peak 175,386,624 bytes (167 MiB), no
+OOM/swap. Lean passes with `--wfail` (3,426 jobs). Twelve mutation patterns fail
+in both native formats with passing controls (24 + 24); eight fixed ESBMC
+mutants and eight controls have the expected outcomes. These cover defaults,
+reset history, both dt products, Exp threshold/failure, both rotation calls,
+weight, finite result, failed output and publication. Native Eigen/PX4-matrix
+sampling executables pass; the initial CTest regex matched no tests, so both
+executables were explicitly run. Runner inventory, 100 offline review-tool
+tests, references, formatting and ShellCheck pass. Inventory: 1,975 profiles /
+196 entry points. No full AI audit or continuous-time integration claim.
+
+Self-review checked backend/scalar identity, summary strength, all history
+fields, output preservation, unspecified operand order, failure reachability,
+real/IEEE separation and negative witnesses. Production/unrelated drafts are
+unchanged. Evidence: `output/runtime-proof-continuation-20261115/sample-manifest.json`,
+`sample-integration-final/results.json`, `sample-native-mutations.json`,
+`sample-esbmc-mutations.json` and Lean/native/tooling logs.
+
+Adaptive-timing attempts are not accepted coverage: the actual combined
+`clear_interval` division/round/conversion/products exhausted the 4 GiB solver
+limit with CVC5 and Bitwuzla under a 6 GiB scope. Independent scalar round and
+average-range probes succeeded, but do not close the actual owner's inductive
+history invariant. Retained logs: `sample-round-probe.log`,
+`sample-round-bitwuzla.log`, `sample-scalar-round.log` and
+`sample-scalar-average.log`. These probes remain outside the accepted suite.

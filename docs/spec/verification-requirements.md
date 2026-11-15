@@ -1697,6 +1697,17 @@ unknown metadata and failure preservation remain checked across native backends
 in `tests/test_accelerometer_sample.cpp`. Neither establishes a whole-tick
 transaction or closes the pending runtime Lean/ESBMC obligations.
 
+Sampling proof scope: Lean proves the discrete endpoint rule's identity-rotation,
+zero-increment, zero-history and transported-sum identities. ESBMC checks actual
+10 ms sampler construction/reset and its integration helper in both scalar
+formats: exact dt scaling, Exp threshold/status, two inverse-action arguments,
+trapezoidal expression, finite-result check, output atomicity and all history/input
+frames. Same-type Exp and inverse-action pure frames allow arbitrary numerical
+returns; this does not prove rotation accuracy or exact continuous integration.
+The inverse input frame is independently checked on its actual implementation.
+Adaptive threshold arithmetic and the public sampling owner's long-term history
+invariant remain open; numerical cadence claims require those additional checks.
+
 ### R-IMU-DYNAMICS: instantaneous IMU magnitude check
 
 **Retired on 2026-11-14.** The standalone `check_imu_dynamics` API and its

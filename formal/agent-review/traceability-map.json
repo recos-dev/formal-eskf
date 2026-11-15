@@ -3420,7 +3420,7 @@
     },
     {
       "id": "R-MAGNETOMETER-FUSION",
-      "title": "Field-first magnetic observation preparation verified; complete AHRS/INS fusion and adapter sequencing remain open",
+      "title": "Portable AHRS/INS field-first gated magnetic transaction verified compositionally; adapter sequencing remains separate",
       "references": {
         "spec": [
           {
@@ -3483,6 +3483,10 @@
           {
             "file": "formal/cpp/esbmc/magnetic_observation.cpp",
             "symbol": "void verify_magnetic_observation("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_fusion.cpp",
+            "symbol": "void verify_magnetic_fusion("
           }
         ]
       }

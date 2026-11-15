@@ -1006,6 +1006,17 @@ run_magnetic_runtime_suite()
         done
     done
 
+    SOURCE_FILE="${PROOF_DIR}/magnetic_fusion.cpp"
+    for BINARY64 in 0 1; do
+        for SIZE in 3 15; do
+            for ALIAS in 0 1 2 3; do
+                PROFILE="magnetic-runtime-binary$((32 + 32 * BINARY64))-fusion${SIZE}-alias${ALIAS}"
+                verify verify_magnetic_fusion --proof-unwind 226 --bitwuzla -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                    -D "FORMAL_ESKF_PROOF_STATE_SIZE=${SIZE}" -D "FORMAL_ESKF_PROOF_STEP_ALIAS=${ALIAS}" -D ESKF_MAG_TILT=1
+            done
+        done
+    done
+
     SOURCE_FILE="${PROOF_DIR}/magnetic_model.cpp"
     for BINARY64 in 0 1; do
         for KIND in initialization update; do

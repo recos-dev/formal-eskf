@@ -18,8 +18,8 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 2111 '^PLAN'
-    check_count 128 'magnetic-runtime-'
+    check_count 2127 '^PLAN'
+    check_count 144 'magnetic-runtime-'
     check_count 32 'height-'
     check_count 32 'accelerometer-binary'
     check_count 28 'navigation-recovery-'
@@ -239,8 +239,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 234 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2111 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 235 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2127 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -280,6 +280,11 @@ check_magnetic_runtime_arguments()
     {
         local ENTRY="$1"
         shift
+        if [[ "${SOURCE_FILE}" == "${PROOF_DIR}/magnetic_fusion.cpp" ]]; then
+            [[ "${ENTRY}" == verify_magnetic_fusion && "$*" == "--proof-unwind 226 --bitwuzla -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_STATE_SIZE=${SIZE} -D FORMAL_ESKF_PROOF_STEP_ALIAS=${ALIAS} -D ESKF_MAG_TILT=1" ]] || fail 'wrong magnetic fusion arguments'
+            COUNT=$((COUNT + 1))
+            return
+        fi
         if [[ "${PROFILE}" == magnetic-runtime-solve-* ]]; then
             local BASE="--proof-unwind 16 --cvc5 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
             case "${SOURCE_FILE}" in
@@ -370,7 +375,7 @@ check_magnetic_runtime_arguments()
         COUNT=$((COUNT + 1))
     }
     run_magnetic_runtime_suite
-    [[ "${COUNT}" == 128 ]] || fail 'magnetic runtime matrix incomplete'
+    [[ "${COUNT}" == 144 ]] || fail 'magnetic runtime matrix incomplete'
 )
 
 check_accelerometer_arguments()
@@ -1982,7 +1987,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (2111 profiles; 234 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (2127 profiles; 235 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

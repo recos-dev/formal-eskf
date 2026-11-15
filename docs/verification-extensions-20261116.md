@@ -50,3 +50,37 @@ Evidence directory: `output/runtime-proof-completion-20261116/`:
 `bridge-final/results.json`, `bridge-factor-regression/results.json`,
 `scalar-native-results.json`, `observation-native-mutations.json`,
 `native-magnetic-fusion.log`, `offline-review-tools.log` and `bridge-manifest.json`.
+
+## Complete portable magnetic fusion
+
+The actual public AHRS and INS overloads now have 16 accepted profiles:
+binary32/64, state sizes 3/15 and all four independent whole-prior output aliases.
+Each profile includes null/separate/body/reference health-pointer arrangements.
+The proof observes field/observation, gate and correction calls, checks the actual
+attitude block and finite guard, and checks every diagnostic and published field.
+All six INS bias permissions must reach correction. Child replies overapproximate
+all outcomes; successful inputs/results are not assumed. Same-type producer
+contracts from the preceding boundary closure and existing measurement/correction
+families support composition. The public body is independent of `ESKF_MAG_TILT`;
+the correction summaries are valid for both separately proved M0/M1 families.
+
+Native mutation checks accept 16 original controls and reject 40 modified cases
+at their intended assertions: wrong health/raw references, stage bypasses, wrong
+Jacobian sign/offset, missing finite checks, false fused status and ignored bias
+permissions. Each binary exercises 11 outcome scenarios and all four health
+selections. Compilation failure is not counted as a caught mutation.
+
+Formal execution totals 433.85 s, with scope peak 433,803,264 bytes and no swap.
+The inventory is now 2,127 profiles / 235 entry points. Self-review verified
+unconditional failure coverage, four alias partitions, complete input/output
+frames and backend identity. Formatting, ShellCheck, inventory validation and
+100 offline agent-review tests pass. Production and unrelated draft hashes match
+the baseline. No new Lean theorem, target-libm accuracy or full AI audit is claimed.
+PX4/replay sequencing remains outside this portable transaction.
+
+Evidence: `fusion-final/results.json`, `fusion-native-results.json`,
+`fusion-inventory.log`, `fusion-format.log`, `fusion-offline-review.log` and
+`fusion-manifest.json` under the execution directory above. Earlier CVC5/Z3
+resource failures are retained in the exploratory logs; only the final complete
+Bitwuzla profiles are accepted. No public domain restriction was added to make
+the solver finish.

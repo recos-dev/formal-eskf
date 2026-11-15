@@ -18,7 +18,7 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 2067 '^PLAN'
+    check_count 2075 '^PLAN'
     check_count 92 'magnetic-runtime-'
     check_count 32 'height-'
     check_count 32 'accelerometer-binary'
@@ -50,9 +50,9 @@ check_plan()
     check_count 64 'observations-.*-caller-alias'
     check_count 11 'scalar-binary32-'
     check_count 11 'scalar-binary64-'
-    check_count 174 'linalg-binary32'
-    check_count 174 'linalg-binary64'
-    check_count 184 'linalg-binary(32|64)-opaque'
+    check_count 178 'linalg-binary32'
+    check_count 178 'linalg-binary64'
+    check_count 192 'linalg-binary(32|64)-opaque'
     check_count 164 'linalg-binary(32|64)-solve'
     check_count 70 'linalg-.*-storage-'
     check_count 66 'linalg-.*-access-'
@@ -60,9 +60,9 @@ check_plan()
     check_count 48 'linalg-.*-transpose-'
     check_count 24 'linalg-.*-reductions-'
     check_count 16 'linalg-.*-symmetry-'
-    check_count 96 'linalg-.*-block-'
+    check_count 100 'linalg-.*-block-'
     check_count 4 'linalg-.*-vector3'
-    check_count 4 'linalg-.*-product-'
+    check_count 8 'linalg-.*-product-'
     check_count 14 'quaternion-binary32-witness'
     check_count 8 'algebra-binary32'
     check_count 8 'algebra-binary64'
@@ -240,7 +240,7 @@ check_plan()
         done
     done
     [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 227 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2067 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2075 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -259,7 +259,7 @@ check_plan()
     [[ "$("${RUNNER}" step-correction --list | wc -l)" == 84 ]] || fail 'correction transaction/frame coverage changed'
     [[ "$("${RUNNER}" solve --list | wc -l)" == 364 ]] || fail 'solve scalar/column/alias coverage changed'
     [[ "$("${RUNNER}" correction --list | wc -l)" == 212 ]] || fail 'correction caller/producer coverage changed'
-    [[ "$("${RUNNER}" linalg --list | wc -l)" == 348 ]] || fail 'linalg operation/backend/shape coverage changed'
+    [[ "$("${RUNNER}" linalg --list | wc -l)" == 356 ]] || fail 'linalg operation/backend/shape coverage changed'
     [[ "$("${RUNNER}" scalar --list | wc -l)" == 32 ]] || fail 'scalar format/alias/dependency coverage changed'
     [[ "$("${RUNNER}" observations --list | wc -l)" == 82 ]] || fail 'observation model/format/alias coverage changed'
     [[ "$("${RUNNER}" innovation --list | wc -l)" == 30 ]] || fail 'innovation format/size/alias coverage changed'
@@ -1958,7 +1958,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (2067 profiles; 227 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (2075 profiles; 227 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

@@ -1395,3 +1395,27 @@ frame theorems. Production/module source and unrelated drafts are unchanged.
 Evidence: `output/runtime-proof-continuation-20261115/magnetic-model-manifest.json`,
 `magnetic-model-final-v4/results.json`, `model-native-mutations.json`,
 `model-esbmc-mutations.json` and native/tooling logs.
+
+## Additional exact-shape matrix dependencies for magnetic reset
+
+Eight profiles extend existing F-LINALG producers to OpaqueMath 3x3-by-3x3,
+3x3-by-3x15 and both 15x15 attitude row/column rectangles, in both scalar formats.
+Actual operations remain inline. Every product coefficient uses the ordered IEEE
+inner product; extraction/replacement checks every selected and untouched cell,
+plus input purity. No finite-domain premise, new backend or producer summary is
+introduced. The existing traceability references still identify these producers.
+
+Accepted checks: 8/8 in 69.17 s, cgroup peak 622,411,776 bytes (594 MiB), no OOM or
+swap. Twelve native mutations and twelve controls detect last product-cell,
+extraction and replacement faults for every new shape/scalar combination.
+Inventory and ShellCheck pass: 2,075 profiles / 227 entry points. There are no new
+Lean theorems. The CVC5 3x3-by-3x15 experiment timed out; Z3 closed the identical
+unrestricted obligation without a numerical or timeout-policy change.
+
+Self-review confirmed the row/column offsets against the actual INS reset,
+complete coefficient coverage, unchanged producer source and exact inventory
+arguments. These dependency proofs do not themselves close the composed INS
+reset. Production/module source and unrelated drafts are unchanged. Evidence:
+`output/runtime-proof-continuation-20261115/linalg-extra-manifest.json`,
+`mag-linalg-final/results.json`, `linalg-extra-native-mutations.json`,
+`mag-linalg-probes.json`, `mag-linalg-z3-probes.json` and tooling logs.

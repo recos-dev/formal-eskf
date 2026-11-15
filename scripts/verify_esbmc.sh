@@ -822,6 +822,7 @@ run_linalg_suite()
             done
             if ((BACKEND == 0)); then
                 for OFFSET in 0 3 6 9; do SHAPES+=("12x12x${OFFSET}x${OFFSET}x3x3"); done
+                SHAPES+=(15x15x6x0x3x15 15x15x0x6x15x3)
             fi
             for SHAPE in "${SHAPES[@]}"; do
                 IFS=x read -r ROWS COLUMNS START_ROW START_COLUMN BLOCK_ROWS BLOCK_COLUMNS <<<"${SHAPE}"
@@ -834,7 +835,7 @@ run_linalg_suite()
             PROFILE="${BASE_PROFILE}-vector3"
             verify verify_linalg_vector "${ARGUMENTS[@]}"
             if ((BACKEND == 0)); then
-                for SHAPE in 3x3x1 3x1x3; do
+                for SHAPE in 3x3x1 3x1x3 3x3x3 3x3x15; do
                     IFS=x read -r ROWS COLUMNS OTHER_COLUMNS <<<"${SHAPE}"
                     PROFILE="${BASE_PROFILE}-product-${SHAPE}"
                     verify verify_linalg_product "${ARGUMENTS[@]}" \

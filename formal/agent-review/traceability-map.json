@@ -4713,7 +4713,7 @@
     },
     {
       "id": "R-HEIGHT-FUSION",
-      "title": "PX4 two-source height lifecycle, reference/bias handling and reset publication; Lean and ESBMC evidence pending",
+      "title": "Height offset mathematics and scoped IEEE/admission producers; complete height transaction, history induction and module publication remain pending",
       "references": {
         "spec": [
           {
@@ -4721,7 +4721,36 @@
             "symbol": "### R-HEIGHT-FUSION: PX4 GNSS/barometer height management"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/HeightBias.lean",
+            "symbol": "theorem heightBiasGain_bounds"
+          },
+          {
+            "file": "formal/lean/FormalESKF/HeightBias.lean",
+            "symbol": "theorem heightBiasVariance_formula"
+          },
+          {
+            "file": "formal/lean/FormalESKF/HeightBias.lean",
+            "symbol": "theorem heightBiasVariance_bounds"
+          },
+          {
+            "file": "formal/lean/FormalESKF/HeightBias.lean",
+            "symbol": "theorem heightBiasVariance_joseph"
+          },
+          {
+            "file": "formal/lean/FormalESKF/HeightBias.lean",
+            "symbol": "theorem heightBiasUpdate_convex"
+          },
+          {
+            "file": "formal/lean/FormalESKF/HeightBias.lean",
+            "symbol": "theorem heightBiasUpdate_reduces_residual"
+          },
+          {
+            "file": "formal/lean/FormalESKF/HeightBias.lean",
+            "symbol": "theorem heightOffset_reset_innovation"
+          }
+        ],
         "cpp": [
           {
             "file": "integrations/px4/module/HeightAiding.hpp",
@@ -4772,7 +4801,56 @@
             "symbol": "bool FormalEskf::fuse_gps_velocity("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/height_bias.cpp",
+            "symbol": "void verify_height_bias_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/height_bias.cpp",
+            "symbol": "void verify_height_bias_prediction("
+          },
+          {
+            "file": "formal/cpp/esbmc/height_bias.cpp",
+            "symbol": "void verify_height_bias_update("
+          },
+          {
+            "file": "formal/cpp/esbmc/height_admission.cpp",
+            "symbol": "void verify_height_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/height_admission.cpp",
+            "symbol": "void verify_height_stop("
+          },
+          {
+            "file": "formal/cpp/esbmc/height_admission.cpp",
+            "symbol": "void verify_height_admission("
+          },
+          {
+            "file": "formal/cpp/esbmc/height_admission.cpp",
+            "symbol": "void verify_height_queries("
+          },
+          {
+            "file": "formal/cpp/esbmc/height_library.cpp",
+            "symbol": "void verify_height_min("
+          },
+          {
+            "file": "formal/cpp/esbmc/height_library.cpp",
+            "symbol": "void verify_height_min_unsigned("
+          },
+          {
+            "file": "formal/cpp/esbmc/height_library.cpp",
+            "symbol": "void verify_height_any_of("
+          },
+          {
+            "file": "formal/cpp/esbmc/height_session_storage.cpp",
+            "symbol": "void verify_height_session_storage("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_inhibition.cpp",
+            "symbol": "void verify_imu_max_model("
+          }
+        ]
       }
     },
     {

@@ -18,7 +18,8 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1905 '^PLAN'
+    check_count 1933 '^PLAN'
+    check_count 28 'height-'
     check_count 28 'navigation-recovery-'
     check_count 40 'navigation-reset-'
     check_count 7 'gnss-lifecycle-'
@@ -236,8 +237,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 174 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1905 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 185 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1933 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -269,6 +270,37 @@ check_plan()
     [[ -z "$(comm -23 <("${RUNNER}" scalar --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] ||
         fail 'scalar dependency profile is not in the full inventory'
 }
+
+check_height_arguments()
+(
+    local COUNT=0
+    verify()
+    {
+        local ENTRY="$1"
+        shift
+        case "${PROFILE}" in
+            height-library-*-storage)
+                [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_session_storage.cpp" && "${ENTRY}" == verify_height_session_storage && "$*" == "--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=1 -D FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}" ]] || fail 'wrong session storage control' ;;
+            height-library-*)
+                [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_library.cpp" ]] || fail 'wrong height library source'
+                case "${PROFILE}" in
+                    *-unsigned-min) [[ "${ENTRY}" == verify_height_min_unsigned && $# == 0 ]] || fail 'wrong unsigned minimum control' ;;
+                    *-any-of) [[ "${ENTRY}" == verify_height_any_of && $# == 0 ]] || fail 'wrong any_of control' ;;
+                    *) [[ "${ENTRY}" == verify_height_min && "$*" == "-D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" ]] || fail 'wrong scalar minimum control' ;;
+                esac ;;
+            *)
+                local BASE="--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=1"
+                case "${PROFILE}" in
+                    height-bias-*) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_bias.cpp" && "${ENTRY}" == "verify_height_bias_${KIND}" && "$*" == "${BASE}" ]] || fail 'wrong bias producer arguments' ;;
+                    *-initialization) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_admission.cpp" && "${ENTRY}" == verify_height_initialization && "$*" == "${BASE}" ]] || fail 'wrong height initialization arguments' ;;
+                    *) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_admission.cpp" && "${ENTRY}" == "verify_height_${KIND}" && "$*" == "${BASE} -D FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}" ]] || fail 'wrong height source partition arguments' ;;
+                esac ;;
+        esac
+        COUNT=$((COUNT + 1))
+    }
+    run_height_suite
+    [[ "${COUNT}" == 28 ]] || fail 'height producer matrix incomplete'
+)
 
 check_navigation_recovery_arguments()
 (
@@ -1782,6 +1814,7 @@ case "${1:-}" in
 esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
+check_height_arguments
 check_navigation_recovery_arguments
 check_navigation_reset_arguments
 check_gnss_lifecycle_arguments
@@ -1806,7 +1839,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1905 profiles; 174 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1933 profiles; 185 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

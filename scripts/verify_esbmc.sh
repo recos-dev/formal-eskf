@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,7 +37,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -57,6 +57,7 @@ parse_arguments()
                 printf 'fusion selects public covariance preparation, portable check/fuse control flow and four navigation wrappers. It reuses E-INNOV/E-CORRECT/E-STEP/E-BIAS producer contracts; replay/module wiring remains separate.\n'
                 printf 'imu-policies selects actual portable fault-noise replacement, bias-noise inhibition and bias-value limits for both scalar formats and legal aliases. Detector policy, calibration and module/replay wiring are separate.\n'
                 printf 'vertical-health selects actual verdict frames, initialization/reset, clipping recurrence and inductive timestamp/hold safety. Source-ratio/reference equations, caller wiring and root accuracy remain open.\n'
+                printf 'height selects scalar offset equations, defaults and private source admission/read-only contracts for both sources and formats; full height transaction induction and platform publication remain separate.\n'
                 printf 'navigation-recovery selects actual gate diagnostic contracts, vertical limiter and both public recovery callers with every state/P alias. Same-type correction frames are reused; root accuracy and caller health/permission remain separate.\n'
                 printf 'navigation-reset selects exact-type validation, symmetry-pair arithmetic and all four numerical reset callers with independent state/P aliases. Real PSD is proved separately in Lean; source permission and target backends remain separate.\n'
                 printf 'gnss-lifecycle selects actual integer/Boolean lifecycle transitions and inductive permission/history safety. Estimator repair, external timestamps and actual caller scheduling remain separate.\n'
@@ -879,6 +880,42 @@ run_observations_suite()
     done
 }
 
+run_height_suite()
+{
+    local BINARY64 SOURCE KIND
+    local -a ARGUMENTS
+    SOURCE_FILE="${PROOF_DIR}/height_library.cpp"
+    PROFILE=height-library-unsigned-min
+    verify verify_height_min_unsigned
+    PROFILE=height-library-any-of
+    verify verify_height_any_of
+    for BINARY64 in 0 1; do
+        SOURCE_FILE="${PROOF_DIR}/height_library.cpp"
+        PROFILE="height-library-binary$((32 + 32 * BINARY64))-min"
+        verify verify_height_min -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        ARGUMENTS=(--proof-unwind 230 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+            -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=1)
+        SOURCE_FILE="${PROOF_DIR}/height_bias.cpp"
+        for KIND in initialization prediction update; do
+            PROFILE="height-bias-binary$((32 + 32 * BINARY64))-${KIND}"
+            verify "verify_height_bias_${KIND}" "${ARGUMENTS[@]}"
+        done
+        SOURCE_FILE="${PROOF_DIR}/height_admission.cpp"
+        PROFILE="height-binary$((32 + 32 * BINARY64))-initialization"
+        verify verify_height_initialization "${ARGUMENTS[@]}"
+        for SOURCE in 0 1; do
+            SOURCE_FILE="${PROOF_DIR}/height_session_storage.cpp"
+            PROFILE="height-library-binary$((32 + 32 * BINARY64))-source${SOURCE}-storage"
+            verify verify_height_session_storage "${ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}"
+            SOURCE_FILE="${PROOF_DIR}/height_admission.cpp"
+            for KIND in stop admission queries; do
+                PROFILE="height-binary$((32 + 32 * BINARY64))-source${SOURCE}-${KIND}"
+                verify "verify_height_${KIND}" "${ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}"
+            done
+        done
+    done
+}
+
 run_navigation_recovery_suite()
 {
     local BINARY64 SIZE ALIAS KIND
@@ -1285,6 +1322,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == navigation-recovery ]]; then
         run_navigation_recovery_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == height ]]; then
+        run_height_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

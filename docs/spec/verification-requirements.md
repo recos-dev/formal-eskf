@@ -2364,9 +2364,28 @@ the bounded IMU-fault innovation exception and independent reset timing.
 Ground effect, dynamic-pressure correction, lever arms, delayed fusion, output
 prediction, range/vision height and configurable
 reference selection are not part of it. Native/backend tests and closed-loop
-SITL are empirical evidence; Lean/ESBMC proofs of this policy, scalar offsets,
-module wiring and numerical bounds remain pending. The bias estimates are not
-independent altitude truth or a proof of physical sensor health.
+SITL are empirical evidence. `HeightBias.lean` proves the real scalar gain,
+unclamped posterior covariance (including Joseph equivalence), residual
+contraction and offset transport before source-specific re-alignment. It does
+not assert that the C++ variance floor always decreases variance.
+
+The `height` ESBMC suite checks actual scalar-offset equations and field frames,
+explicit defaults, finite classification, both sources' admission/stop behavior
+and read-only timeout/innovation queries. Source branches and both scalar formats
+are covered separately. Prediction's internal finite/nonnegative variance,
+ceiling and interval premises, and admission's ordered watermark premises must
+still be established by the complete public transition. These private producer
+checks alone are not an inductive proof of `HeightAiding::update`.
+
+The scoped standard-library models preserve min/max reference selection,
+bounded `any_of`, and the two sessions' value construction/copy/index/iteration
+semantics. ESBMC 8.4.0's member-name and container initialization/copy defects
+are recorded with native controls; no production body is rewritten to obtain
+a pass. Model controls do not prove target STL layout, ABI or implementation.
+The complete height transaction, history induction, numerical callee composition,
+actual module/replay ordering/publication and floating-point error bounds remain
+separate obligations. Bias estimates are not independent altitude truth or a
+proof of physical sensor health.
 
 ## Quaternion and SO(3)
 

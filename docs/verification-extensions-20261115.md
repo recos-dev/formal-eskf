@@ -710,3 +710,71 @@ separate. Production and unrelated drafts are unchanged. Evidence:
 `navigation-recovery-final/results.json`, `navigation-recovery-mutations.json`,
 `navigation-recovery-native-mutations.json`, Lean/native/tooling logs and retained
 unsuccessful attempts.
+
+## Height offset and admission producers
+
+Seven Lean theorems cover `R-HEIGHT-FUSION`'s real scalar gain, unclamped
+posterior variance and Joseph equivalence, convex mean update/residual
+contraction, and offset transport under a Down-position reset. The transport
+identity precedes source-specific re-alignment. Neither variance reduction
+after the C++ floor nor floating-point error bounds are claimed.
+
+The `height` suite adds 28 ESBMC profiles / 11 entry points: 20 production
+producer/query profiles and eight standard-library model controls. Both scalar
+formats, both source branches and every relevant field are checked. Actual
+`HeightBias` initialization/finite classification, prediction and update retain
+the specified IEEE equations, thresholds, floors, ceiling and timers, including
+nonfinite scratch. Its finite posterior retains a nonnegative prior variance.
+Actual `HeightAiding` construction/initialization binds all defaults explicitly;
+stop/admission/query checks cover timestamp equality/future data, metadata and
+quality, source/calibration clearing, reference/diagnostic revocation, returned
+reference identity, reset timing and selected-innovation sign/suppression.
+Value frames preserve signed zeros and NaN classification, not payloads.
+
+These are private producer lemmas, not yet an inductive proof of the complete
+height owner. Prediction requires finite/nonnegative variance and interval plus
+a valid ceiling; admission requires chronological watermarks. The public
+transition must establish those premises. Warmup/filtering, numerical callee
+composition, successful/failed whole-tick publication and history induction,
+actual module/replay wiring and target-library implementation remain separate.
+
+ESBMC 8.4.0 required narrowly scoped library/name models: its `min(double)`
+returns int, `any_of` is absent, a member named `finite` is replaced by a C
+intrinsic applied to `this`, and its nested `std::array<Session,2>` initialization
+zeroes nonzero element defaults and crashes on copy construction. The accepted
+model retains the actual element constructors/copy operations in named fixed
+storage, with independently checked indexing, copy/assignment/self-assignment,
+non-aliasing and bounded mutable/const iteration. It models the operations used
+by this owner, not target STL layout/contiguity/ABI. Existing `std::max` controls
+are reused. No production body is rewritten. Reference-return calls use explicit
+bindings/return branches to avoid the previously recorded converter defects.
+
+Accepted checks: 28/28 in 46.26 s; cgroup peak 163,246,080 bytes (156 MiB), no
+OOM/swap, 120 s / 4 GiB internal and 6 GiB group limits. Full Lean passes with
+`--wfail` (3,423 jobs) after reducing the new module's imports. All 21 production
+mutation patterns fail with their passing controls in both native formats
+(42 + 42); six fixed witnesses and six controls also pass the expected ESBMC
+outcomes. Patterns cover defaults/finite guards, offset thresholds, strict gate,
+gain sign, timer/ceiling selection, clearing, future/expired data, quality,
+fault/warmup reset and reset/innovation diagnostics. Native std::array/model
+comparison passes 128 histories per format; min/max reference controls cover
+484 pairs, finite classification 154 cases, any_of 12 ranges and unsigned min
+16 pairs. Existing Eigen/PX4-matrix height tests, 100 offline review-tool tests,
+runner inventory, reference resolution, formatting and ShellCheck pass.
+Inventory: 1,933 profiles / 185 entry points. No full AI audit.
+
+Retained unsuccessful attempts include missing-library parsing, wrong `finite`
+classification, constructor-default counterexamples, copy-converter backtraces,
+conditional-reference counterexamples and cross-source solver timeouts. Native
+controls reproduce correct source behavior. Literal source partitioning reduced
+the formerly timed-out stop query to about one second without dropping either
+source or any state assertion. The earlier experimental contiguous-array model
+is not used; failed/interrupted attempts are not passes.
+
+Self-review checked every field/default, all actual producer branches, exact
+backend/scalar identity, library-model assumptions and negative assertion
+messages. Production and unrelated drafts are unchanged. Evidence:
+`output/runtime-proof-continuation-20261115/height-producers-manifest.json`,
+`height-complete-producers/results.json`, `height-native-mutations.json`,
+`height-esbmc-mutations.json`, `height-producers-lean-minimal.log`, native
+library/storage/height logs, tooling logs and retained failed attempts.

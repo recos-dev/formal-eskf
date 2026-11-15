@@ -966,6 +966,17 @@ run_magnetic_runtime_suite()
         done
     done
 
+    SOURCE_FILE="${PROOF_DIR}/magnetic_observation.cpp"
+    for BINARY64 in 0 1; do
+        for CONTRACT in 0 1; do
+            ENTRY=verify_magnetic_inverse_frame
+            if ((CONTRACT)); then ENTRY=verify_magnetic_observation; fi
+            PROFILE="magnetic-runtime-binary$((32 + 32 * BINARY64))-observation-contract${CONTRACT}"
+            verify "${ENTRY}" --proof-unwind 16 --cvc5 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                -D "FORMAL_ESKF_PROOF_MAG_OBSERVATION_CONTRACT=${CONTRACT}"
+        done
+    done
+
     SOURCE_FILE="${PROOF_DIR}/magnetic_model.cpp"
     for BINARY64 in 0 1; do
         for KIND in initialization update; do

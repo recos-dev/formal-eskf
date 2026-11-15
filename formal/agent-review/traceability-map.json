@@ -3388,7 +3388,7 @@
     },
     {
       "id": "R-MAGNETOMETER-FUSION",
-      "title": "Independent health reference and same-prior innovation gate before magnetic correction; Lean and ESBMC evidence pending",
+      "title": "Field-first magnetic observation preparation verified; complete AHRS/INS fusion and adapter sequencing remain open",
       "references": {
         "spec": [
           {
@@ -3443,7 +3443,16 @@
             "symbol": "bool FormalEskf::fuse_magnetic_observation("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/magnetic_observation.cpp",
+            "symbol": "void verify_magnetic_inverse_frame("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_observation.cpp",
+            "symbol": "void verify_magnetic_observation("
+          }
+        ]
       }
     },
     {

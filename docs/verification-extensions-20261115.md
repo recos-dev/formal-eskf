@@ -1419,3 +1419,42 @@ reset. Production/module source and unrelated drafts are unchanged. Evidence:
 `output/runtime-proof-continuation-20261115/linalg-extra-manifest.json`,
 `mag-linalg-final/results.json`, `linalg-extra-native-mutations.json`,
 `mag-linalg-probes.json`, `mag-linalg-z3-probes.json` and tooling logs.
+
+## Magnetic field-first observation preparation
+
+Four profiles / two entry points check the actual shared magnetic observation
+helper and its same-type inverse-action input frame, in both scalar formats.
+Field qualification receives the original attitude, measurement, observation
+reference, optional health reference and all policies. Field errors/rejections
+stop before prediction. Accepted fields use the observation reference for inverse
+rotation, then the exact measured-minus-predicted residual. Non-finite prediction
+or subtraction, including overflow, leaves both disjoint scratch outputs intact.
+Field diagnostics and error priority are preserved; innovation diagnostics remain
+invalid. The optional health input may be absent, independent or alias either
+raw field. All IEEE inputs and arbitrary child results remain admitted.
+
+The existing field-check producer closes its pure arbitrary-result boundary.
+The actual OpaqueMath inverse action additionally proves input purity; its return
+is unconstrained in the caller, so no unproved rotation accuracy is assumed.
+These private outputs are distinct local scratch in both public fusion callers;
+this group does not claim the public state/P alias transaction or gate/correction
+composition. In particular, the solve backend's positive-pivot root observer is
+not a general zero-eligible field-norm contract. Completing the public chain
+requires explicit matching scalar/backend producer evidence; transferring the
+OpaqueMath results by name alone would be unsound.
+
+Accepted checks: 4/4 in 17.76 s. The enclosing capped scope peaked at 482,439,168
+bytes (460 MiB), including its preceding failed INS experiment; no OOM/swap.
+Twenty native mutants and twenty controls, plus seven ESBMC mutants and seven
+controls, have expected outcomes. They detect changed policy/reference routing,
+missing field-stop/finite guards, residual sign, incorrect publication and lost
+diagnostics. Rebuilt Eigen/PX4-matrix fusion tests, exact runner inventory,
+100 offline review-tool tests, formatting and ShellCheck pass. Inventory:
+2,079 profiles / 229 entry points; no new Lean theorem or full AI audit.
+
+Self-review checked producer types, field-versus-observation reference ownership,
+invalid-stage diagnostics, unrestricted failures and scratch scope. Production,
+module code and unrelated drafts are unchanged. Evidence:
+`output/runtime-proof-continuation-20261115/observation-manifest.json`,
+`magnetic-observation-final/results.json`, `observation-native-mutations.json`,
+`observation-esbmc-mutations.json` and native/tooling logs.

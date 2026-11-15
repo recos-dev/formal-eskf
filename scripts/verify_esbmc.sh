@@ -940,7 +940,7 @@ run_magnetic_runtime_suite()
         SOURCE_FILE="${PROOF_DIR}/magnetometer_filter.cpp"
     done
     SOURCE_FILE="${PROOF_DIR}/magnetic_reset.cpp"
-    # INS numeric producer remains a recorded gap; only AHRS is registered.
+    # AHRS inline numerical query; INS uses proved rectangular-product contracts.
     SIZE=3
     for BINARY64 in 0 1; do
         for ALIAS in 0 1; do
@@ -961,6 +961,31 @@ run_magnetic_runtime_suite()
         for ALIAS in 0 1 2 3; do
             PROFILE="magnetic-runtime-binary$((32 + 32 * BINARY64))-reset_transaction-alias${ALIAS}"
             verify verify_magnetic_reset_transaction --proof-unwind 16 --cvc5 \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_RESET_PUBLIC=1 \
+                -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}"
+        done
+    done
+
+    SOURCE_FILE="${PROOF_DIR}/magnetic_reset_ins.cpp"
+    for BINARY64 in 0 1; do
+        for ALIAS in 0 1; do
+            PROFILE="magnetic-runtime-binary$((32 + 32 * BINARY64))-reset_covariance15-alias${ALIAS}"
+            verify verify_magnetic_reset_ins --proof-unwind 226 --bitwuzla \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}"
+        done
+    done
+
+    SOURCE_FILE="${PROOF_DIR}/magnetic_reset_flow.cpp"
+    SIZE=15
+    for BINARY64 in 0 1; do
+        for VALUES in 0 1; do
+            PROFILE="magnetic-runtime-binary$((32 + 32 * BINARY64))-reset_flow15-values${VALUES}"
+            verify verify_magnetic_reset_flow --proof-unwind 226 --bitwuzla -D FORMAL_ESKF_PROOF_STATE_SIZE=15 \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_RESET_VALUES=${VALUES}"
+        done
+        for ALIAS in 0 1 2 3; do
+            PROFILE="magnetic-runtime-binary$((32 + 32 * BINARY64))-reset_transaction15-alias${ALIAS}"
+            verify verify_magnetic_reset_transaction --proof-unwind 226 --bitwuzla -D FORMAL_ESKF_PROOF_STATE_SIZE=15 \
                 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_RESET_PUBLIC=1 \
                 -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}"
         done

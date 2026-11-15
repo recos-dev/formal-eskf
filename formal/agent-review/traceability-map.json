@@ -3636,7 +3636,7 @@
     },
     {
       "id": "R-MAGNETOMETER-RESET",
-      "title": "Exact magnetic reset algebra and AHRS covariance/composer/atomic API verified; INS execution and numerical bounds remain separate",
+      "title": "Exact magnetic reset algebra and AHRS/INS covariance/composer/atomic API verified; numerical bounds and adapter sequencing remain separate",
       "references": {
         "spec": [
           {
@@ -3760,6 +3760,10 @@
           {
             "file": "formal/cpp/esbmc/magnetic_reset.cpp",
             "symbol": "void verify_magnetic_reset_covariance"
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_reset_ins.cpp",
+            "symbol": "void verify_magnetic_reset_ins("
           },
           {
             "file": "formal/cpp/esbmc/magnetic_reset_flow.cpp",

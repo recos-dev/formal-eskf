@@ -877,16 +877,18 @@ under the stated polar-field premise, wrap invariance, yaw-axis removal, and
 covariance block equations/symmetry/PSD through congruence plus rank-one noise.
 The block model places attitude first; INS uses its explicit production offset.
 These real statements do not establish C++ execution, IEEE PSD, libm accuracy or
-physical field validity. ESBMC checks the actual AHRS covariance reset in both
-scalar formats with separate/in-place outputs, including every ordered IEEE
-coefficient, failure priority and complete failure frame. The INS covariance
-query remains incomplete at symbolic expansion. AHRS composer checks cover
-input validation, every child failure, wrapped reference-minus-measured angle,
-left composition and old/new covariance frames using separately proved
-same-type producers. The public AHRS API proves simultaneous publication and
-complete rollback for all four state/P alias combinations, even with partially
-written helper scratch. INS execution and floating-point accuracy/PSD bounds
-remain separate obligations.
+physical field validity. ESBMC checks AHRS and INS covariance reset in both
+scalar formats with separate/in-place outputs. The INS query uses independently
+proved same-type 3x3 and 3x15 product contracts; actual operand routing, yaw floor,
+ordered remaining IEEE operations, finite/diagonal checks, symmetrization and all
+225 covariance cells remain checked. Composer checks cover input validation,
+every child failure, wrapped reference-minus-measured angle, left composition and
+old/new covariance frames. Public AHRS/INS APIs prove simultaneous publication
+and complete rollback for all four state/P aliases, even with partially written
+helper scratch. INS position/velocity/bias values are checked before composition
+and retained exactly. Floating-point accuracy/PSD bounds, external backends and
+adapter sequencing remain separate obligations. The [completion record](../verification-extensions-20261116.md)
+identifies accepted profiles and supersedes the earlier INS expansion gap.
 
 #### PX4 module magnetic aiding
 

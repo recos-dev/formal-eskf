@@ -84,3 +84,43 @@ Evidence: `fusion-final/results.json`, `fusion-native-results.json`,
 resource failures are retained in the exploratory logs; only the final complete
 Bitwuzla profiles are accepted. No public domain restriction was added to make
 the solver finish.
+
+## Complete portable INS magnetic heading reset
+
+The INS covariance producer now composes the actual reset body with independently
+proved same-type 3x3 and 3x15 products. It checks every operand and call order,
+the yaw floor/Down axis, ordered remaining arithmetic, finite/diagonal failure
+priority, divide-before-add symmetrization, mirrored cross blocks and all 225
+output coefficients. Product replies may contain any IEEE values. No successful,
+finite, unit, symmetric or PSD input/result premise is imposed on this producer.
+The full helper and public transaction now cover INS as well as AHRS, including
+finite non-attitude validation, unchanged position/velocity/bias, all child
+failures, partial scratch writes and all four state/P aliases.
+
+There are 16 new accepted profiles (four INS covariance, four INS helper and eight
+INS public transaction), plus 12 affected AHRS profiles rerun. The inventory is
+2,143 profiles / 236 entry points. The matrix producers and exact-real reset
+algebra retain their independently recorded evidence; this adds no Lean theorem
+or floating-point PSD/error-bound claim.
+
+Native checks pass 32 controls and reject 52 modified cases at intended
+assertions. These include wrong tilt/frame/cross blocks, yaw variance,
+finite/negative guards, reordered floating-point halves, incorrect wrapped
+heading/composition, bypassed failures and lost non-attitude INS values.
+Compiler errors and equivalent mutations are not accepted failure witnesses.
+
+Accepted execution totals 740.93 s; scope peak is 1,113,202,688 bytes, with no swap.
+The original conditional-reference query timed out during symbolic expansion;
+explicit pointer selection preserves the same four aliases and makes the full
+query tractable. No production change or domain restriction was required.
+Self-review checked each summary against same-type producers, complete state/P/
+delta publication, finite-validation priority and the distinct scratch contract.
+Formatting, ShellCheck, inventory validation and 100 offline review-tool tests
+pass. Rebuilt Eigen/PX4-matrix reset, vertical-health and sampler tests pass (six).
+Production and unrelated draft hashes remain identical to the baseline.
+
+Evidence: `reset-final/results.json`, `reset-ins-native-results.json`,
+`reset-flow-native-mutations.json`, `runtime-native-build.log`,
+`runtime-native-tests.log`, `reset-inventory.log`, `reset-format.log`,
+`reset-offline-review.log` and `reset-manifest.json`. The exploratory failed
+monolithic/solver queries remain separate from these accepted profiles.

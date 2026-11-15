@@ -1287,3 +1287,23 @@ unchanged. Evidence: `output/runtime-proof-continuation-20261115/mag-reset-covar
 `reset-esbmc-mutations.json` and native/tooling logs. The final runner drops only
 unproved INS entries from the execution plan; all accepted AHRS arguments and
 proof source remain identical to their retained runs.
+
+## Geographic magnetic reference frame algebra
+
+Eight Lean theorems check the actual module formula's exact-real basis model:
+ECEF-to-NED orthogonality in both multiplication orders, determinant +1, and
+local-to-origin NED conversion identity, inverse, composition, orthogonality and
+squared-strength preservation. Latitude/longitude in this model are radians.
+The ordered transform is origin basis times local basis transpose; transposing
+the entire transfer reverses its endpoints. No local Cartesian position origin
+is moved by this field-component conversion.
+
+Lean passes with `--wfail` (3,430 jobs). These statements do not establish degree
+conversion rounding, C++ execution, raw platform libm, WMM lookup accuracy or
+truthful geographic coordinates. No ESBMC profile is added by this mathematical
+group. Self-review compared every North/East/Down sign and product order against
+`MagneticModel::to_origin_frame`, checked determinant/transpose direction and
+verified that no unsupported geographic or numerical premise became a theorem.
+Production/module source and unrelated drafts remain unchanged. Evidence:
+`output/runtime-proof-continuation-20261115/magnetic-frame-manifest.json` and
+`magnetic-frame-lean.log`.

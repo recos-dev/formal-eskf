@@ -43,3 +43,5 @@ import FormalESKF.MagneticReference
 import FormalESKF.MagneticHeading
 
 import FormalESKF.MagneticReset
+
+import FormalESKF.MagneticFrame

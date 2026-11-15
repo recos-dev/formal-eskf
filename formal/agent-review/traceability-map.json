@@ -3238,7 +3238,7 @@
     },
     {
       "id": "R-MAGNETIC-REFERENCE",
-      "title": "Geographic field conversion, adoption atomicity and inductive reference clocks/revisions verified; external model accuracy and adapter wiring remain separate",
+      "title": "Geographic field adoption and exact local-to-origin NED basis algebra verified; model accuracy, C++ frame conversion and adapter wiring remain separate",
       "references": {
         "spec": [
           {
@@ -3270,6 +3270,38 @@
           {
             "file": "formal/lean/FormalESKF/MagneticReference.lean",
             "symbol": "theorem magneticReferenceField_horizontal"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticFrame.lean",
+            "symbol": "theorem geographicNedBasis_mul_transpose"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticFrame.lean",
+            "symbol": "theorem geographicNedBasis_transpose_mul"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticFrame.lean",
+            "symbol": "theorem geographicNedBasis_det"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticFrame.lean",
+            "symbol": "theorem magneticFrameChange_same"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticFrame.lean",
+            "symbol": "theorem magneticFrameChange_transpose"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticFrame.lean",
+            "symbol": "theorem magneticFrameChange_compose"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticFrame.lean",
+            "symbol": "theorem magneticFrameChange_transpose_mul"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticFrame.lean",
+            "symbol": "theorem magneticFrameChange_normSquared"
           }
         ],
         "cpp": [
@@ -3308,6 +3340,10 @@
           {
             "file": "integrations/px4/module/FormalEskfAttitude.cpp",
             "symbol": "void FormalEskf::update_magnetic_model()"
+          },
+          {
+            "file": "integrations/px4/module/MagneticModel.hpp",
+            "symbol": "MagneticModel<Linalg>::to_origin_frame("
           }
         ],
         "esbmc": [

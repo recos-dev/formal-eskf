@@ -367,7 +367,12 @@ This API additionally reports invalid domain/time and scalar failures explicitly
 and preserves history on failure. Native tests cover
 binary32/binary64, two backends, axes/units, timing, thresholds and failure
 preservation. Lean proves the real NED conversion's squared strength, horizontal
-magnitude, north-axis and Down-component identities. ESBMC checks actual
+magnitude, north-axis and Down-component identities. It also proves both NED
+basis orthogonality orders, positive determinant, and local-to-origin frame
+identity, inverse, composition and squared-strength preservation. The basis
+model takes radians; degree conversion, IEEE execution, geographic provenance
+and raw platform libm in `MagneticModel::to_origin_frame` remain separate.
+ESBMC checks actual
 initialization/reset, validation, checked trigonometry, adoption and update in
 both scalar formats with the fixed-array proof backend. The scalar boundary
 admits every IEEE sine/cosine return. All failure frames/statuses are checked;

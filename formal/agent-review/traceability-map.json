@@ -3924,7 +3924,7 @@
     },
     {
       "id": "R-IMU-PROCESS-NOISE",
-      "title": "Fault-dependent sampled IMU variance with replay and PX4 module selection; Lean and ESBMC evidence pending",
+      "title": "Portable fault-noise replacement proved; detector calibration and replay/module sequencing remain open",
       "references": {
         "spec": [
           {
@@ -3932,7 +3932,16 @@
             "symbol": "### R-IMU-PROCESS-NOISE: fault-dependent sampled IMU variance"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/ImuPolicies.lean",
+            "symbol": "theorem selectImuNoise_valid"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ImuPolicies.lean",
+            "symbol": "theorem selected_prediction_posSemidef"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/runtime/imu.hpp",
@@ -3967,12 +3976,17 @@
             "symbol": "predict_interval("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/imu_policies.cpp",
+            "symbol": "void verify_imu_noise("
+          }
+        ]
       }
     },
     {
       "id": "R-BIAS-PROCESS-NOISE",
-      "title": "INS variance-dependent bias driving-noise selection with replay and PX4 module wiring; Lean and ESBMC evidence pending",
+      "title": "Portable bias-noise inhibition proved; exact noise/transition consequences, replay/module sequencing remains open",
       "references": {
         "spec": [
           {
@@ -3980,7 +3994,28 @@
             "symbol": "### R-BIAS-PROCESS-NOISE: variance-dependent bias driving noise"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/ImuPolicies.lean",
+            "symbol": "theorem inhibitIntensity_nonnegative"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ImuPolicies.lean",
+            "symbol": "theorem inhibitIntensity_threshold"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ImuPolicies.lean",
+            "symbol": "theorem inhibitBiasNoise_valid"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ImuPolicies.lean",
+            "symbol": "theorem insTransition_bias_variance"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ImuPolicies.lean",
+            "symbol": "theorem selected_prediction_posSemidef"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/runtime/imu.hpp",
@@ -4007,12 +4042,17 @@
             "symbol": "predict_interval("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/imu_policies.cpp",
+            "symbol": "void verify_bias_noise("
+          }
+        ]
       }
     },
     {
       "id": "R-BIAS-LIMITS",
-      "title": "INS per-axis bias limits with replay and PX4 module wiring; Lean and ESBMC evidence pending",
+      "title": "Portable IEEE per-axis bias-value limits proved; replay/module invocation and covariance consistency remain separate",
       "references": {
         "spec": [
           {
@@ -4059,7 +4099,12 @@
             "symbol": "void FormalEskf::fuse_gravity("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/imu_policies.cpp",
+            "symbol": "void verify_bias_limits("
+          }
+        ]
       }
     },
     {

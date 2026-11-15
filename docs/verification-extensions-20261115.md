@@ -262,3 +262,92 @@ The accepted 92 profiles took 1564.72 seconds in total. The two accepted
 execution scopes recorded an aggregate peak of 480,735,232 bytes, with no OOM.
 All queries retained 120 s / 4 GiB internal limits, a 150 s outer deadline,
 and the enforced 6 GiB group cap with group swap disabled.
+
+## Portable IMU and bias policies
+
+This closes the standalone component scope of R-IMU-PROCESS-NOISE,
+R-BIAS-PROCESS-NOISE and R-BIAS-LIMITS. Their replay/module metadata, scheduling,
+startup and post-fusion invocation clauses remain open. The vertical detector,
+learning-permission policy and physical calibration are not part of this group.
+The C++ claim uses the fixed-array proof backend; external backends and deployed
+toolchain/standard-library execution remain separate.
+
+The actual C++ functions execute without numerical summaries or input-domain
+assumptions. Fault variance and all twelve configured coefficients are validated
+before replacement, including unselected values. The bias-noise selector checks
+its eighteen consumed coefficients/diagonals, inhibits at equality, preserves
+measurement variances and leaves P unchanged. All other P coefficients remain
+arbitrary. Both noise selectors cover separate and whole-noise aliased outputs,
+with complete rollback for any failure. The limiter checks both bounds and all
+six biases before writing; success clamps only those six fields and preserves
+in-range IEEE representations. Unused nominal fields remain arbitrary, including
+nonfinite values. Signed zeros and NaN classification are distinguished by the
+existing oracle; NaN payloads and floating-point exception flags are not proved.
+
+Six exact-real Lean theorems establish nonnegative selected noise, equality
+inhibition, identity bias transition rows even with cross-covariance, and PSD
+preservation when these selected noises feed the existing prediction model.
+The premises remain PSD prior, nonnegative configured/fault variances and dt.
+These results do not establish IEEE PSD preservation, a hard covariance bound,
+noise calibration or covariance consistency after clamping. A permitted noise
+increment can still cross the threshold; inhibition is a pre-increment decision.
+The clamp's comparison/selection properties are proved directly in ESBMC and
+are not inflated into additional Lean theorem counts.
+
+| Evidence | Result |
+|---|---|
+| Lean | Six new theorems; complete project build with `--wfail` passes |
+| ESBMC IMU noise | 4/4 profiles: binary32/64 × both output aliases |
+| ESBMC bias noise | 4/4 profiles: binary32/64 × both output aliases |
+| ESBMC bias limits | 2/2 profiles: binary32/64, in-place state update |
+| Negative checks | Three mutations × both formats: 6/6 assertion counterexamples |
+| Native regression | Three rebuilt noise/limit CTest entries pass |
+| Infrastructure | Offline ESBMC inventory/argument checks and 100 agent-review regression tests pass; formatting and ShellCheck pass |
+
+Mutations replace the specified noise replacement with max, change the bias
+threshold from inclusive to strict, or omit gyroscope clamping. Counterexamples
+must violate the relevant assertions; timeouts and tool errors are not accepted.
+Initial Lean elaboration/simplifier failures are retained separately. Explicit
+finite-index cases and block dimensions remove those failures without adding
+axioms, admitting goals or changing theorem statements. A native syntax command
+initially included the ESBMC-only numbers shim and failed; rerunning with native
+standard headers passed. Neither the shim nor production code was changed.
+
+Self-review confirms correspondence between the two selectors and the Lean
+noise definitions, including selection before bias-noise inhibition. The spec's
+ordering sentence is clarified to match its existing required order and current
+production call sites; the call sites themselves were not changed or proved
+here. No production code, API, parameters or defaults changed. No full AI audit
+or machine-checked Lean-to-C++ refinement was run. Local commands, source/log
+identities, resource results and attempts are retained in
+`output/proof-extension-20261115/imu-manifest.json`, `imu-reviewed/`, mutation
+records and Lean/native/tool logs.
+
+The ten-profile matrix took 21.79 seconds sequentially, with aggregate
+cgroup peak 166,232,064 bytes and no OOM. It retained 120 s / 4 GiB internal
+limits, a 150 s outer deadline and the enforced 6 GiB group cap without swap.
+
+## Accepted totals for this sequence
+
+| Group | New Lean theorems | New ESBMC profiles | Detected mutations |
+|---|---:|---:|---:|
+| E-INNOV | 6 | 30 | 8 |
+| E-BIAS-UPDATE | 9 | 78 | 8 |
+| E-MAG-TILT | 14 | 24 | 8 |
+| Portable R-MEASUREMENT-FUSION | 0 (existing math reused) | 92 | 8 |
+| Three portable IMU/bias policies | 6 | 10 | 6 |
+| Total | 35 | 234 | 38 |
+
+The theorem count includes two private helpers. The profile inventory grows from
+1,554 to 1,788; source entry points grow from 127 to 139. All 234 new profiles
+passed. The sequence also reran 58 default correction/observation profiles and
+two rotation-producer profiles; these 60 are not counted as new coverage.
+Concrete mutation-control witnesses, interrupted/failed attempts and repeated
+runs do not inflate the new-profile count. Offline agent-review tests are tool
+regressions, not a full AI semantic audit.
+
+These are different evidence units, not a percentage of whole-project proof
+completion. Existing producer contracts and exact-real premises remain part of
+the claims. Runtime lifecycle/caller sequencing, replay/PX4 module integration,
+numerical error bounds and deployed backend/toolchain behavior remain separate.
+The production implementation and the functional backlog were not changed.

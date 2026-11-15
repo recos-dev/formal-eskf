@@ -1812,8 +1812,14 @@ not assertions of EKF2 equivalence. Clipping flags do not reconstruct lost motio
 Native tests cover all selector choices, aliases, actual rotated covariance,
 module clipping admission/prediction, restoration, gyro variance and bias-noise thresholds,
 failure rollback and detector/bias-policy sequencing. Replay retains its existing
-metadata behavior. Lean/ESBMC evidence and physical clipping/calibration validation
-remain pending; normal-flight SITL does not establish clipped-flight accuracy.
+metadata behavior. The `imu-policies` ESBMC suite verifies the actual portable
+selector for binary32/binary64, every Boolean condition and both legal output
+aliases, including all invalid inputs and first-error/publication behavior. Lean
+proves preservation of nonnegative noise and exact prediction PSD under the
+existing covariance assumptions. Detector decisions, physical clipping/calibration,
+module/replay sequencing and target numerical behavior remain separate obligations;
+normal-flight SITL does not establish clipped-flight accuracy. See the
+[verification record](../verification-extensions-20261115.md#portable-imu-and-bias-policies).
 
 ### R-BIAS-PROCESS-NOISE: variance-dependent bias driving noise
 
@@ -1840,9 +1846,9 @@ selects INS process noise for one prediction. Its rule follows PX4 v1.16.2
   of P are not read here; valid symmetric PSD covariance remains the prediction
   caller's premise. Failure preserves the whole output, including an alias of
   configured noise; success permits that alias. State/P are never changed here.
-- Derive every step from configured noise, then apply `R-IMU-PROCESS-NOISE`
-  when fault/clipping metadata is available. A correction that reduces variance
-  below the selected threshold releases inhibition immediately. This rule takes
+- Start every step from configured noise, apply `R-IMU-PROCESS-NOISE`
+  when fault/clipping metadata is available, then apply this selector. A correction
+  that reduces variance below the selected threshold releases inhibition immediately. This rule takes
   no learning permissions, motion/clipping or enable flags directly; fault and
   clipping influence its thresholds through the supplied IMU variances.
 - This is a pre-increment check, not a clamp: one permitted increment may cross
@@ -1868,8 +1874,14 @@ calibrated flight noise. Prediction failure still aborts.
 summary inhibition counts include gap-hold predictions and count only configured
 positive intensities suppressed by the rule. Selection is not proof that a tiny
 floating-point increment changed P. Native backend, threshold, rollback,
-correction/recovery and replay tests support the rule; new Lean/ESBMC evidence
-remains pending. Full PX4 covariance constraints remain separate work.
+correction/recovery and replay tests support the rule. The `imu-policies` ESBMC
+suite verifies the actual portable selector, both scalar formats/aliases, every
+consumed coefficient, equality behavior, unchanged P and failure publication.
+Unused P entries remain arbitrary, not assumed finite or PSD by the harness.
+Lean proves nonnegative selected noise, exact identity bias transition rows and
+exact PSD preservation under the existing prediction premises. These results
+do not prove a hard covariance bound, IEEE PSD preservation or caller sequencing.
+Full PX4 covariance constraints remain separate work.
 
 The PX4 module applies the same production selector through `px4::predict_imu`
 before real and synthetic gap-hold predictions. Real intervals first select
@@ -1879,7 +1891,7 @@ call, so suppression does not latch. Fixed intensities remain 1e-6 m²/s⁵ and
 1e-8 rad²/s³, with the existing `intensity * dt` scaling. No correction permission
 or bias-value limit is introduced here. Native module tests check equality,
 above/below threshold, clipping-dependent release, subsequent recovery and
-failure rollback; new formal evidence remains pending.
+failure rollback; formal module sequencing evidence remains pending.
 
 ### R-BIAS-LIMITS: per-axis bias-value limits
 
@@ -1916,7 +1928,13 @@ PX4 limits after each scalar fusion; replay and module limit after each existing
 group. The axis-bound rule agrees, but sequential saturation trajectories need
 not agree. Clamping does not prove posterior covariance consistency or physical
 bias accuracy. Native boundary, failure, correction and replay tests cover this
-feature; Lean/ESBMC evidence remains pending.
+feature. The `imu-policies` ESBMC suite additionally verifies the actual limiter
+in binary32/binary64: inclusive bounds, preservation of in-range representations,
+complete validation before writes, unchanged non-bias fields and whole-state
+rollback on failure. Non-bias fields remain arbitrary, including nonfinite values.
+This is a direct source-level proof; no new Lean algebra is needed for these
+comparison/selection properties. Replay/module invocation, fixed-limit loading
+and covariance consistency are not discharged by the standalone limiter proof.
 
 The module uses `px4::limit_imu_bias` with fixed bounds 0.4 m/s² and
 0.15 rad/s; published sensor-bias limits use the same constants. It limits startup biases and each successful GNSS velocity/horizontal

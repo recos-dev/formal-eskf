@@ -18,7 +18,11 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 1778 '^PLAN'
+    check_count 1788 '^PLAN'
+    check_count 10 'imu-policies-binary'
+    check_count 4 'imu-policies-.*-imu_noise-alias'
+    check_count 4 'imu-policies-.*-bias_noise-alias'
+    check_count 2 'imu-policies-.*-bias_limits'
     check_count 92 'fusion-binary'
     check_count 12 'fusion-.*-preparation'
     check_count 32 'fusion-.*-navigation'
@@ -222,8 +226,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 136 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1778 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 139 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 1788 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -250,10 +254,32 @@ check_plan()
     [[ "$("${RUNNER}" magnetic --list | wc -l)" == 26 ]] || fail 'magnetic producer/caller coverage changed'
     [[ -z "$(comm -23 <("${RUNNER}" magnetic --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] || fail 'magnetic dependency missing from all'
     [[ "$("${RUNNER}" fusion --list | wc -l)" == 92 ]] || fail 'fusion selection changed'
+    [[ "$("${RUNNER}" imu-policies --list | wc -l)" == 10 ]] || fail 'IMU policies selection changed'
     # The standalone scalar selection reuses, rather than duplicates, old proofs.
     [[ -z "$(comm -23 <("${RUNNER}" scalar --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] ||
         fail 'scalar dependency profile is not in the full inventory'
 }
+
+check_imu_policies_arguments()
+(
+    local COUNT=0
+    verify()
+    {
+        local ENTRY="$1" BITS=0 REST KIND
+        local -a EXPECTED
+        shift
+        [[ "${PROFILE}" == imu-policies-binary64-* ]] && BITS=1
+        REST="${PROFILE#imu-policies-binary*-}"; KIND="${REST%-alias*}"
+        [[ "${KIND}" == imu_noise || "${KIND}" == bias_noise || "${KIND}" == bias_limits ]] || fail 'unknown IMU policy'
+        [[ "${ENTRY}" == "verify_${KIND}" && "${SOURCE_FILE}" == "${PROOF_DIR}/imu_policies.cpp" ]] || fail 'wrong IMU policy entry/source'
+        EXPECTED=(--proof-unwind 226 -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}" -D FORMAL_ESKF_PROOF_STATE_SIZE=15)
+        if [[ "${KIND}" != bias_limits ]]; then EXPECTED+=(-D "FORMAL_ESKF_PROOF_STEP_ALIAS=${REST##*alias}"); fi
+        [[ "$*" == "${EXPECTED[*]}" ]] || fail "wrong IMU policy arguments: ${PROFILE}"
+        COUNT=$((COUNT + 1))
+    }
+    run_imu_policies_suite
+    [[ "${COUNT}" == 10 ]] || fail 'IMU policy matrix incomplete'
+)
 
 check_fusion_arguments()
 (
@@ -1588,6 +1614,7 @@ case "${1:-}" in
 esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
+check_imu_policies_arguments
 check_fusion_arguments
 check_magnetic_arguments
 check_bias_arguments
@@ -1604,7 +1631,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (1778 profiles; 136 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (1788 profiles; 139 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

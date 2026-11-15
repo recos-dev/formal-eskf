@@ -58,7 +58,7 @@ parse_arguments()
                 printf 'imu-policies selects actual portable fault-noise replacement, bias-noise inhibition and bias-value limits for both scalar formats and legal aliases. Detector policy, calibration and module/replay wiring are separate.\n'
                 printf 'vertical-health selects actual verdict frames, initialization/reset, clipping recurrence and inductive timestamp/hold safety. Source-ratio/reference equations, caller wiring and root accuracy remain open.\n'
                 printf 'accelerometer selects actual magnitude history, tilt alignment, fusion conditions and AHRS/INS fusion callers with all state/P aliases; sample integration frames use pure rotation contracts; adaptive sampling and module/replay wiring remain separate.\n'
-                printf 'magnetic-runtime selects actual magnetic filtering, reference adoption and their inductive histories; instantaneous field plausibility is included; heading history, lifecycle and adapter wiring remain separate.\n'
+                printf 'magnetic-runtime selects actual magnetic filtering, reference adoption and their inductive histories; instantaneous field plausibility and conditional bounded heading history are included; lifecycle and adapter wiring remain separate.\n'
                 printf 'height selects scalar offset equations, defaults and private source admission/read-only contracts for both sources and formats; full height transaction induction and platform publication remain separate.\n'
                 printf 'navigation-recovery selects actual gate diagnostic contracts, vertical limiter and both public recovery callers with every state/P alias. Same-type correction frames are reused; root accuracy and caller health/permission remain separate.\n'
                 printf 'navigation-reset selects exact-type validation, symmetry-pair arithmetic and all four numerical reset callers with independent state/P aliases. Real PSD is proved separately in Lean; source permission and target backends remain separate.\n'
@@ -925,6 +925,16 @@ run_magnetic_runtime_suite()
                     -D FORMAL_ESKF_PROOF_MAG_CHECK_CONTRACT=1 -D "FORMAL_ESKF_PROOF_MAG_HEALTH_ALIAS=${ALIAS}" \
                     -D "FORMAL_ESKF_PROOF_MAG_CHECK_VALUES=${VALUES}" --cvc5
             done
+        done
+        SOURCE_FILE="${PROOF_DIR}/magnetic_heading.cpp"
+        for KIND in initialization norm validation acceleration; do
+            PROFILE="magnetic-runtime-binary$((32 + 32 * BINARY64))-heading_${KIND}"
+            verify "verify_heading_${KIND}" --proof-unwind 16 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" --cvc5
+        done
+        for MODE in 0 1 2; do
+            PROFILE="magnetic-runtime-binary$((32 + 32 * BINARY64))-heading_update-mode${MODE}"
+            verify verify_heading_update --proof-unwind 16 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                -D FORMAL_ESKF_PROOF_HEADING_CALLER=1 -D "FORMAL_ESKF_PROOF_HEADING_MODE=${MODE}" --cvc5
         done
         SOURCE_FILE="${PROOF_DIR}/magnetometer_filter.cpp"
     done

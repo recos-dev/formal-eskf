@@ -320,8 +320,17 @@ Our explicit weak-field/failure handling and absence of learned magnetic states
 are scoped differences. Native float/double backend tests are supporting
 evidence. The shared wrapped-heading helper now has real wrap/range theorems
 and scoped ESBMC scalar, failure-frame, IEEE-value and conditional range checks.
-The stateful acceleration/innovation filters, consistency latch and their
-initialization/inductive history obligations remain open, as does deployment tuning.
+The actual stateful controller now has complementary unconditional failure/call
+frames and successful IEEE history/latch profiles, plus validation, actual N/E
+norm and acceleration-filter producers. Construction and all reset/update
+transitions establish finite acceleration history. Bounded heading history is
+inductive under the separately proved wrapped-heading range contract, which
+requires principal atan2 results; finite library returns alone do not close it.
+The IEEE proof uses a conservative 2*pi filter bound, not a deployment threshold
+or rounding-error claim. Lean proves convex acceleration weight, exact-real
+filter bounds and latch rejection/hold/acquisition. External reset eligibility,
+caller horizon/aiding truth, adapter integration and deployment tuning remain
+separate.
 
 ### R-MAGNETIC-REFERENCE: geographic magnetic reference adoption
 

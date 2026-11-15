@@ -3104,7 +3104,7 @@
     },
     {
       "id": "R-MAGNETIC-HEADING",
-      "title": "Wrapped heading scalar/status/value contracts verified; heading-history recurrence and latch induction remain open",
+      "title": "Portable magnetic heading frames, filters and conditional inductive history verified; physical observability, math accuracy and adapter wiring remain separate",
       "references": {
         "spec": [
           {
@@ -3136,6 +3136,26 @@
           {
             "file": "formal/lean/FormalESKF/MagneticHeading.lean",
             "symbol": "theorem magneticHeadingWrap_equal"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticHeading.lean",
+            "symbol": "theorem magneticAccelerationWeight"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticHeading.lean",
+            "symbol": "theorem magneticHeadingFilter_bounds"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticHeading.lean",
+            "symbol": "theorem magneticHeadingLatch_reject"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticHeading.lean",
+            "symbol": "theorem magneticHeadingLatch_hold"
+          },
+          {
+            "file": "formal/lean/FormalESKF/MagneticHeading.lean",
+            "symbol": "theorem magneticHeadingLatch_acquire"
           }
         ],
         "cpp": [
@@ -3188,6 +3208,30 @@
           {
             "file": "formal/cpp/esbmc/magnetic_field.cpp",
             "symbol": "void verify_magnetic_heading_value("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_heading.cpp",
+            "symbol": "void verify_heading_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_heading.cpp",
+            "symbol": "void verify_heading_norm("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_heading.cpp",
+            "symbol": "void verify_heading_validation("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_heading.cpp",
+            "symbol": "void verify_heading_acceleration("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_heading.cpp",
+            "symbol": "void verify_heading_update("
+          },
+          {
+            "file": "formal/cpp/esbmc/magnetic_check.cpp",
+            "symbol": "void verify_magnetic_forward_frame("
           }
         ]
       }

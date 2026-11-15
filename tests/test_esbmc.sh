@@ -18,8 +18,8 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 2023 '^PLAN'
-    check_count 48 'magnetic-runtime-'
+    check_count 2037 '^PLAN'
+    check_count 62 'magnetic-runtime-'
     check_count 32 'height-'
     check_count 32 'accelerometer-binary'
     check_count 28 'navigation-recovery-'
@@ -239,8 +239,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 212 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2023 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 217 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2037 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -258,7 +258,7 @@ check_plan()
     [[ "$("${RUNNER}" step --list | wc -l)" == 188 ]] || fail 'step configuration/mode/frame coverage changed'
     [[ "$("${RUNNER}" step-correction --list | wc -l)" == 84 ]] || fail 'correction transaction/frame coverage changed'
     [[ "$("${RUNNER}" solve --list | wc -l)" == 364 ]] || fail 'solve scalar/column/alias coverage changed'
-    [[ "$("${RUNNER}" correction --list | wc -l)" == 212 ]] || fail 'correction caller/producer coverage changed'
+    [[ "$("${RUNNER}" correction --list | wc -l)" == 217 ]] || fail 'correction caller/producer coverage changed'
     [[ "$("${RUNNER}" linalg --list | wc -l)" == 348 ]] || fail 'linalg operation/backend/shape coverage changed'
     [[ "$("${RUNNER}" scalar --list | wc -l)" == 32 ]] || fail 'scalar format/alias/dependency coverage changed'
     [[ "$("${RUNNER}" observations --list | wc -l)" == 82 ]] || fail 'observation model/format/alias coverage changed'
@@ -280,6 +280,15 @@ check_magnetic_runtime_arguments()
     {
         local ENTRY="$1"
         shift
+        if [[ "${SOURCE_FILE}" == "${PROOF_DIR}/magnetic_heading.cpp" ]]; then
+            if [[ "${ENTRY}" == verify_heading_update ]]; then
+                [[ "$*" == "--proof-unwind 16 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_HEADING_CALLER=1 -D FORMAL_ESKF_PROOF_HEADING_MODE=${MODE} --cvc5" ]] || fail 'wrong heading history arguments'
+            else
+                [[ "${ENTRY}" == "verify_heading_${KIND}" && "$*" == "--proof-unwind 16 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} --cvc5" ]] || fail 'wrong heading producer arguments'
+            fi
+            COUNT=$((COUNT + 1))
+            return
+        fi
         if [[ "${SOURCE_FILE}" == "${PROOF_DIR}/magnetic_check.cpp" ]]; then
             if [[ "${ENTRY}" == verify_magnetic_forward_frame ]]; then
                 [[ "$*" == "--proof-unwind 16 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" ]] || fail 'wrong magnetic forward arguments'
@@ -304,7 +313,7 @@ check_magnetic_runtime_arguments()
         COUNT=$((COUNT + 1))
     }
     run_magnetic_runtime_suite
-    [[ "${COUNT}" == 48 ]] || fail 'magnetic runtime matrix incomplete'
+    [[ "${COUNT}" == 62 ]] || fail 'magnetic runtime matrix incomplete'
 )
 
 check_accelerometer_arguments()
@@ -1916,7 +1925,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (2023 profiles; 212 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (2037 profiles; 217 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_mode_constants
     check_rotation_contract_guards

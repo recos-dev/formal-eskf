@@ -5,6 +5,7 @@ file.
 
 SPDX-License-Identifier: BSD-3-Clause
 -/
+import FormalESKF.AccelerometerFilter
 import Mathlib.Analysis.SpecialFunctions.Trigonometric.Basic
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.SplitIfs
@@ -37,6 +38,36 @@ theorem magneticHeadingWrap_difference {measured reference : ℝ}
 theorem magneticHeadingWrap_equal (heading : ℝ) : magneticHeadingWrap (heading-heading) = 0 := by
   rw [sub_self]
   exact magneticHeadingWrap_unchanged (by linarith [Real.pi_pos]) Real.pi_pos.le
+
+/-- The variable-step acceleration LPF is a convex combination for positive dt. -/
+theorem magneticAccelerationWeight {dt : ℝ} (hd : 0 < dt) :
+    0 < dt / (1 + dt) ∧ dt / (1 + dt) < 1 := by
+  have hp : 0 < 1 + dt := by linarith
+  exact ⟨div_pos hd hp, (div_lt_one hp).2 (by linarith)⟩
+
+/-- Exact-real bound; the separate IEEE invariant uses a conservative 2*pi bound. -/
+theorem magneticHeadingFilter_bounds {prior sample : ℝ}
+    (hp : -Real.pi ≤ prior ∧ prior ≤ Real.pi)
+    (hs : -Real.pi ≤ sample ∧ sample ≤ Real.pi) :
+    -Real.pi ≤ forceLowPass (1 / 10) prior sample ∧
+      forceLowPass (1 / 10) prior sample ≤ Real.pi := by
+  exact forceLowPass_bounds (by norm_num) (by norm_num) hp.1 hp.2 hs.1 hs.2
+
+/-- Numerical consistency latch, not a proof of physical observability or correct yaw. -/
+def magneticHeadingLatch (prior observable : Bool) (filtered noise : ℝ) : Bool :=
+  if noise ≤ |filtered| then false else if observable then true else prior
+
+theorem magneticHeadingLatch_reject {prior observable : Bool} {filtered noise : ℝ}
+    (h : noise ≤ |filtered|) : magneticHeadingLatch prior observable filtered noise = false := by
+  simp [magneticHeadingLatch, h]
+
+theorem magneticHeadingLatch_hold {prior : Bool} {filtered noise : ℝ}
+    (h : |filtered| < noise) : magneticHeadingLatch prior false filtered noise = prior := by
+  simp [magneticHeadingLatch, not_le.mpr h]
+
+theorem magneticHeadingLatch_acquire {prior : Bool} {filtered noise : ℝ}
+    (h : |filtered| < noise) : magneticHeadingLatch prior true filtered noise = true := by
+  simp [magneticHeadingLatch, not_le.mpr h]
 
 end
 end FormalESKF.ESKF

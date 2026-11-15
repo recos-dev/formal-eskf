@@ -1139,3 +1139,39 @@ remain separate. Evidence:
 `output/runtime-proof-continuation-20261115/magnetic-check-manifest.json`,
 `magnetic-check-final-v2/results.json`, `check-native-mutations.json`,
 `check-esbmc-mutations.json` and native/tooling logs.
+
+## Stateful magnetic heading consistency
+
+Five Lean theorems prove the positive-step acceleration weight lies in (0,1),
+exact-real innovation-filter bounds and consistency-latch rejection, retention
+and acquisition. Fourteen profiles / five entry points check actual construction,
+all three resets, validation, raw 2D norm, acceleration update and magnetic sample
+update in both formats. The source uses same-type pure rotation/norm/heading
+contracts; complete failure/call frames and successful IEEE state updates are
+complementary. All threshold equalities, unaligned and weak-field branches,
+heading/acceleration independence and borrowed inputs are included.
+
+Construction and every public transition establish finite acceleration history.
+A further initialized/inductive heading invariant uses the separately checked
+principal-angle range contract; the actual IEEE filter stays within conservative
+[-2*pi,2*pi]. This is not a deployment threshold or a rounding-error bound.
+Finiteness of atan2 returns alone does not discharge its principal-range premise.
+No claim establishes physical observability, truthful aiding/alignment inputs,
+external reset eligibility or adapter sequencing.
+
+Accepted checks: 14/14 in 46.06 s, cgroup peak 428,126,208 bytes (408 MiB), no
+OOM/swap. Lean passes with `--wfail` (3,428 jobs). Twenty mutation patterns fail
+in both native formats with passing controls (40 + 40); twelve fixed ESBMC
+mutants and twelve controls have expected outcomes. They cover reset separation,
+validation, vector filtering/root binding, rollback, strict observability,
+alignment/weak-field history, per-sample LPF, equality rejection and latch hold/
+acquisition. Native Eigen/PX4-matrix heading tests, runner inventory, 100 offline
+review-tool tests, references, formatting and ShellCheck pass. Inventory: 2,037
+profiles / 217 entry points. No full AI audit.
+
+Self-review checked all owned state, base/inductive closure across resets and
+both update methods, exact producer types, the additional angular-range premise,
+complementary failure coverage and preservation of production/unrelated drafts.
+Evidence: `output/runtime-proof-continuation-20261115/heading-manifest.json`,
+`heading-final/results.json`, `heading-native-mutations.json`,
+`heading-esbmc-mutations.json` and Lean/native/tooling logs.

@@ -3974,7 +3974,7 @@
     },
     {
       "id": "R-IMU-PROCESS-NOISE",
-      "title": "Portable fault-noise replacement proved; detector calibration and replay/module sequencing remain open",
+      "title": "Portable fault-noise replacement and actual module prediction helper verified; full loop sequencing and target behavior remain open",
       "references": {
         "spec": [
           {
@@ -4030,13 +4030,33 @@
           {
             "file": "formal/cpp/esbmc/imu_policies.cpp",
             "symbol": "void verify_imu_noise("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_prediction.cpp",
+            "symbol": "void verify_imu_admission("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_prediction.cpp",
+            "symbol": "void verify_prediction_noise("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_prediction.cpp",
+            "symbol": "void verify_prediction_bias("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_prediction.cpp",
+            "symbol": "void verify_imu_prediction("
+          },
+          {
+            "file": "formal/cpp/esbmc/step.cpp",
+            "symbol": "void verify_prediction_step("
           }
         ]
       }
     },
     {
       "id": "R-BIAS-PROCESS-NOISE",
-      "title": "Portable bias-noise inhibition proved; exact noise/transition consequences, replay/module sequencing remains open",
+      "title": "Portable bias-noise policy and module prediction ordering verified; full loop and target numerical behavior remain open",
       "references": {
         "spec": [
           {
@@ -4096,6 +4116,26 @@
           {
             "file": "formal/cpp/esbmc/imu_policies.cpp",
             "symbol": "void verify_bias_noise("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_prediction.cpp",
+            "symbol": "void verify_imu_admission("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_prediction.cpp",
+            "symbol": "void verify_prediction_noise("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_prediction.cpp",
+            "symbol": "void verify_prediction_bias("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_prediction.cpp",
+            "symbol": "void verify_imu_prediction("
+          },
+          {
+            "file": "formal/cpp/esbmc/step.cpp",
+            "symbol": "void verify_prediction_step("
           }
         ]
       }

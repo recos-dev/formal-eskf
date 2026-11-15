@@ -466,3 +466,43 @@ accurate libm, backend internals, replay metadata and actual module forwarding
 remain separate. Evidence: `output/runtime-proof-continuation-20261115/imu-manifest.json`,
 `imu-split-properties/results.json`, `imu-mutations.json`, native controls and
 the retained embedded-library counterexamples.
+
+## Module IMU prediction helper
+
+Eight binary32/binary64 profiles cover actual `ImuPrediction.hpp`: clipping
+admission, both actual same-type noise producers and the composed in-place
+prediction caller. They check fixed fault variance/bit decoding, a fresh copy
+of every configured parameter, selection before bias inhibition using prior P,
+exact delegation/first error and atomic state/P return. The two policy summaries
+admit arbitrary statuses and successful noise outputs; matching actual producers
+are required. The terminal prediction uses existing E-STEP's same-type, in-place
+failure-atomic and input-pure frame. There is no assumption of successful
+prediction, finite state or PSD covariance in the wrapper proof.
+
+Accepted checks: 8/8 profiles in 45.71 s, cgroup peak 440,815,616 bytes, no OOM or
+swap; 120 s / 4 GiB internal and 6 GiB group limits. Eight assertion
+counterexamples and eight passing controls cover feeding configured instead of
+selected noise into bias inhibition, shifted clipping bits, wrong fault variance
+and covariance publication on admission failure. Native module-prediction tests,
+runner inventory, 100 offline agent-review tests, formatting and ShellCheck pass.
+The inventory is 1,816 profiles and 152 source entry points; these are not whole-
+project coverage percentages. No full AI semantic audit or new Lean theorem.
+
+The initial monolithic query timed out with CVC5 and Z3. The compositional Z3
+bias producer also timed out. The accepted matrix uses the existing policy
+suite's default Bitwuzla solver. Initial covariance initialization required
+increasing unwind from 20 to 230; unwinding failures were retained and never
+counted as passes. The ESBMC `<numbers>` model adds only the standard double
+`pi = pi_v<double>` alias needed to parse the actual deployment-profile header.
+No module code or deployment constants were substituted or changed.
+
+Self-review: matched all summaries to concrete producers and legal alias modes,
+verified complete parameter/input preservation, and checked that mutation
+failures are assertions rather than frontend/resource failures. Tightened two
+legacy inventory regexes to match the profile-column start, avoiding accidental
+counting of the new `imu-prediction` profiles as core prediction profiles.
+This closes the helper's ordering/rollback obligation under the proof backend;
+actual PX4 Matrix, the estimator loop, real/gap admission, health chronology,
+fault latch and publication remain separate. Evidence: `output/runtime-proof-continuation-20261115/imu-prediction-manifest.json`,
+`imu-prediction-bitwuzla/results.json`, `imu-prediction-mutations.json`, native
+and tooling logs, plus failed attempts.

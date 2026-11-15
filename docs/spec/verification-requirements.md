@@ -1832,7 +1832,14 @@ aliases, including all invalid inputs and first-error/publication behavior. Lean
 proves preservation of nonnegative noise and exact prediction PSD under the
 existing covariance assumptions. Detector decisions, physical clipping/calibration,
 module/replay sequencing and target numerical behavior remain separate obligations;
-normal-flight SITL does not establish clipped-flight accuracy. See the
+normal-flight SITL does not establish clipped-flight accuracy. The additional
+`imu-prediction` suite verifies actual `ImuPrediction.hpp` clipping admission and
+composition: a fresh parameter copy, exact bit decoding/fault variance, selection
+before bias inhibition using prior P, one in-place prediction and first-error
+rollback. Same-type actual selector producers and E-STEP supply its explicit
+callee frames; arbitrary callee statuses/results are admitted. This is helper
+wiring under the proof backend, not the actual PX4 Matrix instantiation, input
+scheduler, health timing, fault latch or output publisher. See the
 [verification record](../verification-extensions-20261115.md#portable-imu-and-bias-policies).
 
 ### R-BIAS-PROCESS-NOISE: variance-dependent bias driving noise
@@ -1905,7 +1912,10 @@ call, so suppression does not latch. Fixed intensities remain 1e-6 m²/s⁵ and
 1e-8 rad²/s³, with the existing `intensity * dt` scaling. No correction permission
 or bias-value limit is introduced here. Native module tests check equality,
 above/below threshold, clipping-dependent release, subsequent recovery and
-failure rollback; formal module sequencing evidence remains pending.
+failure rollback. The `imu-prediction` suite now covers this actual helper's
+ordering, configured-noise restoration and atomic return, with matching
+same-type selector and E-STEP frames. Module-level decisions to call it, the
+real/synthetic distinction and target backend remain separate obligations.
 
 ### R-BIAS-LIMITS: per-axis bias-value limits
 

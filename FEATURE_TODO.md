@@ -121,8 +121,13 @@ not just another constant in the existing barometer helper.
 
 | Task | Status and dependency | Completion criterion |
 |---|---|---|
-| F-04.1 — Timing design | Design; requires the A-01 ownership/refactor review in ROADMAP | Specify sample versus publication time, supported delays, fixed capacities, horizon, overflow/out-of-order policy, resets and latency/memory budgets against the pinned PX4 behavior. |
+| F-04.1 — Timing design | Partial: portable runtime ring buffer, PX4-style API and IMU/observation/output usage contracts with native scenario tests prepared for review; full source timing/profile design remains open | Specify sample versus publication time, supported delays, fixed capacities, horizon, overflow/out-of-order policy, resets and latency/memory budgets against the pinned PX4 behavior. |
 | F-04.2 — Delayed fusion and output prediction | Blocked by F-04.1 | Implement the reviewed history/horizon/output path in bounded batches. Test deterministic delay, reordering, dropout and reset sequences; verify output timestamps, continuity and measured resource bounds. |
+
+The buffer foundation is prioritized by request and remains disconnected from
+the immediate-fusion module. Review [its contract](docs/spec/px4-module-architecture.md#px4-time-buffer-sample-storage-and-selection)
+and native tests first; this does not complete F-04.1 or authorize changing the
+module's time horizons without the remaining timing design.
 
 ### F-05 — Sensor location and frames
 

@@ -70,6 +70,9 @@ class PackageTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256((self.PX4 / NAME).read_bytes()).hexdigest(), HASH)
         self.assertIn("core/include", (self.PX4 / MODULE / "CMakeLists.txt").read_text())
         self.assertNotIn("FORMAL_ESKF_ROOT", (self.PX4 / MODULE / "CMakeLists.txt").read_text())
+        BUFFER = "include/formal_eskf/runtime/ring_buffer.hpp"
+        self.assertEqual((self.PX4 / MODULE / "core" / BUFFER).read_bytes(),
+                         (SCRIPT_DIR.parents[1] / BUFFER).read_bytes())
         BEFORE = self.snapshot()
         self.install()
         self.install("--check")

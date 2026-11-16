@@ -162,6 +162,122 @@ must also reach the output/history path and must never become fresh gravity,
 motion-health or other sensor observations. Unsupported discontinuity follows
 the restart-required policy.
 
+### PX4-TIME-BUFFER: sample storage and selection
+
+`include/formal_eskf/runtime/ring_buffer.hpp` provides the portable
+`formal_eskf::runtime::RingBuffer` with the PX4-style history API and fixed backing
+storage. `RingBuffer<Sample, Capacity>(length)` reserves `Capacity`
+slots inside the object and selects an active length in `1..Capacity`. It is a
+single-owner runtime utility with no PX4, clock, scheduler or linalg dependency.
+Sample construction/copying must be bounded, allocation-free, non-throwing and
+non-blocking, with `std::uint64_t time_us` in the common microsecond time domain.
+Default construction, copying and moving the buffer are disabled, as in PX4.
+
+| Operation | Required behavior |
+|---|---|
+| Constructor, `allocate(length)`, `valid()` | Invalid initial length leaves an invalid empty buffer. `allocate` selects a length within the backing capacity without heap allocation; invalid requests leave everything unchanged, equal length preserves history, changed length resets it. Reconfiguration is startup/restart only. |
+| `push(sample)` | Requires a valid buffer and caller-admitted, strictly increasing nonzero timestamps. Return `void`, retaining the newest sample and overwriting the oldest when full, as in PX4. It does not validate source timestamps or report overflow. |
+| `get_oldest()`, `get_newest()` | Non-consuming const references; require `entries() > 0`. These replace the former FIFO pop interface so processed IMU/output history can remain available. Saved views must not be used across buffer mutations. |
+| `operator[](index)`, `get_oldest_index()` | Physical slot access, with `index < get_length()`. The owner may correct payloads while preserving their timestamps and ordering. Traverse retained entries from the oldest index with wraparound; zero-time slots are inactive. |
+| `pop_first_older_than(timestamp, output, max_age_us = 100000)` | Return `bool`, writing the newest retained sample at/before the horizon with age strictly below the window. The two-argument pointer call and default 100 ms window match PX4. Output must be outside buffer storage. Retire selected/older entries and preserve future ones. On a miss, expire old entries without changing output; null output returns false without mutation. |
+| `get_length()`, `entries()` | Report configured length and active retained count. Count/indices use `std::size_t`, avoiding PX4's 8-bit capacity limit. |
+| `get_used_size()`, `get_total_size()` | Report metadata plus active payload bytes, and the complete object size including all backing storage. Unused storage remains reserved; no memory is released on consumption. |
+| `reset()` | Clear all backing slots, occupancy and indices while retaining the configured length. It does not allocate. |
+
+The caller checks `valid()` during startup and source timestamps before `push`.
+Its last-admitted source timestamp survives complete consumption of the buffer;
+an empty history does not permit duplicate or backward-time samples. Clear this
+watermark only as part of an explicit source/session restart after resolving its
+lifecycle and state-reset policy. A buffer reset alone does not resolve that policy.
+Before a full-buffer push, it examines `entries() == get_length()` and the oldest
+entry's epoch: overwriting already processed retained history is ordinary
+rollover; loss of a pending observation must be recorded, and loss of required
+IMU/output history must fault the session. The buffer does not distinguish those
+roles. Source admission/loss diagnostics are integration obligations, not checks
+already implemented by this standalone component. If separate expiry/supersession
+counts are needed, the source owner inspects the retained epochs before selection;
+`bool` indicates selection only, never fusion success.
+
+The owner supplies already converted effective observation times and a monotonic
+fusion horizon, retains matching flight context/qualification, and handles
+source/calibration changes. A source-ordered late arrival older than the preceding
+fusion horizon may still be used within the current age window. The buffer does
+not subtract latency, read clocks or validate payloads. Age uses ordered
+subtraction to avoid unsigned overflow; equality with the age limit is expired.
+A zero window expires every entry at/before the horizon. Deployment must choose
+an explicit positive useful window; 100 ms is PX4's selection window, not a
+sensor latency or fusion-delay setting.
+
+#### Use by each history owner
+
+| Owner | Stored history and permitted operations |
+|---|---|
+| Delayed IMU prediction | Complete admitted integration intervals, with end timestamps and measured durations. Push once per completed main-filter interval and read the delayed end without consuming history. Observation coalescing must never skip IMU intervals. |
+| Sensor/context admission | Effective observation epoch, measurement and the qualification/context that belong to it. Select at most one per source per fusion step. A future sample remains pending; a selected but unqualified sample does not become permission to fuse. A measurement's stored context is not overwritten by current arrival context. |
+| Current-time output prediction | State snapshots at the completed IMU-history epochs, alongside the separately propagated current output. Read matching historical state and traverse retained entries to apply tracking corrections or state-reset deltas. Modify payloads, retaining timestamps, order and occupancy. |
+
+The session declares its initial filter-state epoch. For the retained-oldest
+IMU pattern, warmup requires the configured history length **and** the declared
+actual timestamp span before delayed prediction begins. The first interval must
+start at the seed epoch; each later interval starts at the last committed state
+epoch. Track that epoch independently of the buffer so repeated callbacks cannot
+predict the same interval twice. If warmup cannot establish the span before an
+unprocessed interval would be overwritten, the profile/input envelope has failed;
+do not advance the horizon to conceal that loss. Supported held-rate intervals
+follow PX4-TIME; an unsupported discontinuity requires restart.
+
+Output feedback requires a historical output epoch equal to the delayed
+IMU/filter epoch. Equal capacities, indices or update counts do not establish
+that equality. At startup, do not read empty oldest/newest views or present
+default/duplicated samples as measured history. Seed the current state explicitly
+and accumulate real timestamped history. Missing matching output history cannot
+produce feedback or valid estimation that depends on it.
+
+Distinguish state correction from history invalidation: payload corrections keep
+epochs and apply coherently to current and retained output states; session/history
+invalidation uses `reset()` and resets the associated cursors/readiness together.
+Do not clear slots by assigning `{}` through `operator[]`: that bypasses occupancy
+bookkeeping. Iterate only `entries()` retained samples from `get_oldest_index()`
+with wraparound by `get_length()`, including during partial warmup.
+
+Per-source capacity and active length come from the declared admitted rate,
+retention span, jitter and filter-period quantization. Budget the full backing
+capacity using the actual sample types, even for a shorter active length. Keep
+histories as estimator-owned members, not large callback-local temporaries.
+Reject unsupported startup configurations; changes to timing/length require
+restart and requalification. No final target capacities are selected by this
+component contract.
+
+The reference is pinned [PX4 RingBuffer](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/RingBuffer.h#L48).
+The API uses its operation names and non-consuming history access, but is not a
+binary-compatible replacement: capacity is bounded at compile time, lengths/counts
+use `std::size_t`, and the optional third selection argument permits an explicit
+source age window. Consumed/expired timestamp tags are cleared, so `entries()`
+counts active retained entries, unlike PX4's scan of all nonzero physical slots,
+which can include superseded data. Expired entries are retired even on a miss;
+PX4 may retain them. No PX4 source is vendored.
+
+Push, endpoint/index/count/byte queries take constant work for the selected sample
+type. Selection examines at most `Capacity` timestamps and clears at most
+`Capacity` tags, copying at most one sample. Reset/changed-length configuration
+clear at most `Capacity` samples. Length changes are startup/restart only;
+source/history invalidation may reset during a callback, whose budget must include
+that bounded clearing cost and the associated owner reset work.
+No operation allocates, locks, logs or resizes backing storage. Final source
+capacities, timing and target memory/latency budgets remain part of F-04 design.
+
+Native evidence is `tests/test_ring_buffer.cpp`, registered as
+`formal_eskf.runtime.ring_buffer`: configuration/failure preservation, non-consuming
+history, wrap/overwrite, indexed payload correction, selection/expiry/future
+retention, timestamp boundaries and deterministic sequences against a linear-list
+model. Caller fixtures exercise IMU warmup/once-only prediction/history loss,
+source admission/late arrival/qualification/calibration restart, and output
+timestamp matching/history correction/reset through the production buffer API.
+Those fixtures demonstrate the usage contracts; they do not implement or verify
+the module's admission, delayed filter or output predictor. Package tests check
+delivery through the shared headers. This is component regression evidence,
+not deployed integration, a formal proof or target WCET.
+
 ## PX4-LIFE: initialization, failure and shutdown
 
 Startup validates the complete configuration and prepares storage, subscriptions

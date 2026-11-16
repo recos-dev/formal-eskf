@@ -183,6 +183,11 @@ if(PROJECT_IS_TOP_LEVEL)
         formal_eskf_configure_test(test_scalar_standard)
         add_test(NAME formal_eskf.scalar.standard COMMAND test_scalar_standard)
 
+        add_executable(test_ring_buffer tests/test_ring_buffer.cpp)
+        target_link_libraries(test_ring_buffer PRIVATE formal_eskf::runtime)
+        formal_eskf_configure_test(test_ring_buffer)
+        add_test(NAME formal_eskf.runtime.ring_buffer COMMAND test_ring_buffer)
+
         if(TARGET replay_ins)
             foreach(CASE IN ITEMS known missing clipped disabled gap limits zero_limits invalid_limits)
                 add_test(

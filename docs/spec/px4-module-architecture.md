@@ -140,6 +140,13 @@ startup. The retained span must cover the declared sensor latency, arrival jitte
 and filter-period quantization. Match IMU, observation and output history by
 timestamps; equal ring-buffer indices or capacities alone do not establish alignment.
 
+Bind module timing parameters once at startup and derive active lengths within
+compile-time backing capacities. Validate the supported interval mode and the
+complete timing/storage configuration before estimation starts. Reject a required
+length exceeding capacity; never silently clamp it or resize during operation.
+The [timing profile](px4-timing-profile.md#startup-parameters-and-fixed-storage)
+defines defaults and cross-constraints. Parameter changes require restart.
+
 At each fusion step, consume at most one observation per source: the newest
 unconsumed sample no later than the fusion time and within that source's allowed
 age window. Retire older superseded samples. Keep future eligible samples pending;

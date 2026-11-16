@@ -10,9 +10,43 @@ Use the same reference as the architecture: **PX4 v1.16.2,
 250 Hz SIH setup, INS/binary64 and `Px4MatrixBackend`. Hardware and other sensor
 rates need their own profile; these values are not universal flight tuning.
 
-## Main-filter interval and horizon
+## Startup parameters and fixed storage
 
-Retain one real `vehicle_imu` interval per main-filter step, nominally **4 ms**.
+Make timing configurable through the module's own startup parameters. Read them
+once, derive the history lengths, and freeze the resulting configuration for the
+session. The backing capacities remain compile-time constants; changing an
+active length never allocates memory or changes the reserved object size.
+
+| Setting | Configuration rule |
+|---|---|
+| Requested main-filter interval | Startup parameter, initially 4000 us; accept only an implemented interval-realization mode with its numerical and timing evidence |
+| Requested minimum fusion lag | Startup parameter, initially 200 ms; derive the IMU/output active length from this value and the selected mode's minimum endpoint spacing |
+| Sensor residual delays | Startup settings with explicit units and producer bindings; zero in the initial SIH profile |
+| Maximum lag, admitted rates and history capacities | Deployment-profile bounds; parameters must fit these bounds and the memory/response budget |
+| Active history lengths | Derived once from the timing/rate bounds; not independent user knobs |
+
+Validate the complete configuration before starting estimation: units and
+overflow-safe conversions, supported interval mode, sensor-delay/arrival
+coverage, lag bounds, all required lengths and resource limits. IMU and output
+histories use the same derived length. Use `RingBuffer::allocate(length)` only
+during startup/restart, after validation. Reject unsupported values or required
+lengths exceeding capacity; do not silently clamp them, shorten history or fall
+back to another period. Running parameter changes take effect only after restart.
+
+The values below describe the **default configuration**, not fixed lengths for
+every configuration. A 10 ms setting needs rotation-aware accumulation and
+equivalent-noise support before it can be accepted. Merely exposing a parameter
+does not implement that mode; the first one-interval mode retains the 4 ms profile.
+F-04.2 must implement this parameter binding together with the timing owner,
+rather than add parameters that the running estimator ignores.
+
+## Initial main-filter interval and horizon
+
+The first integration and its acceptance runs use SIH's nominal **250 Hz (4 ms)**
+IMU input. The main filter processes one real `vehicle_imu` interval per step;
+the output predictor advances on every admitted interval. Support for 400/500 Hz
+profiles is deferred, while startup configuration and derived lengths remain
+part of the design.
 Use a separate current-time output state and delayed main state even though their
 nominal update rates are equal. PX4 permits this prediction period; its default
 is 10 ms. Do not introduce IMU downsampling in this first integration.
@@ -24,13 +58,13 @@ establish the frame conversion, rotation composition and equivalent noise before
 using accumulated increments. The gravity sampler's approximately 10 ms interval
 is independent of the main-filter period and remains unchanged.
 
-| Profile setting | Proposed value / rule |
+| Profile setting | Default value / rule |
 |---|---|
 | Real IMU integration periods | Angle and velocity periods each 3.8–4.2 ms; retain both measured values |
 | Consecutive admitted IMU endpoint spacing | 3.8–50 ms; strictly increasing |
 | Integration/endpoint discrepancy | Retain the existing 200 us tolerance and bounded held-rate gap policy |
 | Delayed horizon lag | At least 200 ms, at most 300 ms, checked using actual timestamps |
-| IMU/output active history | 54 endpoint records each; 64 backing slots each |
+| IMU/output active history | Derived: 54 endpoint records each by default; 64 fixed backing slots each |
 | Observation selection age | Strictly less than 100 ms behind the fusion horizon |
 | Residual sensor delays | Zero for this SIH profile; explicit per-source values in any later profile |
 
@@ -39,11 +73,16 @@ deployment envelope than the core's accepted time-step domain. Out-of-envelope
 IMU data must not be clamped into the profile. The nominal 4 ms period is supported
 by the existing SIH configuration, but the full envelope still requires testing.
 
-For minimum endpoint spacing `T_min` and minimum lag `D_min`, choose
-`L_imu = 1 + ceil(D_min / T_min) = 54`. Thus the oldest of 54 endpoints is
-nominally **212 ms** behind the newest, and at least **201.4 ms** behind under
+For the selected mode's minimum endpoint spacing `T_min` and requested minimum
+lag `D_min`, derive `L_imu = max(2, 1 + ceil(D_min / T_min))`. `T_min` is an
+enforced bound on completed IMU-history endpoints, not simply the requested or
+average filter period. The default configuration gives **54** records. The oldest
+is nominally **212 ms** behind the newest, and at least **201.4 ms** behind under
 the minimum spacing. This is a fixed history length, not exactly 200 ms on every
-tick. Jitter and permitted gaps must still keep the actual span within 300 ms;
+tick. For example, requesting 230 ms with the same 3.8 ms minimum needs 62 slots;
+240 ms needs 65 and must be rejected by this 64-slot build. These counts alone
+do not establish acceptance of the other startup checks. Jitter and permitted
+gaps must still keep the actual span within the profile's 300 ms upper bound;
 exceeding it faults the session rather than skipping unprocessed history.
 
 ## Source timestamps and admission
@@ -57,9 +96,10 @@ watermarks across an empty observation buffer.
 For sensor delay `d` and interval-centering offset `h`, use
 `t_observation = t_sample - d - h`. Following PX4, `h` is half the main-filter
 average real integration period, rounded down to integer microseconds. Initialize
-that average at 4 ms; update it with the existing period averaging weights using
-real intervals only. Freeze `d` and `h` with each admitted observation; never
-retime records already buffered. The first profile therefore has `h` near 2 ms.
+that average from the selected mode (4 ms by default); update it with the existing
+period averaging weights using real intervals only. Freeze `d` and `h` with each
+admitted observation; never retime records already buffered. The first profile
+therefore has `h` near 2 ms.
 
 The half-period shift is an explicit timing approximation: a selected observation
 can physically refer to up to `h` after the filter endpoint. Selection and delayed
@@ -102,7 +142,7 @@ Store internal values and provenance, not whole uORB messages. Each observation
 carries source/calibration identity and the timestamps needed above. No new
 generic sensor registry or buffer wrapper is required.
 
-| History | Active / backing slots | Retained content and sizing basis |
+| History | Default active / fixed backing slots | Retained content and sizing basis |
 |---|---|---|
 | IMU | 54 / 64 | One record per real interval, including any preceding permitted held-rate segment |
 | Output | 54 / 64 | Current output state captured at each matching real IMU endpoint |
@@ -117,6 +157,9 @@ The output-age allowance covers source admission while IMU delivery pauses:
 a source timestamp can be ahead of the latest admitted IMU, while still no later
 than wall time. With a 500 ms retention allowance, GNSS/magnetic/barometer need
 **12/52/102** slots respectively; the selected capacities exceed these counts.
+The default active lengths use those full capacities. Other configurations must
+derive sufficient active lengths within the same backing limits and recheck
+context coverage; changing the IMU history alone is insufficient.
 This allows oldest/superseded entries to remain until the next bounded selection.
 It does not authorize
 processing a backlog after an unsupported IMU outage. Once the latest IMU exceeds
@@ -154,7 +197,8 @@ existing stack reservation are additional memory, measured under F-07.2.
    `t0`. Retire observations with effective time at/before `t0`, while retaining
    admission watermarks.
 2. Propagate the output seed with each subsequent real IMU interval and store its
-   endpoint alongside the IMU record. Warm up all 54 active IMU/output slots.
+   endpoint alongside the IMU record. Warm up the configured active IMU/output
+   length (54 by default).
    Do not publish a valid estimate until alignment, matched history and the lag
    checks pass. Never fill missing history with repeated seed samples.
 3. Once ready, predict the main state from `t0` through the oldest IMU record,
@@ -171,8 +215,9 @@ existing stack reservation are additional memory, measured under F-07.2.
    tracking correction and updated bias feedback, then publish current navigation
    output. The fast attitude phase precedes this step and uses previous feedback.
 
-For nominal intervals, the first ready tick has output at `t0 + 216 ms` and the
-first completed main estimate at `t0 + 4 ms`; the next tick advances both by 4 ms.
+For the default configuration and nominal intervals, the first ready tick has
+output at `t0 + 216 ms` and the first completed main estimate at `t0 + 4 ms`;
+the next tick advances both by 4 ms.
 No interpolation, duplicate prediction or loop that drains all pending IMU is
 needed in this profile. Output-tracking equations must be checked independently
 with our quaternion/frame conventions in F-04.2; timing agreement alone does not
@@ -183,7 +228,7 @@ establish their numerical correctness.
 | Event | Required action |
 |---|---|
 | Permitted IMU gap | Carry the previous-rate hold and real interval in one history record. Apply the same segment sequence to output and main prediction, at most two prediction calls each. The hold creates no fresh gravity, clipping or motion-health evidence. |
-| Unsupported gap, invalid IMU or lag outside 200–300 ms after warmup | Latch restart-required fault; stop valid publication. Do not skip delayed intervals to recover the requested lag. |
+| Unsupported gap, invalid IMU or lag outside the configured bounds after warmup (default 200–300 ms) | Latch restart-required fault; stop valid publication. Do not skip delayed intervals to recover the requested lag. |
 | Required IMU/output record lost or timestamp mismatch | Fault before using a mismatched prior/history. Include owner overwrite checks; `push()` itself does not report loss. |
 | Aiding overflow, expiry or ordering rejection | Retire/drop with a reason; preserve other sources. Do not refresh successful-fusion time or reset the whole estimator merely for source loss. |
 | No new IMU | Backup callback maintains wall-time arrival/output expiry and status; no synthetic propagation and no advance of delayed policy time. Evaluate delayed lifecycle at the next real delayed step. |
@@ -216,7 +261,8 @@ Bound each callback to one input per subscribed source, one main-filter step,
 one observation per aiding source, and the fixed history scans above. Held gaps
 allow at most two prediction segments; they do not permit repeated fusion.
 Context scans visit at most 128 entries per lookup; output feedback/reset visits
-at most 54 retained states. Include bounded source-history clearing on switches.
+at most the configured active length (54 by default, at most 64 in this build).
+Include bounded source-history clearing on switches.
 
 Retain the existing navigation publication interval (10 ms), maximum output age
 (100 ms) and backup interval (20 ms). The proposed response deadline is **3.8 ms**
@@ -232,6 +278,8 @@ drop work or change the main-filter period.
 
 F-04.1 completes when this profile is reviewed. F-04.2 must retain evidence for:
 
+- Startup parameter conversion and derived lengths, exact-capacity/over-capacity
+  cases, unsupported period modes and restart-only configuration changes.
 - Exact warmup/once-only advance, matching output epochs and held-gap replay.
 - Timestamp/offset boundaries, future retention, rate limits, late/out-of-order
   events, overflow and unknown/stale historical context.

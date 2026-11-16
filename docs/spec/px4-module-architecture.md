@@ -16,6 +16,10 @@ describe the layers and current implementation. This specification owns the
 target module behavior. Sensor equations, gates and lifecycle rules remain in
 the [verification requirements](verification-requirements.md).
 
+The [first timing profile](px4-timing-profile.md) proposes concrete source
+bindings, capacities and timing budgets for F-04.1 review. It does not establish
+that the module implements or meets this target.
+
 ## Scope
 
 The module is one primary INS estimator with one IMU, one GNSS source,
@@ -61,8 +65,8 @@ it is not an independent watchdog for a blocked work item.
 flowchart TD
     I["Admitted integrated IMU"] --> O["Current-time output prediction"]
     O --> A["Publish current attitude"]
-    I --> D["Rotation-aware accumulation and IMU history"]
-    S["Qualified sensor and flight-context samples"] --> B["Bounded timestamped histories"]
+    I --> D["Main-filter IMU interval and history"]
+    S["Admitted sensor and flight-context samples"] --> B["Bounded timestamped histories"]
     D --> F["Delayed state/covariance prediction and fusion"]
     B --> F
     F --> C["Bias, tracking correction and reset feedback"]
@@ -70,8 +74,9 @@ flowchart TD
     C --> N["Publish current navigation output and status"]
 ```
 
-The branches execute serially in the same work item. They are different update
-rates and time horizons, not additional threads.
+The branches execute serially in the same work item at different time horizons.
+Their update rates may be equal; a longer main-filter interval requires the
+downsampling contract below. No additional estimator thread is introduced.
 
 For each callback:
 
@@ -80,9 +85,10 @@ For each callback:
 2. If initialized and healthy, propagate the output predictor with the admitted
    IMU and publish current attitude. Use feedback from completed filter updates;
    this output does not include the fusion work that follows in this callback.
-3. Accumulate the same IMU for the main filter and admit bounded sensor/context
-   updates. Run at most one main-filter step when a complete interval is ready
-   at the delayed horizon. Otherwise finish without covariance/fusion work.
+3. Prepare the same IMU interval for the main filter and admit bounded sensor
+   and context updates. Run at most one main-filter step when a complete interval
+   is ready at the delayed horizon. Otherwise finish without covariance/fusion
+   work.
 4. Predict delayed nominal state and covariance, then execute eligible aiding.
    Retain the project's ordered dependencies: GNSS velocity then horizontal
    position, vertical IMU health then height, gravity, then magnetic aiding.
@@ -92,10 +98,11 @@ For each callback:
    predictor. Publish navigation estimates from its current-time state and
    update diagnostics. Navigation publication may be rate-limited separately.
 
-IMU downsampling must compose rotations, account for changing body frames when
-accumulating delta velocity, preserve actual angle/velocity integration periods
-and accumulate clipping information. It must not discard samples or replace
-their measured duration with the requested filter period. The target period is
+When selected by the profile, IMU downsampling must compose rotations, account
+for changing body frames when accumulating delta velocity, preserve actual
+angle/velocity integration periods and accumulate clipping information. It must
+not discard samples or replace their measured duration with the requested filter
+period. The target period is
 fixed at startup and realized in whole IMU intervals. PX4's default is 10 ms;
 it is not a guarantee of exactly 100 Hz or a mandated tuning value for every target.
 The accumulated interval must carry equivalent noise statistics under `E-NOISE`;
@@ -128,10 +135,10 @@ offset arithmetic before unsigned subtraction. Check timestamps against the
 arrival clock and declared clock uncertainty; a future observation eligible for
 buffering means future relative to the fusion horizon, not arbitrary clock error.
 
-Fix the fusion delay and maximum history capacities at startup. The retained
-span must cover the declared sensor latency, arrival jitter and filter-period
-quantization. Match IMU, observation and output history by timestamps; equal
-ring-buffer indices or capacities alone do not establish alignment.
+Fix the fusion-lag bounds, active lengths and maximum history capacities at
+startup. The retained span must cover the declared sensor latency, arrival jitter
+and filter-period quantization. Match IMU, observation and output history by
+timestamps; equal ring-buffer indices or capacities alone do not establish alignment.
 
 At each fusion step, consume at most one observation per source: the newest
 unconsumed sample no later than the fusion time and within that source's allowed

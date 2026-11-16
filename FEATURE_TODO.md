@@ -121,13 +121,13 @@ not just another constant in the existing barometer helper.
 
 | Task | Status and dependency | Completion criterion |
 |---|---|---|
-| F-04.1 — Timing design | Partial: portable runtime ring buffer, PX4-style API and IMU/observation/output usage contracts with native scenario tests prepared for review; full source timing/profile design remains open | Specify sample versus publication time, supported delays, fixed capacities, horizon, overflow/out-of-order policy, resets and latency/memory budgets against the pinned PX4 behavior. |
-| F-04.2 — Delayed fusion and output prediction | Blocked by F-04.1 | Implement the reviewed history/horizon/output path in bounded batches. Test deterministic delay, reordering, dropout and reset sequences; verify output timestamps, continuity and measured resource bounds. |
+| F-04.1 — Timing design | Design review pending: [first timing profile](docs/spec/px4-timing-profile.md) defines source epochs, cadence, capacities, flow and budgets; runtime buffer (`9828944`) and scoped proof (`d59c0dd`) committed | Specify sample versus publication time, supported delays, fixed capacities, horizon, overflow/out-of-order policy, resets and latency/memory budgets against the pinned PX4 behavior. |
+| F-04.2 — Delayed fusion and output prediction | Blocked by F-04.1 design acceptance; buffer foundation is available | Implement the reviewed history/horizon/output path in bounded batches. Test deterministic delay, reordering, dropout and reset sequences; verify output timestamps, continuity and measured resource bounds. |
 
-The buffer foundation is prioritized by request and remains disconnected from
-the immediate-fusion module. Review [its contract](docs/spec/px4-module-architecture.md#px4-time-buffer-sample-storage-and-selection)
-and native tests first; this does not complete F-04.1 or authorize changing the
-module's time horizons without the remaining timing design.
+F-04 is prioritized by request. The committed buffer and its component evidence
+remain disconnected from the immediate-fusion module. Review the
+[timing profile](docs/spec/px4-timing-profile.md) before F-04.2 changes the module's
+time horizons; buffer proof does not establish owner timing or output tracking.
 
 ### F-05 — Sensor location and frames
 
@@ -172,11 +172,10 @@ Promoting one requires a reviewed scope and dependency; retain its ID.
 
 ## Next implementation
 
-**F-03.2: barometer ground effect.** Review the pinned conditions/residual sign
-and available near-ground context before implementation. The four authorized
-integration tasks are completed in separate commits; physical disturbance
-validation and formal proofs remain separate work.
+**F-04.1: review the first timing profile**, followed by F-04.2 implementation
+in reviewed batches. This priority follows the requested buffer/timing work;
+F-03.2 barometer ground effect remains pending, not removed or completed.
 
-The fixed order remains **F-01.2 → F-01.3 → F-02.1 → F-03.1 → F-03.2**, one
-reviewed change at a time. F-04 starts with design review. F-07 evidence is
-accumulated alongside these changes. Keep completed IDs in this file.
+F-01.2/F-01.3/F-02.1/F-03.1 are already committed. Keep these IDs and the other
+work groups unchanged. F-07 evidence accompanies implementation; this design-only
+change does not establish timing, accuracy or hardware acceptance.

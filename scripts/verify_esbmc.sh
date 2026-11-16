@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|accelerometer|magnetic-runtime) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|accelerometer|magnetic-runtime|ring-buffer) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,7 +37,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|accelerometer|magnetic-runtime] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|accelerometer|magnetic-runtime|ring-buffer] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -62,6 +62,7 @@ parse_arguments()
                 printf 'height selects scalar offset equations, defaults and private source admission/read-only contracts for both sources and formats; full height transaction induction and platform publication remain separate.\n'
                 printf 'navigation-recovery selects actual gate diagnostic contracts, vertical limiter and both public recovery callers with every state/P alias. Same-type correction frames are reused; root accuracy and caller health/permission remain separate.\n'
                 printf 'navigation-reset selects exact-type validation, symmetry-pair arithmetic and all four numerical reset callers with independent state/P aliases. Real PSD is proved separately in Lean; source permission and target backends remain separate.\n'
+                printf 'ring-buffer selects actual fixed-storage operations and inductive history invariants for capacities 1/3/8 and 32/64-bit word models. Caller admission, deployed sample types, other capacities and target timing remain separate.\n'
                 printf 'gnss-lifecycle selects actual integer/Boolean lifecycle transitions and inductive permission/history safety. Estimator repair, external timestamps and actual caller scheduling remain separate.\n'
                 printf 'gnss-quality selects parameter/sample domains, actual motion filters, health timers and composed public-update invariants. Caller metadata, geographic projection and accurate libm remain separate.\n'
                 printf 'imu-prediction selects actual module clipping admission and noise-policy/prediction composition; E-STEP supplies the same-type terminal frame. Full module sequencing and target backend remain separate.\n'
@@ -1213,6 +1214,25 @@ run_navigation_reset_suite()
     done
 }
 
+run_ring_buffer_suite()
+{
+    local WORD_BITS CAPACITY KIND TIME_LIMIT
+    SOURCE_FILE="${PROOF_DIR}/ring_buffer.cpp"
+    for WORD_BITS in 32 64; do
+        for CAPACITY in 1 3 8; do
+            for KIND in initialization allocate reset push selection access default_window; do
+                PROFILE="ring-buffer-word${WORD_BITS}-capacity${CAPACITY}-${KIND}"
+                TIME_LIMIT=180s
+                if [[ "${KIND}" == selection && "${CAPACITY}" == 8 ]]; then
+                    TIME_LIMIT=600s
+                fi
+                verify "verify_buffer_${KIND}" --proof-unwind "$((CAPACITY + 2))" --proof-timeout "${TIME_LIMIT}" --proof-memory 2g \
+                    --boolector "--${WORD_BITS}" -D "FORMAL_ESKF_PROOF_CAPACITY=${CAPACITY}"
+            done
+        done
+    done
+}
+
 run_gnss_lifecycle_suite()
 {
     local KIND
@@ -1578,6 +1598,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == gnss-quality ]]; then
         run_gnss_quality_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == ring-buffer ]]; then
+        run_ring_buffer_suite
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == gnss-lifecycle ]]; then
         run_gnss_lifecycle_suite

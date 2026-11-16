@@ -5519,6 +5519,75 @@
           }
         ]
       }
+    },
+    {
+      "id": "R-RING-BUFFER",
+      "title": "Fixed-storage ring history: configuration, ordered overwrite, time selection and inductive storage invariants",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-RING-BUFFER: fixed-storage timestamped history"
+          },
+          {
+            "file": "docs/spec/px4-module-architecture.md",
+            "symbol": "### PX4-TIME-BUFFER: sample storage and selection"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/runtime/ring_buffer.hpp",
+            "symbol": "class RingBuffer"
+          },
+          {
+            "file": "include/formal_eskf/runtime/ring_buffer.hpp",
+            "symbol": "RingBuffer<Sample, Capacity>::allocate("
+          },
+          {
+            "file": "include/formal_eskf/runtime/ring_buffer.hpp",
+            "symbol": "RingBuffer<Sample, Capacity>::push("
+          },
+          {
+            "file": "include/formal_eskf/runtime/ring_buffer.hpp",
+            "symbol": "RingBuffer<Sample, Capacity>::pop_first_older_than("
+          },
+          {
+            "file": "include/formal_eskf/runtime/ring_buffer.hpp",
+            "symbol": "RingBuffer<Sample, Capacity>::reset()"
+          }
+        ],
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/ring_buffer.cpp",
+            "symbol": "void verify_buffer_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/ring_buffer.cpp",
+            "symbol": "void verify_buffer_allocate("
+          },
+          {
+            "file": "formal/cpp/esbmc/ring_buffer.cpp",
+            "symbol": "void verify_buffer_reset("
+          },
+          {
+            "file": "formal/cpp/esbmc/ring_buffer.cpp",
+            "symbol": "void verify_buffer_push("
+          },
+          {
+            "file": "formal/cpp/esbmc/ring_buffer.cpp",
+            "symbol": "void verify_buffer_selection("
+          },
+          {
+            "file": "formal/cpp/esbmc/ring_buffer.cpp",
+            "symbol": "void verify_buffer_access("
+          },
+          {
+            "file": "formal/cpp/esbmc/ring_buffer.cpp",
+            "symbol": "void verify_buffer_default_window("
+          }
+        ]
+      }
     }
   ]
 }

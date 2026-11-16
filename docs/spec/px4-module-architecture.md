@@ -276,7 +276,9 @@ timestamp matching/history correction/reset through the production buffer API.
 Those fixtures demonstrate the usage contracts; they do not implement or verify
 the module's admission, delayed filter or output predictor. Package tests check
 delivery through the shared headers. This is component regression evidence,
-not deployed integration, a formal proof or target WCET.
+not deployed integration, a formal proof or target WCET. The component's scoped
+ESBMC obligations and evidence boundary are registered separately as
+[R-RING-BUFFER](verification-requirements.md#r-ring-buffer-fixed-storage-timestamped-history).
 
 ## PX4-LIFE: initialization, failure and shutdown
 

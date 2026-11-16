@@ -18,13 +18,14 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 2154 '^PLAN'
+    check_count 2196 '^PLAN'
     check_count 160 'magnetic-runtime-'
     check_count 32 'height-'
     check_count 36 'accelerometer-binary'
     check_count 1 'accelerometer-double-sample_round'
     check_count 28 'navigation-recovery-'
     check_count 46 'navigation-reset-'
+    check_count 42 'ring-buffer-'
     check_count 7 'gnss-lifecycle-'
     check_count 14 'gnss-quality-binary'
     check_count 8 'imu-prediction-binary'
@@ -243,8 +244,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 240 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2154 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 247 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2196 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -272,10 +273,33 @@ check_plan()
     [[ -z "$(comm -23 <("${RUNNER}" magnetic --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] || fail 'magnetic dependency missing from all'
     [[ "$("${RUNNER}" fusion --list | wc -l)" == 92 ]] || fail 'fusion selection changed'
     [[ "$("${RUNNER}" imu-policies --list | wc -l)" == 10 ]] || fail 'IMU policies selection changed'
+    [[ "$("${RUNNER}" ring-buffer --list | wc -l)" == 42 ]] || fail 'ring buffer selection changed'
     # The standalone scalar selection reuses, rather than duplicates, old proofs.
     [[ -z "$(comm -23 <("${RUNNER}" scalar --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] ||
         fail 'scalar dependency profile is not in the full inventory'
 }
+
+check_ring_buffer_arguments()
+(
+    local COUNT=0
+    verify()
+    {
+        local ENTRY="$1"
+        shift
+        local EXPECTED_TIMEOUT=180s
+        if [[ "${KIND}" == selection && "${CAPACITY}" == 8 ]]; then
+            EXPECTED_TIMEOUT=600s
+        fi
+        [[ "${SOURCE_FILE}" == "${PROOF_DIR}/ring_buffer.cpp" &&
+            "${PROFILE}" == "ring-buffer-word${WORD_BITS}-capacity${CAPACITY}-${KIND}" &&
+            "${ENTRY}" == "verify_buffer_${KIND}" &&
+            "$*" == "--proof-unwind $((CAPACITY + 2)) --proof-timeout ${EXPECTED_TIMEOUT} --proof-memory 2g --boolector --${WORD_BITS} -D FORMAL_ESKF_PROOF_CAPACITY=${CAPACITY}" ]] ||
+            fail 'wrong ring buffer proof arguments'
+        COUNT=$((COUNT + 1))
+    }
+    run_ring_buffer_suite
+    [[ "${COUNT}" == 42 ]] || fail 'ring buffer proof configuration missing'
+)
 
 check_magnetic_runtime_arguments()
 (
@@ -1516,6 +1540,69 @@ CASES
     printf 'ESBMC reset guard tests: pass (%d incompatible boundaries rejected)\n' "${RESULT_COUNT}"
 )
 
+check_ring_buffer_regressions()
+(
+    local TEST_WORK_DIR CASE ENTRY LABEL RESULT HISTORY
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-buffer-test.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    # Mutate isolated header copies. The production worktree is never edited.
+    python3 - "${REPO_DIR}" "${TEST_WORK_DIR}" <<'PY_MUTATIONS'
+import pathlib
+import sys
+SOURCE = pathlib.Path(sys.argv[1], "include/formal_eskf/runtime/ring_buffer.hpp").read_text()
+MUTATIONS = {
+    "age": ("timestamp - time_us < max_age_us", "timestamp - time_us <= max_age_us"),
+    "wrap": ("m_oldest = next(m_oldest);", "m_oldest = m_oldest;"),
+    "clear": ("m_samples.fill(Sample{});", "/* deliberately skip clearing */"),
+}
+for CASE, (OLD, NEW) in MUTATIONS.items():
+    assert OLD in SOURCE
+    OUTPUT = pathlib.Path(sys.argv[2], CASE, "formal_eskf/runtime/ring_buffer.hpp")
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    OUTPUT.write_text(SOURCE.replace(OLD, NEW, 1))
+PY_MUTATIONS
+    for CASE in age wrap clear; do
+        case "${CASE}" in
+            age) ENTRY=verify_buffer_default_window; LABEL='default window: strict 100 ms' ;;
+            wrap) ENTRY=verify_buffer_push; LABEL='push: exact occupancy' ;;
+            clear) ENTRY=verify_buffer_reset; LABEL='buffer: every backing slot is cleared' ;;
+        esac
+        RESULT=0
+        "${ESBMC_COMMAND}" "${PROOF_DIR}/ring_buffer.cpp" -I "${TEST_WORK_DIR}/${CASE}" "${ESBMC_ARGUMENTS[@]}" \
+            --function "${ENTRY}" --unwind 5 --timeout 60s --memlimit 2g --boolector \
+            -D FORMAL_ESKF_PROOF_CAPACITY=3 >"${TEST_WORK_DIR}/${CASE}.log" 2>&1 || RESULT=$?
+        if [[ "${RESULT}" != 1 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${CASE}.log" ||
+            ! grep -Fq "${LABEL}" "${TEST_WORK_DIR}/${CASE}.log"; then
+            tail -n 35 "${TEST_WORK_DIR}/${CASE}.log" >&2
+            fail "ring buffer mutation was not detected: ${CASE}"
+        fi
+    done
+    for HISTORY in 0 1 2; do
+        RESULT=0
+        "${ESBMC_COMMAND}" "${TEST_DIR}/esbmc/ring_buffer_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
+            --function verify_buffer_seed_reachable --unwind 5 --timeout 60s --memlimit 2g --boolector \
+            -D FORMAL_ESKF_PROOF_CAPACITY=3 -D "FORMAL_ESKF_TEST_HISTORY=${HISTORY}" \
+            >"${TEST_WORK_DIR}/history${HISTORY}.log" 2>&1 || RESULT=$?
+        if [[ "${RESULT}" != 1 ]] || ! grep -Fq 'buffer seed: requested wrapped history is reachable' "${TEST_WORK_DIR}/history${HISTORY}.log" ||
+            ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/history${HISTORY}.log"; then
+            tail -n 35 "${TEST_WORK_DIR}/history${HISTORY}.log" >&2
+            fail "ring buffer history premises are empty: ${HISTORY}"
+        fi
+    done
+    RESULT=0
+    "${ESBMC_COMMAND}" "${PROOF_DIR}/ring_buffer.cpp" "${ESBMC_ARGUMENTS[@]}" \
+        --function verify_buffer_initialization --unwind 1 --timeout 60s --memlimit 2g --boolector \
+        -D FORMAL_ESKF_PROOF_CAPACITY=3 >"${TEST_WORK_DIR}/unwind.log" 2>&1 || RESULT=$?
+    if [[ "${RESULT}" != 1 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/unwind.log" ||
+        ! grep -qi 'unwinding assertion' "${TEST_WORK_DIR}/unwind.log"; then
+        tail -n 35 "${TEST_WORK_DIR}/unwind.log" >&2
+        fail 'ring buffer proof did not reject insufficient unwinding'
+    fi
+    printf 'ESBMC ring buffer regressions: pass (3 mutations; 3 reachable histories; insufficient unwinding rejected)\n'
+)
+
 check_reset_regressions()
 (
     local TEST_WORK_DIR BINARY64 CASE RESULT EXPECTED LABEL FUNCTION_NAME
@@ -2005,6 +2092,7 @@ case "${1:-}" in
 esac
 (($# == 0)) || fail 'too many arguments'
 check_plan
+check_ring_buffer_arguments
 check_magnetic_runtime_arguments
 check_accelerometer_arguments
 check_height_arguments
@@ -2032,8 +2120,9 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (2154 profiles; 240 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (2196 profiles; 247 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
+    check_ring_buffer_regressions
     check_mode_constants
     check_rotation_contract_guards
     check_normalization_contract_guards

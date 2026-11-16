@@ -1003,6 +1003,60 @@ none establishes calibration, model-epoch accuracy or long-distance flight quali
 
 ## Portable runtime
 
+### R-RING-BUFFER: fixed-storage timestamped history
+
+`runtime::RingBuffer<Sample, Capacity>` follows
+[PX4-TIME-BUFFER](px4-module-architecture.md#px4-time-buffer-sample-storage-and-selection).
+It owns storage and selection, not source admission or fusion permission.
+
+Required properties:
+
+- Construction establishes empty history. Invalid allocation preserves every
+  field; unchanged length retains history; changed length and reset clear all
+  backing slots. Reset retains the configured length.
+- Valid histories have bounded count/indices, consecutive active slots in ring
+  order, strictly increasing nonzero active timestamps and zero inactive tags.
+  The next write slot follows the retained sequence, including the full case.
+- An admitted push appends exactly one sample, overwriting only the oldest when
+  full. Other slots and the borrowed input remain unchanged.
+- Selection returns the newest sample at/before the horizon with age strictly
+  less than the window, consumes the at-or-before prefix and preserves future
+  samples. A miss preserves output; null output preserves the entire buffer.
+  Ordered age subtraction must remain safe across the full `uint64_t` domain.
+- Endpoint/count/size/index queries are non-consuming. Indexed payload writes
+  retain timestamps, other payloads, occupancy and order. Empty endpoint access,
+  out-of-range indexing and an output alias into storage are outside the contract.
+
+The ESBMC scope is the actual header instantiated with a zero-default sample
+containing `uint64_t time_us` and one arbitrary `uint64_t` payload, with explicit
+fieldwise copy operations. Profiles use capacities 1, 3 and 8, every active length
+within each capacity, and both 32- and 64-bit word models. Timestamps, payloads, initial output, horizon and age window
+are symbolic; there is no small-time or successful-selection premise. The default
+two-argument selection has a separate one-sample check of its default-window
+binding; the general selection check quantifies every explicit window. Null output
+is checked with the non-consuming access operations. These profiles use a separate
+horizon object; horizon references aliased into output or buffer storage remain
+outside this proof scope, without adding an API restriction.
+
+Passing initialization and arbitrary invariant-state operation checks discharge
+the base/preservation obligations for histories of any operation count within
+those instantiations. All registered profiles must finish successfully; timeouts
+and incomplete unwinding leave a gap. This is not merely a fixed push/pop
+sequence, nor a proof for every template capacity or payload type. The harness exposes private state only
+to seed and check the invariant; no production operation is replaced. Seed
+metadata uses 8-bit integers covering every valid index/count in these capacities;
+production fields retain their actual types. An independent arbitrary slot index
+checks all storage positions universally. A fieldwise oracle snapshot avoids ESBMC 8.4's aggregate-copy conversion limitation; the production
+array still uses ESBMC's standard-library model. Native tests supply independent
+linear-list and IMU/observation/output caller scenarios.
+
+The caller must provide single ownership, ordered source admission, non-throwing
+bounded payload operations, loss handling and appropriate configuration phases.
+Monotonic fusion horizons, delayed-IMU continuity, output-epoch alignment and
+module integration remain separate obligations. These integer/storage checks
+need no real-number Lean model; they do not verify deployed standard-library
+internals, target layout, every payload type, scheduler behavior or target WCET.
+
 ### R-GNSS-RESET: checked GNSS position and velocity reset
 
 These caller-invoked INS operations replace navigation estimates; they are not

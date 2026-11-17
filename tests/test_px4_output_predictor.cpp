@@ -283,11 +283,15 @@ void feedback_and_bias(Context & test)
                 "tracking", "PI translation adjusts history immediately; attitude waits for fast prediction");
     auto const corrected = session.output.current();
     double const correction_rate = std::sin(0.1) / 0.212;
+    test.expect(near_vector(session.output.angular_rate_b(), {}), "tracking",
+                "feedback does not retroactively change the latest propagated angular rate");
     session.push(test);
     double const angle = angular_step(correction_rate - 0.03, 0.004);
     test.expect(near(session.output.current().q_nb.q3(), std::sin(angle / 2), 1e-12) &&
                     near(session.output.current().v_n(0), corrected.v_n(0) - 0.2 * 0.004, 1e-12),
                 "tracking", "new bias and correct-sign attitude feedback affect the next real interval");
+    test.expect(near_vector(session.output.angular_rate_b(), vector(0, 0, correction_rate - 0.03)), "tracking",
+                "output reference-point velocity uses the same bias/tracking-corrected rate as propagation");
     auto const * old = session.output.delayed();
     test.expect(old != nullptr && near_vector(old->v_n, main.v_n * scale) && near_vector(old->p_n, main.p_n * scale),
                 "tracking", "the next delayed record received the same translation as current output");
@@ -539,6 +543,7 @@ void failures(Context & test)
                         !session.output.apply_reset({}, {}, {}) && session.output.fault() == expected,
                     "failure", "later calls cannot clear the first fault");
         session.output.reset();
+        test.expect(near_vector(session.output.angular_rate_b(), {}), "failure", "restart clears output body rate");
         test.expect(session.output.seed({}, 2000000) && session.output.entries() == 0 && !session.output.ready() &&
                         near_vector(session.output.tracking_error().position_n, {}),
                     "failure", "explicit restart clears feedback and starts new warmup");

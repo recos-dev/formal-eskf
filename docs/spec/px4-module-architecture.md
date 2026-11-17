@@ -344,6 +344,13 @@ publication bookkeeping coherently before the next affected output. Reset
 counters advance once per actual reset; reported deltas describe the output
 change seen by consumers. Ordinary tracking corrections are not reset events.
 
+The main filter and predictor describe the IMU point. The module converts GNSS
+antenna observations to that point and current navigation output to the configured
+body origin under [R-PX4-SENSOR-POSITIONS](verification-requirements.md#r-px4-sensor-positions-sensor-and-output-reference-points).
+Keep installation calibration frozen for the session; include orientation-induced
+body-point changes in reset notifications. This nominal transform does not add
+installation uncertainty or transport covariance to the output point.
+
 Publish sample epoch separately from publication time. Document the horizon of
 each covariance/uncertainty field; delayed covariance must not be presented as
 a newly propagated current-time covariance. Alignment, active aiding, freshness,

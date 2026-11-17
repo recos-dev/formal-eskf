@@ -78,7 +78,7 @@ every change rather than waiting until F-07.
 |---|---|---|
 | F-01 | IMU and bias protection | F-01.1/F-01.2/F-01.3 completed |
 | F-02 | Gravity aiding | F-02.1 completed |
-| F-03 | Height protection | F-03.1 completed; F-03.2 ground effect remains |
+| F-03 | Height protection | F-03.1/F-03.2 implemented; physical ground-effect validation remains |
 | F-04 | Timing | Delayed fusion, bounded history and current-time output prediction |
 | F-05 | Sensor location and frames | Lever arms, output reference point and local-frame operating envelope |
 | F-06 | Diagnostics and configuration | Truthful confidence/failure reporting and deployment parameters |
@@ -112,7 +112,7 @@ in F-02.1. Unknown required metadata is not a positive eligibility decision.
 | Task | Status and existing work | Completion criterion |
 |---|---|---|
 | F-03.1 — Vertical acceleration-fault recovery | Completed (`3fafdb6`): bounded GNSS velocity and GNSS/barometer height innovations, shared last-good reset timing, qualified-source checks and reset notifications wired; native/SITL regression passed | After F-01.1, wire the exception and independent reset criterion into module GNSS/height coordination. Preserve quality permission, raw rejection diagnostics, event ordering and actual reset notifications. Distinguish the 3 s held fault from the 500 ms last-good criterion. |
-| F-03.2 — Barometer ground effect | Implemented; review pending: delayed land-detector activation, 10 s hold, 4 m one-sided deadzone and status flags. Native/sanitizer and scoped ESBMC pass; SIH contact-condition penetration isolated, while repeatable stock-SIH landing acceptance remains open under F-07. See [validation](docs/validation-px4-ground-effect-20261117.md); no terrain/HAGL estimate is assumed | Review pinned PX4 conditions and residual sign, then test near-ground rejection/compensation and exit behavior. Declare any unavailable height-above-ground context; do not treat it as known. |
+| F-03.2 — Barometer ground effect | Committed (`e742f7e`): delayed land-detector activation, 10 s hold, 4 m one-sided deadzone and status flags. Native/sanitizer and scoped ESBMC pass; SIH contact-condition penetration isolated, while repeatable stock-SIH landing acceptance remains open under F-07. See [validation](docs/validation-px4-ground-effect-20261117.md); no terrain/HAGL estimate is assumed | Review pinned PX4 conditions and residual sign, then test near-ground rejection/compensation and exit behavior. Declare any unavailable height-above-ground context; do not treat it as known. |
 
 Dynamic-pressure compensation is D-03: it needs a defensible airflow input/model,
 not just another constant in the existing barometer helper.
@@ -135,7 +135,7 @@ scoped integration evidence, not source formal proof or target timing acceptance
 
 | Task | Status and existing work | Completion criterion |
 |---|---|---|
-| F-05.1 — Lever arms and output reference point | Planned: current module assumes coincident sensor/estimated points | Define IMU/GNSS/output points, frames and calibration ownership; implement position/velocity compensation with rotation and uncertainty handling. Independent rotating-rig cases must expose sign/point mistakes. |
+| F-05.1 — Lever arms and output reference point | Implemented; review pending: restart-only IMU/GNSS FRD offsets, delayed GNSS position/height/velocity compensation, current body-point output and reset deltas. Nominal geometry only; installation uncertainty is not modeled. See [validation](docs/validation-px4-sensor-positions-20261117.md) | Define IMU/GNSS/output points, frames and calibration ownership; implement position/velocity compensation with rotation and uncertainty handling. Independent rotating-rig cases must expose sign/point mistakes. |
 | F-05.2 — Fixed-frame operating envelope | Design: module local projection and replay conversions already exist | Quantify projection/frame/curvature error against an independent geographic oracle; declare usable distance, height datum, exclusions and behavior beyond the envelope. Review heading-variance/frame assumptions. No silent public-origin reset. |
 
 A geodetic nominal-state extension is D-07. F-05.2 first establishes what the
@@ -145,14 +145,14 @@ current Cartesian model supports; it does not pre-authorize new core equations.
 
 | Task | Status and existing work | Completion criterion |
 |---|---|---|
-| F-06.1 — Confidence and failure reporting | Partial: source status, individual GNSS quality flags and reset counters exist; some aggregate fault/bias-validity reporting remains coarse | Audit actual uORB meanings against internal decisions. Distinguish alignment, active fusion, validity, convergence and numerical faults; validate yaw/bias uncertainty reporting and restart-required behavior. Rejection must not refresh successful-fusion time. |
+| F-06.1 — Confidence and failure reporting | Partial: source status, individual GNSS quality flags and reset counters exist; some aggregate fault/bias-validity reporting remains coarse | Audit actual uORB meanings against internal decisions. Distinguish alignment, active fusion, validity, convergence and numerical faults; validate yaw/bias uncertainty reporting and restart-required behavior. Review the delayed IMU covariance proxy used alongside body-point output (F-05.1); installation uncertainty and transport correlations remain unmodeled. Rejection must not refresh successful-fusion time. |
 | F-06.2 — Deployment parameters | Partial: startup magnetic-declination settings exist; most module settings are fixed | Expose the approved noise/gate/source/limit settings with documented units, bounds and startup/live-update semantics. Validate configuration changes without silently importing live EKF2 settings. |
 
 ### F-07 — Deployment validation
 
 | Task | Status and dependency | Completion criterion |
 |---|---|---|
-| F-07.1 — Disturbance and accuracy evidence | Partial: native, replay and normal-flight/ground-fault SITL evidence exists | Add independent-oracle cases for magnetic disturbance, high dynamics/free fall, clipping, outages and recovery in flight. Quantify detection/rejection, attitude/position errors and recovery; test WMM epoch/calibration assumptions. Retain failing runs and compare feature enabled/disabled where meaningful. |
+| F-07.1 — Disturbance and accuracy evidence | Partial: native, replay and normal-flight/ground-fault SITL evidence exists | Add independent-oracle cases for magnetic disturbance, high dynamics/free fall, clipping, outages and recovery in flight. Quantify detection/rejection, attitude/position errors and recovery; test WMM epoch/calibration assumptions. Retain failing runs and compare feature enabled/disabled where meaningful. Make cross-topic recovery assertions compare post-event publications; F-05.1 retained a stale 10 Hz status snapshot beside already-recovered navigation output. |
 | F-07.2 — Resource budgets | Planned; target profile must be explicit | Measure wall-clock CPU, peak RAM and stack under nominal/fault load. Separate simulator virtual time from execution cost. Check bounded history against F-04 budgets. |
 | F-07.3 — Hardware validation | Blocked on target hardware and an agreed test envelope | Establish target builds, timing/interfaces and HIL evidence before any hardware-flight claim. Simulation can progress now; unavailable hardware is not a passed check. |
 
@@ -174,9 +174,10 @@ Promoting one requires a reviewed scope and dependency; retain its ID.
 
 ## Next implementation
 
-**F-03.2: barometer ground-effect protection**, following the pinned PX4
-no-terrain branch, with delayed context, unchanged raw gating and source-specific
-correction. Review the implementation and evidence before continuing to F-05.1.
+**F-05.1: lever arms and output reference point** is implemented for review.
+Review the nominal compensation, installation assumptions and reset/publication
+evidence before committing. Next is **F-05.2: fixed-frame operating envelope**,
+with an independent geographic oracle; no new geodetic core is authorized.
 F-04 source formal proof, the retained SIH landing anomaly and F-07.2 resource
 acceptance remain open; they are not silently closed by this feature.
 

@@ -14,13 +14,14 @@
 namespace formal_eskf::px4::profile
 {
 
-// Fixed deployment settings. PX4 startup parameters override only gravity
-// enablement and magnetic declination selection; these are not EKF2 parameters.
+// Fixed deployment settings, with explicitly bound FESKF startup parameters.
+// Live EKF2 parameter values are not consumed by this module.
 inline constexpr double gravity_m_s2 = 9.80665;
 inline constexpr double minimum_quaternion_norm = 1e-6;
 inline constexpr double quaternion_squared_norm_tolerance = 1e-10;
 inline constexpr double seconds_per_microsecond = 1e-6;
 inline constexpr double microtesla_per_gauss = 100.;
+inline constexpr float maximum_sensor_position_m = 10.f; // Per-axis small-vehicle installation envelope.
 
 namespace startup
 {

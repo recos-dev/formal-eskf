@@ -4471,7 +4471,7 @@
           },
           {
             "file": "integrations/px4/module/FormalEskfNavigation.cpp",
-            "symbol": "void FormalEskf::fuse_gps()"
+            "symbol": "void FormalEskf::fuse_gps("
           },
           {
             "file": "integrations/px4/module/HeightAiding.hpp",
@@ -5093,7 +5093,7 @@
           },
           {
             "file": "integrations/px4/module/FormalEskfNavigation.cpp",
-            "symbol": "void FormalEskf::fuse_gps()"
+            "symbol": "void FormalEskf::fuse_gps("
           },
           {
             "file": "integrations/px4/module/FormalEskfNavigation.cpp",
@@ -5230,7 +5230,7 @@
           },
           {
             "file": "integrations/px4/module/FormalEskfNavigation.cpp",
-            "symbol": "void FormalEskf::fuse_gps()"
+            "symbol": "void FormalEskf::fuse_gps("
           },
           {
             "file": "integrations/px4/module/FormalEskfNavigation.cpp",
@@ -5336,7 +5336,7 @@
           },
           {
             "file": "integrations/px4/module/FormalEskfNavigation.cpp",
-            "symbol": "void FormalEskf::fuse_gps()"
+            "symbol": "void FormalEskf::fuse_gps("
           },
           {
             "file": "integrations/px4/module/FormalEskfOutput.cpp",
@@ -5635,6 +5635,98 @@
           {
             "file": "integrations/px4/module/OutputPredictor.hpp",
             "symbol": "OutputPredictor<Linalg>::reset()"
+          },
+          {
+            "file": "integrations/px4/module/OutputPredictor.hpp",
+            "symbol": "vector3_type const & angular_rate_b() const"
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
+      "id": "R-PX4-SENSOR-POSITIONS",
+      "title": "Delayed GNSS compensation and current body-point output: native-tested nominal geometry; source formal proof and installation uncertainty remain open",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-PX4-SENSOR-POSITIONS: sensor and output reference points"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "bool FormalEskf::load_startup_parameters("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::initialize_navigation("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "bool FormalEskf::reset_output("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "FormalEskf::vector3_type FormalEskf::gnss_position_offset("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "FormalEskf::vector3_type FormalEskf::gnss_velocity_offset("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "FormalEskf::GnssVelocityObservation FormalEskf::gnss_velocity_observation("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "bool FormalEskf::fuse_gps_position("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "void FormalEskf::fuse_height("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "void FormalEskf::record_position_reset("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "void FormalEskf::record_velocity_reset("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "void FormalEskf::record_height_reset("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "FormalEskf::BodyOutput FormalEskf::body_output("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "void FormalEskf::publish("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "void FormalEskf::publish_global_position("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "void FormalEskf::publish_odometry("
+          },
+          {
+            "file": "integrations/px4/module/OutputPredictor.hpp",
+            "symbol": "vector3_type const & angular_rate_b() const"
+          },
+          {
+            "file": "integrations/px4/module/formal_eskf_params.c",
+            "symbol": "PARAM_DEFINE_FLOAT(FESKF_IMU_POS_X"
+          },
+          {
+            "file": "integrations/px4/module/formal_eskf_params.c",
+            "symbol": "PARAM_DEFINE_FLOAT(FESKF_GPS_POS_X"
           }
         ],
         "esbmc": []

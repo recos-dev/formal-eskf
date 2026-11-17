@@ -105,6 +105,26 @@ variance fields use delayed covariance proxies, not a current-time error bound.
 `formal_eskf status` reports both horizons, lag, admission losses and phase counters.
 SIH's PX4 clock is not wall-clock CPU time or a WCET measurement.
 
+## Sensor positions
+
+Set `FESKF_IMU_POS_X/Y/Z` and `FESKF_GPS_POS_X/Y/Z` to the measured IMU and GNSS
+antenna positions, in metres from the vehicle body origin (normally its centre
+of gravity), with X forward, Y right and Z down. All default to zero, accept
+`[-10, 10]` m per axis and require restart. These are installation measurements,
+not parameters to tune for a better-looking trajectory.
+
+GNSS position, height and rotational velocity are compensated to the delayed
+IMU state before fusion/reset. Current local/global/odometry position and velocity
+are transformed back to the body origin. Heading resets include the resulting
+body-point reset deltas. This follows PX4's nominal point-compensation design.
+
+Receiver noise and core covariance equations are unchanged. Installation
+uncertainty and preprocessing correlations are not modeled; published variances
+remain delayed IMU-state proxies, and local acceleration remains at the IMU.
+See [the reference-point contract](../../docs/spec/verification-requirements.md#r-px4-sensor-positions-sensor-and-output-reference-points)
+for frames, signs, timing and evidence limits. Physical nonzero installations
+require their own validation.
+
 ## Automatic flight
 
 Run from the formal-eskf repository root in a system terminal:
@@ -321,8 +341,8 @@ and message conventions are specified in
 [PX4 GNSS integration](../../docs/spec/verification-requirements.md#px4-gnss-integration).
 
 The single-source GNSS height lifecycle remains disabled; `HeightAiding` now
-coordinates the GNSS/barometer height sources. Emergency yaw, receiver selection,
-and lever arms remain separate work. GNSS now uses the delayed observation queue;
+coordinates the GNSS/barometer height sources. Emergency yaw and receiver selection
+remain separate work. GNSS now uses the delayed observation queue;
 its sample-time binding differs from EKF2's publication-time binding as specified
 in the [timing profile](../../docs/spec/px4-timing-profile.md#source-timestamps-and-admission).
 This is not complete EKF2 parity.

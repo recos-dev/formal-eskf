@@ -405,7 +405,7 @@ public:
             f.m_baro.timestamp_sample = clock_us;
         }
         select_navigation_inputs();
-        f.fuse_gps();
+        f.fuse_gps({});
         if (!f.m_fault)
         {
             select_navigation_inputs();
@@ -1886,6 +1886,217 @@ public:
         test.snapshot("startup");
     }
 
+    static void sensor_position_parameters()
+    {
+        FormalEskfModuleTest test;
+        char const * const names[] = {"FESKF_IMU_POS_X", "FESKF_IMU_POS_Y", "FESKF_IMU_POS_Z",
+                                      "FESKF_GPS_POS_X", "FESKF_GPS_POS_Y", "FESKF_GPS_POS_Z"};
+        for (auto name : names)
+        {
+            auto const handle = param_find(name);
+            float saved{};
+            expect(param_get(handle, &saved) == 0, "sensor installation parameter exists");
+            for (float value : {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity(),
+                                -std::numeric_limits<float>::infinity(), -10.01f, 10.01f})
+            {
+                param_set_no_notification(handle, &value);
+                expect(!test.m_filter.init(), "invalid installation coordinate prevents startup");
+            }
+            for (float value : {-10.f, 10.f})
+            {
+                param_set_no_notification(handle, &value);
+                expect(test.m_filter.init(), "installation bounds are inclusive");
+            }
+            param_set_no_notification(handle, &saved);
+        }
+        auto const imu = param_find("FESKF_IMU_POS_X");
+        auto const gps = param_find("FESKF_GPS_POS_Z");
+        float imu_saved{}, gps_saved{};
+        param_get(imu, &imu_saved);
+        param_get(gps, &gps_saved);
+        float imu_value = 0.25f, gps_value = -0.5f;
+        param_set_no_notification(imu, &imu_value);
+        param_set_no_notification(gps, &gps_value);
+        expect(test.m_filter.init() && test.m_filter.m_sensor_positions.imu_b(0) == 0.25 &&
+                   test.m_filter.m_sensor_positions.gnss_b(2) == -0.5,
+               "actual PX4 parameters bind metres in body FRD");
+        test.warmup();
+        float changed = 9.f;
+        param_set_no_notification(imu, &changed);
+        param_set_no_notification(gps, &changed);
+        test.m_sample.timestamp_sample += 4000U;
+        test.tick();
+        expect(!test.m_filter.m_fault && test.m_filter.m_sensor_positions.imu_b(0) == 0.25 &&
+                   test.m_filter.m_sensor_positions.gnss_b(2) == -0.5,
+               "live parameter updates cannot silently move the sensor or output point");
+        param_set_no_notification(imu, &imu_saved);
+        param_set_no_notification(gps, &gps_saved);
+    }
+
+    static void rotating_sensor_geometry()
+    {
+        for (double yaw : {0., 0.7, -1.2})
+        {
+            FormalEskfModuleTest test;
+            test.prepare_navigation();
+            auto & f = test.m_filter;
+            f.m_sensor_positions.imu_b = FormalEskf::vector3(0.2, -0.1, 0.3);
+            f.m_sensor_positions.gnss_b = FormalEskf::vector3(1., 0.4, -0.2);
+            f.m_state.b_g = FormalEskf::vector3(0.01, -0.02, 0.03);
+            f.m_gps.s_variance_m_s = 0.6f; // Above the unchanged 0.3 m/s receiver-noise floor.
+            matrix::Euler<double> const angles(0.3, -0.4, yaw);
+            matrix::Quaternion<double> const q(angles);
+            matrix::Dcm<double> const R(angles);
+            expect(formal_eskf::succeeded(
+                       FormalEskf::quaternion_type::from_coefficients(q(0), q(1), q(2), q(3), 1e-6, f.m_state.q_nb)),
+                   "rotating-rig attitude");
+            // Independent rig oracle: differentiate point positions, without a cross product.
+            double const dt = 1e-6;
+            matrix::Vector3<double> const rotation_rate_n(0.6, -0.7, 2.);
+            matrix::Dcm<double> const plus(matrix::Quaternion<double>(matrix::AxisAngle<double>(rotation_rate_n * dt)) *
+                                           q);
+            matrix::Dcm<double> const minus(
+                matrix::Quaternion<double>(matrix::AxisAngle<double>(rotation_rate_n * -dt)) * q);
+            matrix::Vector3<double> const imu_b(0.2, -0.1, 0.3), gps_b(1., 0.4, -0.2);
+            matrix::Vector3<double> const imu_velocity = (plus * imu_b - minus * imu_b) / (2. * dt);
+            matrix::Vector3<double> const gps_velocity = (plus * gps_b - minus * gps_b) / (2. * dt);
+            matrix::Vector3<double> const imu_position =
+                R * (imu_b - gps_b); // Geographic origin is the first antenna fix.
+            matrix::Vector3<double> const rate = R.transpose() * rotation_rate_n;
+            expect(std::abs(gps_velocity(2) - imu_velocity(2)) > 0.01,
+                   "rig exercises vertical rotational velocity as well as horizontal motion");
+            FormalEskf::imu_type imu;
+            imu.angular_rate_b = FormalEskf::vector3(rate(0), rate(1), rate(2)) + f.m_state.b_g;
+            f.m_gps.vel_n_m_s = static_cast<float>(gps_velocity(0));
+            f.m_gps.vel_e_m_s = static_cast<float>(gps_velocity(1));
+            f.m_gps.vel_d_m_s = static_cast<float>(gps_velocity(2));
+            f.initialize_navigation(imu);
+            for (std::size_t axis = 0; axis < 3; ++axis)
+            {
+                expect(std::abs(f.m_state.p_n(axis) - imu_position(axis)) < 1e-12 &&
+                           std::abs(f.m_state.v_n(axis) - imu_velocity(axis)) < 2e-7,
+                       "startup position and velocity are at the IMU, with attitude and gyro bias respected");
+            }
+            f.m_state.p_n = {};
+            f.m_state.v_n = {};
+            clock_us += 20000U;
+            f.m_time_us = clock_us;
+            f.m_gps.timestamp_sample = clock_us;
+            f.m_gnss.sample = {clock_us, formal_eskf::runtime::GnssQualityDecision::accepted};
+            test.select_navigation_inputs();
+            auto const raw = f.m_gnss.input.sample.velocity_n;
+            auto const observation = f.gnss_velocity_observation(imu);
+            auto const expected_variance = double(f.m_gps.s_variance_m_s) * double(f.m_gps.s_variance_m_s);
+            expect(observation.variances(0) == expected_variance && same_bits(raw, f.m_gnss.input.sample.velocity_n),
+                   "compensation preserves raw receiver data and its existing noise policy");
+            f.fuse_gps(imu);
+            f.fuse_height();
+            for (std::size_t axis = 0; axis < 3; ++axis)
+            {
+                expect(!f.m_fault && std::abs(f.m_state.p_n(axis) - imu_position(axis)) < 1e-10 &&
+                           std::abs(f.m_state.v_n(axis) - imu_velocity(axis)) < 2e-7,
+                       "qualified GNSS horizontal/height/velocity resets consume compensated observations");
+            }
+            auto const corrections = f.m_gnss.corrections;
+            clock_us += 20000U;
+            f.m_time_us = clock_us;
+            f.m_gps.timestamp_sample = clock_us;
+            f.m_gnss.sample.time_us = clock_us;
+            test.select_navigation_inputs();
+            f.fuse_gps(imu);
+            f.fuse_height();
+            expect(!f.m_fault && f.m_gnss.corrections == corrections + 3U && f.m_gnss.velocity_test_ratio < 1e-12 &&
+                       f.m_gnss.position_test_ratio < 1e-12,
+                   "normal velocity, horizontal and height corrections accept the compensated rotating rig");
+            f.m_sensor_positions.gnss_b = f.m_sensor_positions.imu_b;
+            expect(formal_eskf::linalg::squared_norm(f.gnss_position_offset()) == 0. &&
+                       formal_eskf::linalg::squared_norm(f.gnss_velocity_offset(imu)) == 0.,
+                   "coincident IMU and antenna need no GNSS compensation, even away from the body origin");
+        }
+    }
+
+    static void body_reference_output()
+    {
+        FormalEskfModuleTest test;
+        test.warmup();
+        auto & f = test.m_filter;
+        f.m_sensor_positions.imu_b = FormalEskf::vector3(0.3, -0.2, 0.1);
+        f.m_sensor_positions.gnss_b = f.m_sensor_positions.imu_b;
+        test.m_sample.delta_angle[0] = 0.2f * 0.004f;
+        test.m_sample.delta_angle[1] = -0.3f * 0.004f;
+        test.m_sample.delta_angle[2] = 0.4f * 0.004f;
+        test.m_sample.timestamp_sample += 4000U;
+        test.tick();
+        auto const current = f.m_output.current();
+        expect(current.time_us > f.m_time_us &&
+                   formal_eskf::linalg::norm(current.q_nb.coefficients() - f.m_state.q_nb.coefficients()) > 1e-5,
+               "body output oracle uses a genuinely different current attitude from the delayed filter");
+        auto const & c = current.q_nb.coefficients();
+        matrix::Quaternion<double> const q(c(0), c(1), c(2), c(3));
+        matrix::Dcm<double> const R(q);
+        matrix::Vector3<double> const imu_b(0.3, -0.2, 0.1);
+        auto const & rate = f.m_output.angular_rate_b();
+        double const dt = 1e-6;
+        matrix::Vector3<double> const angle(rate(0) * dt, rate(1) * dt, rate(2) * dt);
+        matrix::Dcm<double> const plus(q * matrix::Quaternion<double>(matrix::AxisAngle<double>(angle)));
+        matrix::Dcm<double> const minus(q * matrix::Quaternion<double>(matrix::AxisAngle<double>(-angle)));
+        matrix::Vector3<double> const position_offset = R * imu_b;
+        matrix::Vector3<double> const velocity_offset = (plus * imu_b - minus * imu_b) / (2. * dt);
+        f.m_last_output = current.time_us - 10000U;
+        f.publish(FormalEskf::decode_imu(test.m_sample).mean_rates());
+        vehicle_local_position_s local{};
+        vehicle_global_position_s global{};
+        vehicle_odometry_s odometry{};
+        orb_copy(ORB_ID(vehicle_local_position), test.m_outputs[1], &local);
+        orb_copy(ORB_ID(vehicle_global_position), test.m_outputs[2], &global);
+        orb_copy(ORB_ID(vehicle_odometry), test.m_outputs[3], &odometry);
+        auto const body = f.body_output();
+        for (std::size_t axis = 0; axis < 3; ++axis)
+        {
+            expect(std::abs(body.position_n(axis) - (current.p_n(axis) - position_offset(axis))) < 1e-12 &&
+                       std::abs(body.velocity_n(axis) - (current.v_n(axis) - velocity_offset(axis))) < 1e-9 &&
+                       odometry.position[axis] == float(body.position_n(axis)) &&
+                       odometry.velocity[axis] == float(body.velocity_n(axis)),
+                   "current body output agrees with an independent rotating-point derivative");
+            expect(odometry.position_variance[axis] == float(f.m_covariance(axis, axis)),
+                   "reported uncertainty retains the documented delayed IMU-state proxy");
+        }
+        expect(local.x == odometry.position[0] && local.y == odometry.position[1] && local.z == odometry.position[2] &&
+                   local.vx == odometry.velocity[0] && local.vy == odometry.velocity[1] &&
+                   local.vz == odometry.velocity[2] && local.z_deriv == local.vz &&
+                   global.alt == float(f.m_origin.altitude_msl_m - body.position_n(2)) &&
+                   global.alt_ellipsoid == float(f.m_origin.altitude_ellipsoid_m - body.position_n(2)) &&
+                   same_bits(current.p_n, f.m_output.current().p_n) && same_bits(current.v_n, f.m_output.current().v_n),
+               "local/global/odometry share one body point without moving the retained IMU state");
+        FormalEskf::quaternion_type yaw_delta;
+        expect(formal_eskf::succeeded(formal_eskf::so3::exp(FormalEskf::vector3(0., 0., 0.7), 1e-6, yaw_delta)),
+               "heading reset setup");
+        auto const positions = f.m_position_reset_counter;
+        auto const velocities = f.m_velocity_reset_counter;
+        auto const heights = f.m_height_reset_counter;
+        auto const vertical = f.m_vertical_velocity_reset_counter;
+        // A prior translation in the same delayed step must not be hidden by the heading reset.
+        auto const translation = FormalEskf::vector2_type::from_row_major({0.1, -0.2});
+        auto const velocity = FormalEskf::vector3(-0.3, 0.4, 0.5);
+        f.record_position_reset(translation);
+        f.record_velocity_reset(velocity);
+        f.record_height_reset(0.6, 1);
+        f.record_vertical_velocity_reset(velocity(2));
+        expect(f.reset_output(yaw_delta, {}, {}), "attitude reset transforms output history");
+        auto const after = f.body_output();
+        auto const dp = after.position_n - body.position_n;
+        auto const dv = after.velocity_n - body.velocity_n;
+        expect(f.m_position_reset_counter == std::uint8_t(positions + 2U) &&
+                   f.m_velocity_reset_counter == std::uint8_t(velocities + 2U) &&
+                   f.m_height_reset_counter == std::uint8_t(heights + 2U) &&
+                   f.m_vertical_velocity_reset_counter == std::uint8_t(vertical + 2U) &&
+                   std::abs(f.m_position_reset_delta(0) - translation(0) - dp(0)) < 1e-12 &&
+                   std::abs(f.m_velocity_reset_delta(1) - velocity(1) - dv(1)) < 1e-12 &&
+                   std::abs(f.m_height_reset_delta - 0.6 - dp(2)) < 1e-12 &&
+                   std::abs(f.m_vertical_velocity_reset_delta - velocity(2) - dv(2)) < 1e-12,
+               "heading-induced body point changes accumulate with same-step translation reset notifications");
+    }
+
     static void timing_parameters()
     {
         FormalEskfModuleTest test;
@@ -2029,7 +2240,7 @@ public:
         auto const main_before = f.m_state;
         auto const position_counter = f.m_position_reset_counter;
         auto const velocity_counter = f.m_velocity_reset_counter;
-        f.fuse_gps();
+        f.fuse_gps({});
         expect(!f.m_fault && f.m_position_reset_counter == std::uint8_t(position_counter + 1) &&
                    f.m_velocity_reset_counter == std::uint8_t(velocity_counter + 1),
                "delayed GNSS reacquisition executes both production reset paths");
@@ -2469,6 +2680,10 @@ int main(int argc, char ** argv)
     FormalEskfModuleTest::diagnostic_contention();
     FormalEskfModuleTest::diagnostic_concurrency();
     FormalEskfModuleTest::diagnostic_shutdown();
+    // New installation scenarios have independent oracles; preserve the prior comparison trace.
+    FormalEskfModuleTest::sensor_position_parameters();
+    FormalEskfModuleTest::rotating_sensor_geometry();
+    FormalEskfModuleTest::body_reference_output();
     trace_file = comparison_trace;
     if (trace_file != nullptr)
     {

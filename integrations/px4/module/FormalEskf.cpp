@@ -88,6 +88,23 @@ bool FormalEskf::load_startup_parameters()
     }
     m_magnetic_settings = {static_cast<std::uint32_t>(declination_source),
                            math::radians(static_cast<double>(saved_declination))};
+    char const * const imu_names[] = {"FESKF_IMU_POS_X", "FESKF_IMU_POS_Y", "FESKF_IMU_POS_Z"};
+    char const * const gnss_names[] = {"FESKF_GPS_POS_X", "FESKF_GPS_POS_Y", "FESKF_GPS_POS_Z"};
+    SensorPositions positions;
+    for (std::size_t axis = 0; axis < 3; ++axis)
+    {
+        float imu{}, gnss{};
+        if (param_get(param_find(imu_names[axis]), &imu) != 0 || param_get(param_find(gnss_names[axis]), &gnss) != 0 ||
+            !std::isfinite(imu) || !std::isfinite(gnss) || std::abs(imu) > profile::maximum_sensor_position_m ||
+            std::abs(gnss) > profile::maximum_sensor_position_m)
+        {
+            PX4_ERR("invalid sensor positions");
+            return false;
+        }
+        positions.imu_b(axis) = imu;
+        positions.gnss_b(axis) = gnss;
+    }
+    m_sensor_positions = positions;
     return true;
 }
 
@@ -228,9 +245,11 @@ bool FormalEskf::initialize_attitude(double & yaw)
     return true;
 }
 
-void FormalEskf::initialize_navigation()
+void FormalEskf::initialize_navigation(imu_type const & imu)
 {
-    m_state.v_n = vector3(m_gps.vel_n_m_s, m_gps.vel_e_m_s, m_gps.vel_d_m_s);
+    // The geographic reference remains the first antenna fix; the state is at the IMU.
+    m_state.p_n = -gnss_position_offset();
+    m_state.v_n = vector3(m_gps.vel_n_m_s, m_gps.vel_e_m_s, m_gps.vel_d_m_s) - gnss_velocity_offset(imu);
     for (std::size_t axis = 0U; axis < 3U; ++axis)
     {
         m_covariance(axis, axis) = profile::startup::position_variance[axis];
@@ -263,7 +282,7 @@ void FormalEskf::initialize(ImuInput const & sample, imu_type const & imu)
     {
         return;
     }
-    initialize_navigation();
+    initialize_navigation(imu);
     m_initialization.magnetic_source.reference_id = m_magnetic_model.reference_id();
     initialize_magnetic_aiding(m_initialization.magnetic_source, m_mag.timestamp_sample);
     m_initialized = true;
@@ -271,7 +290,7 @@ void FormalEskf::initialize(ImuInput const & sample, imu_type const & imu)
     {
         return;
     }
-    fuse_gps();
+    fuse_gps(imu);
     if (!m_fault && update_imu_health(sample.accelerometer_clipping))
     {
         fuse_height();
@@ -555,7 +574,7 @@ void FormalEskf::predict_and_fuse(imu_history_type::Interval const & interval)
     {
         return;
     }
-    fuse_gps();
+    fuse_gps(imu);
     // Current delayed GNSS velocity and preceding height evidence feed health.
     if (m_fault || !update_imu_health(sample.accelerometer_clipping))
     {
@@ -579,7 +598,30 @@ bool FormalEskf::reset_output(quaternion_type const & delta_q, vector3_type cons
 {
     // Alignment corrections precede output seeding. Afterwards every state
     // reset must transform the current output and its retained history.
-    return m_output.current().time_us == 0 || check_timing(m_output.apply_reset(delta_q, delta_v, delta_p));
+    if (m_output.current().time_us == 0)
+    {
+        return true;
+    }
+    auto const before = body_output();
+    if (!check_timing(m_output.apply_reset(delta_q, delta_v, delta_p)))
+    {
+        return false;
+    }
+    auto const & q = delta_q.coefficients();
+    if ((q(1) != 0. || q(2) != 0. || q(3) != 0.) && formal_eskf::linalg::squared_norm(m_sensor_positions.imu_b) > 0.)
+    {
+        // A heading reset also moves an offset output point. Translation resets
+        // are recorded by their callers; add only the reference-point change here.
+        auto const after = body_output();
+        auto const position_delta = after.position_n - before.position_n - delta_p;
+        auto const velocity_delta = after.velocity_n - before.velocity_n - delta_v;
+        // Count the point reset once even when an individual component is zero.
+        record_position_reset(vector2_type::from_row_major({position_delta(0), position_delta(1)}));
+        record_height_reset(position_delta(2), 1);
+        record_velocity_reset(velocity_delta);
+        record_vertical_velocity_reset(velocity_delta(2));
+    }
+    return true;
 }
 
 bool FormalEskf::update_imu_bias(ImuInput const & sample, imu_type const & imu)

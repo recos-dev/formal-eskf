@@ -68,6 +68,8 @@ public:
     void reset();
 
     Sample const & current() const { return m_current; }
+    /** Body rate used by the latest propagation, including bias/tracking feedback. */
+    vector3_type const & angular_rate_b() const { return m_output_angular_rate_b; }
     /** Non-consuming view, null during warmup, after correction or on fault. */
     Sample const * delayed() const;
     TrackingError const & tracking_error() const { return m_error; }
@@ -93,6 +95,7 @@ private:
     vector3_type m_accel_bias{};
     vector3_type m_gyro_bias{};
     vector3_type m_angular_rate_correction{};
+    vector3_type m_output_angular_rate_b{};
     vector3_type m_velocity_error_sum{};
     vector3_type m_position_error_sum{};
     TrackingError m_error{};
@@ -212,6 +215,7 @@ template <typename Linalg> bool OutputPredictor<Linalg>::predict(interval_type c
     candidate.angular_period_us = interval.sample.angular_period_us;
     m_history.push(candidate);
     m_current = candidate;
+    m_output_angular_rate_b = interval.sample.mean_rates().angular_rate_b + m_angular_rate_correction - m_gyro_bias;
     return true;
 }
 
@@ -371,6 +375,7 @@ template <typename Linalg> void OutputPredictor<Linalg>::reset()
     m_accel_bias = {};
     m_gyro_bias = {};
     m_angular_rate_correction = {};
+    m_output_angular_rate_b = {};
     m_velocity_error_sum = {};
     m_position_error_sum = {};
     m_error = {};

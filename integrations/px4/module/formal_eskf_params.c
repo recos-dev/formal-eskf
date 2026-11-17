@@ -122,3 +122,93 @@ PARAM_DEFINE_INT32(FESKF_MAG_DLY, 0);
  * @group Formal ESKF
  */
 PARAM_DEFINE_INT32(FESKF_BARO_DLY, 0);
+
+/**
+ * IMU X position in body frame
+ *
+ * Body forward coordinate in metres from the vehicle/body output origin.
+ * Calibrated rigid installation; read once at startup. Zero preserves coincident points.
+ *
+ * @unit m
+ * @min -10
+ * @max 10
+ * @decimal 3
+ * @reboot_required true
+ * @group Formal ESKF
+ */
+PARAM_DEFINE_FLOAT(FESKF_IMU_POS_X, 0.0f);
+
+/**
+ * IMU Y position in body frame
+ *
+ * Body right coordinate in metres from the vehicle/body output origin.
+ * Calibrated rigid installation; read once at startup. Zero preserves coincident points.
+ *
+ * @unit m
+ * @min -10
+ * @max 10
+ * @decimal 3
+ * @reboot_required true
+ * @group Formal ESKF
+ */
+PARAM_DEFINE_FLOAT(FESKF_IMU_POS_Y, 0.0f);
+
+/**
+ * IMU Z position in body frame
+ *
+ * Body down coordinate in metres from the vehicle/body output origin.
+ * Calibrated rigid installation; read once at startup. Zero preserves coincident points.
+ *
+ * @unit m
+ * @min -10
+ * @max 10
+ * @decimal 3
+ * @reboot_required true
+ * @group Formal ESKF
+ */
+PARAM_DEFINE_FLOAT(FESKF_IMU_POS_Z, 0.0f);
+
+/**
+ * GNSS antenna X position in body frame
+ *
+ * Body forward coordinate in metres from the vehicle/body output origin.
+ * Calibrated rigid installation; read once at startup. Zero preserves coincident points.
+ *
+ * @unit m
+ * @min -10
+ * @max 10
+ * @decimal 3
+ * @reboot_required true
+ * @group Formal ESKF
+ */
+PARAM_DEFINE_FLOAT(FESKF_GPS_POS_X, 0.0f);
+
+/**
+ * GNSS antenna Y position in body frame
+ *
+ * Body right coordinate in metres from the vehicle/body output origin.
+ * Calibrated rigid installation; read once at startup. Zero preserves coincident points.
+ *
+ * @unit m
+ * @min -10
+ * @max 10
+ * @decimal 3
+ * @reboot_required true
+ * @group Formal ESKF
+ */
+PARAM_DEFINE_FLOAT(FESKF_GPS_POS_Y, 0.0f);
+
+/**
+ * GNSS antenna Z position in body frame
+ *
+ * Body down coordinate in metres from the vehicle/body output origin.
+ * Calibrated rigid installation; read once at startup. Zero preserves coincident points.
+ *
+ * @unit m
+ * @min -10
+ * @max 10
+ * @decimal 3
+ * @reboot_required true
+ * @group Formal ESKF
+ */
+PARAM_DEFINE_FLOAT(FESKF_GPS_POS_Z, 0.0f);

@@ -143,6 +143,16 @@ private:
         formal_eskf::runtime::GnssVelocityConditions<double> conditions{};
     };
 
+    struct SensorPositions
+    {
+        vector3_type imu_b{}, gnss_b{}; // Body FRD metres from the output/body origin.
+    };
+
+    struct BodyOutput
+    {
+        vector3_type position_n{}, velocity_n{};
+    };
+
     struct Gravity
     {
         gravity_sampler_type sampler{};
@@ -245,16 +255,18 @@ private:
     bool collect_initialization_samples(imu_type const & imu);
     bool initialization_ready() const;
     bool initialize_attitude(double & yaw);
-    void initialize_navigation();
+    void initialize_navigation(imu_type const & imu);
     static types_type::parameter_type estimator_parameters();
     static bias_learning_type::Parameters bias_learning_parameters();
     bool load_startup_parameters();
     bool accept_imu(ImuInput const & sample);
     void reset_imu_observations();
-    void fuse_gps();
+    void fuse_gps(imu_type const & imu);
+    vector3_type gnss_position_offset() const;
+    vector3_type gnss_velocity_offset(imu_type const & imu) const;
     formal_eskf::runtime::GnssQualitySample<backend_type> gnss_quality_sample() const;
     formal_eskf::runtime::GnssQualityMotion gnss_motion() const;
-    GnssVelocityObservation gnss_velocity_observation() const;
+    GnssVelocityObservation gnss_velocity_observation(imu_type const & imu) const;
     void check_gnss_velocity_observation(GnssVelocityObservation const & observation);
     bool fuse_gps_velocity(GnssVelocityObservation const & observation);
     bool fuse_gps_position();
@@ -270,17 +282,21 @@ private:
     void update_ground_effect();
     void fuse_height();
     void fuse_gravity(ImuInput const & sample, imu_type const & imu);
+    void record_position_reset(vector2_type const & delta);
+    void record_velocity_reset(vector3_type const & delta);
+    void record_height_reset(double delta, std::uint8_t count);
     void record_vertical_velocity_reset(double delta);
     bool update_imu_bias(ImuInput const & sample, imu_type const & imu);
     bool update_imu_health(std::uint8_t accelerometer_clipping);
     bool prepare_publications();
     void record_publication(bool delivered);
+    BodyOutput body_output() const;
     void publish(imu_type const & imu);
     vehicle_attitude_s publish_attitude(std::uint64_t now);
-    vehicle_local_position_s publish_local_position(std::uint64_t now, imu_type const & imu, bool navigation_valid,
-                                                    bool heading_valid);
-    void publish_global_position(std::uint64_t now, vehicle_local_position_s const & local);
-    void publish_odometry(std::uint64_t now, imu_type const & imu, bool valid);
+    vehicle_local_position_s publish_local_position(std::uint64_t now, imu_type const & imu, BodyOutput const & body,
+                                                    bool navigation_valid, bool heading_valid);
+    void publish_global_position(std::uint64_t now, vehicle_local_position_s const & local, BodyOutput const & body);
+    void publish_odometry(std::uint64_t now, imu_type const & imu, BodyOutput const & body, bool valid);
     OutputValidity output_validity(std::uint64_t now) const;
     void publish_status(uint64_t now);
     estimator_status_s publish_estimator_status(std::uint64_t now, OutputValidity const & validity);
@@ -332,6 +348,7 @@ private:
     std::uint64_t m_arrival_rejections{}, m_rate_rejections{}, m_stale_arrivals{}, m_source_discards{}, m_overflows{},
         m_retired_observations{}, m_generation_loss{};
     NavigationOrigin m_origin{};
+    SensorPositions m_sensor_positions{};
     std::uint64_t m_time_us{}; // Completed prediction horizon; alignment IMU epoch before seeding.
     bool m_initialized{};
     bool m_fault{};
@@ -339,6 +356,7 @@ private:
     height_type m_height_aiding{};
     GroundEffect m_ground_effect{};
     double m_height_reset_delta{};
+    std::uint64_t m_height_reset_time{};
     std::uint8_t m_height_reset_counter{};
     formal_eskf::runtime::TiltAlignment<backend_type> m_tilt_alignment{};
     Gravity m_gravity{};
@@ -358,6 +376,7 @@ private:
     Gnss m_gnss{};
     formal_eskf::linalg::Vector<backend_type, 2> m_position_reset_delta{};
     vector3_type m_velocity_reset_delta{};
+    std::uint64_t m_position_reset_time{}, m_velocity_reset_time{};
     uint8_t m_position_reset_counter{}, m_velocity_reset_counter{}, m_vertical_velocity_reset_counter{},
         m_odometry_reset_counter{};
     double m_vertical_velocity_reset_delta{};

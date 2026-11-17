@@ -13,6 +13,12 @@ See the [integration guide](README.md) for current setup and behavior,
 [review criteria](../../docs/spec/formal-verification-traceability-and-review-criteria.md)
 for requirement/evidence acceptance.
 
+## Sensor positions and output reference point: 2026-11-17
+
+See the [F-05.1 validation record](../../docs/validation-px4-sensor-positions-20261117.md)
+for native geometry/default comparisons, sanitizer checks and both SIH attempts,
+including the retained cross-topic sampling failure and nominal-geometry limits.
+
 ## Combined module acceptance: 2026-11-14
 
 A-01 batch 6 audits the combined current-horizon implementation after `b045ff3`.

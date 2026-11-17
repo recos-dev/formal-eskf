@@ -262,7 +262,9 @@ As in EKF2, navigation uncertainty fields can carry delayed-filter covariance
 proxies alongside current output. Document this approximation in the topic
 mapping and expose the covariance epoch/lag in diagnostics; they are **not** a
 propagated current-time covariance or a certified current-error bound. Retain the
-existing variance/frame mapping pending its independent review. Suppress valid
+existing variance/frame mapping pending its independent review. With a nonzero
+IMU installation offset these remain IMU-state proxies; the module's body-point
+position/velocity transform does not transport their covariance. Suppress valid
 output on stale/faulted history; never make delayed uncertainty look current by
 changing its diagnostic epoch. An output predictor does not own a second EKF.
 
@@ -388,7 +390,9 @@ The intended differences from PX4 are explicit:
   as additional observations or feedback updates.
 - Require exact epochs and failure-atomic history updates. Keep local Cartesian
   position; no global-reference recentering, separate vertical-position-derivative
-  filter, lever-arm output correction or unaided-yaw output is implemented here.
+  filter or unaided-yaw output is implemented here. The predictor retains the
+  IMU-point state and latest propagated body rate; the module converts to the
+  body output point under `R-PX4-SENSOR-POSITIONS`.
 
 `ready()` means feedback has begun and no component fault is latched. It does not
 prove wall-clock freshness, tracking-error bounds or downstream validity. Those

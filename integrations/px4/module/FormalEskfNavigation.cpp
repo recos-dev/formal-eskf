@@ -193,7 +193,19 @@ bool FormalEskf::gps_velocity_valid(uint64_t max_age) const
            recent(std::max(group.last_fuse_time_us, group.last_reset_time_us), max_age);
 }
 
-void FormalEskf::fuse_gps()
+FormalEskf::vector3_type FormalEskf::gnss_position_offset() const
+{
+    return formal_eskf::so3::rotate(m_state.q_nb, m_sensor_positions.gnss_b - m_sensor_positions.imu_b);
+}
+
+FormalEskf::vector3_type FormalEskf::gnss_velocity_offset(imu_type const & imu) const
+{
+    auto const offset_b = m_sensor_positions.gnss_b - m_sensor_positions.imu_b;
+    return formal_eskf::so3::rotate(m_state.q_nb,
+                                    formal_eskf::linalg::cross(imu.angular_rate_b - m_state.b_g, offset_b));
+}
+
+void FormalEskf::fuse_gps(imu_type const & imu)
 {
     using namespace formal_eskf::runtime;
     GnssFusion::Conditions conditions;
@@ -224,7 +236,7 @@ void FormalEskf::fuse_gps()
         m_gnss.vertical_innovation = {};
         return;
     }
-    auto const observation = gnss_velocity_observation();
+    auto const observation = gnss_velocity_observation(imu);
     if (!gps_good())
     {
         // A still-active source may supply health evidence without fusion permission.
@@ -242,11 +254,11 @@ void FormalEskf::fuse_gps()
     m_max_fusion_age = std::max(m_max_fusion_age, m_time_us - m_gnss.sample.time_us);
 }
 
-FormalEskf::GnssVelocityObservation FormalEskf::gnss_velocity_observation() const
+FormalEskf::GnssVelocityObservation FormalEskf::gnss_velocity_observation(imu_type const & imu) const
 {
     auto const & gps = m_gnss.input.sample;
     GnssVelocityObservation observation;
-    observation.velocity_n = gps.velocity_n;
+    observation.velocity_n = gps.velocity_n - gnss_velocity_offset(imu);
     double const variance = square(std::max(double(gps.speed_accuracy_m_s), profile::gnss::minimum_velocity_noise_m_s));
     observation.variances = vector3(variance, variance, profile::gnss::vertical_variance_multiplier * variance);
     observation.covariance = matrix3_type::identity() * variance;
@@ -297,8 +309,7 @@ bool FormalEskf::fuse_gps_velocity(GnssVelocityObservation const & observation)
         {
             return false;
         }
-        m_velocity_reset_delta = delta;
-        ++m_velocity_reset_counter;
+        record_velocity_reset(delta);
         record_vertical_velocity_reset(delta(2));
         ++m_odometry_reset_counter;
         m_gnss.velocity_test_ratio = 0.;
@@ -343,7 +354,8 @@ bool FormalEskf::fuse_gps_position()
     using Group = gnss_lifecycle_type::Group;
     float north{}, east{};
     m_origin.projection.project(gps.latitude_deg, gps.longitude_deg, north, east);
-    const auto xy = vector2_type::from_row_major({double(north), double(east)});
+    auto const offset_n = gnss_position_offset();
+    const auto xy = vector2_type::from_row_major({double(north) - offset_n(0), double(east) - offset_n(1)});
     const double position_variance =
         square(std::min(std::max(double(gps.horizontal_accuracy_m), profile::gnss::minimum_position_noise_m),
                         profile::gnss::maximum_position_noise_m));
@@ -364,8 +376,7 @@ bool FormalEskf::fuse_gps_position()
         {
             return false;
         }
-        m_position_reset_delta = delta;
-        ++m_position_reset_counter;
+        record_position_reset(delta);
         ++m_odometry_reset_counter;
         m_gnss.position_test_ratio = 0.;
     }
@@ -380,6 +391,27 @@ bool FormalEskf::fuse_gps_position()
         }
     }
     return true;
+}
+
+void FormalEskf::record_position_reset(vector2_type const & delta)
+{
+    m_position_reset_delta = m_position_reset_time == m_time_us ? m_position_reset_delta + delta : delta;
+    m_position_reset_time = m_time_us;
+    ++m_position_reset_counter;
+}
+
+void FormalEskf::record_velocity_reset(vector3_type const & delta)
+{
+    m_velocity_reset_delta = m_velocity_reset_time == m_time_us ? m_velocity_reset_delta + delta : delta;
+    m_velocity_reset_time = m_time_us;
+    ++m_velocity_reset_counter;
+}
+
+void FormalEskf::record_height_reset(double delta, std::uint8_t count)
+{
+    m_height_reset_delta = m_height_reset_time == m_time_us ? m_height_reset_delta + delta : delta;
+    m_height_reset_time = m_time_us;
+    m_height_reset_counter = static_cast<std::uint8_t>(m_height_reset_counter + count);
 }
 
 void FormalEskf::record_vertical_velocity_reset(double delta)
@@ -434,7 +466,7 @@ void FormalEskf::fuse_height()
         gnss = {m_gnss.sample.time_us,
                 gps.stamp.source.device_id,
                 0,
-                gps.altitude_msl_m,
+                gps.altitude_msl_m + gnss_position_offset()(2),
                 square(std::max(double(gps.vertical_accuracy_m), profile::height::minimum_gnss_noise_m)),
                 gps_good(),
                 m_gnss.input.generation};
@@ -456,8 +488,7 @@ void FormalEskf::fuse_height()
     }
     if (result.height_resets != 0U)
     {
-        m_height_reset_delta = result.height_delta;
-        m_height_reset_counter = static_cast<std::uint8_t>(m_height_reset_counter + result.height_resets);
+        record_height_reset(result.height_delta, result.height_resets);
     }
     m_rejections += result.rejected;
     m_odometry_reset_counter += result.height_resets + result.velocity_resets;

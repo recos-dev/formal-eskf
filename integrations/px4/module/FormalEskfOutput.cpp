@@ -33,6 +33,15 @@ void FormalEskf::record_publication(bool delivered)
     }
 }
 
+FormalEskf::BodyOutput FormalEskf::body_output() const
+{
+    auto const & output = m_output.current();
+    auto const position_offset_n = formal_eskf::so3::rotate(output.q_nb, m_sensor_positions.imu_b);
+    auto const velocity_offset_n = formal_eskf::so3::rotate(
+        output.q_nb, formal_eskf::linalg::cross(m_output.angular_rate_b(), m_sensor_positions.imu_b));
+    return {output.p_n - position_offset_n, output.v_n - velocity_offset_n};
+}
+
 void FormalEskf::publish(imu_type const & imu)
 {
     const uint64_t now = hrt_absolute_time();
@@ -42,10 +51,17 @@ void FormalEskf::publish(imu_type const & imu)
     {
         return;
     }
+    auto const body = body_output();
+    if (!check(formal_eskf::linalg::all_finite(body.position_n) && formal_eskf::linalg::all_finite(body.velocity_n)
+                   ? status_type::success
+                   : status_type::non_finite_result))
+    {
+        return;
+    }
     m_last_output = time;
-    auto const local = publish_local_position(now, imu, validity.gps, validity.magnetic);
-    publish_global_position(now, local);
-    publish_odometry(now, imu, validity.gps && validity.magnetic);
+    auto const local = publish_local_position(now, imu, body, validity.gps, validity.magnetic);
+    publish_global_position(now, local, body);
+    publish_odometry(now, imu, body, validity.gps && validity.magnetic);
 }
 
 vehicle_attitude_s FormalEskf::publish_attitude(std::uint64_t now)
@@ -64,17 +80,18 @@ vehicle_attitude_s FormalEskf::publish_attitude(std::uint64_t now)
 }
 
 vehicle_local_position_s FormalEskf::publish_local_position(std::uint64_t now, imu_type const & imu,
-                                                            bool navigation_valid, bool heading_valid)
+                                                            BodyOutput const & body, bool navigation_valid,
+                                                            bool heading_valid)
 {
     vehicle_local_position_s local{};
     local.timestamp_sample = m_output.current().time_us;
     local.timestamp = now;
-    local.x = m_output.current().p_n(0);
-    local.y = m_output.current().p_n(1);
-    local.z = m_output.current().p_n(2);
-    local.vx = m_output.current().v_n(0);
-    local.vy = m_output.current().v_n(1);
-    local.vz = m_output.current().v_n(2);
+    local.x = body.position_n(0);
+    local.y = body.position_n(1);
+    local.z = body.position_n(2);
+    local.vx = body.velocity_n(0);
+    local.vy = body.velocity_n(1);
+    local.vz = body.velocity_n(2);
     local.z_deriv = local.vz;
     const auto accel_n =
         formal_eskf::so3::rotate(m_output.current().q_nb, imu.specific_force_b - m_state.b_a) + m_parameters.gravity_n;
@@ -123,14 +140,15 @@ vehicle_local_position_s FormalEskf::publish_local_position(std::uint64_t now, i
     return local;
 }
 
-void FormalEskf::publish_global_position(std::uint64_t now, vehicle_local_position_s const & local)
+void FormalEskf::publish_global_position(std::uint64_t now, vehicle_local_position_s const & local,
+                                         BodyOutput const & body)
 {
     vehicle_global_position_s global{};
     global.timestamp_sample = m_output.current().time_us;
     global.timestamp = now;
     m_origin.projection.reproject(local.x, local.y, global.lat, global.lon);
-    global.alt = m_origin.altitude_msl_m - m_output.current().p_n(2);
-    global.alt_ellipsoid = m_origin.altitude_ellipsoid_m - m_output.current().p_n(2);
+    global.alt = m_origin.altitude_msl_m - body.position_n(2);
+    global.alt_ellipsoid = m_origin.altitude_ellipsoid_m - body.position_n(2);
     global.lat_lon_valid = local.xy_valid;
     global.lat_lon_reset_counter = m_position_reset_counter;
     global.alt_valid = local.z_valid;
@@ -143,7 +161,7 @@ void FormalEskf::publish_global_position(std::uint64_t now, vehicle_local_positi
     record_publication(m_global_pub.publish(global));
 }
 
-void FormalEskf::publish_odometry(std::uint64_t now, imu_type const & imu, bool valid)
+void FormalEskf::publish_odometry(std::uint64_t now, imu_type const & imu, BodyOutput const & body, bool valid)
 {
     vehicle_odometry_s odometry{};
     odometry.timestamp_sample = m_output.current().time_us;
@@ -156,8 +174,8 @@ void FormalEskf::publish_odometry(std::uint64_t now, imu_type const & imu, bool 
     }
     for (size_t i = 0; i < 3; ++i)
     {
-        odometry.position[i] = m_output.current().p_n(i);
-        odometry.velocity[i] = m_output.current().v_n(i);
+        odometry.position[i] = body.position_n(i);
+        odometry.velocity[i] = body.velocity_n(i);
         odometry.angular_velocity[i] = imu.angular_rate_b(i) - m_state.b_g(i);
         odometry.position_variance[i] = m_covariance(i, i);
         odometry.velocity_variance[i] = m_covariance(i + 3, i + 3);

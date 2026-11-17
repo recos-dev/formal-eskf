@@ -42,6 +42,8 @@
 #include "HeightAiding.hpp"
 #include "ImuPrediction.hpp"
 #include "ImuHistory.hpp"
+#include "ObservationHistory.hpp"
+#include "OutputPredictor.hpp"
 #include "MagneticModel.hpp"
 
 // Single writer: all filter state is owned by this work item. The core has no
@@ -99,14 +101,11 @@ private:
     using ImuSource = formal_eskf::px4::ImuSource;
     using ImuInput = formal_eskf::px4::ImuInput<backend_type>;
 
-    struct ImuHistory
-    {
-        imu_type measurement{};
-        std::uint64_t time_us{};
-        ImuSource source{};
-
-        void record(ImuInput const & sample, imu_type const & imu);
-    };
+    using imu_history_type = formal_eskf::px4::ImuHistory<backend_type>;
+    using observation_history_type = formal_eskf::px4::ObservationHistory<backend_type>;
+    using output_predictor_type = formal_eskf::px4::OutputPredictor<backend_type>;
+    static_assert(sizeof(imu_history_type) + sizeof(observation_history_type) + sizeof(output_predictor_type) <=
+                  formal_eskf::px4::profile::history::storage_budget_bytes);
 
     struct NavigationOrigin
     {
@@ -118,6 +117,9 @@ private:
 
     struct Gnss
     {
+        observation_history_type::GnssObservation input{};
+        observation_history_type::Context context{};
+        std::uint64_t generation{};
         MapProjection previous_fix{};
         formal_eskf::runtime::GnssQuality<backend_type> quality{};
         formal_eskf::runtime::GnssQualityParameters<double> quality_parameters{};
@@ -155,12 +157,15 @@ private:
 
     struct Magnetic
     {
+        observation_history_type::MagneticObservation input{};
+        observation_history_type::Context context{};
+        std::uint64_t generation{};
         formal_eskf::runtime::MagneticHeading<backend_type> heading{};
         formal_eskf::runtime::MagnetometerFilter<backend_type> filter{};
         magnetic_lifecycle_type lifecycle{};
         formal_eskf::runtime::MagnetometerFusionResult<backend_type> observation{};
         magnetic_lifecycle_type::Source source{};
-        std::uint64_t sample_time_us{}; // Newest consumed arrival, including stale/invalid data.
+        std::uint64_t sample_time_us{}; // Newest consumed effective event, including invalid payloads.
         bool horizontal_aiding{};
         std::uint32_t corrections{};
         double test_ratio{};
@@ -184,7 +189,11 @@ private:
     // Fixed-size shell view. No reader accesses live filter fields or perf counters.
     struct Diagnostics
     {
-        std::uint64_t time_us{}, sample_time_us{}, sequence{}, skipped{}, exchange_errors{};
+        std::uint64_t time_us{}, sample_time_us{}, output_time_us{}, lag_us{}, sequence{}, skipped{}, exchange_errors{};
+        std::uint64_t arrival_rejections{}, rate_rejections{}, stale_arrivals{}, source_discards{}, overflows{},
+            retired_observations{}, generation_loss{};
+        std::size_t imu_entries{};
+        bool output_ready{};
         bool initialized{}, fault{}, qualified{}, metadata_valid{};
         std::uint32_t predictions{}, gps_updates{}, mag_updates{}, baro_updates{}, rejections{}, errors{}, gaps{};
         std::uint64_t maximum_gps_age_us{};
@@ -207,13 +216,25 @@ private:
         bool gravity_enabled{}, tilt_aligned{}, gravity_active{};
         unsigned gravity_samples{}, gravity_corrections{};
         std::uint64_t gravity_interval_us{}, cycle_events{}, publication_failures{};
-        float cycle_mean_s{}; // PX4 perf uses its clock; lockstep time is not CPU time.
+        float cycle_mean_s{}, output_mean_s{},
+            fusion_mean_s{}; // PX4 perf uses its clock; lockstep time is not CPU time.
     };
 
     void Run() override;
     static ImuInput decode_imu(vehicle_imu_s const & sample);
     void process_imu(ImuInput const & sample);
-    void predict_and_fuse(ImuInput const & sample, imu_type const & imu);
+    void predict_and_fuse(imu_history_type::Interval const & interval);
+    void advance_fusion();
+    void select_observations();
+    void record_admission(observation_history_type::PushResult const & result);
+    bool check_timing(bool succeeded);
+    bool reset_output(quaternion_type const & delta_q, vector3_type const & delta_v, vector3_type const & delta_p);
+    static observation_history_type::GnssSample decode_gnss(sensor_gps_s const & sample);
+    static observation_history_type::MagneticSample decode_magnetic(vehicle_magnetometer_s const & sample);
+    static observation_history_type::BarometerSample decode_barometer(vehicle_air_data_s const & sample);
+    observation_history_type::LandState land_state() const;
+    observation_history_type::VehicleState vehicle_state() const;
+    observation_history_type::Context startup_context(std::uint64_t epoch, std::uint64_t maximum_age) const;
     void initialize(ImuInput const & sample, imu_type const & imu);
     bool collect_initialization_samples(imu_type const & imu);
     bool initialization_ready() const;
@@ -249,11 +270,10 @@ private:
     void record_publication(bool delivered);
     void publish(imu_type const & imu);
     vehicle_attitude_s publish_attitude(std::uint64_t now);
-    vehicle_local_position_s publish_local_position(std::uint64_t now, imu_type const & imu,
-                                                    vehicle_attitude_s const & attitude, bool navigation_valid,
+    vehicle_local_position_s publish_local_position(std::uint64_t now, imu_type const & imu, bool navigation_valid,
                                                     bool heading_valid);
     void publish_global_position(std::uint64_t now, vehicle_local_position_s const & local);
-    void publish_odometry(std::uint64_t now, imu_type const & imu, vehicle_attitude_s const & attitude, bool valid);
+    void publish_odometry(std::uint64_t now, imu_type const & imu, bool valid);
     OutputValidity output_validity(std::uint64_t now) const;
     void publish_status(uint64_t now);
     estimator_status_s publish_estimator_status(std::uint64_t now, OutputValidity const & validity);
@@ -297,9 +317,15 @@ private:
     covariance_type m_covariance{};
     types_type::parameter_type m_parameters = estimator_parameters();
     Initialization m_initialization{};
-    ImuHistory m_imu_history{};
+    imu_history_type m_imu_history{};
+    observation_history_type m_observations{};
+    output_predictor_type m_output{};
+    observation_history_type::Context m_imu_context{};
+    observation_history_type::BarometerObservation m_barometer{};
+    std::uint64_t m_arrival_rejections{}, m_rate_rejections{}, m_stale_arrivals{}, m_source_discards{}, m_overflows{},
+        m_retired_observations{}, m_generation_loss{};
     NavigationOrigin m_origin{};
-    std::uint64_t m_time_us{}; // Last admitted IMU horizon, not wall-clock time.
+    std::uint64_t m_time_us{}; // Completed prediction horizon; alignment IMU epoch before seeding.
     bool m_initialized{};
     bool m_fault{};
 
@@ -344,5 +370,7 @@ private:
     bool m_diagnostics_ready{};
     Diagnostics m_diagnostics{};
     std::uint64_t m_diagnostics_sequence{}, m_diagnostics_skipped{}, m_diagnostics_errors{};
+    perf_counter_t m_output_perf{perf_alloc(PC_ELAPSED, "formal_eskf: output")};
+    perf_counter_t m_fusion_perf{perf_alloc(PC_ELAPSED, "formal_eskf: fusion")};
     perf_counter_t m_cycle_perf{perf_alloc(PC_ELAPSED, "formal_eskf: cycle")};
 }; /* end class FormalEskf */

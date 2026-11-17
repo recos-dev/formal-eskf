@@ -903,9 +903,10 @@ evidence, not Lean/ESBMC proof of this wiring; numerical core equations are unch
 
 - Read calibrated FRD `vehicle_magnetometer` data, convert gauss to microtesla,
   and bind `device_id`/`calibration_count`. Startup accumulation cannot mix sources.
-  Future samples wait; duplicate samples cannot fuse twice. With no delayed fusion
-  horizon, arrivals aged 500 ms or more are discarded without refreshing lifecycle
-  data/progress. Missing data still advances the lifecycle on each estimator tick.
+  Reject future boot-clock timestamps; observations newer than the delayed horizon
+  wait in history. Duplicate samples cannot fuse twice. Apply the arrival/selection
+  limits in `PX4-TIME-LIVE` without refreshing lifecycle progress on rejection.
+  Missing data still advances the lifecycle on each delayed estimator tick.
 - Use a fixed profile matching the pinned PX4 v1.16.2 defaults: 5 microtesla
   measurement standard deviation, 3-sigma componentwise gate, strength-only
   check with 20 microtesla tolerance, healthy duration strictly greater than 1 s,
@@ -939,8 +940,9 @@ The observation remains a three-component fixed-field model with compile-time
 yaw update. Geographic reference updates and heading-source selection follow the
 contract below. Magnetic-bias learning, AUTO/3D switching and terrain-based
 in-flight realignment are not integrated here. Magnetic projection does not claim
-that all non-attitude state gains vanish. Neither delayed fusion nor hardware
-flight performance is established by this integration.
+that all non-attitude state gains vanish. `R-PX4-DELAYED-FUSION` owns the live
+timeline integration evidence; this magnetic contract does not establish hardware
+flight performance or prove the complete delayed system.
 
 #### PX4 module geographic magnetic reference
 
@@ -1121,8 +1123,8 @@ It owns neither covariance nor sensor admission, clock, fusion or publication.
 
 Current evidence is native binary64 testing with Eigen and PX4 matrix, including
 analytic motion, variable periods, repeated wraps, feedback, reset and numerical
-rollback. Lean/ESBMC source evidence, nonlinear stability/error bounds, live
-module wiring, target resource bounds and flight acceptance remain open.
+rollback. Lean/ESBMC source evidence, nonlinear stability/error bounds and target
+resource bounds remain open. Live binding has its own requirement below.
 
 ### R-PX4-OBSERVATION-HISTORY: delayed observations and context
 
@@ -1141,7 +1143,9 @@ It does not own numerical validation, source qualification, lifecycle or fusion.
   Check offset subtraction before use. Retain raw/effective/arrival epochs, source
   identity, calibration and frozen offsets; keep watermarks across empty buffers.
 - Apply source/calibration invalidation before rate/age rejection: clear only
-  that source's pending generation and report the change/loss. Keep raw numerical
+  that source's pending generation and report the change/loss. Retain a generation
+  counter through switch-away/back so identity equality cannot preserve obsolete
+  qualification. Keep raw numerical
   and quality metadata for delayed validation; queued does not mean usable.
 - Begin fusion only at the next admitted delayed interval, within lag bounds and
   once per latest IMU endpoint. Update the half-period reference from delayed real
@@ -1152,15 +1156,53 @@ It does not own numerical validation, source qualification, lifecycle or fusion.
   a miss. Share the selected GNSS event across all GNSS consumers.
 - Resolve context at/before the requested effective epoch using original message
   age. Missing/stale/explicit unknown context cannot grant fusion permission.
+  Before prediction, permit a read-only context lookup for exactly the next
+  admissible delayed interval, with the same sequence/lag checks as begin-fusion.
+  This grants neither observation selection nor a second advance.
 - Use fixed bounded storage/work; report aiding overwrites without claiming a
   successful fusion or moving the horizon. Reset clears temporal state while
   retaining configuration. Caller sequencing errors must not partially advance it.
 
 Current evidence is native binary64 scenario testing on Eigen and PX4 matrix,
 including timing limits, source switches, independent selection and context
-histories. Formal source evidence, live policy/time binding, deployed storage /
-stack/WCET and flight acceptance remain open. Existing ring-buffer proof does
+histories. Formal source evidence and target storage/stack/WCET remain open.
+Live policy/time binding has its own requirement below. Existing ring-buffer proof does
 not prove this owner's provenance, larger concrete payloads or temporal protocol.
+
+### R-PX4-DELAYED-FUSION: live module timeline
+
+The adapter connects the component contracts under
+[PX4-TIME-LIVE](px4-timing-profile.md#px4-time-live-module-binding) for the initial
+250 Hz INS/binary64 SIH profile. This is an integration requirement, not a proof
+of the scheduler, backend, sensor producers or complete flight system.
+
+- Validate startup timing before callback registration; freeze one configuration
+  for IMU, output and observations. Running parameter changes cannot retime history.
+- Seed all owners at a real alignment epoch after startup corrections. Admit real
+  output intervals during warmup, withholding valid estimates until matching
+  delayed feedback succeeds.
+- Propagate/publish current attitude first, then predict at most one oldest
+  delayed interval. Replay held/real segments in the same order in both predictors.
+  Advance the main epoch only after successful prediction; never label failure
+  with the newest output epoch.
+- Select aiding once per source; share GNSS among velocity, horizontal position
+  and height. Use historical event/IMU context for permissions. Source-generation
+  changes prevent reuse of obsolete qualification, filter and height-bias history.
+- Preserve fusion order and checked reset operations. Transform current/output
+  history on each main reset, preserving epochs and reporting deltas/counters.
+  Ordinary feedback is not a reset.
+- Match exact main/output epochs before feedback/acknowledgment. Faults stop
+  subsequent valid publication; an earlier fast attitude is not undone.
+- Publish attitude/navigation at latest output time; status/bias/covariance
+  diagnostics at delayed main time. Navigation covariance fields are delayed
+  proxies. Strictly expire output at 100 ms without fabricating backup propagation.
+- Bound storage and per-callback work, separate loss counters and enforce the
+  64 KiB owner budget. Phase counters do not establish a wall-time deadline.
+
+Evidence must exercise production `Run`, native uORB decoding/publication,
+configuration, warmup, delays, source changes, context, resets and failures, plus
+the pinned SIH acceptance scenario. Source formal proof, nonlinear tracking-error
+bounds, hardware/resource qualification and flight-fault safety remain open.
 
 ### R-GNSS-RESET: checked GNSS position and velocity reset
 
@@ -2586,12 +2628,14 @@ v1.16.2 (`54f0455ffcd755534539a7cf33a09a20bf71d29d`), not moving `main`.
   Drift uses an adjacent-fix `MapProjection` and MSL altitude differences.
   Fresh land-detector `at_rest`/`landed` supply independent motion context;
   fresh armed state supplies the in-air fallback, as in the reference wrapper.
-- Before initialization and on every usable IMU tick, process at most one new
-  GNSS sample. Future samples wait; duplicates and samples older than 500 ms
-  cannot refresh health or aiding. Sample time drives drift, IMU horizon drives
-  qualification/lifecycle. This retains the adapter's immediate fusion timing;
-  the reference uses publication time plus delayed buffering. Delay compensation
-  and output prediction are not implemented here.
+- During alignment, process at most one new GNSS sample per usable IMU tick
+  with the existing sample-time freshness check. After seeding, admit and select
+  observations under `PX4-TIME-LIVE`; stricter arrival/selection limits apply
+  before GNSS quality. One selected event serves velocity, position and height.
+  Effective sample time drives drift; the delayed IMU horizon drives qualification
+  and lifecycle using historical motion context. Duplicate/stale events cannot
+  refresh health or aiding. GNSS sample-time binding differs from the pinned
+  reference's publication-time binding, as recorded in the timing profile.
 - Initialize only after quality acceptance. With initialized attitude/frame,
   execute the horizontal lifecycle every prediction, including missing-data
   ticks. Velocity precedes horizontal position. Each gate uses the latest
@@ -2615,8 +2659,9 @@ v1.16.2 (`54f0455ffcd755534539a7cf33a09a20bf71d29d`), not moving `main`.
   lifecycle remains disabled. Its shared height-progress timeout now authorizes
   the Down-only velocity reset after normal velocity correction and before height
   processing. Height does not refresh horizontal progress.
-  No emergency yaw, lever-arm correction, vertical-acceleration exception or
-  receiver blending is claimed.
+  The vertical-acceleration exception is governed by `R-PX4-IMU-BIAS` and
+  `R-HEIGHT-FUSION`. No emergency yaw, lever-arm correction or receiver blending
+  is claimed.
 
 PX4 compilation, existing native runtime tests and closed-loop SITL with quality
 failure, outage and recovery checks are empirical evidence. This adapter has no
@@ -2654,9 +2699,10 @@ covariance preconditions; this helper does not prove or recheck positive semidef
 - Start GNSS only with caller-qualified, finite data; start barometer after more
   than 20 finite samples, with a reset-only altitude LPF (alpha 0.1). These fixed
   warmup/LPF values follow the reference's 200 ms / 10 ms / 90 ms defaults;
-  this adapter does not implement the delayed observation queue. Source or
-  calibration changes stop that session and clear its offset history; barometer
-  also clears its fault latch and repeats warmup.
+  warmup counts selected events, not arrivals or elapsed wall time. Queue admission
+  and selection follow `PX4-TIME-LIVE`. Source, calibration or generation changes
+  stop that session and clear its offset history; barometer also clears its fault
+  latch and repeats warmup.
   Altitude must lie strictly between -12000 and 100000 m, with finite positive
   measurement variance. An invalid initial GNSS altitude delays module startup
   instead of latching a numerical-core fault.
@@ -2666,8 +2712,9 @@ covariance preconditions; this helper does not prove or recheck positive semidef
   grace separately from actual successful fusion/reset progress. An invalid or
   unqualified observation stops only that source; it cannot claim fusion success.
 - Missing-data deadlines are 400 ms for barometer and 1 s for GNSS, equality
-  expired. Retain the adapter's stricter sample-age limits (200/500 ms). Future
-  samples wait; duplicate/stale samples cannot refresh progress. When the reference
+  expired. The helper retains its sample-age checks (200/500 ms); the live adapter
+  applies the stricter `PX4-TIME-LIVE` admission and selection limits first.
+  Future buffered samples wait; duplicate/stale samples cannot refresh progress. When the reference
   stops, select an active GNSS source, otherwise active barometer, otherwise none.
   Fallback selection alone changes no state/P or reset counter.
 - After the current height attempt, a source whose progress is >5 s old stops

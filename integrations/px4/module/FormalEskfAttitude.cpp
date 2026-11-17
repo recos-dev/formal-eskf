@@ -38,7 +38,7 @@ void FormalEskf::fuse_gravity(ImuInput const & sample, imu_type const & imu)
         m_gravity_enabled,
         m_tilt_alignment.aligned(),
         gnss.horizontal_position.active || gnss.velocity.active,
-        recent(m_land.timestamp, profile::imu::rest_maximum_age_us) && m_land.at_rest,
+        m_imu_context.land.known && m_imu_context.land.at_rest,
         {(observation.clipping_mask & 1) != 0, (observation.clipping_mask & 2) != 0,
          (observation.clipping_mask & 4) != 0}};
     if (!conditions.enabled || conditions.horizontal_aiding || !conditions.tilt_aligned)
@@ -158,38 +158,55 @@ FormalEskf::magnetic_lifecycle_type::Conditions FormalEskf::magnetic_conditions(
     // Session activity is distinct from output validity and dead reckoning.
     conditions.horizontal_aiding =
         m_gnss.lifecycle.state().horizontal_position.active || m_gnss.lifecycle.state().velocity.active;
-    std::uint64_t const now = hrt_absolute_time();
-    if (m_vehicle_status.timestamp != 0U && m_vehicle_status.timestamp <= now &&
-        now - m_vehicle_status.timestamp < profile::magnetic::context_maximum_age_us)
+    if (m_magnetic.context.vehicle.known)
     {
-        conditions.flight_state = m_vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_ARMED
-                                      ? FlightState::in_air
-                                      : FlightState::on_ground;
+        conditions.flight_state = m_magnetic.context.vehicle.armed ? FlightState::in_air : FlightState::on_ground;
     }
-    if (m_land.timestamp != 0U && m_land.timestamp <= now &&
-        now - m_land.timestamp < profile::magnetic::context_maximum_age_us)
+    if (m_magnetic.context.land.known)
     {
-        conditions.flight_state = m_land.landed ? FlightState::on_ground : FlightState::in_air;
-        conditions.at_rest = m_land.at_rest;
+        conditions.flight_state = m_magnetic.context.land.landed ? FlightState::on_ground : FlightState::in_air;
+        conditions.at_rest = m_magnetic.context.land.at_rest;
+    }
+    if (m_output.current().time_us != 0)
+    {
+        conditions.enabled = m_observations.magnetic_source().device_id != 0 &&
+                             m_observations.magnetic_generation() == m_magnetic.generation;
     }
     return conditions;
+}
+
+FormalEskf::observation_history_type::MagneticSample FormalEskf::decode_magnetic(vehicle_magnetometer_s const & sample)
+{
+    return {{sample.timestamp_sample, {sample.device_id, sample.calibration_count}},
+            vector3(profile::microtesla_per_gauss * double(sample.magnetometer_ga[0]),
+                    profile::microtesla_per_gauss * double(sample.magnetometer_ga[1]),
+                    profile::microtesla_per_gauss * double(sample.magnetometer_ga[2]))};
 }
 
 FormalEskf::MagneticSample FormalEskf::consume_magnetic_sample()
 {
     MagneticSample sample;
-    if (m_mag.timestamp_sample <= m_magnetic.sample_time_us || m_mag.timestamp_sample > m_time_us)
+    auto const & input = m_magnetic.input;
+    if (input.time_us <= m_magnetic.sample_time_us || input.time_us > m_time_us)
     {
         return sample;
     }
-    m_magnetic.sample_time_us = m_mag.timestamp_sample;
-    sample.time_us = m_mag.timestamp_sample;
-    sample.source = {m_mag.device_id, m_mag.calibration_count, 0U};
-    sample.field_b = vector3(profile::microtesla_per_gauss * double(m_mag.magnetometer_ga[0]),
-                             profile::microtesla_per_gauss * double(m_mag.magnetometer_ga[1]),
-                             profile::microtesla_per_gauss * double(m_mag.magnetometer_ga[2]));
-    // Admission is shared by model lookup and observation preparation. Stale
-    // arrivals consume the watermark but never refresh lifecycle receipt.
+    // If a sensor switched away and back before selection, its identity alone
+    // cannot reveal the interruption. Discard its old qualification/filter too.
+    if (input.generation != m_magnetic.generation &&
+        input.sample.stamp.source.device_id == m_magnetic.source.device_id &&
+        input.sample.stamp.source.calibration_count == m_magnetic.source.calibration_count)
+    {
+        m_magnetic.lifecycle.restart();
+        m_magnetic.filter.reset();
+        m_magnetic.heading.reset_heading();
+        m_heading_aligned = false;
+    }
+    m_magnetic.generation = input.generation;
+    m_magnetic.sample_time_us = input.time_us;
+    sample.time_us = input.time_us;
+    sample.source = {input.sample.stamp.source.device_id, input.sample.stamp.source.calibration_count, 0U};
+    sample.field_b = input.sample.field_b;
     sample.fresh = m_time_us - sample.time_us < profile::magnetic::timing.maximum_interval_us;
     sample.usable = sample.fresh && sample.source.device_id != 0U && formal_eskf::linalg::all_finite(sample.field_b) &&
                     formal_eskf::linalg::dot(sample.field_b, sample.field_b) > 0.;
@@ -273,6 +290,10 @@ FormalEskf::status_type FormalEskf::reset_magnetic_heading(std::uint64_t sample_
     }
     if (reset)
     {
+        if (!reset_output(delta, {}, {}))
+        {
+            return status_type::out_of_range;
+        }
         m_quaternion_reset_delta = delta;
         ++m_quaternion_reset_counter;
         m_heading_aligned = true;
@@ -283,8 +304,8 @@ FormalEskf::status_type FormalEskf::reset_magnetic_heading(std::uint64_t sample_
 
 void FormalEskf::fuse_mag()
 {
-    auto conditions = magnetic_conditions();
     auto sample = consume_magnetic_sample();
+    auto conditions = magnetic_conditions();
     if (sample.usable)
     {
         update_magnetic_model();

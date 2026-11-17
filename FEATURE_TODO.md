@@ -122,12 +122,14 @@ not just another constant in the existing barometer helper.
 | Task | Status and dependency | Completion criterion |
 |---|---|---|
 | F-04.1 — Timing design | Completed for the initial 250 Hz SIH design (`f763ffb`, `8f6bda1`); target resource/accuracy acceptance remains F-07 | Specify sample versus publication time, supported delays, fixed capacities, horizon, overflow/out-of-order policy, resets and latency/memory budgets against the pinned PX4 behavior. |
-| F-04.2 — Delayed fusion and output prediction | IMU history and output predictor committed (`627379e`, `5605e27`); [observation/context histories](integrations/px4/module/ObservationHistory.hpp) implemented for review, including provenance, source changes and bounded selection. Native checks exist; formal proof and live delayed integration remain open | Bind startup timing parameters and source/context inputs, then connect delayed prediction/fusion and current output. Test deterministic delay, reordering, dropout and reset sequences; verify output timestamps, continuity and measured resource bounds. |
+| F-04.2 — Delayed fusion and output prediction | IMU, output and observation/context owners committed (`627379e`, `5605e27`, `6e72a92`); live delayed-fusion binding implemented for review. Native integration/sanitizer checks and final SIH acceptance passed; retain the earlier landing-check failure in the validation record. Source formal proof and target resource acceptance remain open | Bind startup timing parameters and source/context inputs, then connect delayed prediction/fusion and current output. Test deterministic delay, reordering, dropout and reset sequences; verify output timestamps, continuity and measured resource bounds. |
 
-F-04 is prioritized by request. The module shares the IMU input/source types with
-the new history component, but still fuses immediately. The reviewed
-[timing profile](docs/spec/px4-timing-profile.md) governs the remaining integration;
-component evidence does not establish deployed time alignment or output tracking.
+F-04 is prioritized by request. The live module now separates current output
+from delayed prediction and fusion under the reviewed
+[timing profile](docs/spec/px4-timing-profile.md). The
+[validation record](docs/validation-px4-delayed-fusion-20261117.md) retains native,
+sanitizer and SIH results, including the failed landing check. This establishes
+scoped integration evidence, not source formal proof or target timing acceptance.
 
 ### F-05 — Sensor location and frames
 
@@ -172,11 +174,11 @@ Promoting one requires a reviewed scope and dependency; retain its ID.
 
 ## Next implementation
 
-**F-04.2: review the observation/context histories**, then bind startup timing
-parameters and source/context inputs as part of the delayed-fusion cutover.
-Connect delayed policy clocks and reset/publication paths with matching tests;
-do not expose settings that the live path ignores. F-03.2 barometer ground effect
-remains pending.
+**F-04.2: review the live delayed-fusion binding and its validation record**.
+Startup parameters, source/context history, delayed policy clocks and current
+output/reset paths are connected. Source formal proof, the retained SIH landing
+anomaly and F-07.2 target resource acceptance remain open; do not treat native
+integration results as those proofs. F-03.2 barometer ground effect remains pending.
 
 F-01.2/F-01.3/F-02.1/F-03.1 are already committed. Keep these IDs and the other
 work groups unchanged. F-07 evidence accompanies implementation; component

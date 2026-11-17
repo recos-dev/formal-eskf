@@ -289,6 +289,9 @@ void source_switches(Context & test)
                     mr.decision == Admission::too_fast && mr.source_changed && mr.source_discarded == 1 &&
                     br.decision == Admission::invalid_source && br.source_changed && br.source_discarded == 1,
                 "source", "switch/unavailable indications clear old-generation data even without a queued replacement");
+    test.expect(session.history.gnss_generation() == 1 && session.history.magnetic_generation() == 1 &&
+                    session.history.barometer_generation() == 1 && session.history.barometer_source().device_id == 0,
+                "source", "generation identity advances even when replacement payload is rejected");
     auto old = magnetic(1006000);
     test.expect(session.history.push_magnetic(old, 1007000).decision == Admission::out_of_order, "source",
                 "old arrival cannot switch back to the preceding calibration");
@@ -304,6 +307,10 @@ void source_switches(Context & test)
     auto const restored = session.history.push_magnetic(m, session.time);
     test.expect(restored.decision == Admission::queued && !restored.source_changed, "source",
                 "next admissible event keeps the new source identity");
+    auto const time = session.time - session.history.half_period_us();
+    session.fuse_until(time + 2000);
+    test.expect(session.history.pop_magnetic(mo).decision == Selection::selected && mo.generation == 1, "source",
+                "selection preserves the generation attached at admission");
 }
 
 void source_monitoring_during_rejection(Context & test)
@@ -425,6 +432,38 @@ void period_average_and_frozen_offsets(Context & test)
                     session.history.pop_magnetic(mo).decision == Selection::selected && mo.residual_delay_us == 23000 &&
                     mo.time_us == m.stamp.time_us - 23000 - expected_half,
                 "offset", "per-source delay and half period are subtracted exactly once");
+}
+
+void prediction_context(Context & test)
+{
+    Session session;
+    session.seed();
+    for (unsigned i = 0; i < 53; ++i)
+    {
+        session.tick();
+    }
+    session.time += 4000;
+    require(session.imu.push(imu_input(session.time), session.time));
+    require(session.history.record_imu(*session.imu.latest(), {session.time, true, false, false},
+                                       {session.time, true, true}));
+    auto const * interval = session.imu.delayed();
+    require(interval != nullptr);
+    auto const historical = session.history.prediction_context(*interval, 3000000);
+    test.expect(historical.land.known && historical.land.at_rest && !historical.vehicle.armed &&
+                    session.history.fusion_time_us() == session.epoch &&
+                    !session.history.context(interval->time_us, 3000000).land.known,
+                "prediction-context",
+                "next admitted delayed interval can read historical context without advancing selection");
+    auto invalid = *interval;
+    ++invalid.start_time_us;
+    test.expect(!session.history.prediction_context(invalid, 3000000).land.known &&
+                    !session.history.prediction_context(*session.imu.latest(), 3000000).land.known,
+                "prediction-context", "wrong start or latest interval cannot claim delayed prediction context");
+    require(session.history.begin_fusion(*interval));
+    test.expect(!session.history.prediction_context(*interval, 3000000).land.known &&
+                    session.history.context(interval->time_us, 3000000).land.at_rest,
+                "prediction-context",
+                "completed step switches to ordinary context lookup without granting a second prediction");
 }
 
 void historical_context(Context & test)
@@ -560,6 +599,7 @@ int main()
     clock_rejection_preserves_pending(test);
     selection_retirement(test);
     period_average_and_frozen_offsets(test);
+    prediction_context(test);
     historical_context(test);
     gap_context_and_unknown(test);
     bounded_overflow(test);

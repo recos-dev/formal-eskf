@@ -40,8 +40,8 @@ bool empty_session(Session const & aid)
            same(aid.fusion.innovation(0U), Scalar{0}) && same(aid.fusion.innovation_variance(0U), Scalar{0}) &&
            same(aid.fusion.test_ratio(0U), Scalar{0}) && same(aid.fusion_innovation, Scalar{0}) &&
            !aid.innovation_limited && aid.sample_time == 0U && aid.data_time == 0U && aid.progress_time == 0U &&
-           aid.fused_time == 0U && aid.device_id == 0U && aid.calibration_count == 0U && !aid.active &&
-           !aid.fusion_reset && !aid.fault && aid.stop_reason == Reason::none;
+           aid.fused_time == 0U && aid.device_id == 0U && aid.calibration_count == 0U && aid.generation == 0U &&
+           !aid.active && !aid.fusion_reset && !aid.fault && aid.stop_reason == Reason::none;
 }
 bool empty_history(Manager const & manager, std::uint64_t started, Scalar altitude)
 {
@@ -126,9 +126,11 @@ void verify_height_admission(Manager manager, std::uint64_t now, Sample sample, 
         }
         else
         {
-            if (aid.device_id != sample.device_id || aid.calibration_count != sample.calibration_count)
+            if (aid.device_id != sample.device_id || aid.calibration_count != sample.calibration_count ||
+                aid.generation != sample.generation)
             {
                 stopped(expected, source, Reason::source_changed);
+                aid.generation = sample.generation;
                 aid.device_id = sample.device_id;
                 aid.calibration_count = sample.calibration_count;
                 aid.bias = {};
@@ -151,10 +153,11 @@ void verify_height_admission(Manager manager, std::uint64_t now, Sample sample, 
         }
     }
     bool const actual = manager.admit(source, now, sample, result);
-    __ESBMC_assert(actual == accepted && same_manager(manager, expected) && same_result(result, expected_result) &&
-                       same_sample(sample, before_sample),
-                   "R-HEIGHT-FUSION: exact source admission, strict ages, source/calibration clearing, rejection "
-                   "counts and full frame");
+    __ESBMC_assert(
+        actual == accepted && same_manager(manager, expected) && same_result(result, expected_result) &&
+            same_sample(sample, before_sample),
+        "R-HEIGHT-FUSION: exact source admission, strict ages, source/calibration/generation clearing, rejection "
+        "counts and full frame");
     auto const & after = manager.session(source);
     __ESBMC_assert(
         after.data_time <= after.sample_time && after.sample_time <= now &&

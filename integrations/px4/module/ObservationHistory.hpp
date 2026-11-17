@@ -80,6 +80,7 @@ public:
         std::uint64_t time_us{}, arrival_time_us{}, residual_delay_us{};
         std::uint32_t half_period_us{};
         GnssSample sample{};
+        std::uint64_t generation{};
     };
 
     struct MagneticObservation
@@ -87,6 +88,7 @@ public:
         std::uint64_t time_us{}, arrival_time_us{}, residual_delay_us{};
         std::uint32_t half_period_us{};
         MagneticSample sample{};
+        std::uint64_t generation{};
     };
 
     struct BarometerObservation
@@ -94,6 +96,7 @@ public:
         std::uint64_t time_us{}, arrival_time_us{}, residual_delay_us{};
         std::uint32_t half_period_us{};
         BarometerSample sample{};
+        std::uint64_t generation{};
     };
 
     struct LandState
@@ -174,6 +177,14 @@ public:
 
     /** Non-consuming; missing/stale context is unknown. Use the caller's source-specific age limit. */
     Context context(std::uint64_t time_us, std::uint64_t maximum_age_us) const;
+    /** Historical permission for the next retained IMU, before prediction; no selection or clock advance. */
+    Context prediction_context(interval_type const & interval, std::uint64_t maximum_age_us) const;
+    Source const & gnss_source() const { return m_gnss_time.source; }
+    Source const & magnetic_source() const { return m_magnetic_time.source; }
+    Source const & barometer_source() const { return m_barometer_time.source; }
+    std::uint64_t gnss_generation() const { return m_gnss_time.generation; }
+    std::uint64_t magnetic_generation() const { return m_magnetic_time.generation; }
+    std::uint64_t barometer_generation() const { return m_barometer_time.generation; }
     std::uint64_t fusion_time_us() const { return m_fusion_time_us; }
     std::uint32_t half_period_us() const { return static_cast<std::uint32_t>(m_average_period_us * 0.5); }
     void reset(); // Retain startup configuration; clear histories, watermarks, context and timing average.
@@ -182,13 +193,15 @@ private:
     struct Timeline
     {
         Source source{};
-        std::uint64_t sample_time_us{}, arrival_time_us{}, admitted_time_us{}, selection_time_us{};
+        std::uint64_t sample_time_us{}, arrival_time_us{}, admitted_time_us{}, selection_time_us{}, generation{};
     };
     struct Limits
     {
         std::uint64_t delay_us{}, arrival_age_us{}, spacing_us{};
     };
 
+    Context lookup_context(std::uint64_t time_us, std::uint64_t maximum_age_us) const;
+    bool next_fusion(interval_type const & interval) const;
     static bool valid_seed_source(SourceStamp const & source, std::uint64_t epoch);
     static Context snapshot(Context const & previous, std::uint64_t time_us, LandState const & land,
                             VehicleState const & vehicle);
@@ -282,7 +295,7 @@ bool ObservationHistory<Linalg>::record_imu(interval_type const & interval, Land
     return true;
 }
 
-template <typename Linalg> bool ObservationHistory<Linalg>::begin_fusion(interval_type const & interval)
+template <typename Linalg> bool ObservationHistory<Linalg>::next_fusion(interval_type const & interval) const
 {
     auto const & sample = interval.sample;
     if (m_seed_time_us == 0 || m_advanced_at_us == m_latest_time_us || interval.start_time_us != m_fusion_time_us ||
@@ -299,6 +312,16 @@ template <typename Linalg> bool ObservationHistory<Linalg>::begin_fusion(interva
     {
         return false;
     }
+    return true;
+}
+
+template <typename Linalg> bool ObservationHistory<Linalg>::begin_fusion(interval_type const & interval)
+{
+    if (!next_fusion(interval))
+    {
+        return false;
+    }
+    auto const & sample = interval.sample;
     // Match the main-filter period reference: mean of the two REAL integration periods, never the held gap.
     double const period_us = 0.5 * (static_cast<double>(sample.angular_period_us) + sample.acceleration_period_us);
     m_average_period_us =
@@ -331,6 +354,7 @@ ObservationHistory<Linalg>::admit(Timeline & timeline, SourceStamp const & stamp
     }
     // Even a rate/staleness rejection must expose a new source or an unavailable indication.
     result.source_changed = !stamp.source.matches(timeline.source);
+    timeline.generation += result.source_changed;
     timeline.source = stamp.source;
     timeline.sample_time_us = stamp.time_us;
     if (stamp.source.device_id == 0)
@@ -386,7 +410,7 @@ typename ObservationHistory<Linalg>::PushResult ObservationHistory<Linalg>::push
     if (result.decision == Admission::queued)
     {
         result.overwritten = m_gnss.entries() == m_gnss.get_length();
-        m_gnss.push({time, now_us, delay, half_period_us(), sample});
+        m_gnss.push({time, now_us, delay, half_period_us(), sample, m_gnss_time.generation});
     }
     return result;
 }
@@ -408,7 +432,7 @@ typename ObservationHistory<Linalg>::PushResult ObservationHistory<Linalg>::push
     if (result.decision == Admission::queued)
     {
         result.overwritten = m_magnetic.entries() == m_magnetic.get_length();
-        m_magnetic.push({time, now_us, delay, half_period_us(), sample});
+        m_magnetic.push({time, now_us, delay, half_period_us(), sample, m_magnetic_time.generation});
     }
     return result;
 }
@@ -430,7 +454,7 @@ ObservationHistory<Linalg>::push_barometer(BarometerSample const & sample, std::
     if (result.decision == Admission::queued)
     {
         result.overwritten = m_barometer.entries() == m_barometer.get_length();
-        m_barometer.push({time, now_us, delay, half_period_us(), sample});
+        m_barometer.push({time, now_us, delay, half_period_us(), sample, m_barometer_time.generation});
     }
     return result;
 }
@@ -503,6 +527,20 @@ typename ObservationHistory<Linalg>::Context ObservationHistory<Linalg>::context
     {
         return {};
     }
+    return lookup_context(time_us, maximum_age_us);
+}
+
+template <typename Linalg>
+typename ObservationHistory<Linalg>::Context
+ObservationHistory<Linalg>::prediction_context(interval_type const & interval, std::uint64_t maximum_age_us) const
+{
+    return next_fusion(interval) ? lookup_context(interval.time_us, maximum_age_us) : Context{};
+}
+
+template <typename Linalg>
+typename ObservationHistory<Linalg>::Context
+ObservationHistory<Linalg>::lookup_context(std::uint64_t time_us, std::uint64_t maximum_age_us) const
+{
     auto index = (m_context.get_oldest_index() + m_context.entries()) % m_context.get_length();
     for (std::size_t count = 0; count < m_context.entries(); ++count)
     {

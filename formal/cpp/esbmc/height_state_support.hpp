@@ -67,8 +67,8 @@ inline bool same_session(Session const & a, Session const & b)
            same(a.fusion_innovation, b.fusion_innovation) && a.innovation_limited == b.innovation_limited &&
            a.sample_time == b.sample_time && a.data_time == b.data_time && a.progress_time == b.progress_time &&
            a.fused_time == b.fused_time && a.device_id == b.device_id && a.calibration_count == b.calibration_count &&
-           a.active == b.active && a.fusion_reset == b.fusion_reset && a.fault == b.fault &&
-           a.stop_reason == b.stop_reason;
+           a.generation == b.generation && a.active == b.active && a.fusion_reset == b.fusion_reset &&
+           a.fault == b.fault && a.stop_reason == b.stop_reason;
 }
 inline bool same_manager(Manager const & a, Manager const & b)
 {
@@ -86,7 +86,8 @@ inline bool same_result(Result const & a, Result const & b)
 inline bool same_sample(Sample const & a, Sample const & b)
 {
     return a.time_us == b.time_us && a.device_id == b.device_id && a.calibration_count == b.calibration_count &&
-           same(a.altitude, b.altitude) && same(a.variance, b.variance) && a.qualified == b.qualified;
+           same(a.altitude, b.altitude) && same(a.variance, b.variance) && a.qualified == b.qualified &&
+           a.generation == b.generation;
 }
 inline bool altitude_valid(Scalar altitude)
 {

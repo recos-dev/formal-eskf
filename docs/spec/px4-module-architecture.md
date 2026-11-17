@@ -149,9 +149,9 @@ defines defaults and cross-constraints. Parameter changes require restart.
 
 The IMU-history, [output-predictor](px4-timing-profile.md#px4-time-output-current-time-output-and-tracking)
 and [observation/context components](px4-timing-profile.md#px4-time-observations-observation-and-context-ownership)
-implement these local ownership contracts. They are not yet connected to the
-live module's immediate-fusion path; adapter binding and the delayed-fusion
-cutover remain F-04.2 work.
+implement these ownership contracts and are connected to the live module under
+[PX4-TIME-LIVE](px4-timing-profile.md#px4-time-live-module-binding).
+Formal source evidence and target timing/resource acceptance remain open.
 
 At each fusion step, consume at most one observation per source: the newest
 unconsumed sample no later than the fusion time and within that source's allowed
@@ -423,9 +423,9 @@ not prove PX4 scheduling, dependency behavior or target WCET. The
 [traceability criteria](formal-verification-traceability-and-review-criteria.md)
 continue to govern evidence and certification-related claims.
 
-The current immediate-fusion SITL module is the behavior baseline for A-01
-refactors, not an alternative definition of this target. Preserve its behavior
-in refactor-only changes. Downsampling, delayed fusion and output prediction
+The pre-F-04 immediate-fusion SITL module was the behavior baseline for A-01
+refactors, not an alternative definition of this target. Preserve specified
+behavior in refactor-only changes. Downsampling, delayed fusion and output prediction
 are explicit F-04 behavior changes and require new expected-result evidence;
 moving publication earlier is not a behavior-preserving cleanup. F-07.2 owns
 target resource acceptance. These remain the existing work groups, not a new

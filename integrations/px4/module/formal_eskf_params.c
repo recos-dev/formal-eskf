@@ -57,3 +57,68 @@ PARAM_DEFINE_FLOAT(FESKF_MAG_DECL, 0.0f);
  * @group Formal ESKF
  */
 PARAM_DEFINE_INT32(FESKF_GRAV_EN, 1);
+
+/**
+ * Main filter interval
+ *
+ * Only the 250 Hz one-interval mode (4000 us) is implemented.
+ * Unsupported combinations are rejected at startup. Read once; restart required.
+ *
+ * @unit us
+ * @min 0
+ * @reboot_required true
+ * @group Formal ESKF
+ */
+PARAM_DEFINE_INT32(FESKF_DT_US, 4000);
+
+/**
+ * Minimum fusion delay
+ *
+ * The fixed history length is derived from this lag. Initial profile: 153 to 239 ms with zero source delays.
+ * Unsupported combinations are rejected at startup. Read once; restart required.
+ *
+ * @unit ms
+ * @min 0
+ * @reboot_required true
+ * @group Formal ESKF
+ */
+PARAM_DEFINE_INT32(FESKF_DELAY_MS, 200);
+
+/**
+ * GNSS residual delay
+ *
+ * Subtracted from the GNSS sample timestamp in addition to half a filter period.
+ * Unsupported combinations are rejected at startup. Read once; restart required.
+ *
+ * @unit ms
+ * @min 0
+ * @reboot_required true
+ * @group Formal ESKF
+ */
+PARAM_DEFINE_INT32(FESKF_GPS_DLY, 0);
+
+/**
+ * Magnetometer residual delay
+ *
+ * Subtracted from the magnetometer sample timestamp in addition to half a filter period.
+ * Unsupported combinations are rejected at startup. Read once; restart required.
+ *
+ * @unit ms
+ * @min 0
+ * @reboot_required true
+ * @group Formal ESKF
+ */
+PARAM_DEFINE_INT32(FESKF_MAG_DLY, 0);
+
+/**
+ * Barometer residual delay
+ *
+ * Subtracted from the barometer sample timestamp in addition to half a filter period.
+ * Unsupported combinations are rejected at startup. Read once; restart required.
+ *
+ * @unit ms
+ * @min 0
+ * @reboot_required true
+ * @group Formal ESKF
+ */
+PARAM_DEFINE_INT32(FESKF_BARO_DLY, 0);

@@ -98,6 +98,7 @@ public:
         value_type altitude{}; // Up-positive MSL metres; same datum as origin_altitude.
         value_type variance{};
         bool qualified = true;
+        std::uint64_t generation{}; // Adapter identity generation; detects switch-away/back before delayed selection.
     };
 
     struct Acceleration
@@ -115,6 +116,7 @@ public:
         std::uint64_t sample_time{}, data_time{}, progress_time{}, fused_time{};
         std::uint32_t device_id{};
         std::uint8_t calibration_count{};
+        std::uint64_t generation{};
         bool active = false;
         bool fusion_reset = false; // Raw diagnostics remain visible, but cannot drive health after a reset.
         bool fault = false;        // Barometer rejection latch; source/calibration change clears it.
@@ -267,9 +269,11 @@ bool HeightAiding<Linalg>::admit(Source source, std::uint64_t now_us, Sample con
         ++result.rejected;
         return false;
     }
-    if (aid.device_id != sample.device_id || aid.calibration_count != sample.calibration_count)
+    if (aid.device_id != sample.device_id || aid.calibration_count != sample.calibration_count ||
+        aid.generation != sample.generation)
     {
         stop(source, StopReason::source_changed);
+        aid.generation = sample.generation;
         aid.device_id = sample.device_id;
         aid.calibration_count = sample.calibration_count;
         aid.bias = {};

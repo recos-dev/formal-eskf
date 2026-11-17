@@ -162,6 +162,7 @@ public:
     void reset();
 
     TimingConfiguration const & configuration() const { return m_configuration; }
+    ImuSource const & source() const { return m_previous.source; }
     Fault fault() const { return m_fault; }
     std::size_t entries() const { return m_samples.entries(); }
     std::uint64_t latest_time_us() const { return m_previous.time_us; }

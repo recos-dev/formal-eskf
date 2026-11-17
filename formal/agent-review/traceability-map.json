@@ -4496,6 +4496,10 @@
           {
             "file": "integrations/px4/module/FormalEskfNavigation.cpp",
             "symbol": "bool FormalEskf::fuse_gps_position("
+          },
+          {
+            "file": "integrations/px4/module/ImuHistory.hpp",
+            "symbol": "ImuHistory<Linalg>::push("
           }
         ],
         "esbmc": [
@@ -5271,7 +5275,7 @@
     },
     {
       "id": "R-HEIGHT-FUSION",
-      "title": "Height offset mathematics and scoped IEEE/admission producers; complete height transaction, history induction and module publication remain pending",
+      "title": "Height offset mathematics and scoped IEEE/admission producers, including source generations; complete height transaction, history induction and module formal proof remain pending",
       "references": {
         "spec": [
           {
@@ -5522,7 +5526,7 @@
     },
     {
       "id": "R-PX4-IMU-HISTORY",
-      "title": "Delayed IMU timeline: native-tested timing owner; formal proof and live integration remain open",
+      "title": "Delayed IMU timeline: native-tested timing owner; formal proof remains open; live binding tracked separately",
       "references": {
         "spec": [
           {
@@ -5578,7 +5582,7 @@
     },
     {
       "id": "R-PX4-OUTPUT-PREDICTOR",
-      "title": "Current-time INS output tracking: native-tested component; formal proof and live integration remain open",
+      "title": "Current-time INS output tracking: native-tested component; formal proof remains open; live binding tracked separately",
       "references": {
         "spec": [
           {
@@ -5630,7 +5634,7 @@
     },
     {
       "id": "R-PX4-OBSERVATION-HISTORY",
-      "title": "Delayed observations and context: native-tested temporal owner; formal proof and live integration remain open",
+      "title": "Delayed observations and context: native-tested temporal owner; formal proof remains open; live binding tracked separately",
       "references": {
         "spec": [
           {
@@ -5699,6 +5703,102 @@
           {
             "file": "integrations/px4/module/ObservationHistory.hpp",
             "symbol": "ObservationHistory<Linalg>::reset()"
+          },
+          {
+            "file": "integrations/px4/module/ObservationHistory.hpp",
+            "symbol": "ObservationHistory<Linalg>::prediction_context("
+          },
+          {
+            "file": "integrations/px4/module/ObservationHistory.hpp",
+            "symbol": "ObservationHistory<Linalg>::next_fusion("
+          },
+          {
+            "file": "integrations/px4/module/ObservationHistory.hpp",
+            "symbol": "ObservationHistory<Linalg>::lookup_context("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
+      "id": "R-PX4-DELAYED-FUSION",
+      "title": "Live delayed/current timeline integration: native and SIH checks; source formal proof and target resource acceptance remain open",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-PX4-DELAYED-FUSION: live module timeline"
+          },
+          {
+            "file": "docs/spec/px4-timing-profile.md",
+            "symbol": "### PX4-TIME-LIVE: module binding"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "bool FormalEskf::load_startup_parameters("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::Run("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::initialize("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::process_imu("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::advance_fusion("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::select_observations("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "void FormalEskf::predict_and_fuse("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskf.cpp",
+            "symbol": "bool FormalEskf::reset_output("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "bool FormalEskf::fuse_gps_velocity("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "bool FormalEskf::fuse_gps_position("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "void FormalEskf::fuse_height("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
+            "symbol": "FormalEskf::status_type FormalEskf::reset_magnetic_heading("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "void FormalEskf::publish("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "vehicle_attitude_s FormalEskf::publish_attitude("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "FormalEskf::OutputValidity FormalEskf::output_validity("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "void FormalEskf::update_diagnostics("
           }
         ],
         "esbmc": []

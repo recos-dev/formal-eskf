@@ -79,6 +79,32 @@ diagnostic snapshots. Work-queue-unavailable and injected-failure messages are
 expected; the final scenario summary and process exit code determine success.
 The scheduler, dependency internals and target timing require separate evidence.
 
+## Delayed fusion
+
+The live module defaults to a 4 ms interval and at least 200 ms fusion lag
+(212 ms at nominal 250 Hz). It retains 54 real intervals before the first delayed
+step, while propagating current output separately. Warmup does not publish valid
+estimates. Attitude precedes delayed fusion; navigation follows matching feedback.
+State resets also transform retained/current output.
+
+| Startup parameter | Default | Unit |
+|---|---:|---|
+| `FESKF_DT_US` | 4000 | us; only this mode is supported |
+| `FESKF_DELAY_MS` | 200 | ms minimum lag |
+| `FESKF_GPS_DLY` | 0 | ms residual GNSS delay |
+| `FESKF_MAG_DLY` | 0 | ms residual magnetic delay |
+| `FESKF_BARO_DLY` | 0 | ms residual barometer delay |
+
+Settings are validated together and require restart. See the
+[timing profile](../../docs/spec/px4-timing-profile.md) for rate, capacity, offset,
+freshness, gap and fault rules. Storage does not resize during operation.
+
+Current attitude/navigation timestamps identify latest IMU output; estimator
+status/bias and covariance diagnostics identify delayed main state. Navigation
+variance fields use delayed covariance proxies, not a current-time error bound.
+`formal_eskf status` reports both horizons, lag, admission losses and phase counters.
+SIH's PX4 clock is not wall-clock CPU time or a WCET measurement.
+
 ## Automatic flight
 
 Run from the formal-eskf repository root in a system terminal:
@@ -151,7 +177,7 @@ flowchart LR
 - Holds the previous IMU rate for small missing intervals; discontinuities beyond 50 ms and IMU identity/calibration changes latch a fault. Numerical failures also latch a fault. Restart is required for recovery.
 - Reserves a 60 KiB work-queue stack. The module disables fast-math, FMA contraction, exceptions and RTTI. Lockstep virtual-time performance counters do not measure wall-clock CPU cost.
 
-This is a single-sensor SITL POC with stationary startup and simulated sensor noise. It has no receiver-delay compensation, output predictor, redundant sensors, or wind, terrain and magnetic-bias states. Magnetic fusion retains a three-component observation with `ESKF_MAG_TILT=1`; it reports heading aiding, not 3D magnetic-state estimation. AUTO/3D switching and terrain-based in-flight realignment remain unconnected. See [the magnetic integration contract](../../docs/spec/verification-requirements.md#px4-module-magnetic-aiding). Heading variance approximates yaw variance with the local attitude-error z component for the tested low-tilt flight. Sensor failure checks cover flag withdrawal and recovery on the ground, not continued flight through sensor failures.
+This is a single-sensor SITL POC with stationary startup and simulated sensor noise. It has no redundant sensors or wind, terrain and magnetic-bias states. Delayed fusion and current output prediction use the 250 Hz SIH profile below; physical receiver delays require their own producer binding and qualification. Magnetic fusion retains a three-component observation with `ESKF_MAG_TILT=1`; it reports heading aiding, not 3D magnetic-state estimation. AUTO/3D switching and terrain-based in-flight realignment remain unconnected. See [the magnetic integration contract](../../docs/spec/verification-requirements.md#px4-module-magnetic-aiding). Heading variance approximates yaw variance with the local attitude-error z component for the tested low-tilt flight. Sensor failure checks cover flag withdrawal and recovery on the ground, not continued flight through sensor failures.
 
 ### Geographic magnetic reference
 
@@ -206,8 +232,8 @@ reset progress and the 5 s height-validity window are separate.
 The reference policy is checked against the pinned [height controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/height_control.cpp),
 [GNSS height controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gnss_height_control.cpp)
 and [barometer controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/barometer/baro_height_control.cpp), using public parameter defaults.
-It retains immediate sample-time fusion and a fixed GNSS preference; dynamic-pressure
-and ground-effect corrections and delayed fusion are separate work. See [the height contract](../../docs/spec/verification-requirements.md#r-height-fusion-px4-gnssbarometer-height-management).
+It uses the delayed fusion horizon with a fixed GNSS preference; dynamic-pressure
+and ground-effect corrections remain separate work. See [the height contract](../../docs/spec/verification-requirements.md#r-height-fusion-px4-gnssbarometer-height-management).
 
 The existing vertical-acceleration recovery policy is now connected. A held IMU
 fault can permit a bounded Down innovation from qualified GNSS velocity or either
@@ -292,9 +318,10 @@ and message conventions are specified in
 
 The single-source GNSS height lifecycle remains disabled; `HeightAiding` now
 coordinates the GNSS/barometer height sources. Emergency yaw, receiver selection,
-lever arms and delayed fusion remain separate work.
-GNSS sample-time handling is still immediate and differs from EKF2's buffered
-publication-time path. This is not complete EKF2 parity.
+and lever arms remain separate work. GNSS now uses the delayed observation queue;
+its sample-time binding differs from EKF2's publication-time binding as specified
+in the [timing profile](../../docs/spec/px4-timing-profile.md#source-timestamps-and-admission).
+This is not complete EKF2 parity.
 
 ## Developer checks
 

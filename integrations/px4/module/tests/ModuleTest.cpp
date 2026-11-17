@@ -185,7 +185,7 @@ public:
         sensor_gps_s gps{};
         gps.timestamp = clock_us;
         gps.timestamp_sample = clock_us;
-        gps.device_id = 201U;
+        gps.device_id = m_gps_device;
         gps.fix_type = 3U;
         gps.satellites_used = 12U;
         gps.latitude_deg = 47.397742;
@@ -197,7 +197,7 @@ public:
         gps.eph = 0.7f;
         gps.epv = 1.f;
         gps.s_variance_m_s = 0.2f;
-        gps.vel_ned_valid = true;
+        gps.vel_ned_valid = m_gps_velocity_valid;
         if (m_send_gps)
         {
             m_gps_pub.publish(gps);
@@ -213,13 +213,13 @@ public:
         vehicle_air_data_s baro{};
         baro.timestamp = clock_us;
         baro.timestamp_sample = clock_us;
-        baro.baro_device_id = 401U;
+        baro.baro_device_id = m_baro_device;
         baro.baro_alt_meter = 488.f;
         m_baro_pub.publish(baro);
         vehicle_land_detected_s land{};
         land.timestamp = clock_us;
-        land.landed = true;
-        land.at_rest = true;
+        land.landed = m_landed;
+        land.at_rest = m_at_rest;
         m_land_pub.publish(land);
         vehicle_status_s vehicle{};
         vehicle.timestamp = clock_us;
@@ -342,6 +342,14 @@ public:
         }
     }
 
+    void select_navigation_inputs()
+    {
+        auto & f = m_filter;
+        f.m_gnss.input = {f.m_gps.timestamp_sample, 0, 0, 0, FormalEskf::decode_gnss(f.m_gps)};
+        f.m_gnss.context = f.startup_context(f.m_gnss.input.time_us, 3000000U);
+        f.m_barometer = {f.m_baro.timestamp_sample, 0, 0, 0, FormalEskf::decode_barometer(f.m_baro)};
+    }
+
     void prepare_navigation()
     {
         auto & f = m_filter;
@@ -387,9 +395,11 @@ public:
         {
             f.m_baro.timestamp_sample = clock_us;
         }
+        select_navigation_inputs();
         f.fuse_gps();
         if (!f.m_fault)
         {
+            select_navigation_inputs();
             f.fuse_height();
         }
         f.publish(FormalEskf::imu_type{});
@@ -463,6 +473,7 @@ public:
             f.m_time_us = clock_us;
             f.m_gps.timestamp_sample = clock_us;
             f.m_land.timestamp = clock_us;
+            test.select_navigation_inputs();
             f.update_gps_quality();
         }
         expect(f.gps_good(), "real monitor qualifies after ten seconds");
@@ -495,6 +506,7 @@ public:
             f.m_gps.satellites_used = 1U;
             break;
         }
+        test.select_navigation_inputs();
         f.update_gps_quality();
         bool const ignored = scenario == GnssInputCase::duplicate || scenario == GnssInputCase::future ||
                              scenario == GnssInputCase::stale || scenario == GnssInputCase::velocity_invalid;
@@ -606,6 +618,7 @@ public:
             f.m_gps.timestamp_sample = clock_us;
             break;
         }
+        test.select_navigation_inputs();
         f.fuse_height();
         expect(!f.m_fault, "height admission rejection is not an estimator fault");
         if (scenario != HeightInputCase::unqualified)
@@ -639,6 +652,7 @@ public:
         // Invalid covariance fails the first numerical operation but must also roll
         // back the preceding tentative bias update and all source watermarks.
         f.m_covariance(0, 0) = std::numeric_limits<double>::quiet_NaN();
+        test.select_navigation_inputs();
         f.fuse_height();
         expect(f.m_fault && f.m_errors == 1U && f.m_height_aiding.progress_time() == progress &&
                    f.m_height_reset_counter == resets &&
@@ -727,6 +741,7 @@ public:
         f.m_land.at_rest = true;
         f.m_gps.vel_n_m_s = 10.f;
         f.m_gps.timestamp_sample = clock_us;
+        test.select_navigation_inputs();
         f.update_gps_quality();
         // Ground/rest checks reject velocity; fresh land overrides armed state.
         expect(!f.m_fault && f.m_gnss.quality_result.failures.horizontal_speed == fresh_land,
@@ -737,10 +752,15 @@ public:
     static void output_mapping(bool stale, bool fault)
     {
         FormalEskfModuleTest test;
-        test.start_navigation();
+        test.warmup();
         auto & f = test.m_filter;
-        f.m_state.p_n = FormalEskf::vector3(1.23456789, -2.34567891, -3.45678912);
-        f.m_state.v_n = FormalEskf::vector3(4., 5., 6.);
+        auto const expected_position = FormalEskf::vector3(1.23456789, -2.34567891, -3.45678912);
+        auto const expected_velocity = FormalEskf::vector3(4., 5., 6.);
+        expect(f.reset_output({}, expected_velocity - f.m_output.current().v_n,
+                              expected_position - f.m_output.current().p_n),
+               "set distinct current output for mapping");
+        f.m_state.p_n = FormalEskf::vector3(100., 200., 300.);
+        f.m_state.v_n = FormalEskf::vector3(-4., -5., -6.);
         f.m_state.b_a = FormalEskf::vector3(0.01, 0.02, 0.03);
         f.m_state.b_g = FormalEskf::vector3(0.04, 0.05, 0.06);
         f.m_position_reset_delta = FormalEskf::vector2_type::from_row_major({0.1, 0.2});
@@ -753,18 +773,14 @@ public:
         f.m_vertical_velocity_reset_counter = 252U;
         f.m_odometry_reset_counter = 251U;
         f.m_fault = fault;
-        f.m_last_output = f.m_time_us - 10000U;
+        f.m_last_output = f.m_output.current().time_us - 10000U;
         if (stale)
         {
             clock_us += 100000U;
         }
         FormalEskf::imu_type imu{FormalEskf::vector3(0.1, 0.2, -9.7), FormalEskf::vector3(0.4, 0.5, 0.6)};
-        if (!fault)
-        {
-            f.publish(imu);
-        }
+        f.publish(imu);
         f.publish_status(clock_us);
-        test.capture_outputs();
         estimator_status_s status{};
         estimator_status_flags_s flags{};
         estimator_sensor_bias_s bias{};
@@ -772,60 +788,66 @@ public:
         orb_copy(ORB_ID(estimator_status_flags), test.m_outputs[5], &flags);
         orb_copy(ORB_ID(estimator_sensor_bias), test.m_outputs[6], &bias);
         expect(status.timestamp == clock_us && status.timestamp_sample == f.m_time_us &&
+                   bias.timestamp_sample == f.m_time_us &&
                    bool(status.solution_status_flags & 1U) == (!stale && !fault) &&
                    bias.accel_bias_valid == (!stale && !fault),
-               "status and bias honor the strict wall-age/fault boundary");
+               "status/bias keep the delayed epoch and revoke validity at wall-age/fault boundary");
         expect(status.reset_count_pod_d == 254U && status.reset_count_vel_d == 252U &&
                    flags.cs_inertial_dead_reckoning == (stale || fault),
                "status reset and validity mapping");
-        if (!fault)
+        bool updated{};
+        orb_check(test.m_outputs[1], &updated);
+        expect(updated == (!stale && !fault), "stale or faulted output cannot publish navigation");
+        if (updated)
         {
-            vehicle_attitude_s attitude{};
             vehicle_local_position_s local{};
             vehicle_global_position_s global{};
             vehicle_odometry_s odometry{};
-            orb_copy(ORB_ID(vehicle_attitude), test.m_outputs[0], &attitude);
             orb_copy(ORB_ID(vehicle_local_position), test.m_outputs[1], &local);
             orb_copy(ORB_ID(vehicle_global_position), test.m_outputs[2], &global);
             orb_copy(ORB_ID(vehicle_odometry), test.m_outputs[3], &odometry);
-            expect(local.x == float(f.m_state.p_n(0)) && local.delta_z == float(-0.6) &&
-                       global.delta_alt == -local.delta_z && local.z_reset_counter == global.alt_reset_counter &&
-                       odometry.reset_counter == 251U && odometry.q[0] == attitude.q[0],
-                   "topic rounding and reset signs/counters");
+            expect(local.x == float(expected_position(0)) && local.vx == float(expected_velocity(0)) &&
+                       local.delta_z == float(-0.6) && global.delta_alt == -local.delta_z &&
+                       local.z_reset_counter == global.alt_reset_counter && odometry.reset_counter == 251U &&
+                       odometry.q[0] == float(f.m_output.current().q_nb.coefficients()(0)),
+                   "navigation reads current output, with reset signs/counters and published rounding");
             double latitude{}, longitude{};
             f.m_origin.projection.reproject(local.x, local.y, latitude, longitude);
-            expect(global.lat == latitude && global.lon == longitude && local.xy_valid == !stale && local.z_valid,
-                   "global projection uses the published float position; height validity stays distinct");
-            expect(local.timestamp_sample == f.m_time_us && global.timestamp_sample == f.m_time_us &&
-                       odometry.timestamp_sample == f.m_time_us,
-                   "all estimates retain the IMU sample horizon");
+            expect(global.lat == latitude && global.lon == longitude && local.xy_valid && local.z_valid &&
+                       global.alt == float(f.m_origin.altitude_msl_m - f.m_output.current().p_n(2)),
+                   "global mapping uses current local output rather than the delayed position");
+            expect(local.timestamp_sample == f.m_output.current().time_us &&
+                       global.timestamp_sample == local.timestamp_sample &&
+                       odometry.timestamp_sample == local.timestamp_sample &&
+                       local.timestamp_sample - status.timestamp_sample == 212000U &&
+                       local.heading_var == float(f.m_covariance(8, 8)),
+                   "current navigation and delayed covariance proxy have explicitly different epochs");
         }
+        test.capture_outputs();
         test.snapshot("output-mapping");
     }
 
     static void output_cadence()
     {
         FormalEskfModuleTest test;
-        test.start_navigation();
+        test.warmup();
         auto & f = test.m_filter;
+        f.m_last_output = clock_us;
+        f.m_last_status = clock_us;
         auto const last = f.m_last_output;
-        clock_us += 9999U;
-        f.m_time_us = clock_us;
-        f.publish({});
-        bool updated{};
-        orb_check(test.m_outputs[0], &updated);
-        expect(updated, "attitude publishes before the navigation deadline");
-        orb_check(test.m_outputs[1], &updated);
-        expect(!updated && f.m_last_output == last, "navigation waits until ten milliseconds");
-        test.capture_outputs();
-        ++clock_us;
-        f.m_time_us = clock_us;
-        f.publish({});
-        orb_check(test.m_outputs[1], &updated);
-        expect(updated && f.m_last_output == clock_us, "navigation publishes at the exact deadline");
-        test.capture_outputs();
+        for (unsigned tick = 1; tick <= 3; ++tick)
+        {
+            auto const count = publications;
+            test.m_sample.timestamp_sample += 4000U;
+            test.tick();
+            expect(publications == count + (tick == 3 ? 4U : 1U),
+                   "attitude publishes every real interval; navigation only when ten milliseconds elapsed");
+            expect(f.m_last_output == (tick == 3 ? clock_us : last),
+                   "250 Hz input realizes the navigation limit at twelve milliseconds");
+        }
         f.m_initialized = false;
         f.publish_status(clock_us);
+        bool updated{};
         orb_check(test.m_outputs[6], &updated);
         expect(!updated, "uninitialized status does not publish bias estimates");
         test.capture_outputs();
@@ -858,12 +880,12 @@ public:
                    !flags.cs_tilt_align && !flags.cs_yaw_align && bias.timestamp == 0U && !bias.accel_bias_valid &&
                    !bias.gyro_bias_valid,
                "preparation marks no estimate, never a fabricated valid sample");
-        test.prepare_navigation();
+        test.warmup();
         auto & f = test.m_filter;
         f.m_last_output = clock_us - 10000U;
         auto const state = f.m_state;
         failed_publication = ORB_ID(vehicle_attitude);
-        f.publish({});
+        f.publish_attitude(clock_us);
         failed_publication = nullptr;
         expect(f.m_publication_failures == 1U && !f.m_fault && same_bits(state.p_n, f.m_state.p_n),
                "publication error is counted without pretending estimator failure or delivery success");
@@ -1066,6 +1088,9 @@ public:
         {
             m_filter.m_land.timestamp = clock_us;
         }
+        m_filter.m_magnetic.input = {m_filter.m_mag.timestamp_sample, 0, 0, 0,
+                                     FormalEskf::decode_magnetic(m_filter.m_mag)};
+        m_filter.m_magnetic.context = m_filter.startup_context(m_filter.m_time_us, 3000000U);
         m_filter.fuse_mag();
         snapshot("magnetic-phase");
     }
@@ -1441,6 +1466,7 @@ public:
         input.acceleration_period_us = acceleration_period;
         input.accelerometer_clipping = clipping;
         input.time_us = m_filter.m_time_us;
+        m_filter.m_imu_context = m_filter.startup_context(m_filter.m_time_us, 2000000U);
         m_filter.fuse_gravity(input, imu);
         snapshot("gravity-phase");
     }
@@ -1647,10 +1673,68 @@ public:
         test.m_sample.delta_velocity_clipping = 8U;
         auto const horizon = test.m_filter.m_time_us;
         test.tick();
-        expect(test.m_filter.m_time_us == horizon && test.m_filter.m_tilt_alignment.aligned() &&
-                   !test.m_filter.m_gravity.active,
-               "invalid IMU metadata rejects before gravity and clears only observation history");
+        expect(test.m_filter.m_time_us == horizon && test.m_filter.m_tilt_alignment.aligned() && test.m_filter.m_fault,
+               "invalid IMU metadata faults before gravity without advancing the delayed horizon");
         test.snapshot("gravity-invalid-metadata");
+    }
+
+    static void delayed_pipeline()
+    {
+        FormalEskfModuleTest test;
+        auto & f = test.m_filter;
+        for (unsigned i = 0; i < 3000 && !f.m_initialized; ++i)
+        {
+            test.m_sample.timestamp_sample += 4000U;
+            test.tick();
+        }
+        expect(f.m_initialized && !f.m_fault && !f.m_output.ready(),
+               "alignment seeds, but does not fabricate output history");
+        auto const seed_time = f.m_time_us;
+        for (unsigned i = 1; i <= 54; ++i)
+        {
+            test.m_sample.timestamp_sample += 4000U;
+            test.tick();
+            expect(!f.m_fault && f.m_output.current().time_us == seed_time + i * 4000U,
+                   "every real interval advances current output during warmup");
+            expect(f.m_time_us == seed_time + (i == 54 ? 4000U : 0U) && f.m_predictions == (i == 54 ? 1U : 0U),
+                   "exactly 54 real records admit the first delayed prediction");
+            if (i < 54)
+            {
+                expect(!f.output_validity(clock_us).healthy, "warmup never grants valid current output");
+                vehicle_local_position_s local{};
+                orb_copy(ORB_ID(vehicle_local_position), test.m_outputs[1], &local);
+                expect(local.timestamp_sample == 0U, "warmup does not publish a current navigation estimate");
+            }
+        }
+        expect(f.m_output.ready() && f.m_output.fusion_time_us() == f.m_time_us &&
+                   f.m_imu_history.fusion_time_us() == f.m_time_us,
+               "feedback acknowledges the exact main/output epoch");
+        test.m_landed = test.m_at_rest = false;
+        test.m_armed = true;
+        for (unsigned i = 0; i < 54; ++i)
+        {
+            test.m_sample.timestamp_sample += 4000U;
+            test.tick();
+            expect(!f.m_fault && f.m_output.current().time_us - f.m_time_us == 212000U,
+                   "healthy steps maintain two horizons without skipped or duplicated prediction");
+            expect(f.m_imu_context.land.known && f.m_imu_context.land.at_rest == (i < 53),
+                   "future takeoff context never grants or removes historical rest permission");
+            if (f.m_gnss.sample.time_us != 0)
+            {
+                expect(f.m_gnss.sample.time_us == f.m_gnss.input.sample.stamp.time_us - 2000U &&
+                           f.m_height_aiding.session(FormalEskf::height_type::Source::gnss).sample_time ==
+                               f.m_gnss.sample.time_us,
+                       "one offset GNSS event is shared by velocity, horizontal position and height");
+            }
+        }
+        auto const fusion_time = f.m_time_us;
+        auto const output_time = f.m_output.current().time_us;
+        auto const predictions = f.m_predictions;
+        clock_us += 100000U;
+        f.Run();
+        expect(f.m_time_us == fusion_time && f.m_output.current().time_us == output_time &&
+                   f.m_predictions == predictions && !f.output_validity(clock_us).healthy,
+               "backup expires output without advancing either timeline");
     }
 
     static void startup()
@@ -1682,12 +1766,199 @@ public:
                "magnetometer source change resets only the magnetic accumulation");
         test.m_sample.timestamp_sample += 4000U;
         test.m_sample.delta_velocity[0] = std::numeric_limits<float>::quiet_NaN();
-        auto const previous = test.m_filter.m_imu_history.time_us;
+        auto const previous = test.m_filter.m_imu_history.latest_time_us();
         test.tick();
-        expect(!test.m_filter.m_fault && test.m_filter.m_time_us == test.m_sample.timestamp_sample &&
-                   test.m_filter.m_imu_history.time_us == previous,
-               "non-finite uninitialized sample consumes time, preserves metadata and does not latch a fault");
+        expect(!test.m_filter.m_fault && test.m_filter.m_time_us < test.m_sample.timestamp_sample &&
+                   test.m_filter.m_imu_history.latest_time_us() == previous,
+               "non-finite alignment input preserves the prior epoch and does not latch a fault");
         test.snapshot("startup");
+    }
+
+    static void timing_parameters()
+    {
+        FormalEskfModuleTest test;
+        struct Setting
+        {
+            char const * name;
+            std::int32_t rejected;
+        };
+        for (auto const & setting :
+             {Setting{"FESKF_DT_US", 10000}, Setting{"FESKF_DELAY_MS", 240}, Setting{"FESKF_GPS_DLY", -1},
+              Setting{"FESKF_MAG_DLY", 101}, Setting{"FESKF_BARO_DLY", 101}})
+        {
+            auto const handle = param_find(setting.name);
+            std::int32_t saved{};
+            expect(param_get(handle, &saved) == 0, "timing parameter is present in the PX4 parameter table");
+            param_set_no_notification(handle, &setting.rejected);
+            expect(!test.m_filter.init(), "unsupported timing combination prevents callback startup");
+            param_set_no_notification(handle, &saved);
+            expect(test.m_filter.init(), "restoring timing parameters restores startup");
+        }
+        auto const handle = param_find("FESKF_DELAY_MS");
+        std::int32_t maximum = 239;
+        param_set_no_notification(handle, &maximum);
+        expect(test.m_filter.init() && test.m_filter.m_imu_history.configuration().imu_length == 64,
+               "largest supported millisecond delay uses all 64 fixed slots");
+        std::int32_t normal = 200;
+        param_set_no_notification(handle, &normal);
+        expect(test.m_filter.init(), "restore the default history length before warmup");
+        test.warmup();
+        param_set_no_notification(handle, &maximum);
+        test.m_sample.timestamp_sample += 4000U;
+        test.tick();
+        expect(!test.m_filter.m_fault && test.m_filter.m_imu_history.configuration().imu_length == 54 &&
+                   test.m_filter.m_output.current().time_us - test.m_filter.m_time_us == 212000U,
+               "running parameter changes cannot resize or retime histories");
+        param_set_no_notification(handle, &normal);
+    }
+
+    static void delayed_heading_reset()
+    {
+        FormalEskfModuleTest test;
+        test.warmup();
+        auto & f = test.m_filter;
+        auto const counter = f.m_quaternion_reset_counter;
+        f.m_heading_aligned = false;
+        for (unsigned i = 0; i < 20 && f.m_quaternion_reset_counter == counter; ++i)
+        {
+            test.m_sample.timestamp_sample += 4000;
+            test.tick();
+        }
+        vehicle_attitude_s attitude{};
+        orb_copy(ORB_ID(vehicle_attitude), test.m_outputs[0], &attitude);
+        FormalEskf::quaternion_type before;
+        expect(formal_eskf::succeeded(FormalEskf::quaternion_type::from_coefficients(
+                   attitude.q[0], attitude.q[1], attitude.q[2], attitude.q[3], 1e-6, before)),
+               "fast-phase attitude is a valid pre-reset output");
+        auto const transformed = f.m_quaternion_reset_delta * before;
+        expect(!f.m_fault && f.m_quaternion_reset_counter == std::uint8_t(counter + 1) &&
+                   attitude.quat_reset_counter == counter &&
+                   formal_eskf::linalg::norm(transformed.coefficients() - f.m_output.current().q_nb.coefficients()) <
+                       1e-6,
+               "qualified delayed heading reset applies the common rotation after the already-published fast attitude");
+        test.m_sample.timestamp_sample += 4000;
+        test.tick();
+        orb_copy(ORB_ID(vehicle_attitude), test.m_outputs[0], &attitude);
+        expect(!f.m_fault && attitude.quat_reset_counter == std::uint8_t(counter + 1) &&
+                   f.m_quaternion_reset_counter == attitude.quat_reset_counter,
+               "the next attitude carries the reset exactly once; ordinary feedback does not reset again");
+    }
+
+    static void delayed_source_changes()
+    {
+        FormalEskfModuleTest test;
+        test.warmup();
+        auto & f = test.m_filter;
+        auto const gps_progress = f.m_gnss.lifecycle.state().velocity.last_fuse_time_us;
+        auto const mag_corrections = f.m_magnetic.corrections;
+        // Both switches arrive before either can reach the delayed horizon.
+        ++test.m_gps_device;
+        ++test.m_mag_device;
+        ++test.m_baro_device;
+        test.m_sample.timestamp_sample += 4000;
+        test.tick();
+        --test.m_gps_device;
+        --test.m_mag_device;
+        --test.m_baro_device;
+        test.m_sample.timestamp_sample += 4000;
+        test.tick();
+        test.m_gps_velocity_valid = false;
+        auto const validity = f.output_validity(clock_us);
+        expect(!f.m_fault && !validity.gps && !validity.magnetic && !validity.barometer &&
+                   f.m_observations.gnss_generation() == 2 && f.m_observations.magnetic_generation() == 2 &&
+                   f.m_observations.barometer_generation() == 2,
+               "switch away and back immediately vetoes old-generation aiding, even if rate-limited");
+        for (unsigned i = 0; i < 75; ++i)
+        {
+            test.m_sample.timestamp_sample += 4000;
+            test.tick();
+        }
+        expect(!f.m_fault && f.m_gnss.generation == 2 && !f.m_gnss.quality_result.qualified &&
+                   f.m_magnetic.generation == 2 && !f.m_magnetic.lifecycle.state().active &&
+                   f.m_magnetic.corrections == mag_corrections &&
+                   f.m_height_aiding.session(FormalEskf::height_type::Source::barometer).generation == 2,
+               "newly selected same-ID generations requalify GNSS/magnetic and restart height-bias history");
+        expect(!f.output_validity(clock_us).gps_height &&
+                   f.m_height_aiding.session(FormalEskf::height_type::Source::gnss).generation == 0,
+               "new receiver with invalid velocity cannot lend old-generation height activity current validity");
+        expect(f.m_gnss.lifecycle.state().velocity.last_fuse_time_us <= gps_progress,
+               "queueing replacement data cannot claim a successful GNSS fusion");
+        auto const rejected = f.m_arrival_rejections;
+        auto const fusion_time = f.m_time_us;
+        auto gps = f.m_gps;
+        gps.timestamp_sample = clock_us + 1;
+        gps.device_id = 0;
+        test.m_gps_pub.publish(gps);
+        f.Run();
+        expect(f.m_arrival_rejections == rejected + 1 && f.m_observations.gnss_generation() == 2 &&
+                   f.m_observations.gnss_source().device_id == 201 && f.m_time_us == fusion_time,
+               "future-clock source invalidation is rejected without revoking trusted source identity or advancing "
+               "fusion");
+        gps.timestamp_sample = f.m_gps.timestamp_sample - 2;
+        test.m_gps_pub.publish(gps);
+        f.Run();
+        expect(f.m_arrival_rejections == rejected + 2 && f.m_observations.gnss_generation() == 2,
+               "out-of-order source data cannot retroactively switch the selected generation");
+    }
+
+    static void delayed_resets_and_failure()
+    {
+        FormalEskfModuleTest test;
+        test.warmup();
+        auto & f = test.m_filter;
+        // Force legitimate reacquisition actions through the existing controller;
+        // keep the live output history, then inspect the main reset transforms.
+        f.m_gnss.lifecycle.reset();
+        f.m_gnss.input.time_us = f.m_time_us;
+        f.m_gnss.input.sample.velocity_n = FormalEskf::vector3(1., 2., 3.);
+        f.m_gnss.input.sample.latitude_deg += 0.00001;
+        f.m_gnss.sample = {f.m_time_us, formal_eskf::runtime::GnssQualityDecision::accepted};
+        auto const before = f.m_output.current();
+        auto const main_before = f.m_state;
+        auto const position_counter = f.m_position_reset_counter;
+        auto const velocity_counter = f.m_velocity_reset_counter;
+        f.fuse_gps();
+        expect(!f.m_fault && f.m_position_reset_counter == std::uint8_t(position_counter + 1) &&
+                   f.m_velocity_reset_counter == std::uint8_t(velocity_counter + 1),
+               "delayed GNSS reacquisition executes both production reset paths");
+        expect(formal_eskf::linalg::norm((f.m_output.current().v_n - before.v_n) - (f.m_state.v_n - main_before.v_n)) <
+                       1e-12 &&
+                   formal_eskf::linalg::norm((f.m_output.current().p_n - before.p_n) -
+                                             (f.m_state.p_n - main_before.p_n)) < 1e-12 &&
+                   f.m_output.current().time_us == before.time_us,
+               "GNSS reset translates the current output by the main delta without retiming it");
+        // Failure in delayed covariance occurs after the current attitude phase.
+        auto const output_epoch = f.m_output.current().time_us;
+        auto const fusion_epoch = f.m_time_us;
+        auto const last_navigation = f.m_last_output;
+        f.m_covariance(0, 0) = std::numeric_limits<double>::quiet_NaN();
+        test.m_sample.timestamp_sample += 4000U;
+        test.tick();
+        vehicle_attitude_s attitude{};
+        orb_copy(ORB_ID(vehicle_attitude), test.m_outputs[0], &attitude);
+        expect(f.m_fault && attitude.timestamp_sample == output_epoch + 4000U && f.m_time_us == fusion_epoch &&
+                   f.m_last_output == last_navigation,
+               "fast attitude retains its current epoch when subsequent delayed prediction fails; no navigation is "
+               "published");
+    }
+
+    static void alignment_interval_admission()
+    {
+        FormalEskfModuleTest test;
+        for (std::uint32_t period : {0U, 3799U, 4201U, 50000U})
+        {
+            test.m_sample.timestamp_sample += 4000;
+            test.m_sample.delta_angle_dt = period;
+            test.tick();
+            expect(!test.m_filter.m_initialized && !test.m_filter.m_fault && test.m_filter.m_time_us == 0 &&
+                       test.m_filter.m_initialization.imu_samples == 0,
+                   "alignment rejects unsupported IMU periods before accumulation or seeding");
+        }
+        test.m_sample.delta_angle_dt = 4000;
+        test.m_sample.timestamp_sample += 4000;
+        test.tick();
+        expect(test.m_filter.m_initialization.imu_samples == 1 && !test.m_filter.m_fault,
+               "valid profile input can begin alignment after rejected pre-start samples");
     }
 
     static void startup_parameters()
@@ -1726,50 +1997,63 @@ public:
 
     static void admission()
     {
-        FormalEskfModuleTest test;
-        test.warmup();
-        auto const previous_time = test.m_filter.m_time_us;
-        auto const previous_sample = test.m_filter.m_imu_history.time_us;
-        auto const rejects = test.m_filter.m_rejections;
-        test.tick();
-        expect(test.m_filter.m_rejections == rejects + 1U && test.m_filter.m_time_us == previous_time &&
-                   test.m_filter.m_imu_history.time_us == previous_sample && !test.m_filter.m_fault,
-               "duplicate IMU rejects without consuming time or metadata");
-        test.m_sample.timestamp_sample += 4000U;
-        test.m_sample.delta_angle_dt = 0U;
-        test.m_sample.delta_angle[0] = std::numeric_limits<float>::infinity();
-        test.tick();
-        expect(test.m_filter.m_time_us == previous_time && !test.m_filter.m_fault,
-               "zero gyro period rejects before rate conversion and non-finite fault handling");
-        test.m_sample.delta_angle[0] = 0.f;
-        test.m_sample.delta_angle_dt = 50001U;
-        test.tick();
-        expect(test.m_filter.m_time_us == previous_time && !test.m_filter.m_fault,
-               "oversized gyro period rejects before timeline consumption");
-        test.m_sample.delta_angle_dt = 4000U;
-        test.m_sample.delta_velocity_dt = 0U;
-        test.tick();
-        expect(test.m_filter.m_time_us == previous_time && !test.m_filter.m_fault,
-               "zero acceleration period rejects before rate conversion");
-        test.m_sample.delta_velocity_dt = 50001U;
-        test.tick();
-        expect(test.m_filter.m_time_us == previous_time && !test.m_filter.m_fault,
-               "oversized acceleration period rejects before timeline consumption");
-        test.m_sample.delta_velocity_dt = 4000U;
-        test.m_sample.delta_angle_clipping = 1U;
-        test.tick();
-        expect(test.m_filter.m_time_us == previous_time && !test.m_filter.m_fault,
-               "gyro clipping rejects before timeline consumption");
-        test.m_sample.delta_angle_clipping = 0U;
-        test.m_sample.delta_velocity_clipping = 8U;
-        test.tick();
-        expect(test.m_filter.m_time_us == previous_time && !test.m_filter.m_fault,
-               "unsupported clipping bits reject before timeline consumption");
-        test.m_sample.delta_velocity_clipping = 1U;
-        test.tick();
-        expect(test.m_filter.m_time_us == test.m_sample.timestamp_sample && !test.m_filter.m_fault,
-               "valid accelerometer clipping is admitted after initialization");
-        test.snapshot("admission");
+        enum class Input
+        {
+            duplicate,
+            zero_angle_period,
+            long_angle_period,
+            zero_velocity_period,
+            short_velocity_period,
+            gyro_clipping,
+            clipping_bits,
+            acceleration_clipping
+        };
+        for (auto scenario :
+             {Input::duplicate, Input::zero_angle_period, Input::long_angle_period, Input::zero_velocity_period,
+              Input::short_velocity_period, Input::gyro_clipping, Input::clipping_bits, Input::acceleration_clipping})
+        {
+            FormalEskfModuleTest test;
+            test.warmup();
+            auto const fusion_time = test.m_filter.m_time_us;
+            auto const output_time = test.m_filter.m_output.current().time_us;
+            if (scenario != Input::duplicate)
+            {
+                test.m_sample.timestamp_sample += 4000U;
+            }
+            switch (scenario)
+            {
+            case Input::duplicate:
+                break; // Duplicate endpoint.
+            case Input::zero_angle_period:
+                test.m_sample.delta_angle_dt = 0;
+                break;
+            case Input::long_angle_period:
+                test.m_sample.delta_angle_dt = 4201;
+                break;
+            case Input::zero_velocity_period:
+                test.m_sample.delta_velocity_dt = 0;
+                break;
+            case Input::short_velocity_period:
+                test.m_sample.delta_velocity_dt = 3799;
+                break;
+            case Input::gyro_clipping:
+                test.m_sample.delta_angle_clipping = 1;
+                break;
+            case Input::clipping_bits:
+                test.m_sample.delta_velocity_clipping = 8;
+                break;
+            case Input::acceleration_clipping:
+                test.m_sample.delta_velocity_clipping = 1;
+                break;
+            }
+            test.tick();
+            bool const accepted = scenario == Input::acceleration_clipping;
+            expect(test.m_filter.m_fault != accepted,
+                   "invalid initialized IMU faults; supported acceleration clipping is admitted");
+            expect(test.m_filter.m_time_us == fusion_time + (accepted ? 4000 : 0) &&
+                       test.m_filter.m_output.current().time_us == output_time + (accepted ? 4000 : 0),
+                   "admission faults preserve both horizons; accepted input advances each exactly once");
+        }
     }
 
     static void gaps_and_periods()
@@ -1782,31 +2066,32 @@ public:
                "200 us positive gap is tolerated without synthetic prediction");
         test.m_sample.timestamp_sample += 4201U;
         test.tick();
-        expect(!test.m_filter.m_fault && test.m_filter.m_gaps == 1U,
-               "201 us positive gap predicts the held previous rate");
+        expect(!test.m_filter.m_fault && test.m_filter.m_imu_history.latest()->hold_period_us == 201U,
+               "201 us positive gap is retained for identical output/main propagation");
         test.m_sample.timestamp_sample += 3800U;
         test.tick();
         expect(!test.m_filter.m_fault, "minus 200 us overlap is accepted");
         test.m_sample.timestamp_sample += 4000U;
-        test.m_sample.delta_velocity_dt = 5000U;
+        test.m_sample.delta_velocity_dt = 4200U;
         test.m_sample.delta_angle[0] = 0.00004f;
         test.m_sample.delta_angle[1] = -0.00008f;
         test.m_sample.delta_angle[2] = 0.00012f;
         test.m_sample.delta_velocity[0] = 0.0002f;
         test.m_sample.delta_velocity[1] = -0.0003f;
-        test.m_sample.delta_velocity[2] = static_cast<float>(-9.80665 * 0.005);
+        test.m_sample.delta_velocity[2] = static_cast<float>(-9.80665 * 0.0042);
         test.tick();
-        expect(!test.m_filter.m_fault && test.m_filter.m_imu_history.measurement.specific_force_b(2U) ==
-                                             static_cast<double>(test.m_sample.delta_velocity[2]) / (5000. * 1e-6),
+        expect(!test.m_filter.m_fault &&
+                   test.m_filter.m_imu_history.latest()->sample.mean_rates().specific_force_b(2U) ==
+                       static_cast<double>(test.m_sample.delta_velocity[2]) / (4200. * 1e-6),
                "IMU conversion uses the acceleration integration period independently");
-        expect(test.m_filter.m_imu_history.measurement.angular_rate_b(0U) ==
+        expect(test.m_filter.m_imu_history.latest()->sample.mean_rates().angular_rate_b(0U) ==
                    static_cast<double>(test.m_sample.delta_angle[0]) / (4000. * 1e-6),
                "nonzero angular increment uses the gyro integration period");
         for (std::size_t axis = 0U; axis < 3U; ++axis)
         {
-            expect(test.m_filter.m_imu_history.measurement.specific_force_b(axis) ==
-                           static_cast<double>(test.m_sample.delta_velocity[axis]) / (5000. * 1e-6) &&
-                       test.m_filter.m_imu_history.measurement.angular_rate_b(axis) ==
+            expect(test.m_filter.m_imu_history.latest()->sample.mean_rates().specific_force_b(axis) ==
+                           static_cast<double>(test.m_sample.delta_velocity[axis]) / (4200. * 1e-6) &&
+                       test.m_filter.m_imu_history.latest()->sample.mean_rates().angular_rate_b(axis) ==
                            static_cast<double>(test.m_sample.delta_angle[axis]) / (4000. * 1e-6),
                    "input conversion preserves every FRD axis, sign and independent measured period");
         }
@@ -1820,9 +2105,18 @@ public:
         test.m_sample.delta_velocity[1] = 0.f;
         test.m_sample.delta_velocity[2] = static_cast<float>(-9.80665 * 0.004);
         test.tick();
-        expect(!test.m_filter.m_fault && test.m_filter.m_gaps == 2U,
-               "gap with distinct previous and current rates is admitted");
+        expect(!test.m_filter.m_fault && test.m_filter.m_imu_history.latest()->hold_period_us == 1000U,
+               "gap with distinct previous and current rates is retained");
         test.snapshot("held-measured-rate");
+        auto const predictions = test.m_filter.m_predictions;
+        for (unsigned i = 0; i < 54; ++i)
+        {
+            test.m_sample.timestamp_sample += 4000U;
+            test.tick();
+        }
+        expect(!test.m_filter.m_fault && test.m_filter.m_gaps == 2U &&
+                   test.m_filter.m_predictions == predictions + 54U && test.m_filter.m_output.ready(),
+               "retained held segments reach the main filter exactly once while matching current-output history");
         auto const horizon = test.m_filter.m_time_us;
         auto const count = publications;
         clock_us += 100000U;
@@ -1837,7 +2131,7 @@ public:
     {
         FormalEskfModuleTest test;
         test.warmup();
-        for (std::uint32_t period : {1U, 50000U})
+        for (std::uint32_t period : {3800U, 4200U})
         {
             auto const predictions = test.m_filter.m_predictions;
             test.m_sample.timestamp_sample += period;
@@ -1846,8 +2140,8 @@ public:
             test.m_sample.delta_velocity[2] = static_cast<float>(-9.80665 * static_cast<double>(period) * 1e-6);
             test.tick();
             expect(!test.m_filter.m_fault && test.m_filter.m_predictions == predictions + 1U &&
-                       test.m_filter.m_imu_history.time_us == test.m_sample.timestamp_sample,
-                   "inclusive minimum/maximum IMU periods reach prediction without a synthetic gap");
+                       test.m_filter.m_imu_history.latest_time_us() == test.m_sample.timestamp_sample,
+                   "profile minimum/maximum intervals advance one delayed step without a synthetic gap");
             expect(test.m_filter.m_gaps == 0U, "matching elapsed and measured periods need no gap hold");
             test.snapshot("interval-boundary");
         }
@@ -1870,7 +2164,7 @@ public:
     {
         FormalEskfModuleTest test;
         test.warmup();
-        auto const previous = test.m_filter.m_imu_history.time_us;
+        auto const previous = test.m_filter.m_imu_history.latest_time_us();
         auto const predictions = test.m_filter.m_predictions;
         test.m_sample.timestamp_sample += 4000U;
         switch (kind)
@@ -1903,18 +2197,27 @@ public:
             test.m_filter.m_gnss.quality_parameters.velocity_limit = std::numeric_limits<double>::quiet_NaN();
             break;
         }
-        test.tick();
-        expect(test.m_filter.m_fault && test.m_filter.m_time_us == test.m_sample.timestamp_sample &&
-                   test.m_filter.m_predictions == predictions,
-               "fault consumes the admitted horizon and prevents a successful prediction");
-        bool const early_failure = kind == Fault::non_finite || kind == Fault::quality;
-        expect(test.m_filter.m_imu_history.time_us == (early_failure ? previous : test.m_sample.timestamp_sample),
-               "only entry into initialized prediction consumes previous-IMU metadata on failure");
+        auto const fusion_before = test.m_filter.m_time_us;
+        for (unsigned i = 0; i < 16 && !test.m_filter.m_fault; ++i)
+        {
+            test.tick();
+            if (!test.m_filter.m_fault)
+            {
+                test.m_sample.timestamp_sample += 4000U;
+            }
+        }
+        bool const delayed_failure = kind == Fault::prediction || kind == Fault::quality;
+        expect(test.m_filter.m_fault, "numerical and timing failures latch a restart-required fault");
+        expect(delayed_failure || (test.m_filter.m_time_us == fusion_before &&
+                                   test.m_filter.m_imu_history.latest_time_us() == previous),
+               "IMU admission faults cannot consume either horizon");
+        auto const completed = test.m_filter.m_predictions;
+        expect(delayed_failure || completed == predictions, "admission faults do not predict the main filter");
         test.snapshot("fault");
         test.m_sample.delta_angle[0] = 0.f;
         test.m_sample.timestamp_sample += 4000U;
         test.tick();
-        expect(test.m_filter.m_fault && test.m_filter.m_predictions == predictions,
+        expect(test.m_filter.m_fault && test.m_filter.m_predictions == completed,
                "a following valid sample does not clear a latched fault");
         test.snapshot("fault-latched");
     }
@@ -1928,8 +2231,10 @@ private:
     std::array<int, 7U> m_outputs{};
     vehicle_imu_s m_sample{};
     bool m_armed = false;
+    bool m_landed = true, m_at_rest = true;
     bool m_send_gps = true;
-    std::uint32_t m_mag_device = 301U;
+    bool m_gps_velocity_valid = true;
+    std::uint32_t m_gps_device = 201U, m_mag_device = 301U, m_baro_device = 401U;
     uORB::Publication<vehicle_imu_s> m_imu_pub{ORB_ID(vehicle_imu)};
     uORB::Publication<sensor_gps_s> m_gps_pub{ORB_ID(vehicle_gps_position)};
     uORB::Publication<vehicle_magnetometer_s> m_mag_pub{ORB_ID(vehicle_magnetometer)};
@@ -1955,6 +2260,12 @@ int main(int argc, char ** argv)
     }
     uORB::Manager::initialize();
     param_init();
+    FormalEskfModuleTest::timing_parameters();
+    FormalEskfModuleTest::delayed_pipeline();
+    FormalEskfModuleTest::delayed_resets_and_failure();
+    FormalEskfModuleTest::delayed_source_changes();
+    FormalEskfModuleTest::delayed_heading_reset();
+    FormalEskfModuleTest::alignment_interval_admission();
     FormalEskfModuleTest::startup_parameters();
     FormalEskfModuleTest::startup();
     FormalEskfModuleTest::admission();

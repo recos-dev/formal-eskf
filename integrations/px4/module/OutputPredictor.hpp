@@ -206,7 +206,8 @@ template <typename Linalg> bool OutputPredictor<Linalg>::predict(interval_type c
     {
         return fail(Fault::numerical_failure);
     }
-    if (!advance(candidate, interval.sample.mean_rates(), interval.sample.angular_interval_s()))
+    auto const imu = interval.sample.mean_rates();
+    if (!advance(candidate, imu, interval.sample.angular_interval_s()))
     {
         return fail(Fault::numerical_failure);
     }
@@ -215,7 +216,7 @@ template <typename Linalg> bool OutputPredictor<Linalg>::predict(interval_type c
     candidate.angular_period_us = interval.sample.angular_period_us;
     m_history.push(candidate);
     m_current = candidate;
-    m_output_angular_rate_b = interval.sample.mean_rates().angular_rate_b + m_angular_rate_correction - m_gyro_bias;
+    m_output_angular_rate_b = imu.angular_rate_b + m_angular_rate_correction - m_gyro_bias;
     return true;
 }
 

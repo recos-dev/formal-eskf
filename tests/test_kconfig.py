@@ -138,7 +138,7 @@ class KconfigTests(unittest.TestCase):
                                  'CONFIG_PX4_MAG_GATE="4.5"\nCONFIG_PX4_MAG_HEALTH_MS=0\n'
                                  'CONFIG_PX4_GNSS_TIMEOUT_MS=004000\nCONFIG_ESKF_RESET_APPROX=y\n')
         PACKAGE = SELF.ROOT / "package"
-        RESULT = subprocess.run([sys.executable, str(REPO_DIR / "integrations/px4/install.py"),
+        RESULT = subprocess.run([sys.executable, str(REPO_DIR / "integrations/px4/scripts/install.py"),
                                  "--export", str(PACKAGE), "--config", str(SELF.CONFIG_FILE)],
                                 text=True, capture_output=True)
         SELF.assertEqual(RESULT.returncode, 0, RESULT.stdout + RESULT.stderr)

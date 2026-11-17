@@ -24,10 +24,10 @@ test: build
 
 px4-install:
 	@test -n "$(PX4_DIR)" || { echo 'error: specify PX4_DIR=/path/to/PX4-Autopilot' >&2; exit 2; }
-	$(PYTHON) integrations/px4/install.py --px4 "$(PX4_DIR)" --config "$(CONFIG_FILE)"
+	$(PYTHON) integrations/px4/scripts/install.py --px4 "$(PX4_DIR)" --config "$(CONFIG_FILE)"
 
 px4-export:
-	$(PYTHON) integrations/px4/install.py --export "$(PACKAGE_DIR)" --config "$(CONFIG_FILE)"
+	$(PYTHON) integrations/px4/scripts/install.py --export "$(PACKAGE_DIR)" --config "$(CONFIG_FILE)"
 
 help:
 	@printf '%s\n' \

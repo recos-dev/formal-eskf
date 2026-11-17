@@ -8,15 +8,46 @@ The supported target is **PX4 v1.16.2**, commit `54f0455ffcd755534539a7cf33a09a2
 
 ## Source ownership
 
+```text
+integrations/px4/
+  module/        Production C++ and PX4 module build/parameter definitions
+  configs/       SITL board configuration
+  patches/       Changes required in the pinned PX4 host
+  scripts/       Setup, packaging, flight execution and offline analysis
+  tests/         Package/core checks and the production-module fixture
+  requirements.txt
+```
+
+Module `Kconfig`, CMake and parameter declarations stay with the module because
+PX4 consumes them there. The installer also packages the module fixture as
+an opt-in host fixture; tests are not linked into the flight binary.
+
 | Source in formal-eskf | Installed location in PX4 | Purpose |
 | --- | --- | --- |
 | `integrations/px4/module/` | `src/modules/formal_eskf/` | uORB adapter, module build, Kconfig and parameter |
+| `integrations/px4/tests/ModuleTest.cpp` | `src/modules/formal_eskf/tests/ModuleTest.cpp` | Opt-in production-module fixture |
 | `include/formal_eskf/` | `src/modules/formal_eskf/core/include/formal_eskf/` | Current portable core and runtime headers |
 | `LICENSE` | `src/modules/formal_eskf/core/LICENSE` | Core and adapter license |
-| `integrations/px4/formal_eskf.px4board` | `boards/px4/sitl/formal_eskf.px4board` | SIH build with EKF2 disabled |
-| `integrations/px4/px4-v1.16.2.patch` | Three existing PX4 files | Startup selection, odometry logging and SIH link dependency |
+| `integrations/px4/configs/formal_eskf.px4board` | `boards/px4/sitl/formal_eskf.px4board` | SIH build with EKF2 disabled |
+| `integrations/px4/patches/px4-v1.16.2.patch` | Three existing PX4 files | Startup selection, odometry logging and SIH link dependency |
 
 Edit the source in formal-eskf, run the installer again, and rebuild PX4. Changes in formal-eskf do not automatically change an already installed package. PX4 receives regular copied files, with no symlinks, submodule or `FORMAL_ESKF_ROOT` dependency.
+
+## Tools
+
+| Entry point | Purpose and effects |
+|---|---|
+| [scripts/setup.sh](scripts/setup.sh) | Prepare the pinned PX4 checkout and its required submodules, then run the installer. Requires network access when sources are missing. |
+| [scripts/install.py](scripts/install.py) | Offline package collection, export, installation or read-only `--check`. Protects local PX4 edits using the previous manifest. |
+| [scripts/sitl_flight.py](scripts/sitl_flight.py) | Own one SIH process, command the flight and optional ground faults, then shut it down and retain results. |
+| [scripts/analyze_flight.py](scripts/analyze_flight.py) | Independently assess the recorded flight against SIH truth and write metrics/plots. A live flight pass alone is insufficient. |
+| [scripts/analyze_frame.py](scripts/analyze_frame.py) | Build the C++ projection probe and compare projection/frame approximations against geographic oracles. No flight commands. |
+| [tests/test_package.py](tests/test_package.py) | Exercise installation/export/conflict handling in disposable PX4 fixtures; the supplied checkout is read-only. |
+| [tests/test_core.sh](tests/test_core.sh) | Build and run the existing core suite using PX4 matrix and the generated PX4 headers. |
+| [tests/test_tools.py](tests/test_tools.py) | Offline checks for acceptance thresholds, fault/reset predicates and command usage. No PX4 process or flight. |
+
+Paths in this table are relative to this directory. Each operational tool has one
+entry point; the independent analyzers remain separate from the flight driver.
 
 ## Setup and build
 
@@ -24,7 +55,7 @@ Run these commands from the formal-eskf repository root. `PX4_ROOT` can be anywh
 
 ```bash
 PX4_ROOT="$(pwd)/../PX4-Autopilot"
-./integrations/px4/setup.sh "$PX4_ROOT"
+./integrations/px4/scripts/setup.sh "$PX4_ROOT"
 make -C "$PX4_ROOT" px4_sitl_formal_eskf -j2
 ```
 
@@ -39,9 +70,9 @@ python3 -m pip install -r integrations/px4/requirements.txt
 For an existing PX4 checkout with dependencies already initialized, installation is offline:
 
 ```bash
-python3 integrations/px4/install.py --px4 "$PX4_ROOT"
+python3 integrations/px4/scripts/install.py --px4 "$PX4_ROOT"
 make -C "$PX4_ROOT" px4_sitl_formal_eskf -j2
-python3 integrations/px4/install.py --px4 "$PX4_ROOT" --check
+python3 integrations/px4/scripts/install.py --px4 "$PX4_ROOT" --check
 ```
 
 The installer records source revision, source dirty state, and SHA256 hashes in `src/modules/formal_eskf/package-manifest.json`. `--check` checks the copied files and host patch; it does not establish that the binary has been rebuilt. Each flight records the installed manifest and the tested binary's SHA256.
@@ -56,7 +87,7 @@ From the formal-eskf repository root:
 make menuconfig
 make px4-install PX4_DIR="$PX4_ROOT"
 make -C "$PX4_ROOT" px4_sitl_formal_eskf -j2
-python3 integrations/px4/install.py --px4 "$PX4_ROOT" --config .config --check
+python3 integrations/px4/scripts/install.py --px4 "$PX4_ROOT" --config .config --check
 ```
 
 The menu includes exact/approximate prediction and reset, magnetic tilt
@@ -79,7 +110,7 @@ Direct `install.py` without `--config` continues to package the default profile.
 ## Export a package to another machine
 
 ```bash
-python3 integrations/px4/install.py --export build/px4-package
+python3 integrations/px4/scripts/install.py --export build/px4-package
 ```
 
 The new directory contains `overlay/`, `manifest.json`, the small PX4 patch and a standalone `install.py`. Copy that directory to the destination machine, then run:
@@ -103,11 +134,18 @@ cmake --build "$PX4_ROOT/build/px4_sitl_formal_eskf" \
 "$PX4_ROOT/build/px4_sitl_formal_eskf/formal_eskf_module_test"
 ```
 
-The fixture executes the production module and uORB with controlled time and
-timer dispatch. It checks sensor sequencing, failures, resets, publication and
-diagnostic snapshots. Work-queue-unavailable and injected-failure messages are
-expected; the final scenario summary and process exit code determine success.
-The scheduler, dependency internals and target timing require separate evidence.
+The fixture executes production `Run()` with real PX4 messages and uORB, using
+controlled time and timer dispatch. It checks startup settings, IMU admission,
+gap boundaries, sensor sequencing and changes, failure latching, resets,
+publication and diagnostic snapshots. The work-queue manager is not started;
+unavailable-queue and injected-failure messages are expected. The final scenario
+summary and exit code determine success. Scheduler/concurrent-access correctness,
+dependency internals and target timing require separate evidence.
+
+The executable optionally takes a trace filename to record state, covariance
+and the seven topic payloads for deterministic before/after comparison. The test
+target is opt-in and is not linked into the flight binary.
+
 `formal_eskf_module_test --configuration` runs the profile smoke scenario on
 stationary sensor data followed by ground effect and a GNSS outage. That fixture
 requires initialization within 12 s and a horizontal timeout of at most 10 s;
@@ -171,7 +209,7 @@ odometry orientation variance remains body-frame. Computed longitudes wrap to
 After building the pinned PX4 target and installing the host requirements:
 
 ```bash
-python3 integrations/px4/analyze_frame.py "$PX4_ROOT"
+python3 integrations/px4/scripts/analyze_frame.py "$PX4_ROOT"
 ```
 
 This writes the geographic grid, independent-oracle comparisons and source hashes
@@ -187,10 +225,10 @@ Run from the formal-eskf repository root in a system terminal:
 ```bash
 PX4_ROOT="$(pwd)/../PX4-Autopilot"
 RUN_DIR="build/sitl-$(date +%Y%m%d-%H%M%S)"
-python3 integrations/px4/sitl_flight.py \
+python3 integrations/px4/scripts/sitl_flight.py \
   --px4 "$PX4_ROOT" --output "$RUN_DIR" --check-faults
 MPLCONFIGDIR=/tmp/formal-eskf-mpl \
-  python3 integrations/px4/analyze_flight.py "$RUN_DIR"
+  python3 integrations/px4/scripts/analyze_flight.py "$RUN_DIR"
 xdg-open "$RUN_DIR/flight.png"
 ```
 
@@ -271,32 +309,15 @@ remain open even where portable components already have evidence.
 
 ```bash
 ./scripts/format_cpp.sh --check
-python3 integrations/px4/test_package.py --px4 "$PX4_ROOT"
-./integrations/px4/test_core.sh "$PX4_ROOT"
+python3 integrations/px4/tests/test_package.py --px4 "$PX4_ROOT"
+python3 integrations/px4/tests/test_tools.py
+./integrations/px4/tests/test_core.sh "$PX4_ROOT"
 ```
 
 Package checks exercise a clean pinned PX4 fixture, standalone export/install, repeat installation, update handling, conflict preservation, revision rejection and exclusion of editor scratch files. Core checks use the existing native suite with the PX4 matrix backend. Run the flight and analyzer above after rebuilding to validate the complete control loop.
 
-To test the module's actual initialization and update paths after installing:
-
-```bash
-cmake -S "$PX4_ROOT" -B "$PX4_ROOT/build/px4_sitl_formal_eskf" \
-    -DFORMAL_ESKF_MODULE_TESTS=ON
-cmake --build "$PX4_ROOT/build/px4_sitl_formal_eskf" \
-    --target formal_eskf_module_test --parallel 2
-ctest --test-dir "$PX4_ROOT/build/px4_sitl_formal_eskf/src/modules/formal_eskf" \
-    --output-on-failure
-```
-
-The tests execute production `Run()` with real PX4 messages and uORB. They
-control the clock and timer dispatch, covering startup settings, accumulation,
-IMU admission, gap boundaries, separate integration periods, source/calibration
-changes, failure latching and watchdog output. The work-queue manager is not
-started; its unavailable-queue messages and deliberately injected fault messages
-are expected. These tests do not establish scheduler or concurrent-access
-correctness. The executable optionally takes a trace filename to record state,
-covariance and the seven topic payloads for deterministic before/after comparison.
-The test target is opt-in and is not linked into the flight binary.
+Use the [production module tests](#production-module-tests) for actual adapter
+initialization and update paths; the core suite alone does not cover uORB.
 
 ## Validation evidence
 

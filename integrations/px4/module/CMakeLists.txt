@@ -35,7 +35,9 @@ target_compile_options(modules__formal_eskf PRIVATE -Wno-float-equal)
 option(FORMAL_ESKF_MODULE_TESTS "Build formal-eskf PX4 module behavior tests" OFF)
 if(FORMAL_ESKF_MODULE_TESTS)
 	add_executable(formal_eskf_module_test EXCLUDE_FROM_ALL tests/ModuleTest.cpp)
-	target_include_directories(formal_eskf_module_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/core/include")
+	target_include_directories(formal_eskf_module_test PRIVATE
+		"${CMAKE_CURRENT_SOURCE_DIR}"
+		"${CMAKE_CURRENT_SOURCE_DIR}/core/include")
 	set_target_properties(formal_eskf_module_test PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED YES)
 	target_compile_definitions(formal_eskf_module_test PRIVATE MODULE_NAME="formal_eskf_test"
 		${FORMAL_ESKF_ALGORITHMS})

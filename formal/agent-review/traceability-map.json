@@ -3737,7 +3737,7 @@
           },
           {
             "file": "integrations/px4/module/FormalEskfOutput.cpp",
-            "symbol": "vehicle_attitude_s FormalEskf::publish_attitude("
+            "symbol": "void FormalEskf::publish_attitude("
           },
           {
             "file": "integrations/px4/module/FormalEskfOutput.cpp",
@@ -5332,7 +5332,7 @@
           },
           {
             "file": "integrations/px4/module/FormalEskfNavigation.cpp",
-            "symbol": "void FormalEskf::record_vertical_velocity_reset("
+            "symbol": "void FormalEskf::ResetReport::record_vertical_velocity("
           },
           {
             "file": "integrations/px4/module/FormalEskfNavigation.cpp",
@@ -5690,15 +5690,15 @@
           },
           {
             "file": "integrations/px4/module/FormalEskfNavigation.cpp",
-            "symbol": "void FormalEskf::record_position_reset("
+            "symbol": "void FormalEskf::ResetReport::record_position("
           },
           {
             "file": "integrations/px4/module/FormalEskfNavigation.cpp",
-            "symbol": "void FormalEskf::record_velocity_reset("
+            "symbol": "void FormalEskf::ResetReport::record_velocity("
           },
           {
             "file": "integrations/px4/module/FormalEskfNavigation.cpp",
-            "symbol": "void FormalEskf::record_height_reset("
+            "symbol": "void FormalEskf::ResetReport::record_height("
           },
           {
             "file": "integrations/px4/module/FormalEskfOutput.cpp",
@@ -6002,7 +6002,7 @@
           },
           {
             "file": "integrations/px4/module/FormalEskfOutput.cpp",
-            "symbol": "vehicle_attitude_s FormalEskf::publish_attitude("
+            "symbol": "void FormalEskf::publish_attitude("
           },
           {
             "file": "integrations/px4/module/FormalEskfOutput.cpp",

@@ -32,22 +32,21 @@ FormalEskf::observation_history_type::BarometerSample FormalEskf::decode_baromet
     return {{sample.timestamp_sample, {sample.baro_device_id, sample.calibration_count}}, sample.baro_alt_meter};
 }
 
-template <std::size_t N>
-bool FormalEskf::record_gps_fusion(formal_eskf::runtime::GnssFusion::Group group,
-                                   formal_eskf::runtime::FusionResult<backend_type, N> const & result)
+bool FormalEskf::record_gps_fusion(gnss_lifecycle_type::Group group, formal_eskf::runtime::FusionDecision decision,
+                                   status_type status)
 {
     bool & rejected =
         group == gnss_lifecycle_type::Group::velocity ? m_gnss.velocity_rejected : m_gnss.position_rejected;
-    rejected = result.decision == formal_eskf::runtime::FusionDecision::rejected;
-    if (!check(m_gnss.lifecycle.record_fusion(group, m_gnss.sample.time_us, result.decision)) || !check(result.status))
+    rejected = decision == formal_eskf::runtime::FusionDecision::rejected;
+    if (!check(m_gnss.lifecycle.record_fusion(group, m_gnss.sample.time_us, decision)) || !check(status))
     {
         return false;
     }
-    if (result.decision == formal_eskf::runtime::FusionDecision::rejected)
+    if (decision == formal_eskf::runtime::FusionDecision::rejected)
     {
         ++m_rejections;
     }
-    else if (result.decision == formal_eskf::runtime::FusionDecision::fused)
+    else if (decision == formal_eskf::runtime::FusionDecision::fused)
     {
         if (!check(formal_eskf::runtime::limit_bias(m_state, profile::bias_limits<double>())))
         {
@@ -56,6 +55,22 @@ bool FormalEskf::record_gps_fusion(formal_eskf::runtime::GnssFusion::Group group
         ++m_gnss.corrections;
     }
     return true;
+}
+
+void FormalEskf::Gnss::change_source(std::uint32_t new_device_id, std::uint64_t new_generation)
+{
+    quality.reset();
+    quality_result = {};
+    metadata_valid = false;
+    lifecycle.reset();
+    position_ratios = {};
+    velocity_ratios = {};
+    position_test_ratio = NAN;
+    position_rejected = velocity_rejected = false;
+    velocity_test_ratios = vector3(NAN, NAN, NAN);
+    previous_fix = {};
+    device_id = new_device_id;
+    generation = new_generation;
 }
 
 void FormalEskf::update_gps_quality()
@@ -70,18 +85,7 @@ void FormalEskf::update_gps_quality()
     m_gnss.sample_time_us = m_gnss.input.time_us;
     if (gps.stamp.source.device_id != m_gnss.device_id || m_gnss.input.generation != m_gnss.generation)
     {
-        m_gnss.quality.reset();
-        m_gnss.quality_result = {};
-        m_gnss.metadata_valid = false;
-        m_gnss.lifecycle.reset();
-        m_gnss.position_ratios = {};
-        m_gnss.velocity_ratios = {};
-        m_gnss.position_test_ratio = NAN;
-        m_gnss.position_rejected = m_gnss.velocity_rejected = false;
-        m_gnss.velocity_test_ratios = vector3(NAN, NAN, NAN);
-        m_gnss.previous_fix = {};
-        m_gnss.device_id = gps.stamp.source.device_id;
-        m_gnss.generation = m_gnss.input.generation;
+        m_gnss.change_source(gps.stamp.source.device_id, m_gnss.input.generation);
     }
     // Invalid velocity cannot qualify or refresh successful aiding.
     if (!gps.velocity_valid || !recent(m_gnss.input.time_us, profile::gnss::maximum_sample_age_us))
@@ -309,9 +313,9 @@ bool FormalEskf::fuse_gps_velocity(GnssVelocityObservation const & observation)
         {
             return false;
         }
-        record_velocity_reset(delta);
-        record_vertical_velocity_reset(delta(2));
-        ++m_odometry_reset_counter;
+        m_resets.record_velocity(m_time_us, delta);
+        m_resets.record_vertical_velocity(m_time_us, delta(2));
+        ++m_resets.odometry_count;
         for (auto & ratio : m_gnss.velocity_ratios)
         {
             ratio.reset(m_gnss.sample.time_us);
@@ -332,7 +336,7 @@ bool FormalEskf::fuse_gps_velocity(GnssVelocityObservation const & observation)
             m_gnss.velocity_ratios[axis].update(m_gnss.sample.time_us, -result.fusion.innovation(axis),
                                                 m_gnss.velocity_test_ratios(axis));
         }
-        if (!record_gps_fusion(Group::velocity, result.fusion))
+        if (!record_gps_fusion(Group::velocity, result.fusion.decision, result.fusion.status))
         {
             return false;
         }
@@ -351,8 +355,8 @@ bool FormalEskf::fuse_gps_velocity(GnssVelocityObservation const & observation)
             {
                 return false;
             }
-            record_vertical_velocity_reset(delta);
-            ++m_odometry_reset_counter;
+            m_resets.record_vertical_velocity(m_time_us, delta);
+            ++m_resets.odometry_count;
             // A Down-only reset preserves this attempt's selected velocity diagnostics.
         }
     }
@@ -388,8 +392,8 @@ bool FormalEskf::fuse_gps_position()
         {
             return false;
         }
-        record_position_reset(delta);
-        ++m_odometry_reset_counter;
+        m_resets.record_position(m_time_us, delta);
+        ++m_resets.odometry_count;
         for (auto & ratio : m_gnss.position_ratios)
         {
             ratio.reset(m_gnss.sample.time_us);
@@ -409,7 +413,7 @@ bool FormalEskf::fuse_gps_position()
             m_gnss.position_ratios[axis].update(m_gnss.sample.time_us, -result.innovation(axis),
                                                 result.diagnostics_valid ? result.test_ratio(axis) : double(NAN));
         }
-        if (!record_gps_fusion(Group::horizontal_position, result))
+        if (!record_gps_fusion(Group::horizontal_position, result.decision, result.status))
         {
             return false;
         }
@@ -417,33 +421,32 @@ bool FormalEskf::fuse_gps_position()
     return true;
 }
 
-void FormalEskf::record_position_reset(vector2_type const & delta)
+void FormalEskf::ResetReport::record_position(std::uint64_t time_us, vector2_type const & delta)
 {
-    m_position_reset_delta = m_position_reset_time == m_time_us ? m_position_reset_delta + delta : delta;
-    m_position_reset_time = m_time_us;
-    ++m_position_reset_counter;
+    position_delta = position_time_us == time_us ? position_delta + delta : delta;
+    position_time_us = time_us;
+    ++position_count;
 }
 
-void FormalEskf::record_velocity_reset(vector3_type const & delta)
+void FormalEskf::ResetReport::record_velocity(std::uint64_t time_us, vector3_type const & delta)
 {
-    m_velocity_reset_delta = m_velocity_reset_time == m_time_us ? m_velocity_reset_delta + delta : delta;
-    m_velocity_reset_time = m_time_us;
-    ++m_velocity_reset_counter;
+    velocity_delta = velocity_time_us == time_us ? velocity_delta + delta : delta;
+    velocity_time_us = time_us;
+    ++velocity_count;
 }
 
-void FormalEskf::record_height_reset(double delta, std::uint8_t count)
+void FormalEskf::ResetReport::record_height(std::uint64_t time_us, double delta, std::uint8_t count)
 {
-    m_height_reset_delta = m_height_reset_time == m_time_us ? m_height_reset_delta + delta : delta;
-    m_height_reset_time = m_time_us;
-    m_height_reset_counter = static_cast<std::uint8_t>(m_height_reset_counter + count);
+    height_delta = height_time_us == time_us ? height_delta + delta : delta;
+    height_time_us = time_us;
+    height_count = static_cast<std::uint8_t>(height_count + count);
 }
 
-void FormalEskf::record_vertical_velocity_reset(double delta)
+void FormalEskf::ResetReport::record_vertical_velocity(std::uint64_t time_us, double delta)
 {
-    m_vertical_velocity_reset_delta =
-        m_vertical_velocity_reset_time == m_time_us ? m_vertical_velocity_reset_delta + delta : delta;
-    m_vertical_velocity_reset_time = m_time_us;
-    ++m_vertical_velocity_reset_counter;
+    vertical_velocity_delta = vertical_velocity_time_us == time_us ? vertical_velocity_delta + delta : delta;
+    vertical_velocity_time_us = time_us;
+    ++vertical_velocity_count;
 }
 
 void FormalEskf::update_ground_effect()
@@ -517,13 +520,13 @@ void FormalEskf::fuse_height()
     }
     if (result.height_resets != 0U)
     {
-        record_height_reset(result.height_delta, result.height_resets);
+        m_resets.record_height(m_time_us, result.height_delta, result.height_resets);
     }
     m_rejections += result.rejected;
-    m_odometry_reset_counter += result.height_resets + result.velocity_resets;
+    m_resets.odometry_count += result.height_resets + result.velocity_resets;
     if (result.velocity_resets != 0)
     {
-        record_vertical_velocity_reset(result.velocity_delta);
+        m_resets.record_vertical_velocity(m_time_us, result.velocity_delta);
     }
     auto const & baro = m_height_aiding.session(Source::barometer);
     auto const & gnss_session = m_height_aiding.session(Source::gnss);

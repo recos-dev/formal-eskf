@@ -139,6 +139,9 @@ private:
         std::array<formal_eskf::px4::InnovationRatio, 3> velocity_ratios{};
         double position_test_ratio = NAN;
         vector3_type velocity_test_ratios = vector3_type::from_row_major({NAN, NAN, NAN});
+
+        // Retain the consumed watermark and session correction count.
+        void change_source(std::uint32_t new_device_id, std::uint64_t new_generation);
     };
 
     struct GnssVelocityObservation
@@ -209,6 +212,24 @@ private:
         bool height{}, vertical_velocity{}, dead_reckoning{};
     };
 
+    // Reporting state shared by navigation, attitude and status publications.
+    // Same-epoch additive resets accumulate; the public counters wrap at uint8_t.
+    struct ResetReport
+    {
+        quaternion_type attitude_delta{};
+        vector2_type position_delta{};
+        vector3_type velocity_delta{};
+        double height_delta{}, vertical_velocity_delta{};
+        std::uint64_t position_time_us{}, velocity_time_us{}, height_time_us{}, vertical_velocity_time_us{};
+        std::uint8_t attitude_count{}, position_count{}, velocity_count{}, height_count{}, vertical_velocity_count{},
+            odometry_count{};
+
+        void record_position(std::uint64_t time_us, vector2_type const & delta);
+        void record_velocity(std::uint64_t time_us, vector3_type const & delta);
+        void record_height(std::uint64_t time_us, double delta, std::uint8_t count);
+        void record_vertical_velocity(std::uint64_t time_us, double delta);
+    };
+
     struct StatusChanges
     {
         std::uint64_t control{};
@@ -251,6 +272,14 @@ private:
             fusion_mean_s{}; // PX4 perf uses its clock; lockstep time is not CPU time.
     };
 
+    // Arrival flags belong to this callback, not the delayed sensor lifecycle.
+    struct InputUpdates
+    {
+        vehicle_imu_s sample{};
+        bool imu{}, gps{}, magnetic{}, barometer{};
+    };
+
+    InputUpdates read_inputs();
     void Run() override;
     static ImuInput decode_imu(vehicle_imu_s const & sample);
     void process_imu(ImuInput const & sample);
@@ -274,6 +303,9 @@ private:
     static types_type::parameter_type estimator_parameters();
     static bias_learning_type::Parameters bias_learning_parameters();
     bool load_startup_parameters();
+    bool load_timing_parameters();
+    bool load_magnetic_parameters();
+    bool load_sensor_positions();
     bool accept_imu(ImuInput const & sample);
     void reset_imu_observations();
     void fuse_gps(imu_type const & imu);
@@ -297,20 +329,17 @@ private:
     void update_ground_effect();
     void fuse_height();
     void fuse_gravity(ImuInput const & sample, imu_type const & imu);
-    void record_position_reset(vector2_type const & delta);
-    void record_velocity_reset(vector3_type const & delta);
-    void record_height_reset(double delta, std::uint8_t count);
-    void record_vertical_velocity_reset(double delta);
     bool update_imu_bias(ImuInput const & sample, imu_type const & imu);
     bool update_imu_health(std::uint8_t accelerometer_clipping);
     bool prepare_publications();
     void record_publication(bool delivered);
     BodyOutput body_output() const;
     void publish(imu_type const & imu);
-    vehicle_attitude_s publish_attitude(std::uint64_t now);
+    void publish_attitude(std::uint64_t now);
     vehicle_local_position_s publish_local_position(std::uint64_t now, imu_type const & imu, BodyOutput const & body,
-                                                    bool navigation_valid, bool heading_valid);
-    void publish_global_position(std::uint64_t now, vehicle_local_position_s const & local, BodyOutput const & body);
+                                                    OutputValidity const & validity);
+    void publish_global_position(std::uint64_t now, vehicle_local_position_s const & local, BodyOutput const & body,
+                                 OutputValidity const & validity);
     void publish_odometry(std::uint64_t now, imu_type const & imu, BodyOutput const & body);
     OutputValidity output_validity(std::uint64_t now) const;
     void publish_status(uint64_t now);
@@ -330,9 +359,8 @@ private:
     uint16_t gps_failure_flags() const;
     bool gps_position_valid(std::uint64_t max_age = formal_eskf::px4::profile::gnss::maximum_aiding_age_us) const;
     bool gps_velocity_valid(std::uint64_t max_age = formal_eskf::px4::profile::gnss::maximum_aiding_age_us) const;
-    template <std::size_t N>
-    bool record_gps_fusion(formal_eskf::runtime::GnssFusion::Group group,
-                           formal_eskf::runtime::FusionResult<backend_type, N> const & result);
+    bool record_gps_fusion(gnss_lifecycle_type::Group group, formal_eskf::runtime::FusionDecision decision,
+                           status_type status);
     bool check(status_type status);
     // Inclusive age at the admitted IMU horizon; callers select their own policy.
     bool recent(std::uint64_t sample, std::uint64_t max_age) const;
@@ -370,12 +398,10 @@ private:
     bool m_initialized{};
     bool m_fault{};
     StatusChanges m_status_changes{};
+    ResetReport m_resets{};
 
     height_type m_height_aiding{};
     GroundEffect m_ground_effect{};
-    double m_height_reset_delta{};
-    std::uint64_t m_height_reset_time{};
-    std::uint8_t m_height_reset_counter{};
     formal_eskf::runtime::TiltAlignment<backend_type> m_tilt_alignment{};
     Gravity m_gravity{};
     bool m_gravity_enabled = true;
@@ -385,20 +411,11 @@ private:
     double m_average_imu_interval = formal_eskf::px4::profile::imu::nominal_interval_s;
     Magnetic m_magnetic{};
     bool m_heading_aligned{};
-    quaternion_type m_quaternion_reset_delta{};
-    std::uint8_t m_quaternion_reset_counter{};
     magnetic_model_type m_magnetic_model{};
     magnetic_model_type::Settings m_magnetic_settings{};
     uint64_t m_mag_model_origin_time{};
     uint32_t m_mag_model_unavailable{};
     Gnss m_gnss{};
-    formal_eskf::linalg::Vector<backend_type, 2> m_position_reset_delta{};
-    vector3_type m_velocity_reset_delta{};
-    std::uint64_t m_position_reset_time{}, m_velocity_reset_time{};
-    uint8_t m_position_reset_counter{}, m_velocity_reset_counter{}, m_vertical_velocity_reset_counter{},
-        m_odometry_reset_counter{};
-    double m_vertical_velocity_reset_delta{};
-    uint64_t m_vertical_velocity_reset_time{};
     sensor_gps_s m_gps{};
     vehicle_magnetometer_s m_mag{};
     vehicle_air_data_s m_baro{};

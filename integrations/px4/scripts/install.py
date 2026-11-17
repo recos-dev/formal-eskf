@@ -22,7 +22,6 @@ MODULE_FILES = (
     "DeploymentConfig.hpp",
     "MagneticModel.hpp", "HeightAiding.hpp", "InnovationRatio.hpp",
     "ImuPrediction.hpp", "ImuHistory.hpp", "OutputPredictor.hpp", "ObservationHistory.hpp", "Kconfig", "formal_eskf_params.c",
-    "tests/ModuleTest.cpp",
 )
 HEADER_SUFFIXES = (".h", ".hpp", ".hxx", ".inl", ".tpp")
 
@@ -44,43 +43,53 @@ def owned_path(NAME):
     return NAME
 
 
-def source_package(CONFIG=None):
-    """Use exported bytes when available; otherwise collect the repository sources."""
+def load_exported_package():
+    """Validate an export before using its payload or host patch."""
     PATCH = (SCRIPT_DIR / "px4-v1.16.2.patch").read_bytes()
-    if (SCRIPT_DIR / "manifest.json").exists():
-        if CONFIG is not None:
-            raise ValueError("Configure the package in the source repository before export")
-        MANIFEST = json.loads((SCRIPT_DIR / "manifest.json").read_text())
-        if MANIFEST["schema_version"] != 1 or MANIFEST["px4_commit"] != PX4_COMMIT:
-            raise ValueError("Unsupported package version or PX4 revision")
-        FILES = {owned_path(NAME): (SCRIPT_DIR / "overlay" / NAME).read_bytes()
-                 for NAME in MANIFEST["files"]}
-        if any(digest(DATA) != MANIFEST["files"][NAME] for NAME, DATA in FILES.items()):
-            raise ValueError("Exported package content does not match its manifest")
-        if digest(PATCH) != MANIFEST["patch_sha256"]:
-            raise ValueError("Exported PX4 patch does not match its manifest")
-        return MANIFEST, FILES, PATCH
+    MANIFEST = json.loads((SCRIPT_DIR / "manifest.json").read_text())
+    if MANIFEST["schema_version"] != 1 or MANIFEST["px4_commit"] != PX4_COMMIT:
+        raise ValueError("Unsupported package version or PX4 revision")
+    FILES = {owned_path(NAME): (SCRIPT_DIR / "overlay" / NAME).read_bytes()
+             for NAME in MANIFEST["files"]}
+    if any(digest(DATA) != MANIFEST["files"][NAME] for NAME, DATA in FILES.items()):
+        raise ValueError("Exported package content does not match its manifest")
+    if digest(PATCH) != MANIFEST["patch_sha256"]:
+        raise ValueError("Exported PX4 patch does not match its manifest")
+    return MANIFEST, FILES, PATCH
 
-    REPO = SCRIPT_DIR.parents[1]
-    FILES = {f"{MODULE}/{NAME}": (SCRIPT_DIR / "module" / NAME).read_bytes() for NAME in MODULE_FILES}
+
+def configure_module(REPO_DIR, CONFIG_DATA):
+    """Generate a deployment header from a stable snapshot of the selected config."""
+    with tempfile.TemporaryDirectory(prefix="formal-eskf-config-") as TEMP:
+        SNAPSHOT = Path(TEMP) / ".config"
+        SNAPSHOT.write_bytes(CONFIG_DATA)
+        RESULT = subprocess.run(
+            [sys.executable, str(REPO_DIR / "scripts/configure.py"), "px4-header", "--config", str(SNAPSHOT)],
+            capture_output=True,
+        )
+    if RESULT.returncode:
+        raise ValueError(RESULT.stderr.decode().strip())
+    return RESULT.stdout
+
+
+def collect_sources(CONFIG):
+    """Map repository sources to their installed PX4 paths."""
+    INTEGRATION_DIR = SCRIPT_DIR.parent
+    REPO_DIR = INTEGRATION_DIR.parents[1]
+    PATCH = (INTEGRATION_DIR / "patches/px4-v1.16.2.patch").read_bytes()
+    FILES = {f"{MODULE}/{NAME}": (INTEGRATION_DIR / "module" / NAME).read_bytes() for NAME in MODULE_FILES}
+    FILES[f"{MODULE}/tests/ModuleTest.cpp"] = (INTEGRATION_DIR / "tests/ModuleTest.cpp").read_bytes()
     if CONFIG is not None:
         CONFIG_DATA = CONFIG.read_bytes()
-        with tempfile.TemporaryDirectory(prefix="formal-eskf-config-") as TEMP:
-            SNAPSHOT = Path(TEMP) / ".config"
-            SNAPSHOT.write_bytes(CONFIG_DATA)
-            RESULT = subprocess.run([sys.executable, str(REPO / "scripts/configure.py"), "px4-header",
-                                     "--config", str(SNAPSHOT)], capture_output=True)
-        if RESULT.returncode:
-            raise ValueError(RESULT.stderr.decode().strip())
-        FILES[f"{MODULE}/DeploymentConfig.hpp"] = RESULT.stdout
+        FILES[f"{MODULE}/DeploymentConfig.hpp"] = configure_module(REPO_DIR, CONFIG_DATA)
         FILES[f"{MODULE}/configuration.config"] = CONFIG_DATA
-    for FILE in sorted((REPO / "include/formal_eskf").rglob("*")):
+    for FILE in sorted((REPO_DIR / "include/formal_eskf").rglob("*")):
         if FILE.is_file() and FILE.suffix in HEADER_SUFFIXES and not FILE.name.startswith("."):
-            FILES[f"{MODULE}/core/include/{FILE.relative_to(REPO / 'include').as_posix()}"] = FILE.read_bytes()
-    FILES[f"{MODULE}/core/LICENSE"] = (REPO / "LICENSE").read_bytes()
-    FILES[BOARD] = (SCRIPT_DIR / "formal_eskf.px4board").read_bytes()
-    REVISION = git(REPO, "rev-parse", "HEAD")
-    STATUS = git(REPO, "status", "--porcelain")
+            FILES[f"{MODULE}/core/include/{FILE.relative_to(REPO_DIR / 'include').as_posix()}"] = FILE.read_bytes()
+    FILES[f"{MODULE}/core/LICENSE"] = (REPO_DIR / "LICENSE").read_bytes()
+    FILES[BOARD] = (INTEGRATION_DIR / "configs/formal_eskf.px4board").read_bytes()
+    REVISION = git(REPO_DIR, "rev-parse", "HEAD")
+    STATUS = git(REPO_DIR, "status", "--porcelain")
     MANIFEST = {
         "schema_version": 1,
         "px4_commit": PX4_COMMIT,
@@ -90,6 +99,14 @@ def source_package(CONFIG=None):
         "files": {NAME: digest(DATA) for NAME, DATA in sorted(FILES.items())},
     }
     return MANIFEST, FILES, PATCH
+
+
+def source_package(CONFIG=None):
+    if (SCRIPT_DIR / "manifest.json").exists():
+        if CONFIG is not None:
+            raise ValueError("Configure the package in the source repository before export")
+        return load_exported_package()
+    return collect_sources(CONFIG)
 
 
 def json_bytes(VALUE):
@@ -110,7 +127,7 @@ def export_package(OUTPUT, MANIFEST, FILES, PATCH):
         "Self-contained formal-eskf PX4 package\n\n"
         "Requires PX4 v1.16.2 at " + PX4_COMMIT + ".\n"
         "Install: python3 install.py --px4 /path/to/PX4-Autopilot\n"
-        "Build: make -C /path/to/PX4-Autopilot px4_sitl_formal_eskf -j8\n"
+        "Build: make -C /path/to/PX4-Autopilot px4_sitl_formal_eskf -j2\n"
         "The original formal-eskf checkout is not required.\n"
     )
     print(f"Exported {len(FILES)} files to {OUTPUT}")
@@ -128,7 +145,7 @@ def destination(PX4, NAME):
     return DEST
 
 
-def install_package(PX4, MANIFEST, FILES, PATCH, CHECK):
+def validate_checkout(PX4):
     TOP = git(PX4, "rev-parse", "--show-toplevel")
     HEAD = git(PX4, "rev-parse", "HEAD")
     if TOP.returncode or Path(TOP.stdout.decode().strip()).resolve() != PX4:
@@ -136,6 +153,9 @@ def install_package(PX4, MANIFEST, FILES, PATCH, CHECK):
     if HEAD.stdout.decode().strip() != PX4_COMMIT:
         raise ValueError(f"PX4 must be at {PX4_COMMIT}; existing work was preserved")
 
+
+def check_owned_files(PX4, MANIFEST, FILES):
+    """Preflight every managed destination before any mutation."""
     MARKER = destination(PX4, RECEIPT)
     PREVIOUS = json.loads(MARKER.read_text()) if MARKER.exists() else {"files": {}}
     OLD_FILES = {owned_path(NAME): HASH for NAME, HASH in PREVIOUS["files"].items()}
@@ -151,11 +171,22 @@ def install_package(PX4, MANIFEST, FILES, PATCH, CHECK):
         if FILE.is_symlink() or (FILE.is_file() and NAME not in FILES and NAME not in OLD_FILES and NAME != RECEIPT):
             raise ValueError(f"Unmanaged file in module: {FILE}")
 
+    return MARKER, PREVIOUS, OLD_FILES
+
+
+def check_patch(PX4, PATCH):
     APPLIED = git(PX4, "apply", "--reverse", "--check", "-", INPUT=PATCH).returncode == 0
     if not APPLIED:
         RESULT = git(PX4, "apply", "--check", "-", INPUT=PATCH)
         if RESULT.returncode:
             raise ValueError("PX4 host patch conflicts; existing work was preserved:\n" + RESULT.stderr.decode())
+    return APPLIED
+
+
+def install_package(PX4, MANIFEST, FILES, PATCH, CHECK):
+    validate_checkout(PX4)
+    MARKER, PREVIOUS, OLD_FILES = check_owned_files(PX4, MANIFEST, FILES)
+    APPLIED = check_patch(PX4, PATCH)
     if CHECK:
         MATCHES = MARKER.exists() and PREVIOUS == MANIFEST and APPLIED
         MATCHES = MATCHES and all((PX4 / NAME).is_file() and digest((PX4 / NAME).read_bytes()) == HASH
@@ -178,7 +209,7 @@ def install_package(PX4, MANIFEST, FILES, PATCH, CHECK):
             DEST.write_bytes(DATA)
     MARKER.write_bytes(json_bytes(MANIFEST))
     print(f"Installed {len(FILES)} files into {PX4}")
-    print(f"Build: make -C {PX4} px4_sitl_formal_eskf -j8")
+    print(f"Build: make -C {PX4} px4_sitl_formal_eskf -j2")
 
 
 def main():

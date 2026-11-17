@@ -2,6 +2,7 @@
 """Independently check logged SIH truth against estimator and flight state."""
 import argparse
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib
@@ -24,7 +25,67 @@ def rms(VECTOR):
     return float(np.sqrt(np.mean(np.sum(VECTOR**2, axis=1))))
 
 
-def analyze(DIRECTORY):
+@dataclass
+class Comparison:
+    """Time-aligned estimates and independent truth used by the flight plot."""
+    start_us: int
+    position_time: np.ndarray
+    true_position: np.ndarray
+    estimated_position: np.ndarray
+    position_error: np.ndarray
+    attitude_time: np.ndarray
+    attitude_error_deg: np.ndarray
+
+
+def plot_comparison(DIRECTORY, REPORT, COMPARISON):
+    FIG, AXES = plt.subplots(2, 2, figsize=(12, 8), constrained_layout=True)
+    AXES[0, 0].plot(COMPARISON.true_position[:, 1], COMPARISON.true_position[:, 0], label="SIH truth")
+    AXES[0, 0].plot(COMPARISON.estimated_position[:, 1], COMPARISON.estimated_position[:, 0], label="formal-eskf", alpha=.8)
+    AXES[0, 0].set(xlabel="East (m)", ylabel="North (m)", title="Closed-loop square flight", aspect="equal")
+    AXES[0, 0].legend()
+    SECONDS = (COMPARISON.position_time - COMPARISON.start_us) * 1e-6
+    AXES[0, 1].plot(SECONDS, -COMPARISON.true_position[:, 2], label="SIH truth")
+    AXES[0, 1].plot(SECONDS, -COMPARISON.estimated_position[:, 2], label="formal-eskf", alpha=.8)
+    AXES[0, 1].set(xlabel="Airborne time (s)", ylabel="Height (m)", title="Takeoff, hover, auto-land")
+    AXES[0, 1].legend()
+    for AXIS, NAME in enumerate(["North", "East", "Down"]):
+        AXES[1, 0].plot(SECONDS, COMPARISON.position_error[:, AXIS], label=NAME)
+    AXES[1, 0].set(xlabel="Airborne time (s)", ylabel="Estimate - truth (m)", title="Position estimation error")
+    AXES[1, 0].legend()
+    AXES[1, 1].plot((COMPARISON.attitude_time - COMPARISON.start_us) * 1e-6, COMPARISON.attitude_error_deg)
+    AXES[1, 1].set(xlabel="Airborne time (s)", ylabel="Quaternion angle error (deg)", title="Attitude estimation error")
+    for AX in AXES.flat:
+        AX.grid(alpha=.3)
+    FIG.suptitle(f"formal-eskf replaces EKF2 | PX4 SIH | {REPORT['result'].upper()}")
+    FIG.savefig(DIRECTORY / "flight.png", dpi=160)
+    plt.close(FIG)
+
+
+def acceptance_checks(FLIGHT, LOG, VALUES, FINITE, COVARIANCE_DIAGONALS, FAULT_FLAGS, FAILSAFE):
+    """Fixed SIH acceptance criteria; do not tune them to make a run pass."""
+    return {
+        "normal_arm_and_all_waypoints": len(FLIGHT["phases"]) == 5 and FLIGHT["normal_arming"],
+        "no_ekf2_output": not any(DATASET.name in ("ekf2_timestamps", "estimator_selector_status") for DATASET in LOG.data_list),
+        "finite_state": FINITE,
+        "finite_nonnegative_published_variances": bool(COVARIANCE_DIAGONALS.size > 0 and np.isfinite(COVARIANCE_DIAGONALS).all() and (COVARIANCE_DIAGONALS >= 0).all()),
+        "airborne_at_least_50_s": VALUES["airborne_duration_s"] >= 50.,
+        "reached_5_m": 4. <= VALUES["max_truth_height_m"] <= 7.,
+        "flew_north_and_east": VALUES["truth_north_span_m"] >= 6. and VALUES["truth_east_span_m"] >= 6.,
+        "position_rmse_below_1_5_m": VALUES["position_3d_rmse_m"] < 1.5,
+        "velocity_rmse_below_0_5_m_s": VALUES["velocity_3d_rmse_m_s"] < 0.5,
+        "attitude_rmse_below_5_deg": VALUES["attitude_rmse_deg"] < 5.,
+        "attitude_max_below_15_deg": VALUES["attitude_max_error_deg"] < 15.,
+        "unit_quaternion": VALUES["quaternion_max_norm_error"] < 1e-5,
+        "valid_estimate_through_flight": VALUES["valid_estimate_fraction"] > 0.99,
+        "no_numerical_fault_flags": bool((FAULT_FLAGS == 0).all()),
+        "no_failsafe_in_air": bool((FAILSAFE == 0).all()),
+        "landed_near_ground": abs(VALUES["final_truth_height_m"]) < 0.5,
+        "auto_disarmed": any("automatically disarmed" in EVENT["event"] for EVENT in FLIGHT["events"]),
+        "ulog_dropout_below_1_percent": VALUES["ulog_dropout_total_s"] < 0.01 * VALUES["airborne_duration_s"],
+    }
+
+
+def load_flight(DIRECTORY):
     FLIGHT = json.loads((DIRECTORY / "flight.json").read_text())
     if FLIGHT["result"] != "flight_pass_pending_ulog_analysis":
         raise RuntimeError("Live flight checks did not pass")
@@ -32,6 +93,11 @@ def analyze(DIRECTORY):
     if len(PATHS) != 1:
         raise RuntimeError(f"Expected one ULog, found {len(PATHS)}")
     LOG = ULog(str(PATHS[0]))
+    return FLIGHT, LOG, PATHS[0]
+
+
+def analyze(DIRECTORY):
+    FLIGHT, LOG, LOG_PATH = load_flight(DIRECTORY)
     LOCAL = LOG.get_dataset("vehicle_local_position").data
     TRUTH = LOG.get_dataset("vehicle_local_position_groundtruth").data
     ATTITUDE = LOG.get_dataset("vehicle_attitude").data
@@ -102,51 +168,16 @@ def analyze(DIRECTORY):
         "origin_translation_to_truth_ned_m": ORIGIN_OFFSET.tolist(),
         "logged_topics": sorted({DATASET.name for DATASET in LOG.data_list}),
     }
-    CHECKS = {
-        "normal_arm_and_all_waypoints": len(FLIGHT["phases"]) == 5 and FLIGHT["normal_arming"],
-        "no_ekf2_output": not any(DATASET.name in ("ekf2_timestamps", "estimator_selector_status") for DATASET in LOG.data_list),
-        "finite_state": FINITE,
-        "finite_nonnegative_published_variances": bool(COVARIANCE_DIAGONALS.size > 0 and np.isfinite(COVARIANCE_DIAGONALS).all() and (COVARIANCE_DIAGONALS >= 0).all()),
-        "airborne_at_least_50_s": VALUES["airborne_duration_s"] >= 50.,
-        "reached_5_m": 4. <= VALUES["max_truth_height_m"] <= 7.,
-        "flew_north_and_east": VALUES["truth_north_span_m"] >= 6. and VALUES["truth_east_span_m"] >= 6.,
-        "position_rmse_below_1_5_m": VALUES["position_3d_rmse_m"] < 1.5,
-        "velocity_rmse_below_0_5_m_s": VALUES["velocity_3d_rmse_m_s"] < 0.5,
-        "attitude_rmse_below_5_deg": VALUES["attitude_rmse_deg"] < 5.,
-        "attitude_max_below_15_deg": VALUES["attitude_max_error_deg"] < 15.,
-        "unit_quaternion": VALUES["quaternion_max_norm_error"] < 1e-5,
-        "valid_estimate_through_flight": VALUES["valid_estimate_fraction"] > 0.99,
-        "no_numerical_fault_flags": bool((ESTIMATOR["filter_fault_flags"][EMASK] == 0).all()),
-        "no_failsafe_in_air": bool((STATUS["failsafe"][SMASK] == 0).all()),
-        "landed_near_ground": abs(VALUES["final_truth_height_m"]) < 0.5,
-        "auto_disarmed": any("automatically disarmed" in EVENT["event"] for EVENT in FLIGHT["events"]),
-        "ulog_dropout_below_1_percent": VALUES["ulog_dropout_total_s"] < 0.01 * VALUES["airborne_duration_s"],
-    }
+    CHECKS = acceptance_checks(FLIGHT, LOG, VALUES, FINITE, COVARIANCE_DIAGONALS,
+                               ESTIMATOR["filter_fault_flags"][EMASK], STATUS["failsafe"][SMASK])
     REPORT = {"result": "pass" if all(CHECKS.values()) else "fail", "checks": CHECKS, "metrics": VALUES,
-              "ulog": str(PATHS[0].relative_to(DIRECTORY)),
+              "ulog": str(LOG_PATH.relative_to(DIRECTORY)),
               "scope": "PX4 v1.16.2 SIH quadx, default simulated sensor noise, single IMU/GNSS/magnetometer/barometer. No hardware or fault-tolerance qualification."}
     (DIRECTORY / "analysis.json").write_text(json.dumps(REPORT, indent=2, allow_nan=False))
-    FIG, AXES = plt.subplots(2, 2, figsize=(12, 8), constrained_layout=True)
-    AXES[0, 0].plot(P_TRUE[:, 1], P_TRUE[:, 0], label="SIH truth")
-    AXES[0, 0].plot(P_EST_IN_TRUTH_FRAME[:, 1], P_EST_IN_TRUTH_FRAME[:, 0], label="formal-eskf", alpha=.8)
-    AXES[0, 0].set(xlabel="East (m)", ylabel="North (m)", title="Closed-loop square flight", aspect="equal")
-    AXES[0, 0].legend()
-    SECONDS = (T - START) * 1e-6
-    AXES[0, 1].plot(SECONDS, -P_TRUE[:, 2], label="SIH truth")
-    AXES[0, 1].plot(SECONDS, -P_EST_IN_TRUTH_FRAME[:, 2], label="formal-eskf", alpha=.8)
-    AXES[0, 1].set(xlabel="Airborne time (s)", ylabel="Height (m)", title="Takeoff, hover, auto-land")
-    AXES[0, 1].legend()
-    for AXIS, NAME in enumerate(["North", "East", "Down"]):
-        AXES[1, 0].plot(SECONDS, POSITION_ERROR[:, AXIS], label=NAME)
-    AXES[1, 0].set(xlabel="Airborne time (s)", ylabel="Estimate - truth (m)", title="Position estimation error")
-    AXES[1, 0].legend()
-    AXES[1, 1].plot((QT[QMASK] - START) * 1e-6, ANGLE_ERROR)
-    AXES[1, 1].set(xlabel="Airborne time (s)", ylabel="Quaternion angle error (deg)", title="Attitude estimation error")
-    for AX in AXES.flat:
-        AX.grid(alpha=.3)
-    FIG.suptitle(f"formal-eskf replaces EKF2 | PX4 SIH | {REPORT['result'].upper()}")
-    FIG.savefig(DIRECTORY / "flight.png", dpi=160)
-    plt.close(FIG)
+    plot_comparison(DIRECTORY, REPORT, Comparison(
+        start_us=START, position_time=T, true_position=P_TRUE, estimated_position=P_EST_IN_TRUTH_FRAME,
+        position_error=POSITION_ERROR, attitude_time=QT[QMASK], attitude_error_deg=ANGLE_ERROR,
+    ))
     print(json.dumps({"result": REPORT["result"], "checks": CHECKS,
                       "metrics": {KEY: VALUE for KEY, VALUE in VALUES.items() if KEY != "logged_topics"}}, indent=2))
     return all(CHECKS.values())

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause
-#include "../FormalEskf.hpp"
+#include "FormalEskf.hpp"
 
 #include <array>
 #include <atomic>
@@ -269,7 +269,7 @@ public:
                      static_cast<unsigned long long>(m_filter.m_time_us), m_filter.m_initialized, m_filter.m_fault,
                      m_filter.m_initialization.imu_samples, m_filter.m_initialization.magnetic_samples,
                      m_filter.m_predictions, m_filter.m_rejections, m_filter.m_errors, m_filter.m_gaps,
-                     m_filter.m_position_reset_counter, m_filter.m_velocity_reset_counter);
+                     m_filter.m_resets.position_count, m_filter.m_resets.velocity_count);
         std::array<double, 16U + 225U> values{};
         auto const & state = m_filter.m_state;
         for (std::size_t i = 0; i < 3U; ++i)
@@ -300,7 +300,7 @@ public:
         std::fprintf(trace_file, "magnetic %u %u %u %u %u %u %u %u %u %llu %llu %llu %llu %llu %llu\n",
                      unsigned(magnetic.active), unsigned(magnetic.action), unsigned(magnetic.stop_reason),
                      unsigned(magnetic.recovery_reason), unsigned(m_filter.m_heading_aligned),
-                     unsigned(m_filter.m_quaternion_reset_counter), m_filter.m_odometry_reset_counter,
+                     unsigned(m_filter.m_resets.attitude_count), m_filter.m_resets.odometry_count,
                      m_filter.m_magnetic.corrections, unsigned(observation.fusion.decision),
                      static_cast<unsigned long long>(m_filter.m_magnetic.sample_time_us),
                      static_cast<unsigned long long>(magnetic.start_time_us),
@@ -313,7 +313,7 @@ public:
                                                formal_eskf::linalg::max_abs(observation.fusion.test_ratio)};
         for (std::size_t i = 0U; i < 4U; ++i)
         {
-            magnetic_values[4U + i] = m_filter.m_quaternion_reset_delta.coefficients()(i);
+            magnetic_values[4U + i] = m_filter.m_resets.attitude_delta.coefficients()(i);
         }
         trace_bytes(magnetic_values.data(), sizeof(magnetic_values));
         auto const & gnss = m_filter.m_gnss.lifecycle.state();
@@ -327,7 +327,7 @@ public:
         }
         std::fprintf(trace_file, "navigation %u %u %u %u %u %llu %llu\n", m_filter.m_gnss.corrections,
                      m_filter.m_baro_updates, unsigned(m_filter.m_height_aiding.reference()),
-                     unsigned(m_filter.m_height_reset_counter), unsigned(m_filter.m_vertical_velocity_reset_counter),
+                     unsigned(m_filter.m_resets.height_count), unsigned(m_filter.m_resets.vertical_velocity_count),
                      static_cast<unsigned long long>(m_filter.m_gnss.sample_time_us),
                      static_cast<unsigned long long>(m_filter.m_height_aiding.progress_time()));
         std::array<double, 9U> navigation_values{
@@ -337,8 +337,8 @@ public:
             m_filter.m_gnss.velocity_test_ratios(2),
             m_filter.m_height_aiding.session(FormalEskf::height_type::Source::barometer).fusion.test_ratio(0),
             m_filter.m_height_aiding.session(FormalEskf::height_type::Source::gnss).fusion.test_ratio(0),
-            m_filter.m_height_reset_delta,
-            m_filter.m_vertical_velocity_reset_delta,
+            m_filter.m_resets.height_delta,
+            m_filter.m_resets.vertical_velocity_delta,
             m_filter.m_gnss.previous_altitude};
         trace_bytes(navigation_values.data(), sizeof(navigation_values));
         for (auto source : {FormalEskf::height_type::Source::barometer, FormalEskf::height_type::Source::gnss})
@@ -440,7 +440,7 @@ public:
         test.prepare_navigation();
         test.navigation_tick();
         auto & f = test.m_filter;
-        expect(f.m_position_reset_counter == 1U && f.m_velocity_reset_counter == 1U && f.m_height_reset_counter == 1U &&
+        expect(f.m_resets.position_count == 1U && f.m_resets.velocity_count == 1U && f.m_resets.height_count == 1U &&
                    f.m_gnss.corrections == 0U,
                "first qualified sample resets three groups without counting correction");
         f.m_covariance = FormalEskf::covariance_type::identity();
@@ -554,18 +554,18 @@ public:
         FormalEskfModuleTest test;
         test.start_navigation();
         auto & f = test.m_filter;
-        auto const resets = f.m_height_reset_counter;
+        auto const resets = f.m_resets.height_count;
         test.navigation_tick(false, true, 999999U);
         expect(f.m_height_aiding.reference() == FormalEskf::height_type::Source::gnss, "height data grace");
         test.navigation_tick(false, true, 1U);
         expect(f.m_height_aiding.reference() == FormalEskf::height_type::Source::barometer &&
-                   f.m_height_reset_counter == resets,
+                   f.m_resets.height_count == resets,
                "fallback switches reference without reset");
         test.navigation_tick(false, true, 6000001U);
         expect(!f.m_gnss.lifecycle.state().velocity.active && !f.gps_velocity_valid(), "seven-second GNSS stop");
         f.m_gps.altitude_msl_m += 5.;
         test.navigation_tick();
-        expect(!f.m_fault && f.m_height_reset_counter == std::uint8_t(resets + 1U) &&
+        expect(!f.m_fault && f.m_resets.height_count == std::uint8_t(resets + 1U) &&
                    f.m_height_aiding.reference() == FormalEskf::height_type::Source::gnss,
                "returning qualified GNSS reclaims height with real reset");
     }
@@ -579,8 +579,8 @@ public:
             test.navigation_tick();
         }
         auto & f = test.m_filter;
-        auto const velocity_resets = f.m_velocity_reset_counter;
-        auto const position_resets = f.m_position_reset_counter;
+        auto const velocity_resets = f.m_resets.velocity_count;
+        auto const position_resets = f.m_resets.position_count;
         auto const corrections = f.m_gnss.corrections;
         // Fault injection after metadata qualification: exercise partial failure of
         // the second operation, not external-coordinate admission.
@@ -589,8 +589,8 @@ public:
         test.navigation_tick();
         expect(f.m_fault && f.m_errors == 1U && f.m_state.v_n(0) > 0.,
                "position failure preserves preceding velocity result and faults once");
-        expect(f.m_position_reset_counter == position_resets &&
-                   f.m_velocity_reset_counter == velocity_resets + unsigned(reset) &&
+        expect(f.m_resets.position_count == position_resets &&
+                   f.m_resets.velocity_count == velocity_resets + unsigned(reset) &&
                    f.m_gnss.corrections == corrections + unsigned(!reset),
                "only the completed velocity operation receives success bookkeeping");
     }
@@ -668,7 +668,7 @@ public:
         auto const covariance = f.m_covariance;
         auto const progress = f.m_height_aiding.progress_time();
         auto const bias = f.m_height_aiding.session(FormalEskf::height_type::Source::barometer).bias.value;
-        auto const resets = f.m_height_reset_counter;
+        auto const resets = f.m_resets.height_count;
         clock_us += 20000U;
         f.m_time_us = clock_us;
         f.m_gnss.sample = {clock_us, formal_eskf::runtime::GnssQualityDecision::accepted};
@@ -681,7 +681,7 @@ public:
         test.select_navigation_inputs();
         f.fuse_height();
         expect(f.m_fault && f.m_errors == 1U && f.m_height_aiding.progress_time() == progress &&
-                   f.m_height_reset_counter == resets &&
+                   f.m_resets.height_count == resets &&
                    f.m_height_aiding.session(FormalEskf::height_type::Source::barometer).bias.value == bias &&
                    formal_eskf::linalg::max_abs(f.m_state.p_n - prior.p_n) == 0. &&
                    f.m_covariance(2, 2) == covariance(2, 2),
@@ -714,8 +714,8 @@ public:
         FormalEskfModuleTest test;
         test.start_navigation();
         auto & f = test.m_filter;
-        auto const position_resets = f.m_position_reset_counter;
-        auto const velocity_resets = f.m_velocity_reset_counter;
+        auto const position_resets = f.m_resets.position_count;
+        auto const velocity_resets = f.m_resets.velocity_count;
         f.m_gps.vel_n_m_s = 100.f;
         f.m_gps.latitude_deg += 0.01;
         for (unsigned i = 0U; i < 350U; ++i)
@@ -724,11 +724,11 @@ public:
         }
         expect(f.m_gnss.position_rejected && f.m_gnss.velocity_rejected,
                "rejected production navigation records actual decisions");
-        expect(f.m_position_reset_counter == position_resets && f.m_velocity_reset_counter == velocity_resets,
+        expect(f.m_resets.position_count == position_resets && f.m_resets.velocity_count == velocity_resets,
                "coupled timeout is strict at seven seconds");
         test.navigation_tick();
-        expect(!f.m_fault && f.m_position_reset_counter == position_resets + 1U &&
-                   f.m_velocity_reset_counter == velocity_resets + 1U,
+        expect(!f.m_fault && f.m_resets.position_count == position_resets + 1U &&
+                   f.m_resets.velocity_count == velocity_resets + 1U,
                "both horizontal decisions survive velocity-first reset feedback");
         expect(!f.m_gnss.position_rejected && !f.m_gnss.velocity_rejected,
                "successful resets clear prior navigation rejection diagnostics");
@@ -750,14 +750,14 @@ public:
             test.navigation_tick(false);
         }
         auto const position = f.m_state.p_n(2);
-        auto const height_resets = f.m_height_reset_counter;
-        auto const vertical_resets = f.m_vertical_velocity_reset_counter;
+        auto const height_resets = f.m_resets.height_count;
+        auto const vertical_resets = f.m_resets.vertical_velocity_count;
         f.m_gps.altitude_msl_m += 3.;
         f.m_gnss.quality_result.decision = formal_eskf::runtime::GnssQualityDecision::accepted;
         test.navigation_tick();
-        expect(!f.m_fault && f.m_height_reset_counter == std::uint8_t(height_resets + 2U) &&
-                   std::abs(f.m_height_reset_delta - (-3. - position)) < 1e-12 &&
-                   f.m_vertical_velocity_reset_counter == std::uint8_t(vertical_resets + 1U),
+        expect(!f.m_fault && f.m_resets.height_count == std::uint8_t(height_resets + 2U) &&
+                   std::abs(f.m_resets.height_delta - (-3. - position)) < 1e-12 &&
+                   f.m_resets.vertical_velocity_count == std::uint8_t(vertical_resets + 1U),
                "pre-height Down reset and two height resets retain distinct counters and aggregate height delta");
     }
 
@@ -796,15 +796,15 @@ public:
         f.m_state.v_n = FormalEskf::vector3(-4., -5., -6.);
         f.m_state.b_a = FormalEskf::vector3(0.01, 0.02, 0.03);
         f.m_state.b_g = FormalEskf::vector3(0.04, 0.05, 0.06);
-        f.m_position_reset_delta = FormalEskf::vector2_type::from_row_major({0.1, 0.2});
-        f.m_velocity_reset_delta = FormalEskf::vector3(0.3, 0.4, 0.5);
-        f.m_height_reset_delta = -0.6;
-        f.m_vertical_velocity_reset_delta = 0.7;
-        f.m_position_reset_counter = 253U;
-        f.m_height_reset_counter = 254U;
-        f.m_velocity_reset_counter = 255U;
-        f.m_vertical_velocity_reset_counter = 252U;
-        f.m_odometry_reset_counter = 251U;
+        f.m_resets.position_delta = FormalEskf::vector2_type::from_row_major({0.1, 0.2});
+        f.m_resets.velocity_delta = FormalEskf::vector3(0.3, 0.4, 0.5);
+        f.m_resets.height_delta = -0.6;
+        f.m_resets.vertical_velocity_delta = 0.7;
+        f.m_resets.position_count = 253U;
+        f.m_resets.height_count = 254U;
+        f.m_resets.velocity_count = 255U;
+        f.m_resets.vertical_velocity_count = 252U;
+        f.m_resets.odometry_count = 251U;
         f.m_fault = fault;
         f.m_last_output = f.m_output.current().time_us - 10000U;
         if (stale)
@@ -1168,10 +1168,10 @@ public:
                "data timeout preserves progress and clears only unaided heading alignment");
         test.magnetic_outputs();
         test.magnetic_tick();
-        expect(!filter.m_fault && filter.m_quaternion_reset_counter == (aided ? 0U : 1U) &&
+        expect(!filter.m_fault && filter.m_resets.attitude_count == (aided ? 0U : 1U) &&
                    filter.m_magnetic.corrections == (aided ? 2U : 1U),
                "returning data resumes aided fusion or performs one unaided heading reset");
-        expect(filter.m_odometry_reset_counter == filter.m_quaternion_reset_counter,
+        expect(filter.m_resets.odometry_count == filter.m_resets.attitude_count,
                "heading reset reaches odometry bookkeeping exactly once");
         test.magnetic_outputs();
         test.magnetic_tick();
@@ -1282,7 +1282,7 @@ public:
         bool const reset = scenario == MagneticSourceCase::ground || scenario == MagneticSourceCase::unaided_air ||
                            scenario == MagneticSourceCase::land_overrides_arming;
         bool const pending = scenario == MagneticSourceCase::unknown;
-        expect(!filter.m_fault && filter.m_quaternion_reset_counter == (reset ? 1U : 0U) &&
+        expect(!filter.m_fault && filter.m_resets.attitude_count == (reset ? 1U : 0U) &&
                    filter.m_magnetic.corrections == ((!reset && !pending) ? 2U : 1U),
                "source recovery uses ground/air/unknown context with fresh land overriding arming");
         if (reset)
@@ -1344,7 +1344,7 @@ public:
         {
             test.magnetic_tick();
         }
-        expect(!filter.m_fault && filter.m_quaternion_reset_counter == (disturbance ? 0U : 1U),
+        expect(!filter.m_fault && filter.m_resets.attitude_count == (disturbance ? 0U : 1U),
                "overdue fusion resets only while the field is qualified");
         if (disturbance)
         {
@@ -1356,10 +1356,10 @@ public:
             {
                 test.magnetic_tick();
             }
-            expect(filter.m_quaternion_reset_counter == 1U,
+            expect(filter.m_resets.attitude_count == 1U,
                    "returning horizontal aiding does not bypass lost heading alignment");
         }
-        expect(filter.m_heading_aligned && filter.m_odometry_reset_counter == 1U,
+        expect(filter.m_heading_aligned && filter.m_resets.odometry_count == 1U,
                "successful heading reset restores alignment and notifies odometry");
         test.magnetic_outputs();
     }
@@ -1383,7 +1383,7 @@ public:
         test.magnetic_tick();
         using Recovery = formal_eskf::runtime::MagnetometerFusion::RecoveryReason;
         expect(filter.m_fault && filter.m_errors == 1U && filter.m_magnetic.corrections == 1U &&
-                   filter.m_quaternion_reset_counter == 0U && same_bits(before, filter.m_covariance),
+                   filter.m_resets.attitude_count == 0U && same_bits(before, filter.m_covariance),
                "numerical failure preserves estimate and success counters, recording one fault");
         expect(filter.m_magnetic.lifecycle.state().recovery_reason ==
                    (reset ? Recovery::reset_failed : Recovery::fusion_failed),
@@ -1413,7 +1413,7 @@ public:
         {
             test.magnetic_tick();
         }
-        expect(filter.m_magnetic.corrections == updates && filter.m_quaternion_reset_counter == 0U,
+        expect(filter.m_magnetic.corrections == updates && filter.m_resets.attitude_count == 0U,
                "small innovation without excitation cannot restore heading consistency");
         for (unsigned i = 0U; i < 200U; ++i)
         {
@@ -1471,7 +1471,7 @@ public:
         expect(filter.m_magnetic_model.update(clock_us + 10000U, model, true, true).changed,
                "adopt a changed reference before magnetic control");
         test.magnetic_tick();
-        expect(!filter.m_fault && filter.m_quaternion_reset_counter == (geographic ? 1U : 0U) &&
+        expect(!filter.m_fault && filter.m_resets.attitude_count == (geographic ? 1U : 0U) &&
                    filter.m_magnetic.corrections == (geographic ? 1U : 2U),
                "geographic revision resets resting heading; health-only revision retains correction reference");
         if (!geographic)
@@ -1481,7 +1481,7 @@ public:
                    "adopt independent health strength");
             auto const before = filter.m_covariance;
             test.magnetic_tick();
-            expect(filter.m_magnetic.corrections == 2U && filter.m_quaternion_reset_counter == 0U &&
+            expect(filter.m_magnetic.corrections == 2U && filter.m_resets.attitude_count == 0U &&
                        filter.m_magnetic.observation.field.failures.strength && same_bits(before, filter.m_covariance),
                    "independent health model can reject a seed-matching observation without resetting yaw");
         }
@@ -2173,29 +2173,29 @@ public:
         FormalEskf::quaternion_type yaw_delta;
         expect(formal_eskf::succeeded(formal_eskf::so3::exp(FormalEskf::vector3(0., 0., 0.7), 1e-6, yaw_delta)),
                "heading reset setup");
-        auto const positions = f.m_position_reset_counter;
-        auto const velocities = f.m_velocity_reset_counter;
-        auto const heights = f.m_height_reset_counter;
-        auto const vertical = f.m_vertical_velocity_reset_counter;
+        auto const positions = f.m_resets.position_count;
+        auto const velocities = f.m_resets.velocity_count;
+        auto const heights = f.m_resets.height_count;
+        auto const vertical = f.m_resets.vertical_velocity_count;
         // A prior translation in the same delayed step must not be hidden by the heading reset.
         auto const translation = FormalEskf::vector2_type::from_row_major({0.1, -0.2});
         auto const velocity = FormalEskf::vector3(-0.3, 0.4, 0.5);
-        f.record_position_reset(translation);
-        f.record_velocity_reset(velocity);
-        f.record_height_reset(0.6, 1);
-        f.record_vertical_velocity_reset(velocity(2));
+        f.m_resets.record_position(f.m_time_us, translation);
+        f.m_resets.record_velocity(f.m_time_us, velocity);
+        f.m_resets.record_height(f.m_time_us, 0.6, 1);
+        f.m_resets.record_vertical_velocity(f.m_time_us, velocity(2));
         expect(f.reset_output(yaw_delta, {}, {}), "attitude reset transforms output history");
         auto const after = f.body_output();
         auto const dp = after.position_n - body.position_n;
         auto const dv = after.velocity_n - body.velocity_n;
-        expect(f.m_position_reset_counter == std::uint8_t(positions + 2U) &&
-                   f.m_velocity_reset_counter == std::uint8_t(velocities + 2U) &&
-                   f.m_height_reset_counter == std::uint8_t(heights + 2U) &&
-                   f.m_vertical_velocity_reset_counter == std::uint8_t(vertical + 2U) &&
-                   std::abs(f.m_position_reset_delta(0) - translation(0) - dp(0)) < 1e-12 &&
-                   std::abs(f.m_velocity_reset_delta(1) - velocity(1) - dv(1)) < 1e-12 &&
-                   std::abs(f.m_height_reset_delta - 0.6 - dp(2)) < 1e-12 &&
-                   std::abs(f.m_vertical_velocity_reset_delta - velocity(2) - dv(2)) < 1e-12,
+        expect(f.m_resets.position_count == std::uint8_t(positions + 2U) &&
+                   f.m_resets.velocity_count == std::uint8_t(velocities + 2U) &&
+                   f.m_resets.height_count == std::uint8_t(heights + 2U) &&
+                   f.m_resets.vertical_velocity_count == std::uint8_t(vertical + 2U) &&
+                   std::abs(f.m_resets.position_delta(0) - translation(0) - dp(0)) < 1e-12 &&
+                   std::abs(f.m_resets.velocity_delta(1) - velocity(1) - dv(1)) < 1e-12 &&
+                   std::abs(f.m_resets.height_delta - 0.6 - dp(2)) < 1e-12 &&
+                   std::abs(f.m_resets.vertical_velocity_delta - velocity(2) - dv(2)) < 1e-12,
                "heading-induced body point changes accumulate with same-step translation reset notifications");
     }
 
@@ -2379,7 +2379,7 @@ public:
         FormalEskfModuleTest test;
         test.warmup();
         auto & f = test.m_filter;
-        auto const resets = f.m_quaternion_reset_counter;
+        auto const resets = f.m_resets.attitude_count;
         if (calibration_change)
         {
             ++test.m_mag_calibration;
@@ -2409,7 +2409,7 @@ public:
         expect(unavailable && alignment_lost && horizontal_retained && !f.m_fault,
                "real ground magnetic source/calibration replacement loses heading while GNSS remains valid");
         expect(!unsafe, "Commander heading veto must remain set throughout source replacement and realignment");
-        expect(f.m_quaternion_reset_counter > resets && f.output_validity(clock_us).magnetic &&
+        expect(f.m_resets.attitude_count > resets && f.output_validity(clock_us).magnetic &&
                    !status.pre_flt_fail_innov_heading,
                "successful magnetic realignment restores preflight readiness without changing GNSS fusion");
     }
@@ -2584,7 +2584,7 @@ public:
             f.m_state.p_n = FormalEskf::vector3(0., direction * 2000., 0.);
             expect(f.m_output.apply_reset({}, {}, f.m_state.p_n), "dateline output setup");
             auto const state_before = f.m_state;
-            auto const position_counter = f.m_position_reset_counter;
+            auto const position_counter = f.m_resets.position_count;
             double latitude{}, longitude{};
             f.m_origin.projection.reproject(f.m_state.p_n(0), f.m_state.p_n(1), latitude, longitude);
             expect(std::abs(longitude) > 180., "raw projection crosses the longitude convention boundary");
@@ -2606,7 +2606,7 @@ public:
             orb_copy(ORB_ID(vehicle_local_position), test.m_outputs[1], &local);
             expect(global.lat_lon_valid && global.lon >= -180. && global.lon < 180. &&
                        std::abs(global.lon - expected_longitude) < 1e-7 && local.ref_lon == direction * 179.999 &&
-                       double(local.y) * direction > 1900. && f.m_position_reset_counter == position_counter &&
+                       double(local.y) * direction > 1900. && f.m_resets.position_count == position_counter &&
                        same_bits(state_before.p_n, f.m_state.p_n),
                    "global longitude wraps without changing local origin, state or reset history");
         }
@@ -2655,9 +2655,9 @@ public:
         FormalEskfModuleTest test;
         test.warmup();
         auto & f = test.m_filter;
-        auto const counter = f.m_quaternion_reset_counter;
+        auto const counter = f.m_resets.attitude_count;
         f.m_heading_aligned = false;
-        for (unsigned i = 0; i < 20 && f.m_quaternion_reset_counter == counter; ++i)
+        for (unsigned i = 0; i < 20 && f.m_resets.attitude_count == counter; ++i)
         {
             test.m_sample.timestamp_sample += 4000;
             test.tick();
@@ -2668,8 +2668,8 @@ public:
         expect(formal_eskf::succeeded(FormalEskf::quaternion_type::from_coefficients(
                    attitude.q[0], attitude.q[1], attitude.q[2], attitude.q[3], 1e-6, before)),
                "fast-phase attitude is a valid pre-reset output");
-        auto const transformed = f.m_quaternion_reset_delta * before;
-        expect(!f.m_fault && f.m_quaternion_reset_counter == std::uint8_t(counter + 1) &&
+        auto const transformed = f.m_resets.attitude_delta * before;
+        expect(!f.m_fault && f.m_resets.attitude_count == std::uint8_t(counter + 1) &&
                    attitude.quat_reset_counter == counter &&
                    formal_eskf::linalg::norm(transformed.coefficients() - f.m_output.current().q_nb.coefficients()) <
                        1e-6,
@@ -2678,7 +2678,7 @@ public:
         test.tick();
         orb_copy(ORB_ID(vehicle_attitude), test.m_outputs[0], &attitude);
         expect(!f.m_fault && attitude.quat_reset_counter == std::uint8_t(counter + 1) &&
-                   f.m_quaternion_reset_counter == attitude.quat_reset_counter,
+                   f.m_resets.attitude_count == attitude.quat_reset_counter,
                "the next attitude carries the reset exactly once; ordinary feedback does not reset again");
     }
 
@@ -2755,11 +2755,11 @@ public:
         f.m_gnss.sample = {f.m_time_us, formal_eskf::runtime::GnssQualityDecision::accepted};
         auto const before = f.m_output.current();
         auto const main_before = f.m_state;
-        auto const position_counter = f.m_position_reset_counter;
-        auto const velocity_counter = f.m_velocity_reset_counter;
+        auto const position_counter = f.m_resets.position_count;
+        auto const velocity_counter = f.m_resets.velocity_count;
         f.fuse_gps({});
-        expect(!f.m_fault && f.m_position_reset_counter == std::uint8_t(position_counter + 1) &&
-                   f.m_velocity_reset_counter == std::uint8_t(velocity_counter + 1),
+        expect(!f.m_fault && f.m_resets.position_count == std::uint8_t(position_counter + 1) &&
+                   f.m_resets.velocity_count == std::uint8_t(velocity_counter + 1),
                "delayed GNSS reacquisition executes both production reset paths");
         expect(formal_eskf::linalg::norm((f.m_output.current().v_n - before.v_n) - (f.m_state.v_n - main_before.v_n)) <
                        1e-12 &&

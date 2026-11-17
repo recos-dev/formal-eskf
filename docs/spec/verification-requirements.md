@@ -2206,7 +2206,7 @@ unsupported metadata rejects the IMU and resets observation history. The shared
 sampler still supports unknown metadata for replay, where it blocks correction.
 Known clipping preserves an otherwise active mode while rejecting the sample.
 These module history boundaries are checked through production gravity and
-`Run()` paths in `integrations/px4/module/tests/ModuleTest.cpp`. Sampler cadence,
+`Run()` paths in `integrations/px4/tests/ModuleTest.cpp`. Sampler cadence,
 unknown metadata and failure preservation remain checked across native backends
 in `tests/test_accelerometer_sample.cpp`. Neither establishes a whole-tick
 transaction or closes the pending runtime Lean/ESBMC obligations.

@@ -57,7 +57,7 @@ FormalEskf::~FormalEskf()
     }
 }
 
-bool FormalEskf::load_startup_parameters()
+bool FormalEskf::load_timing_parameters()
 {
     formal_eskf::px4::TimingParameters timing;
     if (param_get(param_find("FESKF_DT_US"), &timing.filter_interval_us) != 0 ||
@@ -70,13 +70,11 @@ bool FormalEskf::load_startup_parameters()
         PX4_ERR("unsupported delayed-fusion timing settings");
         return false;
     }
-    int32_t gravity_enabled{};
-    if (param_get(param_find("FESKF_GRAV_EN"), &gravity_enabled) != 0 || gravity_enabled < 0 || gravity_enabled > 1)
-    {
-        PX4_ERR("invalid gravity aiding setting");
-        return false;
-    }
-    m_gravity_enabled = profile::gravity::enabled && gravity_enabled != 0;
+    return true;
+}
+
+bool FormalEskf::load_magnetic_parameters()
+{
     int32_t declination_source{};
     float saved_declination{};
     if (param_get(param_find("FESKF_DECL_TYPE"), &declination_source) != 0 ||
@@ -88,6 +86,11 @@ bool FormalEskf::load_startup_parameters()
     }
     m_magnetic_settings = {static_cast<std::uint32_t>(declination_source),
                            math::radians(static_cast<double>(saved_declination))};
+    return true;
+}
+
+bool FormalEskf::load_sensor_positions()
+{
     char const * const imu_names[] = {"FESKF_IMU_POS_X", "FESKF_IMU_POS_Y", "FESKF_IMU_POS_Z"};
     char const * const gnss_names[] = {"FESKF_GPS_POS_X", "FESKF_GPS_POS_Y", "FESKF_GPS_POS_Z"};
     SensorPositions positions;
@@ -106,6 +109,22 @@ bool FormalEskf::load_startup_parameters()
     }
     m_sensor_positions = positions;
     return true;
+}
+
+bool FormalEskf::load_startup_parameters()
+{
+    if (!load_timing_parameters())
+    {
+        return false;
+    }
+    int32_t gravity_enabled{};
+    if (param_get(param_find("FESKF_GRAV_EN"), &gravity_enabled) != 0 || gravity_enabled < 0 || gravity_enabled > 1)
+    {
+        PX4_ERR("invalid gravity aiding setting");
+        return false;
+    }
+    m_gravity_enabled = profile::gravity::enabled && gravity_enabled != 0;
+    return load_magnetic_parameters() && load_sensor_positions();
 }
 
 bool FormalEskf::init()
@@ -308,6 +327,27 @@ void FormalEskf::initialize(ImuInput const & sample, imu_type const & imu)
     PX4_INFO("initialized from IMU + magnetometer + GNSS; yaw=%.2f deg, EKF2 replacement", math::degrees(yaw));
 }
 
+FormalEskf::InputUpdates FormalEskf::read_inputs()
+{
+    InputUpdates updates;
+    auto const gps_generation = m_gps_sub.get_last_generation();
+    auto const mag_generation = m_mag_sub.get_last_generation();
+    auto const baro_generation = m_baro_sub.get_last_generation();
+    auto const imu_generation = m_imu_sub.get_last_generation();
+    updates.gps = m_gps_sub.update(&m_gps);
+    updates.magnetic = m_mag_sub.update(&m_mag);
+    updates.barometer = m_baro_sub.update(&m_baro);
+    m_land_sub.update(&m_land);
+    m_vehicle_status_sub.update(&m_vehicle_status);
+
+    updates.imu = m_imu_sub.update(&updates.sample);
+    m_generation_loss += updates.gps ? unsigned(m_gps_sub.get_last_generation() - gps_generation - 1) : 0;
+    m_generation_loss += updates.magnetic ? unsigned(m_mag_sub.get_last_generation() - mag_generation - 1) : 0;
+    m_generation_loss += updates.barometer ? unsigned(m_baro_sub.get_last_generation() - baro_generation - 1) : 0;
+    m_generation_loss += updates.imu ? unsigned(m_imu_sub.get_last_generation() - imu_generation - 1) : 0;
+    return updates;
+}
+
 void FormalEskf::Run()
 {
     if (should_exit())
@@ -319,45 +359,31 @@ void FormalEskf::Run()
     }
     ScheduleDelayed(profile::backup_interval_us); // Status timeout, not an independent watchdog.
     perf_begin(m_cycle_perf);
-    auto const gps_generation = m_gps_sub.get_last_generation();
-    auto const mag_generation = m_mag_sub.get_last_generation();
-    auto const baro_generation = m_baro_sub.get_last_generation();
-    auto const imu_generation = m_imu_sub.get_last_generation();
-    bool const gps_updated = m_gps_sub.update(&m_gps);
-    bool const mag_updated = m_mag_sub.update(&m_mag);
-    bool const baro_updated = m_baro_sub.update(&m_baro);
-    m_land_sub.update(&m_land);
-    m_vehicle_status_sub.update(&m_vehicle_status);
-    vehicle_imu_s sample{};
-    bool const imu_updated = m_imu_sub.update(&sample);
-    m_generation_loss += gps_updated ? unsigned(m_gps_sub.get_last_generation() - gps_generation - 1) : 0;
-    m_generation_loss += mag_updated ? unsigned(m_mag_sub.get_last_generation() - mag_generation - 1) : 0;
-    m_generation_loss += baro_updated ? unsigned(m_baro_sub.get_last_generation() - baro_generation - 1) : 0;
-    m_generation_loss += imu_updated ? unsigned(m_imu_sub.get_last_generation() - imu_generation - 1) : 0;
+    auto const updates = read_inputs();
     bool const was_initialized = m_initialized;
-    if (imu_updated)
+    if (updates.imu)
     {
         // Admission/current propagation and fast attitude precede delayed work.
         perf_begin(m_output_perf);
-        process_imu(decode_imu(sample));
+        process_imu(decode_imu(updates.sample));
         perf_end(m_output_perf);
     }
     uint64_t const now = hrt_absolute_time();
     if (was_initialized && !m_fault)
     {
-        if (gps_updated)
+        if (updates.gps)
         {
             record_admission(m_observations.push_gnss(decode_gnss(m_gps), now));
         }
-        if (mag_updated)
+        if (updates.magnetic)
         {
             record_admission(m_observations.push_magnetic(decode_magnetic(m_mag), now));
         }
-        if (baro_updated)
+        if (updates.barometer)
         {
             record_admission(m_observations.push_barometer(decode_barometer(m_baro), now));
         }
-        if (imu_updated)
+        if (updates.imu)
         {
             advance_fusion();
         }
@@ -616,10 +642,10 @@ bool FormalEskf::reset_output(quaternion_type const & delta_q, vector3_type cons
         auto const position_delta = after.position_n - before.position_n - delta_p;
         auto const velocity_delta = after.velocity_n - before.velocity_n - delta_v;
         // Count the point reset once even when an individual component is zero.
-        record_position_reset(vector2_type::from_row_major({position_delta(0), position_delta(1)}));
-        record_height_reset(position_delta(2), 1);
-        record_velocity_reset(velocity_delta);
-        record_vertical_velocity_reset(velocity_delta(2));
+        m_resets.record_position(m_time_us, vector2_type::from_row_major({position_delta(0), position_delta(1)}));
+        m_resets.record_height(m_time_us, position_delta(2), 1);
+        m_resets.record_velocity(m_time_us, velocity_delta);
+        m_resets.record_vertical_velocity(m_time_us, velocity_delta(2));
     }
     return true;
 }

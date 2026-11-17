@@ -91,8 +91,8 @@ void FormalEskf::initialize_magnetic_aiding(magnetic_lifecycle_type::Source cons
     m_magnetic.horizontal_aiding = false;
     m_magnetic.heading.reset_heading();
     m_heading_aligned = true;
-    m_quaternion_reset_delta = {};
-    m_quaternion_reset_counter = 0U;
+    m_resets.attitude_delta = {};
+    m_resets.attitude_count = 0U;
 }
 
 bool FormalEskf::magnetic_heading_aiding() const
@@ -323,8 +323,8 @@ FormalEskf::status_type FormalEskf::reset_magnetic_heading(std::uint64_t sample_
         {
             return status_type::out_of_range;
         }
-        m_quaternion_reset_delta = delta;
-        ++m_quaternion_reset_counter;
+        m_resets.attitude_delta = delta;
+        ++m_resets.attitude_count;
         m_heading_aligned = true;
         m_magnetic.heading.reset_heading();
         for (auto & ratio : m_magnetic.ratios)
@@ -412,5 +412,5 @@ void FormalEskf::fuse_mag()
     }
     m_magnetic.corrections += fused;
     m_rejections += rejected;
-    m_odometry_reset_counter += reset;
+    m_resets.odometry_count += reset;
 }

@@ -121,7 +121,7 @@ struct TimingConfiguration
 /**
  * Single-owner retained IMU timeline for PX4-TIME-IMU. No clocks or PX4 effects.
  * Configure, seed once, push admitted arrivals, then acknowledge successful
- * delayed prediction. The first batch is not connected to live delayed fusion.
+ * delayed prediction. The module owns current-output propagation and fusion ordering.
  */
 template <typename Linalg> class ImuHistory
 {

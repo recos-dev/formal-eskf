@@ -16,7 +16,7 @@ import numpy as np
 import pyproj
 from pyproj import Transformer
 
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "examples"))
 import replay_common
 
@@ -36,7 +36,7 @@ def compile_probe(PX4, OUT):
     ENTRY = next(V for V in DB if Path(V["file"]) == PX4 / "src/lib/geo/geo.cpp")
     FLAGS = [V for V in shlex.split(ENTRY["command"]) if V.startswith(("-I", "-D"))]
     SOURCE = OUT / "projection_probe.cpp"
-    SOURCE.write_text(PROBE_SOURCE)
+    SOURCE.write_bytes((REPO / "integrations/px4/tests/ProjectionProbe.cpp").read_bytes())
     COMMAND = ["c++", "-std=c++20", "-O2", "-ffunction-sections", "-fdata-sections",
                *FLAGS, str(SOURCE), str(BUILD / "src/lib/geo/libgeo.a"),
                "-Wl,--gc-sections", "-o", str(OUT / "projection_probe")]
@@ -45,24 +45,6 @@ def compile_probe(PX4, OUT):
     (OUT / "compile.log").write_text(RESULT.stdout + RESULT.stderr)
     RESULT.check_returncode()
     return OUT / "projection_probe"
-
-
-PROBE_SOURCE = r"""#include <iostream>
-#include <iomanip>
-#include <lib/geo/geo.h>
-int main() {
-    std::cout << std::setprecision(17);
-    double lat0, lon0, lat, lon;
-    while (std::cin >> lat0 >> lon0 >> lat >> lon) {
-        MapProjection projection(lat0,lon0);
-        float north{}, east{};
-        double back_lat{}, back_lon{};
-        projection.project(lat,lon,north,east);
-        projection.reproject(north,east,back_lat,back_lon);
-        std::cout << north << ' ' << east << ' ' << back_lat << ' ' << back_lon << '\n';
-    }
-}
-"""
 
 
 def geographic_cases():
@@ -201,6 +183,29 @@ def summarize(OUT, CASES, ROWS, HEIGHT_COMPARISONS, REPLAY_MAX, HEADING):
     return RESULT
 
 
+def write_manifest(PX4, OUT, RESULT):
+    SOURCES = [Path(__file__).resolve(), REPO / "integrations/px4/tests/ProjectionProbe.cpp", REPO / "examples/replay_common.py",
+               REPO / "integrations/px4/requirements.txt",
+               PX4 / "src/lib/geo/geo.cpp", PX4 / "src/lib/geo/geo.h",
+               PX4 / "src/modules/ekf2/EKF/ekf.cpp", PX4 / "src/modules/ekf2/EKF/ekf_helper.cpp",
+               PX4 / "build/px4_sitl_formal_eskf/compile_commands.json",
+               PX4 / "build/px4_sitl_formal_eskf/src/lib/geo/libgeo.a"]
+    SOURCES += sorted((REPO / "integrations/px4/module").glob("FormalEskf*.cpp"))
+    SOURCES += [REPO / "integrations/px4/module" / NAME for NAME in
+                ("FormalEskf.hpp", "MagneticModel.hpp", "DeploymentProfile.hpp")]
+    SOURCES += [REPO / "integrations/px4/tests/ModuleTest.cpp"]
+    SOURCES += [REPO / "docs/spec/eskf-state-conventions.md", REPO / "docs/spec/verification-requirements.md"]
+    MANIFEST = {"formal_eskf_head": subprocess.check_output(["git", "-C", str(REPO), "rev-parse", "HEAD"], text=True).strip(),
+                "px4_head": subprocess.check_output(["git", "-C", str(PX4), "rev-parse", "HEAD"], text=True).strip(),
+                "source_sha256": {str(P): sha256(P) for P in SOURCES},
+                "artifact_sha256": {P.name: sha256(P) for P in sorted(OUT.iterdir()) if P.is_file() and P.name in
+                                    ("analysis.json", "samples.csv", "probe-input.txt", "probe-output.txt",
+                                     "projection_probe.cpp", "projection_probe", "compile-command.json", "compile.log")},
+                "dependencies": RESULT["dependencies"],
+                "scope": RESULT["scope"]}
+    (OUT / "manifest.json").write_text(json.dumps(MANIFEST, indent=2)+"\n")
+
+
 def main():
     PARSER = argparse.ArgumentParser(description=__doc__)
     PARSER.add_argument("px4", type=Path, help="PX4 checkout with the formal_eskf SITL geo library built")
@@ -219,25 +224,7 @@ def main():
         raise RuntimeError("PX4 probe returned incomplete or non-finite results")
     ROWS, HEIGHT_COMPARISONS, REPLAY_MAX = compare(CASES, ORACLES, VALUES)
     RESULT = summarize(OUT, CASES, ROWS, HEIGHT_COMPARISONS, REPLAY_MAX, heading_variances())
-    SOURCES = [Path(__file__).resolve(), REPO / "examples/replay_common.py",
-               REPO / "integrations/px4/requirements.txt",
-               PX4 / "src/lib/geo/geo.cpp", PX4 / "src/lib/geo/geo.h",
-               PX4 / "src/modules/ekf2/EKF/ekf.cpp", PX4 / "src/modules/ekf2/EKF/ekf_helper.cpp",
-               PX4 / "build/px4_sitl_formal_eskf/compile_commands.json",
-               PX4 / "build/px4_sitl_formal_eskf/src/lib/geo/libgeo.a"]
-    SOURCES += sorted((REPO / "integrations/px4/module").glob("FormalEskf*.cpp"))
-    SOURCES += [REPO / "integrations/px4/module" / NAME for NAME in
-                ("FormalEskf.hpp", "MagneticModel.hpp", "DeploymentProfile.hpp", "tests/ModuleTest.cpp")]
-    SOURCES += [REPO / "docs/spec/eskf-state-conventions.md", REPO / "docs/spec/verification-requirements.md"]
-    MANIFEST = {"formal_eskf_head": subprocess.check_output(["git", "-C", str(REPO), "rev-parse", "HEAD"], text=True).strip(),
-                "px4_head": subprocess.check_output(["git", "-C", str(PX4), "rev-parse", "HEAD"], text=True).strip(),
-                "source_sha256": {str(P): sha256(P) for P in SOURCES},
-                "artifact_sha256": {P.name: sha256(P) for P in sorted(OUT.iterdir()) if P.is_file() and P.name in
-                                    ("analysis.json", "samples.csv", "probe-input.txt", "probe-output.txt",
-                                     "projection_probe.cpp", "projection_probe", "compile-command.json", "compile.log")},
-                "dependencies": RESULT["dependencies"],
-                "scope": RESULT["scope"]}
-    (OUT / "manifest.json").write_text(json.dumps(MANIFEST, indent=2)+"\n")
+    write_manifest(PX4, OUT, RESULT)
     print(
         f"Projection: {len(CASES)} points checked against spherical PROJ; round-trip max {RESULT['max_roundtrip_error_m']:.6f} m")
     print(f"Replay ECEF/NED: {HEIGHT_COMPARISONS} WGS84 comparisons; max {REPLAY_MAX:.3g} m")

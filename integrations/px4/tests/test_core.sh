@@ -3,13 +3,17 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
+REPO_DIR="$(cd -- "${SCRIPT_DIR}/../../.." && pwd)"
 
 main()
 {
-    if [[ $# -lt 1 || $# -gt 2 || "${1:-}" == --help ]]; then
+    if [[ $# == 1 && "$1" == --help ]]; then
         echo "Usage: $0 /path/to/PX4-Autopilot [test-build-directory]"
         return 0
+    fi
+    if [[ $# -lt 1 || $# -gt 2 ]]; then
+        echo "Usage: $0 /path/to/PX4-Autopilot [test-build-directory]" >&2
+        return 1
     fi
     local PX4_ROOT PX4_BUILD TEST_BUILD INCLUDES
     PX4_ROOT="$(cd -- "$1" && pwd)"
@@ -21,8 +25,8 @@ main()
         -DFORMAL_ESKF_BUILD_EIGEN_BACKEND=OFF \
         -DFORMAL_ESKF_BUILD_PX4_MATRIX_BACKEND=ON \
         -DFORMAL_ESKF_PX4_INCLUDE_DIRS="${INCLUDES}"
-    cmake --build "${TEST_BUILD}" --parallel "${JOBS:-4}"
-    ctest --test-dir "${TEST_BUILD}" --output-on-failure
+    cmake --build "${TEST_BUILD}" --parallel "${JOBS:-2}"
+    ctest --test-dir "${TEST_BUILD}" --output-on-failure --no-tests=error
 }
 
 main "$@"

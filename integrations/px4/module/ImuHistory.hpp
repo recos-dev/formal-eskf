@@ -152,6 +152,8 @@ public:
     [[nodiscard]] bool seed(input_type const & sample, std::uint64_t now_us);
     [[nodiscard]] bool push(input_type const & sample, std::uint64_t now_us);
 
+    /** Latest admitted interval for current-time output propagation; view expires on mutation. */
+    Interval const * latest() const;
     /** Null during warmup, after completion, or on fault. View expires on mutation. */
     Interval const * delayed() const;
     /** Call only after the selected interval's numerical prediction has succeeded. */
@@ -272,6 +274,11 @@ template <typename Linalg> bool ImuHistory<Linalg>::push(input_type const & samp
     m_samples.push(interval);
     m_previous = sample;
     return true;
+}
+
+template <typename Linalg> typename ImuHistory<Linalg>::Interval const * ImuHistory<Linalg>::latest() const
+{
+    return m_fault == Fault::none && m_samples.entries() != 0 ? &m_samples.get_newest() : nullptr;
 }
 
 template <typename Linalg> typename ImuHistory<Linalg>::Interval const * ImuHistory<Linalg>::delayed() const

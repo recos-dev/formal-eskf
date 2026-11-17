@@ -147,6 +147,11 @@ length exceeding capacity; never silently clamp it or resize during operation.
 The [timing profile](px4-timing-profile.md#startup-parameters-and-fixed-storage)
 defines defaults and cross-constraints. Parameter changes require restart.
 
+The IMU-history and [output-predictor components](px4-timing-profile.md#px4-time-output-current-time-output-and-tracking)
+implement these local ownership contracts. They are not yet connected to the
+live module's immediate-fusion path; observation/context histories and the
+delayed-fusion cutover remain F-04.2 work.
+
 At each fusion step, consume at most one observation per source: the newest
 unconsumed sample no later than the fusion time and within that source's allowed
 age window. Retire older superseded samples. Keep future eligible samples pending;

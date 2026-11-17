@@ -75,6 +75,7 @@ inline constexpr std::uint64_t gnss_arrival_age_us = 150000;
 inline constexpr std::uint64_t magnetic_arrival_age_us = 100000;
 inline constexpr std::uint64_t barometer_arrival_age_us = 100000;
 inline constexpr std::size_t imu_capacity = 64;
+inline constexpr std::size_t storage_budget_bytes = 64 * 1024;
 } // namespace history
 
 namespace gravity
@@ -145,6 +146,12 @@ inline constexpr double ratio_filter_time_s = 10.;
 
 namespace output
 {
+inline constexpr double velocity_time_constant_s = 0.25;
+inline constexpr double position_time_constant_s = 0.25;
+inline constexpr double interval_history_weight = 0.8;
+inline constexpr double interval_sample_weight = 0.2;
+inline constexpr double attitude_tracking_gain = 0.5;
+inline constexpr double integral_tracking_gain = 0.1;
 inline constexpr std::uint64_t navigation_interval_us = 10000U;
 inline constexpr std::uint64_t maximum_age_us = 100000U;
 inline constexpr std::uint64_t dead_reckoning_age_us = 1000000U;

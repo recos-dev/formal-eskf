@@ -1083,6 +1083,8 @@ It does not own the numerical state, output predictor, observations or a clock.
   the oldest eligible interval whose start equals the previous cursor. Wrong,
   premature or repeated completion faults without advancing. Numerical success
   is a caller premise; the timestamp acknowledgment cannot prove it occurred.
+- Expose the latest admitted real interval without consuming it, including
+  during warmup; return no interval before admission or after a latched fault.
 - Reset clears stored inputs, cursors and fault, retaining configuration. All
   storage/work is bounded, with no dynamic allocation or platform effects.
 
@@ -1090,6 +1092,37 @@ The current evidence is native binary64 testing on Eigen and PX4 matrix, includi
 default/full active lengths, wrap, faults and timestamp limits. Formal source
 proof remains open. `R-RING-BUFFER` does not extend its proof to this owner's
 payload/capacity, time arithmetic, acknowledgment protocol, adapter or WCET.
+
+### R-PX4-OUTPUT-PREDICTOR: current-time output tracking
+
+`px4::OutputPredictor` owns current nominal INS output and matching history under
+[PX4-TIME-OUTPUT](px4-timing-profile.md#px4-time-output-current-time-output-and-tracking).
+It owns neither covariance nor sensor admission, clock, fusion or publication.
+
+- Configure fixed storage and seed a finite state with a valid unit quaternion
+  at a nonzero epoch; reject invalid/repeated seed or live reconfiguration without
+  mutation. Use the IMU owner's configuration and seed epoch; no synthetic history.
+- Consume each admitted IMU interval exactly once, in order. Propagate held and
+  real segments using the declared core model and feedback biases; commit the
+  endpoint only if both succeed. Never overwrite output awaiting feedback.
+- Enforce actual lag bounds and exact delayed/start-epoch pairing. After main
+  success, apply the specified attitude-rate feedback, velocity/position PI
+  history translations and bias feedback. No interpolation or ordinary-feedback
+  reset counters. Main success and valid IMU admission are caller premises.
+- Apply a main reset's common left quaternion delta and additive NED deltas to
+  all occupied history and current output, preserving epochs and tracking sums.
+  A reset before the first interval transforms the seed without creating history.
+- Validate all history candidates before committing a correction/reset. On an
+  operational fault, preserve current output, retained history, feedback and
+  completion cursor, latch the cause, and block use until explicit session reset.
+  A session reset clears temporal state and feedback, retaining configuration.
+- Use bounded work and fixed persistent storage. Readiness indicates completed
+  feedback and no fault; it does not certify freshness, accuracy or safe publication.
+
+Current evidence is native binary64 testing with Eigen and PX4 matrix, including
+analytic motion, variable periods, repeated wraps, feedback, reset and numerical
+rollback. Lean/ESBMC source evidence, nonlinear stability/error bounds, live
+module wiring, target resource bounds and flight acceptance remain open.
 
 ### R-GNSS-RESET: checked GNSS position and velocity reset
 

@@ -313,8 +313,8 @@ explicit completion. Its [requirements](verification-requirements.md#r-px4-imu-h
 separate this owner from the underlying buffer proof.
 
 The module shares its `ImuInput` and source identity types, but still uses immediate
-fusion. uORB timing-parameter binding, observation/context histories, output
-history/feedback and the switch to delayed fusion remain integration work. Do
+fusion. uORB timing-parameter binding, observation/context histories, connection
+to the output predictor and the switch to delayed fusion remain integration work. Do
 not expose timing controls on the running module until they control that path.
 The owner takes explicit arrival time; the adapter must supply the monotonic clock
 and acknowledge an interval only after successful numerical prediction.
@@ -324,6 +324,86 @@ and PX4 matrix/binary64. They cover configuration boundaries, repeated wraps,
 payload/period preservation, gap holds, missing completion, faults/restart and
 timestamps near `UINT64_MAX`. These are regression tests, not a formal proof of
 the owner or deployed temporal alignment.
+
+### PX4-TIME-OUTPUT: current-time output and tracking
+
+[OutputPredictor.hpp](../../integrations/px4/module/OutputPredictor.hpp) owns a
+current INS nominal output and its matching fixed-capacity history, without a
+second covariance. Configure it with the same timing settings as `ImuHistory`,
+then seed both at the same alignment epoch. A seed does not fabricate history.
+After each successful IMU admission, `predict(*imu.latest())` advances the output
+once: the retained held-rate segment, if any, then the real interval. Each uses
+the existing `predict_nominal` model and latest feedback biases. Store one output
+endpoint per real input, with the original start time and angular period.
+
+After successful main-filter prediction/fusion, call `correct(time, state)` at
+the exact oldest eligible output epoch, then complete the IMU interval. Its start
+must match the previous completed epoch. Different settings, missed feedback or
+wrong epochs must not silently shift the history pairing. Invalid/numerical
+updates latch a fault and preserve the prior output, history and feedback state;
+the caller must stop valid publication and restart the session. This is local
+atomicity, not a transaction spanning the main filter and both owners.
+
+The tracking structure follows the pinned PX4 output predictor. Let subscript
+`d` denote the matching delayed output, `m` the completed main state, and
+`lag = (t_current - t_d)` in seconds. Use the shortest-sign, normalized difference:
+
+\[
+q_e = q_m^{-1} \otimes q_d,\qquad
+e_\theta = -2\,\operatorname{sign}_+(q_{e,0})\,q_{e,v},\qquad
+\delta\omega = \frac{0.5}{\mathrm{lag}}e_\theta,
+\]
+
+where `sign_+(0) = +1`. This is PX4's small-angle tracking error, not quaternion
+Log; the exactly-180-degree choice is ambiguous. Add `delta_omega` to the next
+prediction's body angular rate. Do not rewrite past attitudes during ordinary
+feedback. For velocity and position, independently:
+
+\[
+\bar{\Delta t}_k = 0.8\bar{\Delta t}_{k-1} + 0.2\Delta t_{d,k},\quad
+g = \bar{\Delta t}_k / 0.25,\quad
+e = x_m-x_d,\quad s_k=s_{k-1}+e,\quad
+\delta x = g e + 0.1g^2s_k.
+\]
+
+Initialize the average to 4 ms and both sums to zero. Apply each translation to
+every retained output and the current output; commit only after all candidates
+are finite. Bias feedback takes effect on the next prediction. Constants live in
+`profile::output`; the 0.25 s time constants are PX4 reference defaults, not flight
+tuning validated for this module.
+
+`apply_reset` applies the same left quaternion delta and additive NED velocity /
+position deltas as the main reset, to the current output and every retained
+record. Preserve epochs. Common transforms leave the delayed tracking residuals
+and their sums unchanged; preserve them. The caller owns reset counters and must
+stop on failure. This operation is not a coordinate-frame rotation of NED vectors.
+`reset()` instead clears all temporal/tracking state and fault for a new session.
+
+The intended differences from PX4 are explicit:
+
+- Reuse this project's prior-attitude, constant-acceleration prediction; PX4's
+  output predictor rotates its delta velocity with the updated attitude.
+- Average the matching real angular periods, not callback wall time. Apply
+  attitude feedback as a rate across held and real segments; at a fixed period
+  it equals PX4's `0.5 * dt / lag` angle correction. Permitted gaps do not count
+  as additional observations or feedback updates.
+- Require exact epochs and failure-atomic history updates. Keep local Cartesian
+  position; no global-reference recentering, separate vertical-position-derivative
+  filter, lever-arm output correction or unaided-yaw output is implemented here.
+
+`ready()` means feedback has begun and no component fault is latched. It does not
+prove wall-clock freshness, tracking-error bounds or downstream validity. Those
+remain publication/integration responsibilities. Borrowed history pointers are
+only valid until the next mutation; callers must use them synchronously.
+
+Storage and work are bounded by the 64-record backing capacity. History-wide
+translation/reset uses persistent candidate storage, not a callback-local array.
+The native binary64 instances use 23,600 bytes for IMU owner plus output predictor,
+including this workspace; the 64 KiB budget still must include future observation
+and context histories. No WCET or target stack bound follows from this size check.
+[Native tests](../../tests/test_px4_output_predictor.cpp) cover analytic motion,
+tracking, wrap, reset and failures on both backends; formal source proof and live
+delayed-fusion integration remain open under `R-PX4-OUTPUT-PREDICTOR`.
 
 ## Pinned reference points
 

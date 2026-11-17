@@ -638,3 +638,30 @@ RMSE were 0.163 m / 0.257 m/s / 1.659°; valid estimates were 100%, with no
 numerical faults, airborne failsafes or log dropouts. These are integration
 regressions, not physical in-flight acceleration-fault experiments; bounded
 fault branches and reset boundaries are exercised by native component tests.
+
+## Output-predictor component validation: 2026-11-17
+
+F-04.2 adds current nominal INS output, matching fixed-capacity history, delayed
+tracking feedback and synchronized resets under `R-PX4-OUTPUT-PREDICTOR`. The live
+module remains on immediate fusion; no numerical-core equations change. Reference:
+PX4 `54f0455ffcd755534539a7cf33a09a20bf71d29d`; prediction/time/reset differences are
+explicit in [PX4-TIME-OUTPUT](../../docs/spec/px4-timing-profile.md#px4-time-output-current-time-output-and-tracking).
+
+Four native suites passed (IMU history/output predictor, Eigen/PX4 matrix,
+binary64), plus two output suites with quaternion approximation enabled. Four
+ASan/UBSan suites passed with exceptions/RTTI disabled; leak detection was disabled
+for this sandbox run, so these are not LeakSanitizer results. Analytic translation,
+rotating force, period jitter, gap feedback, history wraps, bias feedback, reset
+and early/late numerical rollback are covered. The ideal constant-velocity
+tracking case checks both quaternion signs over 20 simulated seconds; it is not a
+flight-accuracy or guaranteed-settling-time result. IMU plus output storage is
+23,600 bytes on these host builds, including retained transaction workspace.
+
+Formatting, unix32/unix64 Cppcheck, 8 package tests and traceability-reference
+validation passed. `output/px4-output-predictor-20261117/` retains logs and a source /
+binary hash manifest based on parent `627379e`. It also retains the initial failed
+10-second/1-mm settling expectation and the Cppcheck parameter-shadowing warning.
+The test now exercises 20-second tracking; no production gain was changed to make
+it pass. The shadowing name was corrected and the checks rerun. Source formal
+proof, nonlinear tracking bounds, deployed timing/stack acceptance and live
+delayed integration remain open; no flight or full-module proof is claimed.

@@ -112,7 +112,7 @@ void startup(Context & test)
     History history;
     auto const initial = sample(1000000);
     test.expect(!history.seed(initial, initial.time_us) && !history.push(initial, initial.time_us) &&
-                    history.delayed() == nullptr && history.entries() == 0,
+                    history.delayed() == nullptr && history.latest() == nullptr && history.entries() == 0,
                 "startup", "unconfigured history cannot accept a seed or sample");
     test.expect(history.configure({}), "startup", "configure storage without a seed");
     auto const configuration_before = history.configuration();
@@ -122,7 +122,8 @@ void startup(Context & test)
                     !history.seed(initial, initial.time_us + 100001) && history.latest_time_us() == 0,
                 "startup", "zero, future and stale seed do not consume the seed epoch");
     test.expect(history.seed(initial, initial.time_us) && history.entries() == 0 &&
-                    history.fusion_time_us() == initial.time_us && history.delayed() == nullptr,
+                    history.fusion_time_us() == initial.time_us && history.delayed() == nullptr &&
+                    history.latest() == nullptr,
                 "startup", "seed is an epoch and preceding rate, not fabricated retained IMU");
     test.expect(!history.seed(initial, initial.time_us) && !history.configure({4000, 230, 0, 0, 0}) &&
                     history.fault() == Fault::none && equal(history.configuration(), configuration_before),
@@ -152,6 +153,11 @@ void ordered_prediction(Context & test, Parameters const & parameters, std::uint
         input.accelerometer_clipping = static_cast<std::uint8_t>(tick % 8);
         pending.push_back(input);
         test.expect(history.push(input, input.time_us), "ordered", "valid real interval admitted");
+        auto const * latest = history.latest();
+        test.expect(latest != nullptr && latest->time_us == input.time_us &&
+                        latest->sample.acceleration_period_us == input.acceleration_period_us &&
+                        latest->sample.accelerometer_clipping == input.accelerometer_clipping,
+                    "ordered", "latest admitted real interval is available before delayed selection");
         auto const * delayed = history.delayed();
         if (tick < length)
         {
@@ -334,7 +340,7 @@ void lost_history_and_completion(Context & test)
     History history;
     test.expect(history.configure({}) && history.seed(sample(1000000), 1000000), "completion", "setup");
     test.expect(!history.complete(1004000) && history.fault() == Fault::invalid_completion &&
-                    history.fusion_time_us() == 1000000,
+                    history.fusion_time_us() == 1000000 && history.latest() == nullptr,
                 "completion", "future completion during warmup cannot move the filter cursor");
 }
 

@@ -122,7 +122,7 @@ not just another constant in the existing barometer helper.
 | Task | Status and dependency | Completion criterion |
 |---|---|---|
 | F-04.1 — Timing design | Completed for the initial 250 Hz SIH design (`f763ffb`, `8f6bda1`); target resource/accuracy acceptance remains F-07 | Specify sample versus publication time, supported delays, fixed capacities, horizon, overflow/out-of-order policy, resets and latency/memory budgets against the pinned PX4 behavior. |
-| F-04.2 — Delayed fusion and output prediction | First component implemented; review pending: [IMU history](integrations/px4/module/ImuHistory.hpp) validates startup timing and enforces warmup, gap holds and once-only completion. Native checks exist; formal proof and live delayed integration remain open | Implement the reviewed history/horizon/output path in bounded batches. Test deterministic delay, reordering, dropout and reset sequences; verify output timestamps, continuity and measured resource bounds. |
+| F-04.2 — Delayed fusion and output prediction | IMU history committed; [output predictor and history](integrations/px4/module/OutputPredictor.hpp) implemented for review, with current-time prediction, exact-epoch feedback and synchronized resets. Native checks exist; formal proof and live delayed integration remain open | Complete observation/context histories and startup parameter binding, then connect the delayed-fusion path. Test deterministic delay, reordering, dropout and reset sequences; verify output timestamps, continuity and measured resource bounds. |
 
 F-04 is prioritized by request. The module shares the IMU input/source types with
 the new history component, but still fuses immediately. The reviewed
@@ -172,9 +172,9 @@ Promoting one requires a reviewed scope and dependency; retain its ID.
 
 ## Next implementation
 
-**F-04.2: review the IMU history component**, then implement the output predictor
-and matching output history. Observation/context buffering and uORB timing
-parameter binding accompany the later delayed-fusion cutover; do not expose
+**F-04.2: review the output predictor and matching history**, then implement
+observation/context buffering. Bind uORB timing parameters when connecting
+the delayed-fusion path; do not expose
 settings that the live path ignores. F-03.2 barometer ground effect remains pending.
 
 F-01.2/F-01.3/F-02.1/F-03.1 are already committed. Keep these IDs and the other

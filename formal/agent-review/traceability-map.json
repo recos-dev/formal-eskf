@@ -5567,6 +5567,62 @@
           {
             "file": "integrations/px4/module/ImuHistory.hpp",
             "symbol": "ImuHistory<Linalg>::reset()"
+          },
+          {
+            "file": "integrations/px4/module/ImuHistory.hpp",
+            "symbol": "ImuHistory<Linalg>::latest()"
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
+      "id": "R-PX4-OUTPUT-PREDICTOR",
+      "title": "Current-time INS output tracking: native-tested component; formal proof and live integration remain open",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-PX4-OUTPUT-PREDICTOR: current-time output tracking"
+          },
+          {
+            "file": "docs/spec/px4-timing-profile.md",
+            "symbol": "### PX4-TIME-OUTPUT: current-time output and tracking"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "integrations/px4/module/OutputPredictor.hpp",
+            "symbol": "class OutputPredictor"
+          },
+          {
+            "file": "integrations/px4/module/OutputPredictor.hpp",
+            "symbol": "OutputPredictor<Linalg>::configure("
+          },
+          {
+            "file": "integrations/px4/module/OutputPredictor.hpp",
+            "symbol": "OutputPredictor<Linalg>::seed("
+          },
+          {
+            "file": "integrations/px4/module/OutputPredictor.hpp",
+            "symbol": "OutputPredictor<Linalg>::predict("
+          },
+          {
+            "file": "integrations/px4/module/OutputPredictor.hpp",
+            "symbol": "OutputPredictor<Linalg>::delayed()"
+          },
+          {
+            "file": "integrations/px4/module/OutputPredictor.hpp",
+            "symbol": "OutputPredictor<Linalg>::correct("
+          },
+          {
+            "file": "integrations/px4/module/OutputPredictor.hpp",
+            "symbol": "OutputPredictor<Linalg>::apply_reset("
+          },
+          {
+            "file": "integrations/px4/module/OutputPredictor.hpp",
+            "symbol": "OutputPredictor<Linalg>::reset()"
           }
         ],
         "esbmc": []

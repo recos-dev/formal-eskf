@@ -8,6 +8,7 @@
 #include <cerrno>
 #include <bit>
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <limits>
 #include <platforms/posix/apps.h>
@@ -1716,6 +1717,77 @@ public:
         test.snapshot("gravity-invalid-metadata");
     }
 
+    static void configured_profile()
+    {
+        namespace profile = formal_eskf::px4::profile;
+        FormalEskfModuleTest test;
+        for (unsigned i = 0; i < 3000U; ++i)
+        {
+            test.m_sample.timestamp_sample += 4000U;
+            test.tick();
+        }
+        auto & f = test.m_filter;
+        expect(f.m_initialized && !f.m_fault && f.m_predictions > 0,
+               "configured profile initializes and predicts on the stationary fixture");
+        expect(f.lookup_magnetic_model(47.397742, 8.545594).has_value() == profile::magnetic::use_model &&
+                   f.m_magnetic_model.available() == profile::magnetic::use_model,
+               "configured WMM enable controls lookup and the adopted geographic reference");
+        expect(f.m_gravity_enabled == profile::gravity::enabled,
+               "build exclusion takes precedence over the enabled gravity startup parameter");
+        for (std::size_t axis = 0; axis < 3; ++axis)
+        {
+            expect(f.m_parameters.process_noise.specific_force_variance(axis) == ESKF_CFG_ACCEL_VARIANCE &&
+                       f.m_parameters.process_noise.angular_rate_variance(axis) == ESKF_CFG_GYRO_VARIANCE,
+                   "configured sampled IMU variances reach the production estimator");
+            expect(f.m_bias_learning_result.bias_update.accelerometer[axis] == bool(ESKF_CFG_ACCEL_BIAS_LEARNING) &&
+                       f.m_bias_learning_result.bias_update.gyroscope[axis] == bool(ESKF_CFG_GYRO_BIAS_LEARNING),
+                   "stationary observable bias learning honors each build permission");
+        }
+        auto const & quality = f.m_gnss.quality_parameters;
+        expect(quality.maximum_speed_accuracy == ESKF_CFG_GNSS_MAX_SACC &&
+                   quality.minimum_health_time_us == std::uint64_t{ESKF_CFG_GNSS_HEALTH_MS} * 1000U &&
+                   quality.enabled_checks.satellites == bool(ESKF_CFG_GNSS_CHECK_SATELLITES),
+               "configured GNSS quality thresholds, duration and check mask reach the module");
+        auto advance = [&](unsigned ticks)
+        {
+            for (unsigned i = 0; i < ticks; ++i)
+            {
+                test.m_sample.timestamp_sample += 4000U;
+                test.tick();
+            }
+        };
+        test.m_in_ground_effect = true;
+        test.m_landed = test.m_at_rest = false;
+        test.m_armed = true;
+        advance(54);
+        expect(f.m_ground_effect.active == profile::height::ground_effect_enabled,
+               "production delayed flight context honors ground-effect build enable");
+        test.m_baro_altitude -= 3.f;
+        advance(60);
+        auto const & baro = f.m_height_aiding.session(FormalEskf::height_type::Source::barometer);
+        double const raw = baro.fusion.innovation(0);
+        double const expected = profile::height::ground_effect_enabled
+                                    ? std::max(raw - profile::height::ground_effect_deadzone_m, 0.)
+                                    : raw;
+        expect(!f.m_fault && raw > 0 && !baro.innovation_limited &&
+                   baro.fusion.decision == formal_eskf::runtime::FusionDecision::fused &&
+                   std::abs(baro.fusion_innovation - expected) < 1e-12,
+               "production height correction applies the selected deadzone or leaves innovation unchanged");
+
+        // Preserve timestamp monotonicity while exercising the configured aiding timeout.
+        test.m_send_gps = false;
+        auto const last_fusion = f.m_gnss.lifecycle.state().horizontal_position.last_fuse_time_us;
+        auto const timeout = profile::gnss::timing.horizontal_timeout_us;
+        expect(timeout <= 10000000U, "configuration smoke fixture requires a horizontal timeout of at most 10 s");
+        if (timeout <= 10000000U)
+        {
+            advance(static_cast<unsigned>(timeout / 4000U) + 60U);
+            expect(!f.m_fault && f.m_time_us - last_fusion > timeout &&
+                       !f.m_gnss.lifecycle.state().horizontal_position.active,
+                   "production horizontal aiding expires after the configured no-data interval");
+        }
+    }
+
     static void ground_effect_in_run()
     {
         FormalEskfModuleTest test;
@@ -3028,10 +3100,11 @@ int main(int argc, char ** argv)
 {
     if (argc > 2)
     {
-        std::fprintf(stderr, "Usage: %s [trace-file]\n", argv[0]);
+        std::fprintf(stderr, "Usage: %s [trace-file | --configuration]\n", argv[0]);
         return 2;
     }
-    if (argc == 2)
+    bool const configuration_only = argc == 2 && std::strcmp(argv[1], "--configuration") == 0;
+    if (argc == 2 && !configuration_only)
     {
         trace_file = std::fopen(argv[1], "wb");
         if (trace_file == nullptr)
@@ -3041,6 +3114,12 @@ int main(int argc, char ** argv)
     }
     uORB::Manager::initialize();
     param_init();
+    if (configuration_only)
+    {
+        FormalEskfModuleTest::configured_profile();
+        std::printf("PX4 configuration: %u scenarios, %u failures\n", scenarios, failures);
+        return failures == 0U ? 0 : 1;
+    }
     FormalEskfModuleTest::timing_parameters();
     FormalEskfModuleTest::delayed_pipeline();
     FormalEskfModuleTest::delayed_resets_and_failure();
@@ -3155,6 +3234,7 @@ int main(int argc, char ** argv)
     FormalEskfModuleTest::diagnostic_flags();
     FormalEskfModuleTest::navigation_covariance_frame();
     FormalEskfModuleTest::dateline_output();
+    FormalEskfModuleTest::configured_profile();
     trace_file = comparison_trace;
     if (trace_file != nullptr)
     {

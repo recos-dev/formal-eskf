@@ -123,7 +123,8 @@ private:
         std::uint64_t generation{};
         MapProjection previous_fix{};
         formal_eskf::runtime::GnssQuality<backend_type> quality{};
-        formal_eskf::runtime::GnssQualityParameters<double> quality_parameters{};
+        formal_eskf::runtime::GnssQualityParameters<double> quality_parameters =
+            formal_eskf::px4::profile::gnss::quality;
         formal_eskf::runtime::GnssQualityResult<double> quality_result{};
         gnss_lifecycle_type lifecycle{};
         gnss_lifecycle_type::Sample sample{};

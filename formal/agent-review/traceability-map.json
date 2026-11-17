@@ -5940,6 +5940,10 @@
           {
             "file": "docs/spec/px4-timing-profile.md",
             "symbol": "### PX4-TIME-LIVE: module binding"
+          },
+          {
+            "file": "docs/spec/px4-module-architecture.md",
+            "symbol": "## PX4-CONFIG: packaged build profile"
           }
         ],
         "lean": [],
@@ -6007,6 +6011,14 @@
           {
             "file": "integrations/px4/module/FormalEskfOutput.cpp",
             "symbol": "void FormalEskf::update_diagnostics("
+          },
+          {
+            "file": "integrations/px4/module/DeploymentConfig.hpp",
+            "symbol": "#define ESKF_CFG_WMM"
+          },
+          {
+            "file": "integrations/px4/module/DeploymentProfile.hpp",
+            "symbol": "inline constexpr runtime::GnssQualityParameters<double> quality"
           }
         ],
         "esbmc": []

@@ -8,6 +8,7 @@ from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
 import sys
+import tempfile
 
 
 PX4_COMMIT = "54f0455ffcd755534539a7cf33a09a20bf71d29d"
@@ -18,6 +19,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 MODULE_FILES = (
     "CMakeLists.txt", "FormalEskf.cpp", "FormalEskf.hpp", "FormalEskfNavigation.cpp",
     "FormalEskfAttitude.cpp", "FormalEskfOutput.cpp", "DeploymentProfile.hpp",
+    "DeploymentConfig.hpp",
     "MagneticModel.hpp", "HeightAiding.hpp", "InnovationRatio.hpp",
     "ImuPrediction.hpp", "ImuHistory.hpp", "OutputPredictor.hpp", "ObservationHistory.hpp", "Kconfig", "formal_eskf_params.c",
     "tests/ModuleTest.cpp",
@@ -42,10 +44,12 @@ def owned_path(NAME):
     return NAME
 
 
-def source_package():
+def source_package(CONFIG=None):
     """Use exported bytes when available; otherwise collect the repository sources."""
     PATCH = (SCRIPT_DIR / "px4-v1.16.2.patch").read_bytes()
     if (SCRIPT_DIR / "manifest.json").exists():
+        if CONFIG is not None:
+            raise ValueError("Configure the package in the source repository before export")
         MANIFEST = json.loads((SCRIPT_DIR / "manifest.json").read_text())
         if MANIFEST["schema_version"] != 1 or MANIFEST["px4_commit"] != PX4_COMMIT:
             raise ValueError("Unsupported package version or PX4 revision")
@@ -59,6 +63,17 @@ def source_package():
 
     REPO = SCRIPT_DIR.parents[1]
     FILES = {f"{MODULE}/{NAME}": (SCRIPT_DIR / "module" / NAME).read_bytes() for NAME in MODULE_FILES}
+    if CONFIG is not None:
+        CONFIG_DATA = CONFIG.read_bytes()
+        with tempfile.TemporaryDirectory(prefix="formal-eskf-config-") as TEMP:
+            SNAPSHOT = Path(TEMP) / ".config"
+            SNAPSHOT.write_bytes(CONFIG_DATA)
+            RESULT = subprocess.run([sys.executable, str(REPO / "scripts/configure.py"), "px4-header",
+                                     "--config", str(SNAPSHOT)], capture_output=True)
+        if RESULT.returncode:
+            raise ValueError(RESULT.stderr.decode().strip())
+        FILES[f"{MODULE}/DeploymentConfig.hpp"] = RESULT.stdout
+        FILES[f"{MODULE}/configuration.config"] = CONFIG_DATA
     for FILE in sorted((REPO / "include/formal_eskf").rglob("*")):
         if FILE.is_file() and FILE.suffix in HEADER_SUFFIXES and not FILE.name.startswith("."):
             FILES[f"{MODULE}/core/include/{FILE.relative_to(REPO / 'include').as_posix()}"] = FILE.read_bytes()
@@ -172,11 +187,12 @@ def main():
     TARGET.add_argument("--px4", type=Path, help="Pinned PX4 Git checkout to install into")
     TARGET.add_argument("--export", type=Path, help="New directory for a relocatable package")
     PARSER.add_argument("--check", action="store_true", help="Verify an existing --px4 installation without writing")
+    PARSER.add_argument("--config", type=Path, help="Apply a menuconfig .config when packaging from the source repository")
     ARGS = PARSER.parse_args()
     if ARGS.check and not ARGS.px4:
         PARSER.error("--check requires --px4")
     try:
-        MANIFEST, FILES, PATCH = source_package()
+        MANIFEST, FILES, PATCH = source_package(ARGS.config.resolve() if ARGS.config else None)
         if ARGS.export:
             export_package(ARGS.export.resolve(), MANIFEST, FILES, PATCH)
         else:

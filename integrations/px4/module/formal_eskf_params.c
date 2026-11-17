@@ -17,7 +17,8 @@ PARAM_DEFINE_INT32(FESKF_EN, 1);
  *
  * Bit 0 uses geographic declination when available. Bit 1 permits the
  * configured FESKF_MAG_DECL fallback; otherwise magnetic north is used.
- * WMM remains an independent field-health reference in every mode.
+ * When enabled in the build profile, WMM remains an independent field-health
+ * reference in every mode. A build without WMM uses the stored/north fallback.
  * Settings are read at module start. No learned-declination autosave.
  *
  * @bit 0 Geographic heading
@@ -50,7 +51,8 @@ PARAM_DEFINE_FLOAT(FESKF_MAG_DECL, 0.0f);
  *
  * Uses the existing unnormalized gravity observation only when tilt is aligned,
  * horizontal aiding is inactive and gravity-band/rest conditions permit it.
- * Clipped intervals are rejected. Read at module start.
+ * Clipped intervals are rejected. Read at module start. This parameter cannot
+ * enable gravity aiding excluded by the build profile.
  *
  * @boolean
  * @reboot_required true

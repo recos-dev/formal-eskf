@@ -46,6 +46,34 @@ The installer records source revision, source dirty state, and SHA256 hashes in 
 
 Installation is repeatable. Previously installed files can be updated only if their contents match the previous manifest or the new package. Conflicting local changes and unknown files in the module cause an error before installation. Reconcile or move those files before retrying. A pre-package POC module has no ownership manifest and must be moved aside before its modified files can be replaced.
 
+## Configure a PX4 profile
+
+From the formal-eskf repository root:
+
+```bash
+make menuconfig
+make px4-install PX4_DIR="$PX4_ROOT"
+make -C "$PX4_ROOT" px4_sitl_formal_eskf -j2
+python3 integrations/px4/install.py --px4 "$PX4_ROOT" --config .config --check
+```
+
+The menu includes exact/approximate prediction and reset, magnetic tilt
+protection, plus 64 module settings: WMM, ground-effect/gravity/bias enablement,
+GNSS and magnetic checks, lifecycle timeouts, noise, gates, bias limits and output
+tracking time constants. Decimal values are validated before packaging. See
+[configuration ownership](../../docs/configuration-inventory.md#px4-deployment-menu)
+for units, defaults and retained constraints.
+
+`make px4-install` uses `.config` (override with `CONFIG_FILE=...`), generates the
+module's `DeploymentConfig.hpp`, and records both in the package manifest. It
+does not edit the default source header. Rebuild and restart to apply changes;
+replay keeps its own profile. Existing `FESKF_*` parameters remain startup-only;
+`FESKF_GRAV_EN` cannot enable gravity support excluded by the build.
+
+To export this selected profile, use `make px4-export PACKAGE_DIR=output/px4-package`.
+The exported installer requires neither Kconfiglib nor the original checkout.
+Direct `install.py` without `--config` continues to package the default profile.
+
 ## Export a package to another machine
 
 ```bash
@@ -78,6 +106,10 @@ timer dispatch. It checks sensor sequencing, failures, resets, publication and
 diagnostic snapshots. Work-queue-unavailable and injected-failure messages are
 expected; the final scenario summary and process exit code determine success.
 The scheduler, dependency internals and target timing require separate evidence.
+`formal_eskf_module_test --configuration` runs the profile smoke scenario on
+stationary sensor data followed by ground effect and a GNSS outage. That fixture
+requires initialization within 12 s and a horizontal timeout of at most 10 s;
+it is not acceptance evidence for arbitrary menu values or flight conditions.
 
 ## Delayed fusion
 

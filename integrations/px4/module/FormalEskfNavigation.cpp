@@ -448,6 +448,11 @@ void FormalEskf::record_vertical_velocity_reset(double delta)
 
 void FormalEskf::update_ground_effect()
 {
+    if constexpr (!profile::height::ground_effect_enabled)
+    {
+        m_ground_effect = {};
+        return;
+    }
     auto const context = m_observations.context(m_time_us, profile::height::context_maximum_age_us);
     bool const updated = context.land.time_us > m_ground_effect.land_time_us ||
                          context.vehicle.time_us > m_ground_effect.vehicle_time_us;

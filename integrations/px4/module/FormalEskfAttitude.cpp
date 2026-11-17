@@ -21,6 +21,10 @@ void FormalEskf::fuse_gravity(ImuInput const & sample, imu_type const & imu)
     {
         return;
     }
+    if constexpr (!profile::gravity::enabled)
+    {
+        return;
+    }
     // The sampler uses the acceleration period; retain the independently
     // measured angle integral when the two integration periods differ.
     auto interval_imu = imu;
@@ -118,6 +122,10 @@ bool FormalEskf::magnetic_heading_valid() const
 std::optional<FormalEskf::magnetic_model_type::sample_type> FormalEskf::lookup_magnetic_model(double latitude,
                                                                                               double longitude) const
 {
+    if constexpr (!profile::magnetic::use_model)
+    {
+        return std::nullopt;
+    }
     if (!std::isfinite(latitude) || !std::isfinite(longitude) || std::abs(latitude) > 90. || std::abs(longitude) > 180.)
     {
         return std::nullopt;
@@ -141,6 +149,10 @@ std::optional<FormalEskf::magnetic_model_type::sample_type> FormalEskf::lookup_m
 
 void FormalEskf::update_magnetic_model()
 {
+    if constexpr (!profile::magnetic::use_model)
+    {
+        return;
+    }
     bool const position_valid = gps_position_valid();
     bool const origin_updated = m_origin.time_us > m_mag_model_origin_time;
     if (!m_magnetic_model.lookup_due(m_time_us, position_valid, origin_updated))

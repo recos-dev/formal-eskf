@@ -38,8 +38,8 @@ FormalEskf::bias_learning_type::Parameters FormalEskf::bias_learning_parameters(
     result.maximum_specific_force = profile::imu::maximum_specific_force_m_s2;
     result.maximum_angular_rate = profile::imu::maximum_angular_rate_rad_s;
     result.decay_time_constant = profile::imu::bias_learning_decay_s;
-    result.accelerometer_enabled = true;
-    result.gyroscope_enabled = true;
+    result.accelerometer_enabled = profile::imu::accelerometer_bias_learning;
+    result.gyroscope_enabled = profile::imu::gyroscope_bias_learning;
     return result;
 }
 
@@ -76,7 +76,7 @@ bool FormalEskf::load_startup_parameters()
         PX4_ERR("invalid gravity aiding setting");
         return false;
     }
-    m_gravity_enabled = gravity_enabled != 0;
+    m_gravity_enabled = profile::gravity::enabled && gravity_enabled != 0;
     int32_t declination_source{};
     float saved_declination{};
     if (param_get(param_find("FESKF_DECL_TYPE"), &declination_source) != 0 ||

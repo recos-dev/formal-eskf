@@ -1,0 +1,108 @@
+mainmenu "formal-eskf build configuration"
+
+menu "ESKF algorithms"
+
+choice
+    prompt "Attitude prediction"
+    default ESKF_QUAT_EXACT
+
+config ESKF_QUAT_EXACT
+    bool "Exact (exponential map)"
+    help
+      Use the exponential map for nominal and covariance attitude prediction.
+      Exact refers to the rotation model with constant angular rate over the
+      integration interval; computation still uses floating-point arithmetic.
+
+config ESKF_QUAT_APPROX
+    bool "Approximate (first-order)"
+    help
+      Use normalized Euler and first-order attitude error prediction.
+
+endchoice
+
+choice
+    prompt "Covariance reset"
+    default ESKF_RESET_EXACT
+
+config ESKF_RESET_EXACT
+    bool "Exact (SO(3) right Jacobian)"
+    help
+      Use the SO(3) right Jacobian for the attitude-error covariance reset.
+      Exact refers to the Jacobian formula, not to floating-point arithmetic.
+
+config ESKF_RESET_APPROX
+    bool "Approximate (first-order)"
+    help
+      Use the first-order approximation of the attitude-error reset Jacobian.
+
+endchoice
+
+config ESKF_MAG_TILT
+    bool "Protect tilt during magnetic correction"
+    default y
+    help
+      Restrict magnetic attitude correction to rotation about navigation Down.
+
+endmenu
+
+rsource "configs/px4.Kconfig"
+
+menu "Linear algebra backends"
+
+config FORMAL_ESKF_BUILD_EIGEN_BACKEND
+    bool "Eigen"
+    default y
+    help
+      Requires an installed Eigen3 CMake package (for example libeigen3-dev).
+
+config FORMAL_ESKF_BUILD_PX4_MATRIX_BACKEND
+    bool "PX4 matrix"
+    default n
+    help
+      Build the adapter using externally supplied PX4 headers.
+      This does not download PX4 or configure its estimator module.
+
+config FORMAL_ESKF_PX4_INCLUDE_DIRS
+    string "PX4 include directories (semicolon-separated)"
+    depends on FORMAL_ESKF_BUILD_PX4_MATRIX_BACKEND
+    default ""
+    help
+      Supply matrix, platform and generated-header include directories.
+      Paths should be absolute. Dependencies remain owned by the host build.
+
+config FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND
+    bool "CMSIS-DSP"
+    default n
+    help
+      Requires an installed CMSISDSP package. The host owns CPU/FPU/ABI flags.
+
+endmenu
+
+menu "Tests and examples"
+
+config BUILD_TESTING
+    bool "Build tests"
+    default y
+
+config FORMAL_ESKF_BUILD_EXAMPLES
+    bool "Build replay examples"
+    depends on FORMAL_ESKF_BUILD_EIGEN_BACKEND || FORMAL_ESKF_BUILD_PX4_MATRIX_BACKEND
+    default n
+
+choice
+    prompt "Replay backend"
+    depends on FORMAL_ESKF_BUILD_EXAMPLES
+    default REPLAY_EIGEN if FORMAL_ESKF_BUILD_EIGEN_BACKEND
+    default REPLAY_PX4_MATRIX
+
+config REPLAY_EIGEN
+    bool "Eigen"
+    depends on FORMAL_ESKF_BUILD_EIGEN_BACKEND
+
+config REPLAY_PX4_MATRIX
+    bool "PX4 matrix"
+    depends on FORMAL_ESKF_BUILD_PX4_MATRIX_BACKEND
+
+endchoice
+
+endmenu

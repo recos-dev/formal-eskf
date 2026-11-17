@@ -2,9 +2,12 @@
 /report.json
 /build/
 /output/
+/.config
+/.config.old
 
 /formal/lean/.lake/
 /tools/bootstrap/
 /tools/cppcheck-2.21.0/
 /tools/elan/
+/tools/kconfiglib/
 /tools/esbmc-8.4.0/

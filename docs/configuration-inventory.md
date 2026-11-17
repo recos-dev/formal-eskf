@@ -1,9 +1,10 @@
 # Configuration inventory and ownership
 
-F-06.2 inventory and proposal, **review pending**. Baseline: `478ccab`,
-2026-11-18. This records the existing choices from numerical foundations through
-core, runtime and PX4; it does not change defaults, enable new modes or introduce
-Kconfig/menuconfig. The functional queue remains in [FEATURE_TODO](../FEATURE_TODO.md).
+F-06.2 inventory and proposal, **review pending**. Inventory baseline: `478ccab`,
+2026-11-18. This records existing choices from numerical foundations through
+core, runtime and PX4. Kconfig now exposes build options and a packaged PX4
+deployment profile while preserving defaults. Replay retains its separate
+settings. The functional queue remains in [FEATURE_TODO](../FEATURE_TODO.md).
 
 ## Scope and interpretation
 
@@ -56,9 +57,9 @@ are not user-adjustable safety thresholds.
 | Choice | Library default / supported choices | PX4 module |
 | --- | --- | --- |
 | `Configuration` in `EskfTypes` | Explicit `Ins` or `Ahrs`; nominal/error/noise dimensions 16/15/12 or 4/3/3 | Fixed INS; no AHRS module switch |
-| `ESKF_QUAT_APPROX` | 0 / CMake OFF: exponential attitude prediction; 1: normalized Euler and first-order attitude error transition | Fixed 0 |
-| `ESKF_RESET_APPROX` | 0 / OFF: SO(3) right Jacobian; 1: first-order reset | Fixed 0 |
-| `ESKF_MAG_TILT` | 1 / ON: restrict magnetic attitude gain to navigation Down; 0: full attitude gain | Fixed 1 |
+| `ESKF_QUAT_APPROX` | 0 / CMake OFF: exponential attitude prediction; 1: normalized Euler and first-order attitude error transition | Packaged profile; default 0 |
+| `ESKF_RESET_APPROX` | 0 / OFF: SO(3) right Jacobian; 1: first-order reset | Packaged profile; default 0 |
+| `ESKF_MAG_TILT` | 1 / ON: restrict magnetic attitude gain to navigation Down; 0: full attitude gain | Packaged profile; default 1 |
 
 These three algorithm switches apply consistently to every translation unit using
 the same core types. Mixed definitions are not supported. No selectable accel2
@@ -193,21 +194,21 @@ quantities. Active length is derived, not another independent parameter.
 
 ### Fixed module settings and implicit bindings
 
-The appendix enumerates all **123 `inline constexpr` declarations** in
+The appendix records the **123 baseline `inline constexpr` declarations** in
 [DeploymentProfile.hpp](../integrations/px4/module/DeploymentProfile.hpp).
 That count includes arrays/aggregates and conversion factors; it is **not** a
 claim of 123 tunable scalar parameters. `bias_limits()` adds two explicit limits
 (0.4 m/s² and 0.15 rad/s) outside those declarations.
 
-Bindings not captured by that declaration count:
+Baseline bindings and their current configuration treatment:
 
 - [FormalEskf.hpp](../integrations/px4/module/FormalEskf.hpp) fixes
-  `Px4MatrixBackend<double>` + INS, and default-constructs GNSS quality parameters.
+  `Px4MatrixBackend<double>` + INS. GNSS quality now uses the packaged profile.
 - [FormalEskf.cpp](../integrations/px4/module/FormalEskf.cpp) enables both bias
-  learners. Startup needs stationary IMU, magnetic heading, qualified GNSS and
+  learners by default, with independent profile permissions. Startup needs stationary IMU, magnetic heading, qualified GNSS and
   barometer; arbitrary source-disable switches are not yet supported.
 - [FormalEskfAttitude.cpp](../integrations/px4/module/FormalEskfAttitude.cpp)
-  derives gravity `V` from g²; normal magnetic correction uses diagonal 25 µT²,
+  derives gravity `V` from g²; normal magnetic correction defaults to diagonal 25 µT²,
   and the direct field-heading check is disabled while separate heading
   consistency is used. Reference availability is dynamic, not a check mask.
 - [FormalEskfNavigation.cpp](../integrations/px4/module/FormalEskfNavigation.cpp)
@@ -215,9 +216,9 @@ Bindings not captured by that declaration count:
   [HeightAiding](../integrations/px4/module/HeightAiding.hpp) prefers active GNSS
   height, then barometer. No selectable reference-priority/source-disable policy.
 - [MagneticModel](../integrations/px4/module/MagneticModel.hpp) uses the host WMM
-  lookup and declination selection; geographic coordinates/model output are
+  lookup when enabled by the build profile and retains separate declination selection; geographic coordinates/model output are
   inputs. [OutputPredictor](../integrations/px4/module/OutputPredictor.hpp) shares
-  the model gravity/timing/numerical contract, not an independent filter tuning set.
+  the model gravity/timing/numerical contract; its two tracking time constants are configurable.
 - `SENS_IMU_MODE`, topic selection, source calibration and WMM version belong to
   the host integration. No live `EKF2_*` tuning values are read as our settings.
 
@@ -231,7 +232,7 @@ Bindings not captured by that declaration count:
 | Root CMake / CTest | `BUILD_TESTING=ON`; `FORMAL_ESKF_BUILD_EXAMPLES=OFF` | Build scope, not estimator behavior |
 | Replay build | `FORMAL_ESKF_REPLAY_BACKEND=eigen` (or `px4_matrix`), `FORMAL_ESKF_PX4_WMM_TARGET=""` | Selected backend must be built; optional external magnetic-model helper |
 | PX4 Kconfig | `MODULES_FORMAL_ESKF`, default n, depends on POSIX; selected in the installed SITL board profile | Host's build system owns module inclusion |
-| PX4 CMake | Fixed 0/0/1 algorithm definitions, C++20, no fast-math/FMA contraction, no exceptions/RTTI; `FORMAL_ESKF_MODULE_TESTS=OFF` | Supported deployment/evidence identity, not user flight tuning |
+| PX4 CMake | Packaged algorithm definitions (default 0/0/1), C++20, no fast-math/FMA contraction, no exceptions/RTTI; `FORMAL_ESKF_MODULE_TESTS=OFF` | Supported deployment/evidence identity; language and FP constraints stay fixed |
 
 Sources: [CMake](../CMakeLists.txt),
 [PX4 CMake](../integrations/px4/module/CMakeLists.txt),
@@ -269,11 +270,11 @@ parameters, files, environment variables or Kconfig symbols for tuning.
 
 | Group | Proposed disposition | Required before exposure |
 | --- | --- | --- |
-| IMU sample variances and bias variance densities | First startup-parameter batch; preserve current values/units, initially isotropic in module | Explicit domain, conversion/finite checks, default equivalence and changed-noise tests |
-| GNSS, magnetic, barometer and gravity observation weights; gates where implemented | Startup settings in the next small batch | Distinguish standard deviation/variance/effective pseudo-observation weight; do not invent a gravity gate |
-| GNSS quality thresholds/checks, magnetic health/consistency, bias enable/limits | Subsequent startup policy batch | Preserve mandatory checks; reset/requalification and coupled consumers tested; do not independently disable safety prerequisites |
+| IMU sample variances and bias variance densities | Exposed as build-profile values; preserve units, initially isotropic in module | Explicit domain, conversion/finite checks, default equivalence and changed-noise tests |
+| GNSS, magnetic and barometer observation weights; gates where implemented | Exposed as build-profile values; gravity keeps g² effective weight | Distinguish standard deviation/variance/effective pseudo-observation weight; do not invent a gravity gate |
+| GNSS quality thresholds/checks, magnetic health/consistency, bias enable/limits | Exposed as build-profile values | Preserve mandatory checks; reset/requalification and coupled consumers tested; do not independently disable safety prerequisites |
 | Source selection / reference priority | Defer exposing new choices until their initialization, loss/recovery and publication behavior is specified | Existing dependence on GNSS/magnetometer/barometer cannot be removed with one Boolean |
-| Lifecycle durations, startup covariance/alignment, predictor time constants | Keep current profile initially; candidates for explicitly qualified deployment profiles | Domain/cross-constraints, history/cadence and convergence/recovery evidence |
+| Lifecycle durations and predictor time constants | Exposed as build-profile values; startup covariance/alignment remains fixed | Domain/cross-constraints, history/cadence and convergence/recovery evidence |
 | Capacities, supported rates, stack/queue/output deadline budgets | Compile-time deployment profile; only admitted lengths/delays at startup | PX4-TIME/PX4-RT bounds and target resource evidence |
 | Frame/model constants, numerical branches, protocol/reporting thresholds | Keep specified behavior, not broad user tuning | A deliberate design change and affected proof/test review |
 
@@ -298,33 +299,127 @@ parameter values therefore do not express identical bias evolution. References:
 [PX4 parameter definitions](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/module.yaml#L116),
 and our [process-noise definition](../include/formal_eskf/eskf/configuration/ins.hpp).
 
-## Kconfiglib assessment
+## Kconfiglib integration
 
-**Keep the current CMake + host PX4 parameter split for now.** Kconfig is useful
-for build feature dependencies and board profiles, not a replacement for typed
-floating-point estimator parameters or runtime validation.
+`make menuconfig` configures the standalone build and the **PX4 deployment
+profile**. [Kconfig](../Kconfig) owns the algorithm choices and standalone build;
+[px4.Kconfig](../configs/px4.Kconfig) owns the 64 module settings below. The latter
+are applied by package installation/export, not by the standalone CMake build.
+INS/double/PX4 matrix remain fixed for the module. Its existing `FESKF_*` startup
+parameters retain their host-owned interfaces and restart requirement.
+
+Attitude prediction is an exclusive choice: **Exact (exponential map)**, the
+default, maps to `ESKF_QUAT_APPROX=OFF`; **Approximate (first-order)** maps to
+`ESKF_QUAT_APPROX=ON`. The existing C++ implementation and CMake interface are
+unchanged.
+
+Covariance reset likewise selects **Exact (SO(3) right Jacobian)**, the default
+(`ESKF_RESET_APPROX=OFF`), or **Approximate (first-order)**
+(`ESKF_RESET_APPROX=ON`). The two algorithm choices are independent.
 
 The inspected [sysprog21/Kconfiglib revision](https://github.com/sysprog21/Kconfiglib/tree/6d9102abd55b614d3c6133529ffa40dbea7fd2cf)
 provides dependency/choice evaluation, configuration generation and optional
 interactive frontends. Its [symbol types](https://github.com/sysprog21/Kconfiglib/blob/6d9102abd55b614d3c6133529ffa40dbea7fd2cf/kconfiglib.py#L4358)
-are bool/tristate/string/int/hex, with no native float parameter type. Encoding
-noise as strings or scaled integers would add parsing and validation without
-removing our numerical contracts.
+are bool/tristate/string/int/hex, with no native float parameter type. Floating
+settings use decimal strings, parsed and validated before packaging; generated
+C++ values are numeric literals. Timeouts use integer milliseconds and are
+converted to uint64 microseconds at their consumers.
 
-There is also a concrete host compatibility issue to evaluate: this revision
+There is a concrete host compatibility issue: this revision
 declares version 15.0.0 and [changes installed imports to package modules](https://github.com/sysprog21/Kconfiglib/blob/6d9102abd55b614d3c6133529ffa40dbea7fd2cf/README.md#installation-with-pip),
 whereas pinned [PX4 kconfig.cmake](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/cmake/kconfig.cmake#L4)
 imports/invokes top-level `menuconfig`, `defconfig` and `genconfig`. Installing
-that fork into PX4's environment is not an established drop-in upgrade. This is
-a source compatibility finding; no package installation or end-to-end migration
-test was performed. The README's release example is not used as version evidence.
+that fork into PX4's environment is not an established drop-in upgrade. Instead,
+[configure.py](../scripts/configure.py) downloads the pinned source into ignored
+`tools/kconfiglib/` on first use and imports it only for that process. Subsequent
+runs use the checkout offline and check its revision and tracked-file integrity.
+No global package installation or PX4 tool migration is performed.
 
-If future standalone target profiles justify adoption: pin and isolate the tool,
-keep one authoritative build-option definition, generate the same existing
-compile definitions, and reject conflicting CMake/Kconfig selections. In PX4,
-reuse its existing Kconfig integration rather than run a second menuconfig tree.
-Keep standalone library consumers free of a mandatory interactive/Python setup.
-No Kconfig dependency or generated configuration header is added by this inventory.
+### PX4 deployment menu
+
+| Group | Settings | Existing defaults / behavior |
+| --- | --- | --- |
+| Features (5) | WMM, ground-effect protection, gravity aiding support, accelerometer/gyro bias learning | All enabled; required motion, health and alignment conditions remain effective |
+| IMU noise and bias (10) | Sample variances, bias variance densities, fault acceleration standard deviation, learning force/rate/decay and two bias limits | Units and sampled/density scaling remain as listed above |
+| Magnetic aiding (14) | Three health selectors, strength/inclination tolerances, minimum horizontal field, heading noise/acceleration criterion, observation variance, innovation gate, health/sample/fusion/model intervals | Strength check on; inclination and require-WMM off; health 1 s, sample interval 0.5 s, fusion timeout 7 s, model lookup 10 s |
+| GNSS quality (19) | Ten check selectors, satellites/PDOP/position/speed/drift limits, speed input bound and health duration | All ten checks on; six satellites, PDOP 2.5, 3/5 m, 0.5 m/s accuracy, health 10 s |
+| GNSS fusion (5) | Horizontal timeout, velocity and position noise floors/cap, innovation gate | Timeout 7 s, velocity 0.3 m/s, position 0.5–10 m, gate 5 sigma |
+| Height / ground effect (9) | Fusion and two data timeouts, barometer variance, GNSS noise floor/variance cap, gate, deadzone and hold time | Fusion 5 s; barometer 0.4 s / GNSS 1 s; deadzone 4 m; hold 10 s |
+| Output predictor (2) | Velocity and position tracking time constants | Both 0.25 s |
+
+WMM disabled suppresses host lookup and geographic adoption. The existing
+measured-field/stored-declination/magnetic-north fallback remains; geographic
+heading selection alone is distinct from the WMM build switch. Requiring a WMM
+health reference depends on WMM being enabled. Ground-effect disabled leaves
+ordinary barometric innovation unchanged; enabling it retains the delayed
+land-detector and rotary-wing conditions. Gravity build exclusion takes precedence
+over `FESKF_GRAV_EN`, while tilt alignment still runs. Bias permissions do not
+zero the stored biases or disable independent bias process-noise inhibition.
+
+Float strings must be finite decimal numbers in the admitted domain. Nonzero
+values must have a positive normal finite binary64 square; zero is allowed only
+for the declared variances, bias limits and tolerance/disable values. Heading
+noise and inclination tolerance cannot exceed pi. Position noise floor/cap,
+height noise/variance cap, and GNSS clipping arithmetic are checked together.
+Positive millisecond durations are bounded by INT32_MAX; magnetic qualification
+alone permits zero. This establishes representability and explicit relationships,
+not calibrated flight-safe tuning. Existing per-operation checks remain intact.
+
+Fixed admission ages/cadence and policy-derived expiration rules still apply.
+For example, magnetic no-data expiry uses twice the selected maximum interval;
+GNSS recovery derives from qualification duration; the geographic reference
+owner retains its own adoption cadence even when lookup cadence changes.
+Do not interpret one selected timeout as the sole source-health criterion.
+
+### Commands and precedence
+
+```bash
+make menuconfig                       # Edit .config; save before exiting
+make test                             # Configure, build, then run CTest
+make configure CMAKE_ARGS=-DCMAKE_BUILD_TYPE=Release
+make defconfig                        # Restore project defaults
+python3 tests/test_kconfig.py          # Configuration integration checks
+make px4-install PX4_DIR=/path/to/PX4-Autopilot
+make -C /path/to/PX4-Autopilot px4_sitl_formal_eskf -j2
+make px4-export PACKAGE_DIR=output/px4-package
+```
+
+- `CONFIG_FILE` selects the saved configuration; default `.config`. Kconfiglib
+  keeps the previous saved contents in `.config.old`. Neither is tracked.
+- `BUILD_DIR` defaults to `build/demo`; `JOBS` defaults to two compile workers.
+  `make`/`make build` configures and builds; `make configure` only configures.
+- `.config` owns menu-managed settings for the Make entry point. Every configure
+  validates requests, then generates `BUILD_DIR/kconfig.cmake` and applies it to
+  the CMake cache, including disabled options. Unknown/invalid assignments and
+  unsatisfied dependencies fail rather than silently selecting another profile.
+  The menu can be used to resolve obsolete or incompatible selections.
+- `CMAKE_ARGS` supplies non-menu options such as toolchains, package search paths
+  and build type. Attempts to set a menu-managed option with `-D` are rejected.
+  External backend dependencies remain host-provided; selecting an adapter does
+  not install its library or supply target CPU/FPU flags.
+- Direct CMake builds and embedding via `add_subdirectory` remain independent of
+  `.config` and Python. Use separate build directories when switching between
+  direct CMake and Make; an existing CMake cache retains previously applied values.
+  CMake owns the build interface, and the menu maps to its existing settings;
+  `test_kconfig.py` checks that their defaults agree and mode changes reach the
+  compiler flags without stale cache values. The standalone core needs no
+  generated C++ header.
+- `make px4-install` / `make px4-export` pass `CONFIG_FILE` explicitly to the
+  installer. It validates the profile and generates `DeploymentConfig.hpp` in the
+  package, with the three algorithm choices and 64 module settings. The selected
+  configuration and generated header are retained and hashed in the package
+  manifest. The source-tree default header is not overwritten. A relocated
+  package builds without Kconfiglib or the original source repository.
+- Direct `install.py` without `--config` uses the tracked default profile;
+  exported packages already contain their selected profile. Reinstall and rebuild
+  to change it. Restart the module after deploying; no configuration parsing or
+  dynamic allocation is added to `Run()`. Replay settings are unaffected.
+
+For reproducible evidence retain the saved `.config`, effective CMake cache,
+compiler flags and dependency revisions alongside the verification results.
+Changing the menu does not expand existing formal-proof configuration coverage.
+Default equivalence and selected non-default module checks are recorded in the
+[2026-11-18 validation](validation-px4-configuration-20261118.md).
 
 ## Verification and review boundary
 
@@ -358,13 +453,16 @@ Then identify numerical/proof/resource gaps for new supported combinations.
 No new proof pass or flight qualification is claimed by this documentation.
 
 Review focus: ownership split, candidate versus fixed groups, noise units,
-coupled settings, restart semantics and the recommendation to defer additional
-Kconfig infrastructure. F-06.2 implementation remains incomplete.
+coupled settings, restart semantics and the standalone menu's build boundary.
+Remaining F-06.2 decisions concern additional startup bindings and supported
+profiles, not whether these 64 build-profile controls reach the module.
 
 ## Appendix: complete module profile declaration list
 
-All entries below are currently compile-time constants. “Candidate” means a
-proposed future startup/profile setting, **not** an implemented adjustable field.
+This appendix retains baseline declaration expressions for comparison; the
+deployment menu identifies values now configurable at build time. All remain
+compile-time constants. “Candidate” records the earlier recommendation, not the
+current implementation status; the menu section owns that status.
 Numeric bounds are not supplied where no configurable domain exists yet; the
 current value is not an invented accepted range. Namespace is relative to
 `formal_eskf::px4::profile`; declaration expressions preserve source units.

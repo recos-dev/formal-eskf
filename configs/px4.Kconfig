@@ -1,0 +1,319 @@
+menu "PX4 module configuration"
+
+comment "Applied by make px4-install / px4-export; replay uses its own settings"
+
+menu "Features"
+
+config PX4_WMM
+    bool "Use world magnetic model"
+    default y
+    help
+      Use geographic magnetic field data for health checks and, when selected by
+      FESKF_DECL_TYPE, the observation reference. Disabled uses the existing measured-field
+      and stored-declination fallback.
+
+config PX4_GROUND_EFFECT
+    bool "Enable barometer ground-effect protection"
+    default y
+    help
+      Allow the existing land-detector-driven barometric innovation deadzone. Enabling
+      support does not force the in-ground-effect flight condition.
+
+config PX4_GRAVITY_AIDING
+    bool "Enable gravity aiding support"
+    default y
+    help
+      FESKF_GRAV_EN can disable fusion at startup; it cannot enable support excluded here.
+      Existing alignment, motion and clipping checks still apply.
+
+config PX4_ACCEL_BIAS_LEARNING
+    bool "Enable accelerometer bias learning"
+    default y
+    help
+      Controls correction permissions. It does not reset bias or disable the independent
+      process-noise policy.
+
+config PX4_GYRO_BIAS_LEARNING
+    bool "Enable gyroscope bias learning"
+    default y
+    help
+      Controls correction permissions. It does not reset bias or disable the independent
+      process-noise policy.
+
+endmenu
+
+menu "IMU noise and bias"
+
+config PX4_ACCEL_VARIANCE
+    string "Specific-force per-sample variance (m^2/s^4)"
+    default "1.0"
+
+config PX4_GYRO_VARIANCE
+    string "Angular-rate per-sample variance (rad^2/s^2)"
+    default "0.0025"
+
+config PX4_ACCEL_BIAS_DENSITY
+    string "Accelerometer bias random-walk variance density (m^2/s^5)"
+    default "1e-6"
+
+config PX4_GYRO_BIAS_DENSITY
+    string "Gyroscope bias random-walk variance density (rad^2/s^3)"
+    default "1e-8"
+
+config PX4_FAULT_ACCEL_STD
+    string "Faulty accelerometer standard deviation (m/s^2)"
+    default "4.9"
+
+config PX4_BIAS_MAX_FORCE
+    string "Bias-learning specific-force limit (m/s^2)"
+    default "25.0"
+
+config PX4_BIAS_MAX_RATE
+    string "Bias-learning angular-rate limit (rad/s)"
+    default "3.0"
+
+config PX4_BIAS_DECAY_S
+    string "Bias-learning peak decay time (s)"
+    default "0.5"
+
+config PX4_ACCEL_BIAS_LIMIT
+    string "Accelerometer bias limit per axis (m/s^2)"
+    default "0.4"
+
+config PX4_GYRO_BIAS_LIMIT
+    string "Gyroscope bias limit per axis (rad/s)"
+    default "0.15"
+
+endmenu
+
+menu "Magnetic aiding"
+
+config PX4_MAG_CHECK_STRENGTH
+    bool "Check magnetic field strength"
+    default y
+
+config PX4_MAG_CHECK_INCLINATION
+    bool "Check magnetic field inclination"
+    default n
+
+config PX4_MAG_REQUIRE_WMM
+    bool "Require a WMM health reference"
+    depends on PX4_WMM
+    default n
+    help
+      Reject magnetic aiding without a geographic health reference.
+
+config PX4_MAG_STRENGTH_TOL
+    string "Magnetic strength tolerance (microtesla)"
+    default "20.0"
+
+config PX4_MAG_INCLINATION_TOL
+    string "Magnetic inclination tolerance (rad)"
+    default "0.3490658503988659"
+
+config PX4_MAG_MIN_HORIZONTAL
+    string "Minimum horizontal magnetic field (microtesla)"
+    default "5.0"
+
+config PX4_MAG_HEADING_NOISE
+    string "Heading consistency and reset standard deviation (rad)"
+    default "0.3"
+
+config PX4_MAG_ACCEL_LIMIT
+    string "Horizontal acceleration for heading observability (m/s^2)"
+    default "0.5"
+
+config PX4_MAG_VARIANCE
+    string "Magnetic measurement variance (microtesla^2)"
+    default "25.0"
+
+config PX4_MAG_GATE
+    string "Magnetic innovation gate (sigma)"
+    default "3.0"
+
+config PX4_MAG_HEALTH_MS
+    int "Magnetic health qualification time (ms; 0 disables duration)"
+    range 0 2147483647
+    default 1000
+
+config PX4_MAG_INTERVAL_MS
+    int "Maximum magnetic sample interval (ms)"
+    range 1 2147483647
+    default 500
+
+config PX4_MAG_FUSION_TIMEOUT_MS
+    int "Magnetic fusion timeout (ms)"
+    range 1 2147483647
+    default 7000
+
+config PX4_WMM_INTERVAL_MS
+    int "Magnetic model lookup interval (ms)"
+    range 1 2147483647
+    default 10000
+
+endmenu
+
+menu "GNSS quality"
+
+config PX4_GNSS_CHECK_SATELLITES
+    bool "Check satellites"
+    default y
+
+config PX4_GNSS_CHECK_PDOP
+    bool "Check pdop"
+    default y
+
+config PX4_GNSS_CHECK_HORIZONTAL_ACCURACY
+    bool "Check horizontal accuracy"
+    default y
+
+config PX4_GNSS_CHECK_VERTICAL_ACCURACY
+    bool "Check vertical accuracy"
+    default y
+
+config PX4_GNSS_CHECK_SPEED_ACCURACY
+    bool "Check speed accuracy"
+    default y
+
+config PX4_GNSS_CHECK_HORIZONTAL_DRIFT
+    bool "Check horizontal drift"
+    default y
+
+config PX4_GNSS_CHECK_VERTICAL_DRIFT
+    bool "Check vertical drift"
+    default y
+
+config PX4_GNSS_CHECK_HORIZONTAL_SPEED
+    bool "Check horizontal speed"
+    default y
+
+config PX4_GNSS_CHECK_VERTICAL_SPEED
+    bool "Check vertical speed"
+    default y
+
+config PX4_GNSS_CHECK_SPOOFED
+    bool "Check spoofed"
+    default y
+
+config PX4_GNSS_MIN_SATELLITES
+    int "Minimum satellites"
+    range 0 255
+    default 6
+
+config PX4_GNSS_MAX_PDOP
+    string "Maximum PDOP"
+    default "2.5"
+
+config PX4_GNSS_MAX_HACC
+    string "Maximum horizontal position accuracy (m)"
+    default "3.0"
+
+config PX4_GNSS_MAX_VACC
+    string "Maximum vertical position accuracy (m)"
+    default "5.0"
+
+config PX4_GNSS_MAX_SACC
+    string "Maximum speed accuracy (m/s)"
+    default "0.5"
+
+config PX4_GNSS_MAX_HDRIFT
+    string "Maximum horizontal drift / stationary speed (m/s)"
+    default "0.1"
+
+config PX4_GNSS_MAX_VDRIFT
+    string "Maximum vertical drift / stationary speed (m/s)"
+    default "0.2"
+
+config PX4_GNSS_VELOCITY_LIMIT
+    string "Maximum speed input magnitude (m/s)"
+    default "100.0"
+
+config PX4_GNSS_HEALTH_MS
+    int "GNSS health qualification time (ms)"
+    range 1 2147483647
+    default 10000
+
+endmenu
+
+menu "GNSS fusion"
+
+config PX4_GNSS_TIMEOUT_MS
+    int "Horizontal aiding timeout (ms)"
+    range 1 2147483647
+    default 7000
+
+config PX4_GNSS_MIN_VEL_NOISE
+    string "Minimum velocity standard deviation (m/s)"
+    default "0.3"
+
+config PX4_GNSS_MIN_POS_NOISE
+    string "Minimum horizontal position standard deviation (m)"
+    default "0.5"
+
+config PX4_GNSS_MAX_POS_NOISE
+    string "Maximum horizontal position noise floor (m)"
+    default "10.0"
+
+config PX4_GNSS_GATE
+    string "GNSS innovation gate (sigma)"
+    default "5.0"
+
+endmenu
+
+menu "Height aiding and ground effect"
+
+config PX4_HEIGHT_TIMEOUT_MS
+    int "Height fusion timeout (ms)"
+    range 1 2147483647
+    default 5000
+
+config PX4_BARO_TIMEOUT_MS
+    int "Barometer data timeout (ms)"
+    range 1 2147483647
+    default 400
+
+config PX4_GNSS_HEIGHT_TIMEOUT_MS
+    int "GNSS height data timeout (ms)"
+    range 1 2147483647
+    default 1000
+
+config PX4_BARO_VARIANCE
+    string "Barometer measurement variance (m^2)"
+    default "12.25"
+
+config PX4_GNSS_MIN_HEIGHT_NOISE
+    string "Minimum GNSS height standard deviation (m)"
+    default "0.75"
+
+config PX4_GNSS_MAX_HEIGHT_VARIANCE
+    string "Maximum GNSS height variance with other aiding (m^2)"
+    default "100.0"
+
+config PX4_HEIGHT_GATE
+    string "Height innovation gate (sigma)"
+    default "5.0"
+
+config PX4_GROUND_DEADZONE
+    string "Ground-effect barometer deadzone (m)"
+    default "4.0"
+
+config PX4_GROUND_HOLD_MS
+    int "Ground-effect detection hold time (ms)"
+    range 1 2147483647
+    default 10000
+
+endmenu
+
+menu "Output predictor"
+
+config PX4_OUTPUT_VEL_TAU
+    string "Velocity tracking time constant (s)"
+    default "0.25"
+
+config PX4_OUTPUT_POS_TAU
+    string "Position tracking time constant (s)"
+    default "0.25"
+
+endmenu
+
+endmenu

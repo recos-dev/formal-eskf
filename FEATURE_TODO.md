@@ -135,8 +135,8 @@ scoped integration evidence, not source formal proof or target timing acceptance
 
 | Task | Status and existing work | Completion criterion |
 |---|---|---|
-| F-05.1 — Lever arms and output reference point | Implemented; review pending: restart-only IMU/GNSS FRD offsets, delayed GNSS position/height/velocity compensation, current body-point output and reset deltas. Nominal geometry only; installation uncertainty is not modeled. See [validation](docs/validation-px4-sensor-positions-20261117.md) | Define IMU/GNSS/output points, frames and calibration ownership; implement position/velocity compensation with rotation and uncertainty handling. Independent rotating-rig cases must expose sign/point mistakes. |
-| F-05.2 — Fixed-frame operating envelope | Design: module local projection and replay conversions already exist | Quantify projection/frame/curvature error against an independent geographic oracle; declare usable distance, height datum, exclusions and behavior beyond the envelope. Review heading-variance/frame assumptions. No silent public-origin reset. |
+| F-05.1 — Lever arms and output reference point | Committed in `9618d18`: restart-only IMU/GNSS FRD offsets, delayed GNSS position/height/velocity compensation, current body-point output and reset deltas. Nominal geometry only; installation uncertainty is not modeled. See [validation](docs/validation-px4-sensor-positions-20261117.md) | Define IMU/GNSS/output points, frames and calibration ownership; implement position/velocity compensation with rotation and uncertainty handling. Independent rotating-rig cases must expose sign/point mistakes. |
+| F-05.2 — Fixed-frame operating envelope | Assessment and output-frame fixes ready for review; no accepted flight envelope yet. See [assessment](docs/validation-px4-frame-envelope-20261117.md) | Quantify projection/frame/curvature error against an independent geographic oracle; declare usable distance, height datum, exclusions and behavior beyond the envelope. Review heading-variance/frame assumptions. No silent public-origin reset. |
 
 A geodetic nominal-state extension is D-07. F-05.2 first establishes what the
 current Cartesian model supports; it does not pre-authorize new core equations.
@@ -145,14 +145,14 @@ current Cartesian model supports; it does not pre-authorize new core equations.
 
 | Task | Status and existing work | Completion criterion |
 |---|---|---|
-| F-06.1 — Confidence and failure reporting | Partial: source status, individual GNSS quality flags and reset counters exist; some aggregate fault/bias-validity reporting remains coarse | Audit actual uORB meanings against internal decisions. Distinguish alignment, active fusion, validity, convergence and numerical faults; validate yaw/bias uncertainty reporting and restart-required behavior. Review the delayed IMU covariance proxy used alongside body-point output (F-05.1); installation uncertainty and transport correlations remain unmodeled. Rejection must not refresh successful-fusion time. |
+| F-06.1 — Confidence and failure reporting | Partial: source status, individual GNSS quality flags and reset counters exist; F-05.2 corrects heading/tilt covariance frames, but aggregate fault/bias-validity reporting remains coarse | Audit actual uORB meanings against internal decisions. Distinguish alignment, active fusion, validity, convergence and numerical faults; validate yaw/bias uncertainty reporting and restart-required behavior. Review the delayed IMU covariance proxy used alongside body-point output (F-05.1); installation uncertainty and transport correlations remain unmodeled. Rejection must not refresh successful-fusion time. |
 | F-06.2 — Deployment parameters | Partial: startup magnetic-declination settings exist; most module settings are fixed | Expose the approved noise/gate/source/limit settings with documented units, bounds and startup/live-update semantics. Validate configuration changes without silently importing live EKF2 settings. |
 
 ### F-07 — Deployment validation
 
 | Task | Status and dependency | Completion criterion |
 |---|---|---|
-| F-07.1 — Disturbance and accuracy evidence | Partial: native, replay and normal-flight/ground-fault SITL evidence exists | Add independent-oracle cases for magnetic disturbance, high dynamics/free fall, clipping, outages and recovery in flight. Quantify detection/rejection, attitude/position errors and recovery; test WMM epoch/calibration assumptions. Retain failing runs and compare feature enabled/disabled where meaningful. Make cross-topic recovery assertions compare post-event publications; F-05.1 retained a stale 10 Hz status snapshot beside already-recovered navigation output. |
+| F-07.1 — Disturbance and accuracy evidence | Partial: native, replay and normal-flight/ground-fault SITL evidence exists | Add independent-oracle cases for magnetic disturbance, high dynamics/free fall, clipping, outages and recovery in flight. Quantify detection/rejection, attitude/position errors and recovery; test WMM epoch/calibration assumptions. Retain failing runs and compare feature enabled/disabled where meaningful. Make cross-topic recovery assertions compare post-event publications; F-05.1 and F-05.2 retained stale 10 Hz status snapshots beside already-recovered navigation output. |
 | F-07.2 — Resource budgets | Planned; target profile must be explicit | Measure wall-clock CPU, peak RAM and stack under nominal/fault load. Separate simulator virtual time from execution cost. Check bounded history against F-04 budgets. |
 | F-07.3 — Hardware validation | Blocked on target hardware and an agreed test envelope | Establish target builds, timing/interfaces and HIL evidence before any hardware-flight claim. Simulation can progress now; unavailable hardware is not a passed check. |
 
@@ -174,10 +174,11 @@ Promoting one requires a reviewed scope and dependency; retain its ID.
 
 ## Next implementation
 
-**F-05.1: lever arms and output reference point** is implemented for review.
-Review the nominal compensation, installation assumptions and reset/publication
-evidence before committing. Next is **F-05.2: fixed-frame operating envelope**,
-with an independent geographic oracle; no new geodetic core is authorized.
+**F-05.1** is committed. **F-05.2** has independent geographic comparisons and
+rotation-variance/dateline fixes ready for review. Accept the frame semantics
+and decide the operating error budget before declaring a flight envelope or
+adding a range policy. No new geodetic core is authorized. Next implementation
+after this review is **F-06.1: confidence and failure reporting**.
 F-04 source formal proof, the retained SIH landing anomaly and F-07.2 resource
 acceptance remain open; they are not silently closed by this feature.
 

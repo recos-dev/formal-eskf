@@ -261,8 +261,10 @@ status; they must not retimestamp a delayed estimate.
 As in EKF2, navigation uncertainty fields can carry delayed-filter covariance
 proxies alongside current output. Document this approximation in the topic
 mapping and expose the covariance epoch/lag in diagnostics; they are **not** a
-propagated current-time covariance or a certified current-error bound. Retain the
-existing variance/frame mapping pending its independent review. With a nonzero
+propagated current-time covariance or a certified current-error bound. Rotate
+body-local attitude covariance with the matching delayed attitude under
+[R-PX4-FRAME-OUTPUT](verification-requirements.md#r-px4-frame-output-geographic-and-rotation-variance-output-frames).
+With a nonzero
 IMU installation offset these remain IMU-state proxies; the module's body-point
 position/velocity transform does not transport their covariance. Suppress valid
 output on stale/faulted history; never make delayed uncertainty look current by

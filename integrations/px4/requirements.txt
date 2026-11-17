@@ -3,3 +3,6 @@ numpy
 matplotlib
 pymavlink
 pyulog
+# Independent host-side frame analysis; not estimator runtime dependencies.
+geographiclib==2.1
+pyproj==3.7.1

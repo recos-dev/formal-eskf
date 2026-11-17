@@ -308,6 +308,7 @@ private:
     void update_magnetic_model();
     std::optional<magnetic_model_type::sample_type> lookup_magnetic_model(double latitude, double longitude) const;
     bool gps_good() const;
+    vector3_type rotation_variance_n() const;
     bool magnetic_heading_valid() const;
     bool magnetic_heading_aiding() const;
     uint16_t gps_failure_flags() const;

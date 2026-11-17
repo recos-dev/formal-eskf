@@ -125,6 +125,27 @@ See [the reference-point contract](../../docs/spec/verification-requirements.md#
 for frames, signs, timing and evidence limits. Physical nonzero installations
 require their own validation.
 
+## Geographic frame checks
+
+The module uses a fixed PX4 spherical projection and MSL height differences;
+replay uses fixed-origin WGS84 ECEF/NED with ellipsoidal heights. Geographic
+coordinates, altitude datums and velocity frames must be compared accordingly.
+Local heading/tilt variance uses delayed navigation-frame rotation covariance;
+odometry orientation variance remains body-frame. Computed longitudes wrap to
+`[-180,180)` without changing the local origin.
+
+After building the pinned PX4 target and installing the host requirements:
+
+```bash
+python3 integrations/px4/analyze_frame.py "$PX4_ROOT"
+```
+
+This writes the geographic grid, independent-oracle comparisons and source hashes
+under `output/px4-frame-envelope/`. See the
+[F-05.2 assessment](../../docs/validation-px4-frame-envelope-20261117.md) for
+measured differences and limitations. The module has no geographic-range guard;
+normal validity flags do not establish a flight-qualified operating radius.
+
 ## Automatic flight
 
 Run from the formal-eskf repository root in a system terminal:
@@ -197,7 +218,7 @@ flowchart LR
 - Holds the previous IMU rate for small missing intervals; discontinuities beyond 50 ms and IMU identity/calibration changes latch a fault. Numerical failures also latch a fault. Restart is required for recovery.
 - Reserves a 60 KiB work-queue stack. The module disables fast-math, FMA contraction, exceptions and RTTI. Lockstep virtual-time performance counters do not measure wall-clock CPU cost.
 
-This is a single-sensor SITL POC with stationary startup and simulated sensor noise. It has no redundant sensors or wind, terrain and magnetic-bias states. Delayed fusion and current output prediction use the 250 Hz SIH profile below; physical receiver delays require their own producer binding and qualification. Magnetic fusion retains a three-component observation with `ESKF_MAG_TILT=1`; it reports heading aiding, not 3D magnetic-state estimation. AUTO/3D switching and terrain-based in-flight realignment remain unconnected. See [the magnetic integration contract](../../docs/spec/verification-requirements.md#px4-module-magnetic-aiding). Heading variance approximates yaw variance with the local attitude-error z component for the tested low-tilt flight. Sensor failure checks cover flag withdrawal and recovery on the ground, not continued flight through sensor failures.
+This is a single-sensor SITL POC with stationary startup and simulated sensor noise. It has no redundant sensors or wind, terrain and magnetic-bias states. Delayed fusion and current output prediction use the 250 Hz SIH profile below; physical receiver delays require their own producer binding and qualification. Magnetic fusion retains a three-component observation with `ESKF_MAG_TILT=1`; it reports heading aiding, not 3D magnetic-state estimation. AUTO/3D switching and terrain-based in-flight realignment remain unconnected. See [the magnetic integration contract](../../docs/spec/verification-requirements.md#px4-module-magnetic-aiding). Heading variance uses the navigation-frame rotation proxy defined by [R-PX4-FRAME-OUTPUT](../../docs/spec/verification-requirements.md#r-px4-frame-output-geographic-and-rotation-variance-output-frames); it is not an exact Euler-yaw variance. Sensor failure checks cover flag withdrawal and recovery on the ground, not continued flight through sensor failures.
 
 ### Geographic magnetic reference
 

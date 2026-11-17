@@ -829,7 +829,7 @@ public:
                        global.timestamp_sample == local.timestamp_sample &&
                        odometry.timestamp_sample == local.timestamp_sample &&
                        local.timestamp_sample - status.timestamp_sample == 212000U &&
-                       local.heading_var == float(f.m_covariance(8, 8)),
+                       local.heading_var == float(f.rotation_variance_n()(2)),
                    "current navigation and delayed covariance proxy have explicitly different epochs");
         }
         test.capture_outputs();
@@ -2097,6 +2097,100 @@ public:
                "heading-induced body point changes accumulate with same-step translation reset notifications");
     }
 
+    static void navigation_covariance_frame()
+    {
+        for (double roll : {0., 0.7, std::numbers::pi / 2.})
+        {
+            FormalEskfModuleTest test;
+            test.warmup();
+            auto & f = test.m_filter;
+            matrix::Euler<double> const angles(roll, 0., 0.4);
+            matrix::Dcm<double> const R(angles);
+            matrix::Quaternion<double> const q(angles);
+            expect(formal_eskf::succeeded(
+                       FormalEskf::quaternion_type::from_coefficients(q(0), q(1), q(2), q(3), 1e-6, f.m_state.q_nb)),
+                   "delayed covariance attitude");
+            matrix::SquareMatrix<double, 3> P;
+            P.setZero();
+            P(0, 0) = 0.02;
+            P(1, 1) = 0.25;
+            P(2, 2) = 0.001;
+            P(0, 1) = P(1, 0) = 0.001;
+            P(1, 2) = P(2, 1) = 0.003;
+            for (std::size_t row = 0; row < 3; ++row)
+            {
+                for (std::size_t column = 0; column < 3; ++column)
+                {
+                    f.m_covariance(6 + row, 6 + column) = P(row, column);
+                }
+            }
+            auto const before = f.m_covariance;
+            auto const expected = R * P * R.transpose();
+            auto const variance = f.rotation_variance_n();
+            for (std::size_t axis = 0; axis < 3; ++axis)
+            {
+                expect(std::abs(variance(axis) - expected(axis, axis)) < 1e-12,
+                       "NED variance rotates the complete body covariance, including correlations");
+            }
+            expect(f.magnetic_heading_aiding(), "heading fixture has active aiding");
+            expect(f.magnetic_heading_valid() == (expected(2, 2) < 0.1),
+                   "heading validity uses navigation Down variance, not body Z variance");
+            f.m_last_output = f.m_output.current().time_us - 10000U;
+            f.publish(FormalEskf::decode_imu(test.m_sample).mean_rates());
+            vehicle_local_position_s local{};
+            vehicle_odometry_s odometry{};
+            orb_copy(ORB_ID(vehicle_local_position), test.m_outputs[1], &local);
+            orb_copy(ORB_ID(vehicle_odometry), test.m_outputs[3], &odometry);
+            expect(std::abs(double(local.heading_var) - expected(2, 2)) < 2e-8 &&
+                       std::abs(double(local.tilt_var) - expected(0, 0) - expected(1, 1)) < 2e-8 &&
+                       local.heading_good_for_control == (expected(2, 2) < 0.1),
+                   "local heading/tilt and validity share the delayed navigation covariance");
+            expect(odometry.orientation_variance[0] == float(P(0, 0)) &&
+                       odometry.orientation_variance[1] == float(P(1, 1)) &&
+                       odometry.orientation_variance[2] == float(P(2, 2)) && same_bits(before, f.m_covariance),
+                   "odometry retains body rotation variances without mutating the core covariance");
+        }
+    }
+
+    static void dateline_output()
+    {
+        for (double direction : {-1., 1.})
+        {
+            FormalEskfModuleTest test;
+            test.warmup();
+            auto & f = test.m_filter;
+            f.m_origin.projection.initReference(0., direction * 179.999, f.m_origin.time_us);
+            f.m_state.p_n = FormalEskf::vector3(0., direction * 2000., 0.);
+            expect(f.m_output.apply_reset({}, {}, f.m_state.p_n), "dateline output setup");
+            auto const state_before = f.m_state;
+            auto const position_counter = f.m_position_reset_counter;
+            double latitude{}, longitude{};
+            f.m_origin.projection.reproject(f.m_state.p_n(0), f.m_state.p_n(1), latitude, longitude);
+            expect(std::abs(longitude) > 180., "raw projection crosses the longitude convention boundary");
+            double const expected_longitude = longitude - direction * 360.;
+            auto const lookups = f.m_magnetic_model.lookup_count();
+            auto const unavailable = f.m_mag_model_unavailable;
+            f.m_mag_model_origin_time = 0; // Request a lookup at the current estimated position.
+            f.m_origin.time_us = clock_us;
+            expect(f.gps_position_valid(), "dateline fixture has qualified horizontal aiding");
+            f.update_magnetic_model();
+            expect(f.m_magnetic_model.lookup_count() == lookups + 1U && f.m_mag_model_unavailable == unavailable &&
+                       !f.m_fault,
+                   "crossing the dateline preserves a valid WMM lookup");
+            f.m_last_output = f.m_output.current().time_us - 10000U;
+            f.publish(FormalEskf::decode_imu(test.m_sample).mean_rates());
+            vehicle_global_position_s global{};
+            vehicle_local_position_s local{};
+            orb_copy(ORB_ID(vehicle_global_position), test.m_outputs[2], &global);
+            orb_copy(ORB_ID(vehicle_local_position), test.m_outputs[1], &local);
+            expect(global.lat_lon_valid && global.lon >= -180. && global.lon < 180. &&
+                       std::abs(global.lon - expected_longitude) < 1e-7 && local.ref_lon == direction * 179.999 &&
+                       double(local.y) * direction > 1900. && f.m_position_reset_counter == position_counter &&
+                       same_bits(state_before.p_n, f.m_state.p_n),
+                   "global longitude wraps without changing local origin, state or reset history");
+        }
+    }
+
     static void timing_parameters()
     {
         FormalEskfModuleTest test;
@@ -2684,6 +2778,8 @@ int main(int argc, char ** argv)
     FormalEskfModuleTest::sensor_position_parameters();
     FormalEskfModuleTest::rotating_sensor_geometry();
     FormalEskfModuleTest::body_reference_output();
+    FormalEskfModuleTest::navigation_covariance_frame();
+    FormalEskfModuleTest::dateline_output();
     trace_file = comparison_trace;
     if (trace_file != nullptr)
     {

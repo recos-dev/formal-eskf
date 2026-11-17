@@ -13,6 +13,13 @@ See the [integration guide](README.md) for current setup and behavior,
 [review criteria](../../docs/spec/formal-verification-traceability-and-review-criteria.md)
 for requirement/evidence acceptance.
 
+## Fixed-frame assessment and output frames: 2026-11-17
+
+See the [F-05.2 assessment](../../docs/validation-px4-frame-envelope-20261117.md)
+for independent geographic comparisons, rotation-variance and dateline fixes,
+native/sanitizer evidence and retained SIH results. No flight-qualified range or
+long-range equivalence to EKF2 is claimed.
+
 ## Sensor positions and output reference point: 2026-11-17
 
 See the [F-05.1 validation record](../../docs/validation-px4-sensor-positions-20261117.md)

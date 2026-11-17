@@ -356,6 +356,8 @@ each covariance/uncertainty field; delayed covariance must not be presented as
 a newly propagated current-time covariance. Alignment, active aiding, freshness,
 dead reckoning and numerical health must remain separate validity inputs.
 Topic mappings retain the existing sensor/reset requirements and PX4 meanings.
+Rotation-variance frames and computed longitude follow
+[R-PX4-FRAME-OUTPUT](verification-requirements.md#r-px4-frame-output-geographic-and-rotation-variance-output-frames).
 Advertisement/publication failure must be observable and cannot count as
 successful delivery. Ordinary absence of subscribers is not a delivery failure.
 

@@ -116,8 +116,9 @@ vehicle_local_position_s FormalEskf::publish_local_position(std::uint64_t now, i
     auto const & q = m_output.current().q_nb.coefficients();
     local.heading = matrix::Eulerf(matrix::Quatf(float(q(0)), float(q(1)), float(q(2)), float(q(3)))).psi();
     local.unaided_heading = NAN; // No separate gyro-only heading estimator.
-    local.heading_var = m_covariance(8, 8);
-    local.tilt_var = m_covariance(6, 6) + m_covariance(7, 7);
+    auto const rotation_variance = rotation_variance_n();
+    local.heading_var = rotation_variance(2);
+    local.tilt_var = rotation_variance(0) + rotation_variance(1);
     local.heading_good_for_control = heading_valid;
     auto const & delta = m_quaternion_reset_delta.coefficients();
     local.delta_heading = 2. * std::atan2(delta(3), delta(0));
@@ -147,6 +148,7 @@ void FormalEskf::publish_global_position(std::uint64_t now, vehicle_local_positi
     global.timestamp_sample = m_output.current().time_us;
     global.timestamp = now;
     m_origin.projection.reproject(local.x, local.y, global.lat, global.lon);
+    global.lon = matrix::wrap(global.lon, -180., 180.);
     global.alt = m_origin.altitude_msl_m - body.position_n(2);
     global.alt_ellipsoid = m_origin.altitude_ellipsoid_m - body.position_n(2);
     global.lat_lon_valid = local.xy_valid;

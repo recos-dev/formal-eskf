@@ -96,13 +96,22 @@ bool FormalEskf::magnetic_heading_aiding() const
            (!m_magnetic.horizontal_aiding || m_magnetic.heading.state().consistent);
 }
 
+FormalEskf::vector3_type FormalEskf::rotation_variance_n() const
+{
+    // The core uses right-local body errors; PX4 heading/tilt proxies use NED errors.
+    // Use the delayed attitude that belongs to this covariance, not current output.
+    auto const R = formal_eskf::so3::to_rotation_matrix(m_state.q_nb);
+    auto const covariance_n = formal_eskf::linalg::sandwich(R, m_covariance.block<6U, 6U, 3U, 3U>());
+    return vector3(covariance_n(0, 0), covariance_n(1, 1), covariance_n(2, 2));
+}
+
 bool FormalEskf::magnetic_heading_valid() const
 {
     auto const & lifecycle = m_magnetic.lifecycle.state();
     return magnetic_heading_aiding() &&
            recent(std::max(lifecycle.last_fuse_time_us, lifecycle.last_reset_time_us),
                   profile::magnetic::maximum_heading_age_us) &&
-           m_covariance(8, 8) < profile::magnetic::maximum_heading_variance;
+           rotation_variance_n()(2) < profile::magnetic::maximum_heading_variance;
 }
 
 std::optional<FormalEskf::magnetic_model_type::sample_type> FormalEskf::lookup_magnetic_model(double latitude,
@@ -142,6 +151,7 @@ void FormalEskf::update_magnetic_model()
     if (position_valid)
     {
         m_origin.projection.reproject(m_state.p_n(0), m_state.p_n(1), latitude, longitude);
+        longitude = matrix::wrap(longitude, -180., 180.);
     }
     auto const model = lookup_magnetic_model(latitude, longitude);
     m_mag_model_unavailable += !model.has_value();

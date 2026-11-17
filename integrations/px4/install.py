@@ -18,7 +18,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 MODULE_FILES = (
     "CMakeLists.txt", "FormalEskf.cpp", "FormalEskf.hpp", "FormalEskfNavigation.cpp",
     "FormalEskfAttitude.cpp", "FormalEskfOutput.cpp", "DeploymentProfile.hpp",
-    "MagneticModel.hpp", "HeightAiding.hpp",
+    "MagneticModel.hpp", "HeightAiding.hpp", "InnovationRatio.hpp",
     "ImuPrediction.hpp", "ImuHistory.hpp", "OutputPredictor.hpp", "ObservationHistory.hpp", "Kconfig", "formal_eskf_params.c",
     "tests/ModuleTest.cpp",
 )

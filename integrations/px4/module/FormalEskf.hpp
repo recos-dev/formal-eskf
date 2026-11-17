@@ -40,6 +40,7 @@
 
 #include "DeploymentProfile.hpp"
 #include "HeightAiding.hpp"
+#include "InnovationRatio.hpp"
 #include "ImuPrediction.hpp"
 #include "ImuHistory.hpp"
 #include "ObservationHistory.hpp"
@@ -132,7 +133,11 @@ private:
         std::uint64_t sample_time_us{};
         bool metadata_valid{};
         std::uint32_t corrections{};
-        double position_test_ratio{}, velocity_test_ratio{};
+        bool position_rejected{}, velocity_rejected{};
+        std::array<formal_eskf::px4::InnovationRatio, 2> position_ratios{};
+        std::array<formal_eskf::px4::InnovationRatio, 3> velocity_ratios{};
+        double position_test_ratio = NAN;
+        vector3_type velocity_test_ratios = vector3_type::from_row_major({NAN, NAN, NAN});
     };
 
     struct GnssVelocityObservation
@@ -178,7 +183,7 @@ private:
         std::uint64_t sample_time_us{}; // Newest consumed effective event, including invalid payloads.
         bool horizontal_aiding{};
         std::uint32_t corrections{};
-        double test_ratio{};
+        std::array<formal_eskf::px4::InnovationRatio, 3> ratios{};
     };
 
     struct MagneticSample
@@ -200,6 +205,15 @@ private:
     {
         bool healthy{}, gps_position{}, gps_velocity{}, gps{}, gps_height{};
         bool magnetic{}, magnetic_aiding{}, barometer{};
+        bool height{}, vertical_velocity{}, dead_reckoning{};
+    };
+
+    struct StatusChanges
+    {
+        std::uint64_t control{};
+        std::uint32_t fault{};
+        std::uint16_t innovation{};
+        std::uint32_t control_count{}, fault_count{}, innovation_count{};
     };
 
     // Fixed-size shell view. No reader accesses live filter fields or perf counters.
@@ -296,11 +310,12 @@ private:
     vehicle_local_position_s publish_local_position(std::uint64_t now, imu_type const & imu, BodyOutput const & body,
                                                     bool navigation_valid, bool heading_valid);
     void publish_global_position(std::uint64_t now, vehicle_local_position_s const & local, BodyOutput const & body);
-    void publish_odometry(std::uint64_t now, imu_type const & imu, BodyOutput const & body, bool valid);
+    void publish_odometry(std::uint64_t now, imu_type const & imu, BodyOutput const & body);
     OutputValidity output_validity(std::uint64_t now) const;
     void publish_status(uint64_t now);
-    estimator_status_s publish_estimator_status(std::uint64_t now, OutputValidity const & validity);
-    void publish_status_flags(std::uint64_t now, OutputValidity const & validity, estimator_status_s const & status);
+    estimator_status_s publish_estimator_status(std::uint64_t now, OutputValidity const & validity,
+                                                estimator_status_flags_s const & flags);
+    estimator_status_flags_s status_flags(std::uint64_t now, OutputValidity const & validity) const;
     void publish_sensor_bias(std::uint64_t now, bool healthy);
     void update_diagnostics(std::uint64_t now);
     bool read_diagnostics(Diagnostics & snapshot);
@@ -316,7 +331,7 @@ private:
     bool gps_velocity_valid(std::uint64_t max_age = formal_eskf::px4::profile::gnss::maximum_aiding_age_us) const;
     template <std::size_t N>
     bool record_gps_fusion(formal_eskf::runtime::GnssFusion::Group group,
-                           formal_eskf::runtime::FusionResult<backend_type, N> const & result, double & ratio);
+                           formal_eskf::runtime::FusionResult<backend_type, N> const & result);
     bool check(status_type status);
     // Inclusive age at the admitted IMU horizon; callers select their own policy.
     bool recent(std::uint64_t sample, std::uint64_t max_age) const;
@@ -353,6 +368,7 @@ private:
     std::uint64_t m_time_us{}; // Completed prediction horizon; alignment IMU epoch before seeding.
     bool m_initialized{};
     bool m_fault{};
+    StatusChanges m_status_changes{};
 
     height_type m_height_aiding{};
     GroundEffect m_ground_effect{};
@@ -391,7 +407,6 @@ private:
     uint64_t m_max_fusion_age{};
     uint32_t m_predictions{}, m_baro_updates{};
     uint32_t m_rejections{}, m_errors{}, m_gaps{};
-    double m_height_ratio{}, m_gps_height_ratio{};
     std::uint64_t m_publication_failures{};
     // One writer; only this fixed-size copy is shared with shell readers.
     pthread_mutex_t m_diagnostics_mutex{};

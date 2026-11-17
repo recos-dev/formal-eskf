@@ -710,3 +710,32 @@ Self-review confirmed that rejected inputs cannot silently mix source generation
 selection cannot erase watermarks, and late context cannot rewrite historical
 permissions. Startup/uORB binding, delayed policy/publication integration,
 formal source proof and target timing/stack/flight acceptance remain open.
+
+## Confidence and failure reporting — 2026-11-17
+
+[F-06.1 assessment](../../docs/validation-px4-confidence-20261117.md) audits the
+seven topic families against pinned PX4. Independent capabilities, bias validity,
+actual fault/rejection meanings and signed measurement-time innovation summaries
+replace coarse/inconsistent reports. Core equations and sensor gates are unchanged.
+Final native and scoped ASan/UBSan runs each passed 126 scenarios; 8 package tests,
+63 installed payload identities, formatting and traceability checks passed.
+
+Final SIH armed normally, flew and landed, and passed 20/20 ground-fault checks.
+Independent ULog checks passed **17/18**: final truth height −0.616 m failed the
+landing criterion. This is not a fully passing flight-accuracy result. Earlier
+failed arming exposed the missing diagnostic LPF and is retained with intermediate
+runs in `output/px4-confidence-20261117/`. No threshold relaxation or force arming
+was used. Snapshot-counter, covariance-proxy, calibration, formal-proof and
+hardware/resource limits remain explicit in the requirement and assessment.
+
+The subsequent [SIH landing diagnosis](../../docs/debug-sih-landing-20261117.md)
+reproduces ground penetration in unchanged pinned simulator dynamics without an
+estimator or controller. This isolates an external contact-model defect; it does
+not waive the failed landing criterion or add a simulator patch to F-06.1.
+
+Independent review caught a dropped heading-readiness veto before submission.
+New real source/calibration replacement tests failed against that version;
+restoring the full readiness check and adding tilt readiness changed 126/5 to
+126/0 without changing GNSS fusion. The repaired source passed native/sanitizer,
+package/format/identity checks and the final `flight-04` live sequence. Its 17/18
+ULog result remains failed; the new log confirms the same SIH contact condition.

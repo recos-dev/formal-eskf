@@ -81,6 +81,7 @@ void FormalEskf::initialize_magnetic_aiding(magnetic_lifecycle_type::Source cons
     m_magnetic.filter.reset();
     m_magnetic.lifecycle.reset(source);
     m_magnetic.observation = {};
+    m_magnetic.ratios = {};
     m_magnetic.source = source;
     m_magnetic.sample_time_us = sample_time_us;
     m_magnetic.horizontal_aiding = false;
@@ -209,6 +210,7 @@ FormalEskf::MagneticSample FormalEskf::consume_magnetic_sample()
     {
         m_magnetic.lifecycle.restart();
         m_magnetic.filter.reset();
+        m_magnetic.ratios = {};
         m_magnetic.heading.reset_heading();
         m_heading_aligned = false;
     }
@@ -275,6 +277,11 @@ bool FormalEskf::fuse_magnetic_observation(MagneticSample const & sample)
         false, profile::minimum_quaternion_norm, profile::magnetic::gate_sigma, m_state, m_covariance,
         m_bias_learning_result.bias_update, profile::magnetic::checks);
     auto const & fusion = m_magnetic.observation.fusion;
+    for (std::size_t axis = 0; axis < 3; ++axis)
+    {
+        m_magnetic.ratios[axis].update(sample.time_us, -fusion.innovation(axis),
+                                       fusion.diagnostics_valid ? fusion.test_ratio(axis) : double(NAN));
+    }
     // Feedback precedes numerical status handling and post-correction limiting.
     if (!check(m_magnetic.lifecycle.record_fusion(sample.time_us, fusion.decision)) || !check(fusion.status))
     {
@@ -308,6 +315,10 @@ FormalEskf::status_type FormalEskf::reset_magnetic_heading(std::uint64_t sample_
         ++m_quaternion_reset_counter;
         m_heading_aligned = true;
         m_magnetic.heading.reset_heading();
+        for (auto & ratio : m_magnetic.ratios)
+        {
+            ratio.reset(sample_time_us);
+        }
     }
     return status;
 }
@@ -349,6 +360,7 @@ void FormalEskf::fuse_mag()
     if (lifecycle.filter_reset)
     {
         m_magnetic.filter.reset();
+        m_magnetic.ratios = {};
     }
     if (previous.active && !lifecycle.active && !conditions.horizontal_aiding)
     {
@@ -389,10 +401,4 @@ void FormalEskf::fuse_mag()
     m_magnetic.corrections += fused;
     m_rejections += rejected;
     m_odometry_reset_counter += reset;
-    if (sample.time_us != 0U)
-    {
-        auto const & fusion = m_magnetic.observation.fusion;
-        m_magnetic.test_ratio =
-            fusion.diagnostics_valid ? formal_eskf::linalg::max_abs(fusion.test_ratio) : double(INFINITY);
-    }
 }

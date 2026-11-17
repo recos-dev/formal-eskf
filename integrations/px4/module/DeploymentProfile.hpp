@@ -159,6 +159,13 @@ inline constexpr double ratio_filter_time_s = 10.;
 
 namespace output
 {
+// PX4 v1.16.2 reporting thresholds; bias variance-vector norm, not per-axis sigma.
+inline constexpr float maximum_bias_variance_norm = 0.1f;
+inline constexpr float preflight_innovation_ratio = 0.5f;
+inline constexpr double innovation_time_constant_s = 0.5;
+inline constexpr double innovation_minimum_interval_s = 0.001;
+inline constexpr double innovation_maximum_interval_s = 1.;
+inline constexpr double innovation_ratio_limit = 4.;
 inline constexpr double velocity_time_constant_s = 0.25;
 inline constexpr double position_time_constant_s = 0.25;
 inline constexpr double interval_history_weight = 0.8;

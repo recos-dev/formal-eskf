@@ -145,14 +145,14 @@ current Cartesian model supports; it does not pre-authorize new core equations.
 
 | Task | Status and existing work | Completion criterion |
 |---|---|---|
-| F-06.1 — Confidence and failure reporting | Partial: source status, individual GNSS quality flags and reset counters exist; F-05.2 corrects heading/tilt covariance frames, but aggregate fault/bias-validity reporting remains coarse | Audit actual uORB meanings against internal decisions. Distinguish alignment, active fusion, validity, convergence and numerical faults; validate yaw/bias uncertainty reporting and restart-required behavior. Review the delayed IMU covariance proxy used alongside body-point output (F-05.1); installation uncertainty and transport correlations remain unmodeled. Rejection must not refresh successful-fusion time. |
+| F-06.1 — Confidence and failure reporting | Implemented: independent capability flags, honest bias validity, matching packed/named faults, measurement-time innovation summaries and covariance-proxy audit. See [assessment](docs/validation-px4-confidence-20261117.md). | Retain the declared limits: no bias-convergence claim, transported/current-time covariance or dead-reckoning residual inflation; 10 Hz transition counts are not an event log. Numerical/history faults require restart. Formal module proof, calibrated uncertainty and flight/resource qualification remain separate. |
 | F-06.2 — Deployment parameters | Partial: startup magnetic-declination settings exist; most module settings are fixed | Expose the approved noise/gate/source/limit settings with documented units, bounds and startup/live-update semantics. Validate configuration changes without silently importing live EKF2 settings. |
 
 ### F-07 — Deployment validation
 
 | Task | Status and dependency | Completion criterion |
 |---|---|---|
-| F-07.1 — Disturbance and accuracy evidence | Partial: native, replay and normal-flight/ground-fault SITL evidence exists | Add independent-oracle cases for magnetic disturbance, high dynamics/free fall, clipping, outages and recovery in flight. Quantify detection/rejection, attitude/position errors and recovery; test WMM epoch/calibration assumptions. Retain failing runs and compare feature enabled/disabled where meaningful. Make cross-topic recovery assertions compare post-event publications; F-05.1 and F-05.2 retained stale 10 Hz status snapshots beside already-recovered navigation output. |
+| F-07.1 — Disturbance and accuracy evidence | Partial: native, replay and normal-flight/ground-fault SITL evidence exists; the [independent SIH diagnosis](docs/debug-sih-landing-20261117.md) reproduces the contact-model defect without an estimator. Simulator repair/full landing acceptance is deferred; later evaluate an upstream report or fix after contact-boundary, timestep, oblique-motion and takeoff checks. Keep the original 17/18 failure | Add independent-oracle cases for magnetic disturbance, high dynamics/free fall, clipping, outages and recovery in flight. Quantify detection/rejection, attitude/position errors and recovery; test WMM epoch/calibration assumptions. Retain failing runs and compare feature enabled/disabled where meaningful. Make cross-topic recovery assertions compare post-event publications; F-05.1 and F-05.2 retained stale 10 Hz status snapshots beside already-recovered navigation output. |
 | F-07.2 — Resource budgets | Planned; target profile must be explicit | Measure wall-clock CPU, peak RAM and stack under nominal/fault load. Separate simulator virtual time from execution cost. Check bounded history against F-04 budgets. |
 | F-07.3 — Hardware validation | Blocked on target hardware and an agreed test envelope | Establish target builds, timing/interfaces and HIL evidence before any hardware-flight claim. Simulation can progress now; unavailable hardware is not a passed check. |
 
@@ -174,11 +174,11 @@ Promoting one requires a reviewed scope and dependency; retain its ID.
 
 ## Next implementation
 
-**F-05.1** is committed. **F-05.2** has independent geographic comparisons and
-rotation-variance/dateline fixes ready for review. Accept the frame semantics
-and decide the operating error budget before declaring a flight envelope or
-adding a range policy. No new geodetic core is authorized. Next implementation
-after this review is **F-06.1: confidence and failure reporting**.
+**F-05.1/F-05.2/F-06.1** are complete in their declared scope; confidence/failure
+reporting retains explicit uncertainty limits and the failed SIH landing criterion.
+Next is **F-06.2: deployment parameters**, beginning with the agreed inventory of
+adjustable/selectable settings and the Kconfiglib assessment. The F-05.2
+operating error budget remains a decision; no new geodetic core is authorized.
 F-04 source formal proof, the retained SIH landing anomaly and F-07.2 resource
 acceptance remain open; they are not silently closed by this feature.
 

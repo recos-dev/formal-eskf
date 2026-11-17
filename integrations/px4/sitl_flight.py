@@ -363,7 +363,7 @@ class Flight:
             self.wait_for(lambda: not self.armed(), 45, "Auto-land completed and automatically disarmed")
             self.pump(2.)
             RESULT["final_status"] = self.cli("formal_eskf", "status")
-            if "fault=0" not in RESULT["final_status"]["output"] or "numerical_errors=0" not in RESULT["final_status"]["output"]:
+            if "fault=0" not in RESULT["final_status"]["output"] or "estimator_errors=0" not in RESULT["final_status"]["output"]:
                 raise RuntimeError("Estimator reported a numerical failure")
             MODEL_FINAL = self.magnetic_model_status(RESULT["final_status"]["output"])
             RESULT["magnetic_model"] = {"initial": MODEL_INITIAL, "final": MODEL_FINAL,

@@ -358,6 +358,10 @@ dead reckoning and numerical health must remain separate validity inputs.
 Topic mappings retain the existing sensor/reset requirements and PX4 meanings.
 Rotation-variance frames and computed longitude follow
 [R-PX4-FRAME-OUTPUT](verification-requirements.md#r-px4-frame-output-geographic-and-rotation-variance-output-frames).
+Capability, uncertainty, bias, innovation and fault reporting follow
+[R-PX4-STATUS](verification-requirements.md#r-px4-status-confidence-and-failure-reporting).
+Its covariance proxies and snapshot counters are not calibrated accuracy bounds
+or lossless event records.
 Advertisement/publication failure must be observable and cannot count as
 successful delivery. Ordinary absence of subscribers is not a delivery failure.
 

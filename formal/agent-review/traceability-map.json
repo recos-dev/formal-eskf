@@ -3753,7 +3753,7 @@
           },
           {
             "file": "integrations/px4/module/FormalEskfOutput.cpp",
-            "symbol": "void FormalEskf::publish_status_flags("
+            "symbol": "estimator_status_flags_s FormalEskf::status_flags("
           }
         ],
         "esbmc": [
@@ -5356,7 +5356,7 @@
           },
           {
             "file": "integrations/px4/module/FormalEskfOutput.cpp",
-            "symbol": "void FormalEskf::publish_status_flags("
+            "symbol": "estimator_status_flags_s FormalEskf::status_flags("
           },
           {
             "file": "include/formal_eskf/runtime/gnss_lifecycle.hpp",
@@ -5755,6 +5755,74 @@
           {
             "file": "integrations/px4/module/FormalEskfAttitude.cpp",
             "symbol": "void FormalEskf::update_magnetic_model("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "vehicle_local_position_s FormalEskf::publish_local_position("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "void FormalEskf::publish_global_position("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "void FormalEskf::publish_odometry("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
+      "id": "R-PX4-STATUS",
+      "title": "PX4 capability, uncertainty, bias, innovation and failure reporting: native/SIH evidence only; formal source proof and target accuracy/timing remain open",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-PX4-STATUS: confidence and failure reporting"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "FormalEskf::OutputValidity FormalEskf::output_validity("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "void FormalEskf::publish_status("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "estimator_status_s FormalEskf::publish_estimator_status("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "estimator_status_flags_s FormalEskf::status_flags("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfOutput.cpp",
+            "symbol": "void FormalEskf::publish_sensor_bias("
+          },
+          {
+            "file": "integrations/px4/module/InnovationRatio.hpp",
+            "symbol": "struct InnovationRatio"
+          },
+          {
+            "file": "integrations/px4/module/HeightAiding.hpp",
+            "symbol": "aid.ratio.update("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfAttitude.cpp",
+            "symbol": "bool FormalEskf::fuse_magnetic_observation("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "bool FormalEskf::fuse_gps_velocity("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "bool FormalEskf::fuse_gps_position("
           },
           {
             "file": "integrations/px4/module/FormalEskfOutput.cpp",

@@ -11,6 +11,7 @@
 #include <formal_eskf/runtime/vertical_acceleration_health.hpp>
 
 #include "DeploymentProfile.hpp"
+#include "InnovationRatio.hpp"
 
 namespace formal_eskf::px4
 {
@@ -111,6 +112,7 @@ public:
     {
         HeightBias<value_type> bias{};
         fusion_type fusion{}; // Raw gate diagnostics.
+        InnovationRatio ratio{};
         value_type fusion_innovation{};
         bool innovation_limited = false;
         std::uint64_t sample_time{}, data_time{}, progress_time{}, fused_time{};
@@ -235,6 +237,7 @@ void HeightAiding<Linalg>::reset_height(Source source, std::uint64_t now_us, val
     auto & aid = m_sessions[index(source)];
     aid.progress_time = now_us;
     aid.fusion_reset = true;
+    aid.ratio.reset(aid.sample_time);
 }
 
 template <typename Linalg>
@@ -278,6 +281,7 @@ bool HeightAiding<Linalg>::admit(Source source, std::uint64_t now_us, Sample con
         aid.device_id = sample.device_id;
         aid.calibration_count = sample.calibration_count;
         aid.bias = {};
+        aid.ratio = {};
         aid.fault = false;
         if (barometer)
         {
@@ -408,6 +412,8 @@ void HeightAiding<Linalg>::process(Source source, std::uint64_t now_us, Sample c
         barometer && ground_effect ? static_cast<value_type>(profile::height::ground_effect_deadzone_m)
                                    : value_type{0});
     aid.fusion = measurement.fusion;
+    aid.ratio.update(sample.time_us, -aid.fusion.innovation(0U),
+                     aid.fusion.diagnostics_valid ? double(aid.fusion.test_ratio(0U)) : double(NAN));
     aid.fusion_innovation = measurement.fusion_innovation(0U);
     aid.innovation_limited = measurement.innovation_limited;
     result.status = aid.fusion.status;

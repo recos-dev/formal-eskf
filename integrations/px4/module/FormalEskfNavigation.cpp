@@ -34,13 +34,11 @@ FormalEskf::observation_history_type::BarometerSample FormalEskf::decode_baromet
 
 template <std::size_t N>
 bool FormalEskf::record_gps_fusion(formal_eskf::runtime::GnssFusion::Group group,
-                                   formal_eskf::runtime::FusionResult<backend_type, N> const & result, double & ratio)
+                                   formal_eskf::runtime::FusionResult<backend_type, N> const & result)
 {
-    ratio = result.diagnostics_valid ? 0. : double(INFINITY);
-    for (size_t axis = 0; result.diagnostics_valid && axis < N; ++axis)
-    {
-        ratio = std::max(ratio, result.test_ratio(axis));
-    }
+    bool & rejected =
+        group == gnss_lifecycle_type::Group::velocity ? m_gnss.velocity_rejected : m_gnss.position_rejected;
+    rejected = result.decision == formal_eskf::runtime::FusionDecision::rejected;
     if (!check(m_gnss.lifecycle.record_fusion(group, m_gnss.sample.time_us, result.decision)) || !check(result.status))
     {
         return false;
@@ -76,6 +74,11 @@ void FormalEskf::update_gps_quality()
         m_gnss.quality_result = {};
         m_gnss.metadata_valid = false;
         m_gnss.lifecycle.reset();
+        m_gnss.position_ratios = {};
+        m_gnss.velocity_ratios = {};
+        m_gnss.position_test_ratio = NAN;
+        m_gnss.position_rejected = m_gnss.velocity_rejected = false;
+        m_gnss.velocity_test_ratios = vector3(NAN, NAN, NAN);
         m_gnss.previous_fix = {};
         m_gnss.device_id = gps.stamp.source.device_id;
         m_gnss.generation = m_gnss.input.generation;
@@ -279,10 +282,7 @@ void FormalEskf::check_gnss_velocity_observation(GnssVelocityObservation const &
     }
     m_gnss.vertical_innovation = {evidence.gate.diagnostics_valid, -evidence.fusion_innovation(2),
                                   evidence.gate.innovation_variance(2)};
-    m_gnss.velocity_test_ratio =
-        evidence.gate.diagnostics_valid
-            ? std::max({evidence.gate.test_ratio(0), evidence.gate.test_ratio(1), evidence.gate.test_ratio(2)})
-            : double(INFINITY);
+    m_gnss.velocity_test_ratios = evidence.gate.diagnostics_valid ? evidence.gate.test_ratio : vector3(NAN, NAN, NAN);
 }
 
 bool FormalEskf::fuse_gps_velocity(GnssVelocityObservation const & observation)
@@ -312,7 +312,12 @@ bool FormalEskf::fuse_gps_velocity(GnssVelocityObservation const & observation)
         record_velocity_reset(delta);
         record_vertical_velocity_reset(delta(2));
         ++m_odometry_reset_counter;
-        m_gnss.velocity_test_ratio = 0.;
+        for (auto & ratio : m_gnss.velocity_ratios)
+        {
+            ratio.reset(m_gnss.sample.time_us);
+        }
+        m_gnss.velocity_test_ratios = {};
+        m_gnss.velocity_rejected = false;
         m_gnss.vertical_innovation = {true, 0., velocity_variances(2)};
     }
     else if (m_gnss.lifecycle.state().velocity.action == GnssFusion::Action::fuse)
@@ -320,7 +325,14 @@ bool FormalEskf::fuse_gps_velocity(GnssVelocityObservation const & observation)
         auto const result = fuse_gnss_velocity(m_state, m_covariance, velocity, Rv, profile::minimum_quaternion_norm,
                                                profile::gnss::gate_sigma, velocity_conditions, m_state, m_covariance,
                                                m_bias_learning_result.bias_update);
-        if (!record_gps_fusion(Group::velocity, result.fusion, m_gnss.velocity_test_ratio))
+        m_gnss.velocity_test_ratios =
+            result.fusion.diagnostics_valid ? result.fusion.test_ratio : vector3(NAN, NAN, NAN);
+        for (std::size_t axis = 0; axis < 3; ++axis)
+        {
+            m_gnss.velocity_ratios[axis].update(m_gnss.sample.time_us, -result.fusion.innovation(axis),
+                                                m_gnss.velocity_test_ratios(axis));
+        }
+        if (!record_gps_fusion(Group::velocity, result.fusion))
         {
             return false;
         }
@@ -378,14 +390,26 @@ bool FormalEskf::fuse_gps_position()
         }
         record_position_reset(delta);
         ++m_odometry_reset_counter;
+        for (auto & ratio : m_gnss.position_ratios)
+        {
+            ratio.reset(m_gnss.sample.time_us);
+        }
         m_gnss.position_test_ratio = 0.;
+        m_gnss.position_rejected = false;
     }
     else if (m_gnss.lifecycle.state().horizontal_position.action == GnssFusion::Action::fuse)
     {
         auto const result = fuse_horizontal_position(m_state, m_covariance, xy, Rxy, profile::minimum_quaternion_norm,
                                                      profile::gnss::gate_sigma, m_state, m_covariance,
                                                      m_bias_learning_result.bias_update);
-        if (!record_gps_fusion(Group::horizontal_position, result, m_gnss.position_test_ratio))
+        m_gnss.position_test_ratio =
+            result.diagnostics_valid ? std::max(result.test_ratio(0), result.test_ratio(1)) : double(NAN);
+        for (std::size_t axis = 0; axis < 2; ++axis)
+        {
+            m_gnss.position_ratios[axis].update(m_gnss.sample.time_us, -result.innovation(axis),
+                                                result.diagnostics_valid ? result.test_ratio(axis) : double(NAN));
+        }
+        if (!record_gps_fusion(Group::horizontal_position, result))
         {
             return false;
         }
@@ -500,6 +524,4 @@ void FormalEskf::fuse_height()
     auto const & gnss_session = m_height_aiding.session(Source::gnss);
     m_baro_updates += baro.fused_time == m_time_us;
     m_gnss.corrections += gnss_session.fused_time == m_time_us;
-    m_height_ratio = baro.fusion.diagnostics_valid ? baro.fusion.test_ratio(0) : double(INFINITY);
-    m_gps_height_ratio = gnss_session.fusion.diagnostics_valid ? gnss_session.fusion.test_ratio(0) : double(INFINITY);
 }

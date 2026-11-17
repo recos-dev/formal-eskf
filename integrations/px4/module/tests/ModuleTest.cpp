@@ -206,6 +206,7 @@ public:
         mag.timestamp = clock_us;
         mag.timestamp_sample = clock_us;
         mag.device_id = m_mag_device;
+        mag.calibration_count = m_mag_calibration;
         mag.magnetometer_ga[0] = 0.22f;
         mag.magnetometer_ga[1] = 0.01f;
         mag.magnetometer_ga[2] = 0.43f;
@@ -307,7 +308,8 @@ public:
                      static_cast<unsigned long long>(m_filter.m_magnetic_model.lookup_count()),
                      static_cast<unsigned long long>(m_filter.m_mag_model_origin_time));
         std::array<double, 8U> magnetic_values{heading.innovation, heading.filtered_innovation,
-                                               heading.horizontal_acceleration, m_filter.m_magnetic.test_ratio};
+                                               heading.horizontal_acceleration,
+                                               formal_eskf::linalg::max_abs(observation.fusion.test_ratio)};
         for (std::size_t i = 0U; i < 4U; ++i)
         {
             magnetic_values[4U + i] = m_filter.m_quaternion_reset_delta.coefficients()(i);
@@ -327,13 +329,16 @@ public:
                      unsigned(m_filter.m_height_reset_counter), unsigned(m_filter.m_vertical_velocity_reset_counter),
                      static_cast<unsigned long long>(m_filter.m_gnss.sample_time_us),
                      static_cast<unsigned long long>(m_filter.m_height_aiding.progress_time()));
-        std::array<double, 7U> navigation_values{m_filter.m_gnss.position_test_ratio,
-                                                 m_filter.m_gnss.velocity_test_ratio,
-                                                 m_filter.m_height_ratio,
-                                                 m_filter.m_gps_height_ratio,
-                                                 m_filter.m_height_reset_delta,
-                                                 m_filter.m_vertical_velocity_reset_delta,
-                                                 m_filter.m_gnss.previous_altitude};
+        std::array<double, 9U> navigation_values{
+            m_filter.m_gnss.position_test_ratio,
+            m_filter.m_gnss.velocity_test_ratios(0),
+            m_filter.m_gnss.velocity_test_ratios(1),
+            m_filter.m_gnss.velocity_test_ratios(2),
+            m_filter.m_height_aiding.session(FormalEskf::height_type::Source::barometer).fusion.test_ratio(0),
+            m_filter.m_height_aiding.session(FormalEskf::height_type::Source::gnss).fusion.test_ratio(0),
+            m_filter.m_height_reset_delta,
+            m_filter.m_vertical_velocity_reset_delta,
+            m_filter.m_gnss.previous_altitude};
         trace_bytes(navigation_values.data(), sizeof(navigation_values));
         for (auto source : {FormalEskf::height_type::Source::barometer, FormalEskf::height_type::Source::gnss})
         {
@@ -534,6 +539,12 @@ public:
         {
             expect(!f.gps_good(), "changed receiver and failed checks cannot retain qualification");
         }
+        if (scenario == GnssInputCase::receiver)
+        {
+            expect(f.m_gnss.position_ratios[0].time_us == 0 && f.m_gnss.velocity_ratios[0].time_us == 0 &&
+                       std::isnan(f.m_gnss.velocity_ratios[0].filtered),
+                   "receiver replacement clears innovation reporting history before requalification");
+        }
         test.snapshot("GNSS-admission");
     }
 
@@ -639,6 +650,11 @@ public:
             expect(!f.m_height_aiding.session(FormalEskf::height_type::Source::gnss).active,
                    "unqualified GNSS cannot claim height fusion");
         }
+        if (scenario == HeightInputCase::calibration)
+        {
+            expect(f.m_height_aiding.session(FormalEskf::height_type::Source::barometer).ratio.time_us == 0,
+                   "barometer calibration clears diagnostic filtering with its bias history");
+        }
         test.snapshot("height-admission");
     }
 
@@ -683,7 +699,7 @@ public:
         f.m_gps.vel_d_m_s = 1.f;
         test.navigation_tick();
         expect(!f.m_fault && f.m_gnss.vertical_innovation.active && f.m_gnss.vertical_innovation.innovation < 0. &&
-                   f.m_gnss.velocity_test_ratio > 0. &&
+                   formal_eskf::linalg::dot(f.m_gnss.velocity_test_ratios, f.m_gnss.velocity_test_ratios) > 0. &&
                    f.m_gnss.lifecycle.state().velocity.last_fuse_time_us == progress &&
                    f.m_gnss.corrections == corrections,
                "active rejected-quality source supplies health evidence without fusion");
@@ -705,12 +721,19 @@ public:
         {
             test.navigation_tick();
         }
+        expect(f.m_gnss.position_rejected && f.m_gnss.velocity_rejected,
+               "rejected production navigation records actual decisions");
         expect(f.m_position_reset_counter == position_resets && f.m_velocity_reset_counter == velocity_resets,
                "coupled timeout is strict at seven seconds");
         test.navigation_tick();
         expect(!f.m_fault && f.m_position_reset_counter == position_resets + 1U &&
                    f.m_velocity_reset_counter == velocity_resets + 1U,
                "both horizontal decisions survive velocity-first reset feedback");
+        expect(!f.m_gnss.position_rejected && !f.m_gnss.velocity_rejected,
+               "successful resets clear prior navigation rejection diagnostics");
+        expect(f.m_gnss.position_ratios[0].filtered == 0. && f.m_gnss.velocity_ratios[2].filtered == 0. &&
+                   f.m_gnss.velocity_ratios[2].time_us == f.m_gnss.sample.time_us,
+               "navigation resets zero filtered innovation at the reset observation epoch");
     }
 
     static void height_combined_resets()
@@ -1261,6 +1284,12 @@ public:
         expect(!filter.m_fault && filter.m_quaternion_reset_counter == (reset ? 1U : 0U) &&
                    filter.m_magnetic.corrections == ((!reset && !pending) ? 2U : 1U),
                "source recovery uses ground/air/unknown context with fresh land overriding arming");
+        if (reset)
+        {
+            expect(filter.m_magnetic.ratios[0].filtered == 0. &&
+                       filter.m_magnetic.ratios[0].time_us == filter.m_magnetic.lifecycle.state().last_reset_time_us,
+                   "magnetic heading reset clears signed diagnostic history");
+        }
         test.magnetic_outputs();
         if (pending)
         {
@@ -2005,7 +2034,8 @@ public:
             test.select_navigation_inputs();
             f.fuse_gps(imu);
             f.fuse_height();
-            expect(!f.m_fault && f.m_gnss.corrections == corrections + 3U && f.m_gnss.velocity_test_ratio < 1e-12 &&
+            expect(!f.m_fault && f.m_gnss.corrections == corrections + 3U &&
+                       formal_eskf::linalg::norm(f.m_gnss.velocity_test_ratios) < 1e-12 &&
                        f.m_gnss.position_test_ratio < 1e-12,
                    "normal velocity, horizontal and height corrections accept the compensated rotating rig");
             f.m_sensor_positions.gnss_b = f.m_sensor_positions.imu_b;
@@ -2095,6 +2125,325 @@ public:
                    std::abs(f.m_height_reset_delta - 0.6 - dp(2)) < 1e-12 &&
                    std::abs(f.m_vertical_velocity_reset_delta - velocity(2) - dv(2)) < 1e-12,
                "heading-induced body point changes accumulate with same-step translation reset notifications");
+    }
+
+    enum class CapabilityCase
+    {
+        all_aiding,
+        height_only,
+        horizontal_only,
+        velocity_without_height,
+        source_changed,
+        no_aiding,
+        no_tilt,
+        stale,
+        fault
+    };
+
+    static void confidence_capabilities(CapabilityCase scenario)
+    {
+        FormalEskfModuleTest test;
+        test.warmup();
+        auto & f = test.m_filter;
+        bool horizontal = true, height = true, vertical_velocity = true, attitude = true;
+        if (scenario == CapabilityCase::height_only || scenario == CapabilityCase::no_aiding)
+        {
+            f.m_gnss.lifecycle.reset();
+            horizontal = false;
+        }
+        if (scenario == CapabilityCase::horizontal_only || scenario == CapabilityCase::velocity_without_height ||
+            scenario == CapabilityCase::no_aiding)
+        {
+            f.m_height_aiding = {};
+            height = false;
+            vertical_velocity = scenario == CapabilityCase::velocity_without_height;
+        }
+        if (scenario == CapabilityCase::horizontal_only)
+        {
+            using Fusion = formal_eskf::runtime::GnssFusion;
+            f.m_gnss.lifecycle.reset();
+            Fusion::Conditions conditions;
+            conditions.horizontal_position = {true, true, true};
+            expect(formal_eskf::succeeded(
+                       f.m_gnss.lifecycle.update(f.m_time_us, conditions, formal_eskf::px4::profile::gnss::timing,
+                                                 {f.m_time_us, formal_eskf::runtime::GnssQualityDecision::accepted})),
+                   "position-only lifecycle setup");
+            expect(formal_eskf::succeeded(f.m_gnss.lifecycle.record_fusion(
+                       Fusion::Group::horizontal_position, f.m_time_us, formal_eskf::runtime::FusionDecision::fused)),
+                   "position-only successful progress");
+        }
+        if (scenario == CapabilityCase::source_changed)
+        {
+            ++f.m_gnss.generation; // Delayed source no longer matches the selected receiver generation.
+            horizontal = false;
+            height = f.m_height_aiding.session(FormalEskf::height_type::Source::barometer).active;
+            vertical_velocity = height;
+        }
+        if (scenario == CapabilityCase::no_tilt)
+        {
+            f.m_tilt_alignment = {};
+            attitude = false;
+        }
+        if (scenario == CapabilityCase::stale || scenario == CapabilityCase::fault)
+        {
+            f.m_fault = scenario == CapabilityCase::fault;
+            clock_us += scenario == CapabilityCase::stale ? 100000U : 0U;
+            horizontal = height = vertical_velocity = attitude = false;
+        }
+        f.publish_status(clock_us);
+        estimator_status_s status{};
+        estimator_status_flags_s flags{};
+        orb_copy(ORB_ID(estimator_status), test.m_outputs[4], &status);
+        orb_copy(ORB_ID(estimator_status_flags), test.m_outputs[5], &flags);
+        const unsigned capabilities = unsigned(attitude) | (unsigned(horizontal) << 1) |
+                                      (unsigned(vertical_velocity) << 2) | (unsigned(horizontal) << 3) |
+                                      (unsigned(horizontal) << 4) | (unsigned(height) << 5);
+        expect((status.solution_status_flags & 0x3fU) == capabilities,
+               "solution bits independently describe attitude, horizontal, height and vertical velocity");
+        if (!attitude)
+        {
+            expect(status.pre_flt_fail_innov_heading,
+                   "missing tilt alignment, stale output and estimator fault retain the Commander readiness veto");
+        }
+        expect(status.filter_fault_flags == 0 && !flags.fs_bad_acc_vertical && !flags.fs_bad_acc_clipping,
+               "a generic fault or unavailable aiding is not an accelerometer fault");
+        expect(flags.cs_inertial_dead_reckoning == !horizontal,
+               "source changes and horizontal loss cannot report fresh horizontal aiding");
+        if (scenario != CapabilityCase::stale && scenario != CapabilityCase::fault)
+        {
+            f.m_covariance(0, 0) = 9.;
+            f.m_covariance(1, 1) = 16.;
+            f.m_covariance(3, 3) = 36.;
+            f.m_covariance(4, 4) = 64.;
+            f.m_last_output = f.m_output.current().time_us - 10000U;
+            f.publish({});
+            vehicle_local_position_s local{};
+            vehicle_odometry_s odometry{};
+            vehicle_global_position_s global{};
+            orb_copy(ORB_ID(vehicle_local_position), test.m_outputs[1], &local);
+            orb_copy(ORB_ID(vehicle_global_position), test.m_outputs[2], &global);
+            orb_copy(ORB_ID(vehicle_odometry), test.m_outputs[3], &odometry);
+            expect(global.alt_valid == height, "global altitude validity requires height progress, not velocity alone");
+            expect(local.xy_valid == horizontal && local.v_xy_valid == horizontal &&
+                       local.z_valid == vertical_velocity && local.v_z_valid == vertical_velocity &&
+                       local.dead_reckoning == !horizontal,
+                   "local validity agrees with the solution capabilities");
+            expect(local.eph == 5.f && local.evh == 10.f && odometry.quality == 0,
+                   "horizontal confidence uses both axes; odometry does not invent a percentage score");
+        }
+    }
+
+    static void bias_confidence()
+    {
+        FormalEskfModuleTest test;
+        test.warmup();
+        auto & f = test.m_filter;
+        struct Case
+        {
+            float variance[3];
+            bool valid;
+        };
+        for (auto const & sample :
+             {Case{{0.f, 0.f, 0.f}, false}, Case{{0.1f, 0.f, 0.f}, true},
+              Case{{std::nextafter(0.1f, INFINITY), 0.f, 0.f}, false}, Case{{0.05f, 0.05f, 0.05f}, true},
+              Case{{0.06f, 0.06f, 0.06f}, false}, Case{{-0.01f, 0.01f, 0.f}, false}, Case{{NAN, 0.f, 0.f}, false},
+              Case{{INFINITY, 0.f, 0.f}, false}})
+        {
+            for (std::size_t axis = 0; axis < 3; ++axis)
+            {
+                f.m_covariance(9 + axis, 9 + axis) = sample.variance[axis];
+                f.m_covariance(12 + axis, 12 + axis) = sample.variance[axis];
+            }
+            auto const before = f.m_covariance;
+            f.m_bias_learning_result.bias_update = {{false, false, false}, {false, false, false}};
+            f.publish_sensor_bias(clock_us, true);
+            estimator_sensor_bias_s bias{};
+            orb_copy(ORB_ID(estimator_sensor_bias), test.m_outputs[6], &bias);
+            expect(
+                bias.accel_bias_valid == sample.valid && bias.gyro_bias_valid == sample.valid &&
+                    !bias.accel_bias_stable && !bias.gyro_bias_stable && !bias.mag_bias_valid &&
+                    same_bits(before, f.m_covariance),
+                "bias covariance threshold is independent of temporary learning inhibition and calibration stability");
+            f.publish_sensor_bias(clock_us, false);
+            orb_copy(ORB_ID(estimator_sensor_bias), test.m_outputs[6], &bias);
+            expect(!bias.accel_bias_valid && !bias.gyro_bias_valid, "unhealthy output revokes both bias-valid flags");
+        }
+    }
+
+    static void innovation_reporting()
+    {
+        FormalEskfModuleTest test;
+        using formal_eskf::px4::InnovationRatio;
+        InnovationRatio ratio;
+        expect(std::isnan(ratio.filtered), "unobserved ratio is unavailable");
+        ratio.update(1000000U, -1., 1.);
+        expect(ratio.filtered == 1., "first sample seeds unsigned ratio as in PX4");
+        ratio.update(1500000U, -1., 1.);
+        expect(ratio.filtered == 0., "signed opposite innovation cancels at alpha=0.5");
+        ratio.update(1500000U, -1., 1.);
+        expect(ratio.filtered == 1., "repeated sample epoch reseeds rather than subtracting unsigned time");
+        ratio.update(1400000U, -1., 2.);
+        expect(ratio.filtered == 2., "regressed diagnostic epoch reseeds");
+        ratio.reset(2000000U);
+        ratio.update(2000001U, 1., 1.);
+        expect(std::abs(ratio.filtered - 1. / 501.) < 1e-14, "minimum interval is one millisecond");
+        ratio.reset(3000000U);
+        ratio.update(13000000U, -1., 1.);
+        expect(std::abs(ratio.filtered + 2. / 3.) < 1e-14, "maximum interval is one second");
+        ratio.update(14000000U, 1., 100.);
+        expect(ratio.filtered == 4., "large positive filtered outlier is limited");
+        ratio.update(15000000U, -1., 100.);
+        expect(ratio.filtered == -4., "large negative filtered outlier is limited");
+        ratio.update(16000000U, 1., NAN);
+        expect(std::isnan(ratio.filtered), "missing diagnostics cannot become a perfect residual");
+        ratio.update(17000000U, 1., 100.);
+        expect(ratio.filtered == 4., "recovered diagnostics are also limited");
+        ratio.reset(18000000U);
+        expect(ratio.filtered == 0. && ratio.time_us == 18000000U, "successful state reset clears reporting history");
+    }
+
+    static void heading_readiness(bool calibration_change)
+    {
+        FormalEskfModuleTest test;
+        test.warmup();
+        auto & f = test.m_filter;
+        auto const resets = f.m_quaternion_reset_counter;
+        if (calibration_change)
+        {
+            ++test.m_mag_calibration;
+        }
+        else
+        {
+            ++test.m_mag_device;
+        }
+        bool unavailable = false, alignment_lost = false, unsafe = false;
+        bool horizontal_retained = true;
+        estimator_status_s status{};
+        for (unsigned i = 0; i < 500U; ++i)
+        {
+            test.m_sample.timestamp_sample += 4000U;
+            test.tick();
+            auto const validity = f.output_validity(clock_us);
+            f.publish_status(clock_us);
+            orb_copy(ORB_ID(estimator_status), test.m_outputs[4], &status);
+            if (!validity.magnetic)
+            {
+                unavailable = true;
+                alignment_lost |= !f.m_heading_aligned;
+                horizontal_retained &= validity.gps;
+                unsafe |= !status.pre_flt_fail_innov_heading;
+            }
+        }
+        expect(unavailable && alignment_lost && horizontal_retained && !f.m_fault,
+               "real ground magnetic source/calibration replacement loses heading while GNSS remains valid");
+        expect(!unsafe, "Commander heading veto must remain set throughout source replacement and realignment");
+        expect(f.m_quaternion_reset_counter > resets && f.output_validity(clock_us).magnetic &&
+                   !status.pre_flt_fail_innov_heading,
+               "successful magnetic realignment restores preflight readiness without changing GNSS fusion");
+    }
+
+    static void diagnostic_flags()
+    {
+        FormalEskfModuleTest test;
+        test.warmup();
+        auto & f = test.m_filter;
+        f.m_gnss.position_test_ratio = 0.25;
+        f.m_gnss.velocity_test_ratios = FormalEskf::vector3(0.25, 0.25, 0.25);
+        for (auto & ratio : f.m_gnss.position_ratios)
+        {
+            ratio = {};
+            ratio.update(f.m_time_us, -1., 0.25);
+        }
+        for (std::size_t axis = 0; axis < 3; ++axis)
+        {
+            f.m_gnss.velocity_ratios[axis] = {};
+            f.m_gnss.velocity_ratios[axis].update(f.m_time_us, -1., 0.25);
+            f.m_magnetic.ratios[axis] = {};
+            f.m_magnetic.ratios[axis].update(f.m_time_us, -1., 0.25);
+        }
+        f.publish_status(clock_us);
+        estimator_status_s status{};
+        estimator_status_flags_s flags{};
+        orb_copy(ORB_ID(estimator_status), test.m_outputs[4], &status);
+        orb_copy(ORB_ID(estimator_status_flags), test.m_outputs[5], &flags);
+        expect(!status.pre_flt_fail_innov_pos_horiz && !status.pre_flt_fail_innov_vel_horiz &&
+                   !status.pre_flt_fail_innov_heading,
+               "preflight threshold equality is accepted");
+        expect(status.pos_test_ratio == 0.5f && status.vel_test_ratio == 0.5f && std::isnan(status.tas_test_ratio) &&
+                   std::isnan(status.hagl_test_ratio),
+               "summary ratio is amplitude-scaled; absent estimators do not report perfect zero residual");
+        auto const initial = flags;
+        auto const ratio_before = f.m_magnetic.ratios[0];
+        f.publish_status(clock_us);
+        expect(f.m_magnetic.ratios[0].filtered == ratio_before.filtered &&
+                   f.m_magnetic.ratios[0].time_us == ratio_before.time_us,
+               "publication does not advance innovation filtering");
+        orb_copy(ORB_ID(estimator_status_flags), test.m_outputs[5], &flags);
+        expect(flags.control_status_changes == initial.control_status_changes &&
+                   flags.fault_status_changes == initial.fault_status_changes &&
+                   flags.innovation_fault_status_changes == initial.innovation_fault_status_changes,
+               "repeated status publication is not a state change");
+        f.m_gnss.position_test_ratio = 0.75;
+        f.m_gnss.velocity_test_ratios = FormalEskf::vector3(0.75, 0.75, 0.01);
+        for (auto & ratio : f.m_gnss.position_ratios)
+        {
+            ratio.update(f.m_time_us, -1., 0.75);
+        }
+        for (std::size_t axis = 0; axis < 3; ++axis)
+        {
+            f.m_gnss.velocity_ratios[axis].update(f.m_time_us, -1., axis == 2 ? 0.01 : 0.75);
+            f.m_magnetic.ratios[axis].update(f.m_time_us, -1., 0.75);
+        }
+        f.publish_status(clock_us);
+        orb_copy(ORB_ID(estimator_status), test.m_outputs[4], &status);
+        orb_copy(ORB_ID(estimator_status_flags), test.m_outputs[5], &flags);
+        expect(status.pre_flt_fail_innov_pos_horiz && status.pre_flt_fail_innov_vel_horiz &&
+                   status.pre_flt_fail_innov_heading && !status.pre_flt_fail_innov_vel_vert && !flags.reject_hor_pos &&
+                   !flags.reject_hor_vel,
+               "preflight warning at 0.5 is distinct from measurement rejection at 1");
+        f.m_gnss.position_test_ratio = 2.;
+        f.m_gnss.position_rejected = true;
+        f.m_magnetic.observation.field.diagnostics_valid = true;
+        f.m_magnetic.observation.field.failures.strength = true;
+        f.m_gravity.active = true;
+        f.publish_status(clock_us);
+        orb_copy(ORB_ID(estimator_status), test.m_outputs[4], &status);
+        orb_copy(ORB_ID(estimator_status_flags), test.m_outputs[5], &flags);
+        expect(flags.reject_hor_pos && (status.solution_status_flags & (1U << 10)) != 0 &&
+                   flags.innovation_fault_status_changes == initial.innovation_fault_status_changes + 1,
+               "GNSS rejection is diagnosed without being classified as numerical failure");
+        expect(status.pre_flt_fail_mag_field_disturbed && (status.control_mode_flags & (1ULL << 16)) != 0 &&
+                   (status.control_mode_flags & (1ULL << 34)) != 0 && flags.cs_gravity_vector &&
+                   flags.control_status_changes == initial.control_status_changes + 1,
+               "packed and named control flags share disturbance and gravity state");
+        FormalEskf::vertical_health_type::Sample sample;
+        f.m_vertical_health.reset();
+        sample.time_us = f.m_time_us - 500000U;
+        sample.average_interval_s = 0.004;
+        sample.clipping_available = true;
+        sample.clipped = {true, true, true};
+        FormalEskf::vertical_health_type::Observations observations;
+        observations.gnss_velocity_down = {true, 10., 1.};
+        observations.barometer_height = {true, 10., 1.};
+        for (unsigned i = 0; i < 125U; ++i)
+        {
+            sample.time_us += 4000U;
+            expect(formal_eskf::succeeded(f.m_vertical_health.update(sample, observations)), "vertical fault setup");
+        }
+        f.publish_status(clock_us);
+        orb_copy(ORB_ID(estimator_status), test.m_outputs[4], &status);
+        orb_copy(ORB_ID(estimator_status_flags), test.m_outputs[5], &flags);
+        expect(flags.fs_bad_acc_vertical && flags.fs_bad_acc_clipping &&
+                   status.filter_fault_flags == ((1U << 10) | (1U << 11)) &&
+                   (status.solution_status_flags & (1U << 11)) != 0 &&
+                   flags.fault_status_changes == initial.fault_status_changes + 1,
+               "actual vertical/clipping faults use PX4's current bits, not obsolete bit 16");
+        f.m_vertical_health.reset();
+        f.publish_status(clock_us);
+        orb_copy(ORB_ID(estimator_status_flags), test.m_outputs[5], &flags);
+        expect(!flags.fs_bad_acc_vertical && !flags.fs_bad_acc_clipping &&
+                   flags.fault_status_changes == initial.fault_status_changes + 2,
+               "fault recovery is also a status transition");
     }
 
     static void navigation_covariance_frame()
@@ -2300,6 +2649,8 @@ public:
                "new receiver with invalid velocity cannot lend old-generation height activity current validity");
         expect(f.m_gnss.lifecycle.state().velocity.last_fuse_time_us <= gps_progress,
                "queueing replacement data cannot claim a successful GNSS fusion");
+        expect(std::isnan(f.m_gnss.velocity_ratios[0].filtered) && std::isnan(f.m_magnetic.ratios[0].filtered),
+               "switch-away/back cannot retain old generation innovation summaries");
         auto const rejected = f.m_arrival_rejections;
         auto const fusion_time = f.m_time_us;
         auto gps = f.m_gps;
@@ -2625,6 +2976,16 @@ public:
         }
         bool const delayed_failure = kind == Fault::prediction || kind == Fault::quality;
         expect(test.m_filter.m_fault, "numerical and timing failures latch a restart-required fault");
+        test.m_filter.publish_status(clock_us);
+        estimator_status_s status{};
+        estimator_status_flags_s flags{};
+        estimator_sensor_bias_s bias{};
+        orb_copy(ORB_ID(estimator_status), test.m_outputs[4], &status);
+        orb_copy(ORB_ID(estimator_status_flags), test.m_outputs[5], &flags);
+        orb_copy(ORB_ID(estimator_sensor_bias), test.m_outputs[6], &bias);
+        expect((status.solution_status_flags & 0x3fU) == 0 && !flags.cs_tilt_align && !bias.accel_bias_valid &&
+                   !bias.gyro_bias_valid && status.filter_fault_flags == 0,
+               "real numerical/history failures revoke capabilities without inventing an IMU sensor fault");
         expect(delayed_failure || (test.m_filter.m_time_us == fusion_before &&
                                    test.m_filter.m_imu_history.latest_time_us() == previous),
                "IMU admission faults cannot consume either horizon");
@@ -2654,6 +3015,7 @@ private:
     bool m_send_gps = true;
     bool m_gps_velocity_valid = true;
     std::uint32_t m_gps_device = 201U, m_mag_device = 301U, m_baro_device = 401U;
+    std::uint8_t m_mag_calibration{};
     uORB::Publication<vehicle_imu_s> m_imu_pub{ORB_ID(vehicle_imu)};
     uORB::Publication<sensor_gps_s> m_gps_pub{ORB_ID(vehicle_gps_position)};
     uORB::Publication<vehicle_magnetometer_s> m_mag_pub{ORB_ID(vehicle_magnetometer)};
@@ -2778,6 +3140,19 @@ int main(int argc, char ** argv)
     FormalEskfModuleTest::sensor_position_parameters();
     FormalEskfModuleTest::rotating_sensor_geometry();
     FormalEskfModuleTest::body_reference_output();
+    using CapabilityCase = FormalEskfModuleTest::CapabilityCase;
+    for (auto scenario :
+         {CapabilityCase::all_aiding, CapabilityCase::height_only, CapabilityCase::horizontal_only,
+          CapabilityCase::velocity_without_height, CapabilityCase::source_changed, CapabilityCase::no_aiding,
+          CapabilityCase::no_tilt, CapabilityCase::stale, CapabilityCase::fault})
+    {
+        FormalEskfModuleTest::confidence_capabilities(scenario);
+    }
+    FormalEskfModuleTest::bias_confidence();
+    FormalEskfModuleTest::innovation_reporting();
+    FormalEskfModuleTest::heading_readiness(false);
+    FormalEskfModuleTest::heading_readiness(true);
+    FormalEskfModuleTest::diagnostic_flags();
     FormalEskfModuleTest::navigation_covariance_frame();
     FormalEskfModuleTest::dateline_output();
     trace_file = comparison_trace;

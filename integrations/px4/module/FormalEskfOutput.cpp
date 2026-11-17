@@ -7,6 +7,53 @@
 
 namespace profile = formal_eskf::px4::profile;
 
+namespace
+{
+// Wire layouts follow pinned PX4 v1.16.2 EKF/common.h and its named status flags.
+// EstimatorStatus.msg retains an obsolete fault-layout comment (vertical: 16).
+std::uint64_t control_flags(estimator_status_flags_s const & flags)
+{
+    return (std::uint64_t(flags.cs_tilt_align) << 0) | (std::uint64_t(flags.cs_yaw_align) << 1) |
+           (std::uint64_t(flags.cs_gnss_pos) << 2) | (std::uint64_t(flags.cs_mag_hdg) << 4) |
+           (std::uint64_t(flags.cs_in_air) << 7) | (std::uint64_t(flags.cs_baro_hgt) << 9) |
+           (std::uint64_t(flags.cs_gps_hgt) << 11) | (std::uint64_t(flags.cs_mag_field_disturbed) << 16) |
+           (std::uint64_t(flags.cs_gnd_effect) << 20) | (std::uint64_t(flags.cs_vehicle_at_rest) << 26) |
+           (std::uint64_t(flags.cs_inertial_dead_reckoning) << 29) | (std::uint64_t(flags.cs_gravity_vector) << 34) |
+           (std::uint64_t(flags.cs_mag) << 35) | (std::uint64_t(flags.cs_mag_heading_consistent) << 37) |
+           (std::uint64_t(flags.cs_baro_fault) << 43) | (std::uint64_t(flags.cs_gnss_vel) << 44);
+}
+
+std::uint32_t fault_flags(estimator_status_flags_s const & flags)
+{
+    return (std::uint32_t(flags.fs_bad_acc_vertical) << 10) | (std::uint32_t(flags.fs_bad_acc_clipping) << 11);
+}
+
+std::uint16_t innovation_flags(estimator_status_flags_s const & flags)
+{
+    return static_cast<std::uint16_t>((unsigned(flags.reject_hor_vel) << 0) | (unsigned(flags.reject_ver_vel) << 1) |
+                                      (unsigned(flags.reject_hor_pos) << 2) | (unsigned(flags.reject_ver_pos) << 3) |
+                                      (unsigned(flags.reject_yaw) << 7));
+}
+
+float innovation_ratio(double squared_ratio, bool active)
+{
+    // PX4 summary scale: magnitude of the signed, filtered squared ratio.
+    return active && std::isfinite(squared_ratio) ? float(std::sqrt(std::abs(squared_ratio))) : NAN;
+}
+
+bool bias_valid(matrix::Vector3f const & value, matrix::Vector3f const & variance)
+{
+    for (size_t axis = 0; axis < 3; ++axis)
+    {
+        if (!std::isfinite(value(axis)) || !std::isfinite(variance(axis)) || variance(axis) < 0.f)
+        {
+            return false;
+        }
+    }
+    return variance.longerThan(0.f) && !variance.longerThan(profile::output::maximum_bias_variance_norm);
+}
+} // namespace
+
 bool FormalEskf::prepare_publications()
 {
     // PX4 allocates topic data on first write, not advertise(nullptr). Zero epochs
@@ -61,7 +108,7 @@ void FormalEskf::publish(imu_type const & imu)
     m_last_output = time;
     auto const local = publish_local_position(now, imu, body, validity.gps, validity.magnetic);
     publish_global_position(now, local, body);
-    publish_odometry(now, imu, body, validity.gps && validity.magnetic);
+    publish_odometry(now, imu, body);
 }
 
 vehicle_attitude_s FormalEskf::publish_attitude(std::uint64_t now)
@@ -100,8 +147,8 @@ vehicle_local_position_s FormalEskf::publish_local_position(std::uint64_t now, i
     local.az = accel_n(2);
     local.xy_valid = local.v_xy_valid = navigation_valid;
     auto const validity = output_validity(now);
-    local.z_valid = m_height_aiding.valid(m_time_us) && (validity.barometer || validity.gps_height);
-    local.v_z_valid = validity.gps_velocity || local.z_valid;
+    // PX4 controller compatibility: local z/vz share vertical aiding; global altitude stays separate.
+    local.z_valid = local.v_z_valid = validity.vertical_velocity;
     local.delta_z = m_height_reset_delta;
     local.z_reset_counter = m_height_reset_counter;
     for (size_t axis = 0; axis < 2; ++axis)
@@ -128,12 +175,11 @@ vehicle_local_position_s FormalEskf::publish_local_position(std::uint64_t now, i
     local.ref_lat = m_origin.projection.getProjectionReferenceLat();
     local.ref_lon = m_origin.projection.getProjectionReferenceLon();
     local.ref_alt = m_origin.altitude_msl_m;
-    local.eph = std::sqrt(std::max(m_covariance(0, 0), m_covariance(1, 1)));
+    local.eph = std::sqrt(m_covariance(0, 0) + m_covariance(1, 1));
     local.epv = std::sqrt(m_covariance(2, 2));
-    local.evh = std::sqrt(std::max(m_covariance(3, 3), m_covariance(4, 4)));
+    local.evh = std::sqrt(m_covariance(3, 3) + m_covariance(4, 4));
     local.evv = std::sqrt(m_covariance(5, 5));
-    local.dead_reckoning = !(gps_position_valid(profile::output::dead_reckoning_age_us) ||
-                             gps_velocity_valid(profile::output::dead_reckoning_age_us));
+    local.dead_reckoning = validity.dead_reckoning;
     local.dist_bottom = NAN;
     local.dist_bottom_var = NAN; // No terrain estimate.
     local.vxy_max = local.vz_max = local.hagl_min = local.hagl_max_z = local.hagl_max_xy = INFINITY;
@@ -153,7 +199,7 @@ void FormalEskf::publish_global_position(std::uint64_t now, vehicle_local_positi
     global.alt_ellipsoid = m_origin.altitude_ellipsoid_m - body.position_n(2);
     global.lat_lon_valid = local.xy_valid;
     global.lat_lon_reset_counter = m_position_reset_counter;
-    global.alt_valid = local.z_valid;
+    global.alt_valid = output_validity(now).height;
     global.delta_alt = -local.delta_z;
     global.alt_reset_counter = local.z_reset_counter;
     global.eph = local.eph;
@@ -163,7 +209,7 @@ void FormalEskf::publish_global_position(std::uint64_t now, vehicle_local_positi
     record_publication(m_global_pub.publish(global));
 }
 
-void FormalEskf::publish_odometry(std::uint64_t now, imu_type const & imu, BodyOutput const & body, bool valid)
+void FormalEskf::publish_odometry(std::uint64_t now, imu_type const & imu, BodyOutput const & body)
 {
     vehicle_odometry_s odometry{};
     odometry.timestamp_sample = m_output.current().time_us;
@@ -184,7 +230,7 @@ void FormalEskf::publish_odometry(std::uint64_t now, imu_type const & imu, BodyO
         odometry.orientation_variance[i] = m_covariance(i + 6, i + 6);
     }
     odometry.reset_counter = m_odometry_reset_counter;
-    odometry.quality = valid ? 100 : 0;
+    odometry.quality = 0; // Like EKF2: no calibrated percentage-quality score.
     record_publication(m_odometry_pub.publish(odometry));
 }
 
@@ -208,21 +254,38 @@ FormalEskf::OutputValidity FormalEskf::output_validity(std::uint64_t now) const
     auto const & barometer = m_height_aiding.session(height_type::Source::barometer);
     const bool baro_active = healthy && m_observations.barometer_source().device_id != 0 &&
                              m_observations.barometer_generation() == barometer.generation && barometer.active;
-    return {healthy, gps_pos_valid, gps_vel_valid, gps_valid, gps_height_active, mag_valid, mag_aiding, baro_active};
+    const bool height_valid = m_height_aiding.valid(m_time_us) && (baro_active || gps_height_active);
+    const bool dead_reckoning = !(gps_valid && (gps_position_valid(profile::output::dead_reckoning_age_us) ||
+                                                gps_velocity_valid(profile::output::dead_reckoning_age_us)));
+    return {healthy,       gps_pos_valid, gps_vel_valid, gps_valid,    gps_height_active,
+            mag_valid,     mag_aiding,    baro_active,   height_valid, gps_vel_valid || height_valid,
+            dead_reckoning};
 }
 
 void FormalEskf::publish_status(uint64_t now)
 {
     auto const validity = output_validity(now);
-    auto const status = publish_estimator_status(now, validity);
-    publish_status_flags(now, validity, status);
+    auto flags = status_flags(now, validity);
+    auto const status = publish_estimator_status(now, validity, flags);
+    auto const innovation = innovation_flags(flags);
+    m_status_changes.control_count += status.control_mode_flags != m_status_changes.control;
+    m_status_changes.fault_count += status.filter_fault_flags != m_status_changes.fault;
+    m_status_changes.innovation_count += innovation != m_status_changes.innovation;
+    m_status_changes.control = status.control_mode_flags;
+    m_status_changes.fault = status.filter_fault_flags;
+    m_status_changes.innovation = innovation;
+    flags.control_status_changes = m_status_changes.control_count;
+    flags.fault_status_changes = m_status_changes.fault_count;
+    flags.innovation_fault_status_changes = m_status_changes.innovation_count;
+    record_publication(m_flags_pub.publish(flags));
     if (m_initialized)
     {
         publish_sensor_bias(now, validity.healthy);
     }
 }
 
-estimator_status_s FormalEskf::publish_estimator_status(std::uint64_t now, OutputValidity const & validity)
+estimator_status_s FormalEskf::publish_estimator_status(std::uint64_t now, OutputValidity const & validity,
+                                                        estimator_status_flags_s const & flags)
 {
     estimator_status_s status{};
     status.timestamp = now;
@@ -231,71 +294,59 @@ estimator_status_s FormalEskf::publish_estimator_status(std::uint64_t now, Outpu
     status.output_tracking_error[0] = formal_eskf::linalg::norm(tracking.attitude_b);
     status.output_tracking_error[1] = formal_eskf::linalg::norm(tracking.velocity_n);
     status.output_tracking_error[2] = formal_eskf::linalg::norm(tracking.position_n);
-    if (validity.healthy)
-    {
-        if (m_tilt_alignment.aligned())
-        {
-            status.control_mode_flags |= (1ULL << status.CS_TILT_ALIGN);
-        }
-        if (m_heading_aligned)
-        {
-            status.control_mode_flags |= (1ULL << status.CS_YAW_ALIGN);
-        }
-    }
-    if (validity.magnetic_aiding)
-    {
-        status.control_mode_flags |= (1ULL << status.CS_MAG_HDG);
-    }
-    if (validity.healthy && m_gnss.lifecycle.state().horizontal_position.active)
-    {
-        status.control_mode_flags |= (1ULL << status.CS_GNSS_POS);
-    }
-    if (validity.healthy && m_gnss.lifecycle.state().velocity.active)
-    {
-        status.control_mode_flags |= (1ULL << status.CS_GNSS_VEL);
-    }
-    if (validity.gps_height)
-    {
-        status.control_mode_flags |= (1ULL << status.CS_GPS_HGT);
-    }
-    if (validity.barometer)
-    {
-        status.control_mode_flags |= (1ULL << status.CS_BARO_HGT);
-    }
-    if (validity.healthy && m_ground_effect.active)
-    {
-        status.control_mode_flags |= (1ULL << status.CS_GND_EFFECT);
-    }
-    if (m_imu_context.land.known && !m_imu_context.land.landed)
-    {
-        status.control_mode_flags |= (1ULL << status.CS_IN_AIR);
-    }
+    status.control_mode_flags = control_flags(flags);
     status.gps_check_fail_flags = gps_failure_flags();
     status.reset_count_quat = m_quaternion_reset_counter;
     status.reset_count_pos_ne = m_position_reset_counter;
     status.reset_count_vel_ne = m_velocity_reset_counter;
     status.reset_count_vel_d = m_vertical_velocity_reset_counter;
     status.reset_count_pod_d = m_height_reset_counter;
-    status.filter_fault_flags = (m_fault || m_vertical_health.state().bad_vertical_acceleration) ? (1U << 16) : 0U;
-    status.hdg_test_ratio = m_magnetic.test_ratio;
-    status.vel_test_ratio = m_gnss.velocity_test_ratio;
-    status.pos_test_ratio = m_gnss.position_test_ratio;
-    status.hgt_test_ratio =
-        m_height_aiding.reference() == height_type::Source::gnss ? m_gps_height_ratio : m_height_ratio;
-    status.pre_flt_fail_innov_heading = !validity.magnetic || m_magnetic.test_ratio > 1.;
-    status.pre_flt_fail_innov_vel_horiz = status.pre_flt_fail_innov_vel_vert =
-        !validity.gps_velocity || m_gnss.velocity_test_ratio > 1.;
-    status.pre_flt_fail_innov_pos_horiz = !validity.gps_position || m_gnss.position_test_ratio > 1.;
-    status.pre_flt_fail_innov_height =
-        !m_height_aiding.valid(m_time_us) ||
-        !((validity.barometer && m_height_ratio <= 1.) || (validity.gps_height && m_gps_height_ratio <= 1.));
-    status.pos_horiz_accuracy = std::sqrt(std::max(m_covariance(0, 0), m_covariance(1, 1)));
-    status.pos_vert_accuracy = std::sqrt(m_covariance(2, 2));
-    status.solution_status_flags = validity.healthy ? 1 : 0;
-    if (validity.gps)
-    {
-        status.solution_status_flags |= 0x3e;
-    }
+    status.filter_fault_flags = fault_flags(flags);
+    // These diagnostics have no producer in this module; zero would imply a measurement.
+    status.time_slip = NAN;
+    status.mag_inclination_deg = status.mag_inclination_ref_deg = NAN;
+    status.mag_strength_gs = status.mag_strength_ref_gs = NAN;
+    status.hdg_test_ratio =
+        innovation_ratio(std::max({std::abs(m_magnetic.ratios[0].filtered), std::abs(m_magnetic.ratios[1].filtered),
+                                   std::abs(m_magnetic.ratios[2].filtered)}),
+                         flags.cs_mag_hdg);
+    const float horizontal_velocity_ratio = innovation_ratio(
+        std::max(std::abs(m_gnss.velocity_ratios[0].filtered), std::abs(m_gnss.velocity_ratios[1].filtered)),
+        flags.cs_gnss_vel);
+    const float vertical_velocity_ratio = innovation_ratio(m_gnss.velocity_ratios[2].filtered, flags.cs_gnss_vel);
+    status.vel_test_ratio = std::fmax(horizontal_velocity_ratio, vertical_velocity_ratio);
+    status.pos_test_ratio = innovation_ratio(
+        std::max(std::abs(m_gnss.position_ratios[0].filtered), std::abs(m_gnss.position_ratios[1].filtered)),
+        flags.cs_gnss_pos);
+    const float barometer_ratio =
+        innovation_ratio(m_height_aiding.session(height_type::Source::barometer).ratio.filtered, flags.cs_baro_hgt);
+    const float gnss_height_ratio =
+        innovation_ratio(m_height_aiding.session(height_type::Source::gnss).ratio.filtered, flags.cs_gps_hgt);
+    status.hgt_test_ratio = std::isfinite(barometer_ratio) && std::isfinite(gnss_height_ratio)
+                                ? (barometer_ratio + gnss_height_ratio) / 2.f
+                                : std::fmax(barometer_ratio, gnss_height_ratio);
+    status.tas_test_ratio = status.hagl_test_ratio = status.beta_test_ratio = NAN;
+    const float preflight_limit = profile::output::preflight_innovation_ratio;
+    // Commander does not check our tilt/yaw capability flags. Retain the module's
+    // heading-readiness veto; unlike EKF2, our GNSS policy has no alignment prerequisite.
+    status.pre_flt_fail_innov_heading =
+        !flags.cs_tilt_align || !validity.magnetic || status.hdg_test_ratio > preflight_limit;
+    status.pre_flt_fail_innov_vel_horiz = horizontal_velocity_ratio > preflight_limit;
+    status.pre_flt_fail_innov_vel_vert = vertical_velocity_ratio > preflight_limit;
+    status.pre_flt_fail_innov_pos_horiz = status.pos_test_ratio > preflight_limit;
+    status.pre_flt_fail_innov_height = status.hgt_test_ratio > preflight_limit;
+    status.pre_flt_fail_mag_field_disturbed = flags.cs_mag_field_disturbed;
+    status.pos_horiz_accuracy = m_initialized ? float(std::sqrt(m_covariance(0, 0) + m_covariance(1, 1))) : NAN;
+    status.pos_vert_accuracy = m_initialized ? float(std::sqrt(m_covariance(2, 2))) : NAN;
+    const bool gnss_glitch = m_gnss.position_test_ratio > 1. || m_gnss.velocity_test_ratios(0) > 1. ||
+                             m_gnss.velocity_test_ratios(1) > 1. || m_gnss.velocity_test_ratios(2) > 1.;
+    // MAVLink/PX4 solution capabilities are independent; horizontal aiding cannot certify height.
+    status.solution_status_flags = static_cast<std::uint16_t>(
+        (unsigned(flags.cs_tilt_align) << 0) | (unsigned(validity.gps) << 1) |
+        (unsigned(validity.vertical_velocity) << 2) | (unsigned(validity.gps) << 3) | (unsigned(validity.gps) << 4) |
+        (unsigned(validity.height) << 5) | (unsigned(flags.cs_vehicle_at_rest) << 7) |
+        (unsigned(flags.cs_gnss_pos || flags.cs_gnss_vel) << 8) | (unsigned(flags.cs_gnss_pos) << 9) |
+        (unsigned(gnss_glitch) << 10) | (unsigned(flags.fs_bad_acc_vertical || flags.fs_bad_acc_clipping) << 11));
     status.accel_device_id = m_imu_history.source().accelerometer_id;
     status.gyro_device_id = m_imu_history.source().gyroscope_id;
     status.mag_device_id = m_magnetic.source.device_id;
@@ -304,8 +355,7 @@ estimator_status_s FormalEskf::publish_estimator_status(std::uint64_t now, Outpu
     return status;
 }
 
-void FormalEskf::publish_status_flags(std::uint64_t now, OutputValidity const & validity,
-                                      estimator_status_s const & status)
+estimator_status_flags_s FormalEskf::status_flags(std::uint64_t now, OutputValidity const & validity) const
 {
     estimator_status_flags_s flags{};
     flags.timestamp = now;
@@ -326,15 +376,23 @@ void FormalEskf::publish_status_flags(std::uint64_t now, OutputValidity const & 
     flags.cs_gnd_effect = validity.healthy && m_ground_effect.active;
     flags.cs_baro_fault = m_height_aiding.session(height_type::Source::barometer).fault;
     flags.cs_in_air = m_imu_context.land.known && !m_imu_context.land.landed;
-    flags.cs_inertial_dead_reckoning =
-        !(validity.healthy && (gps_position_valid(profile::output::dead_reckoning_age_us) ||
-                               gps_velocity_valid(profile::output::dead_reckoning_age_us)));
+    flags.cs_vehicle_at_rest = validity.healthy && m_imu_context.land.known && m_imu_context.land.at_rest;
+    flags.cs_inertial_dead_reckoning = validity.dead_reckoning;
     flags.fs_bad_acc_vertical = m_vertical_health.state().bad_vertical_acceleration;
-    flags.reject_hor_pos = m_gnss.position_test_ratio > 1.;
-    flags.reject_hor_vel = flags.reject_ver_vel = m_gnss.velocity_test_ratio > 1.;
-    flags.reject_ver_pos = status.hgt_test_ratio > 1.f;
-    flags.reject_yaw = m_magnetic.observation.fusion.diagnostics_valid && m_magnetic.test_ratio > 1.;
-    record_publication(m_flags_pub.publish(flags));
+    flags.fs_bad_acc_clipping = m_vertical_health.state().bad_clipping;
+    flags.reject_hor_pos = m_gnss.position_rejected;
+    // The public velocity operation accepts/rejects all three axes together.
+    flags.reject_hor_vel = flags.reject_ver_vel = m_gnss.velocity_rejected;
+    auto const reference = m_height_aiding.reference();
+    if (reference != height_type::Source::none)
+    {
+        auto const & height = m_height_aiding.session(reference);
+        flags.reject_ver_pos =
+            !height.fusion_reset && height.fusion.decision == formal_eskf::runtime::FusionDecision::rejected;
+    }
+    flags.reject_yaw = m_magnetic.lifecycle.state().last_reset_time_us < m_magnetic.sample_time_us &&
+                       m_magnetic.observation.fusion.decision == formal_eskf::runtime::FusionDecision::rejected;
+    return flags;
 }
 
 void FormalEskf::publish_sensor_bias(std::uint64_t now, bool healthy)
@@ -344,7 +402,6 @@ void FormalEskf::publish_sensor_bias(std::uint64_t now, bool healthy)
     bias.timestamp_sample = m_time_us;
     bias.accel_device_id = m_imu_history.source().accelerometer_id;
     bias.gyro_device_id = m_imu_history.source().gyroscope_id;
-    bias.accel_bias_valid = bias.gyro_bias_valid = healthy;
     bias.accel_bias_limit = profile::bias_limits<double>().accelerometer;
     bias.gyro_bias_limit = profile::bias_limits<double>().gyroscope;
     for (size_t i = 0; i < 3; ++i)
@@ -354,6 +411,12 @@ void FormalEskf::publish_sensor_bias(std::uint64_t now, bool healthy)
         bias.accel_bias_variance[i] = m_covariance(i + 9, i + 9);
         bias.gyro_bias_variance[i] = m_covariance(i + 12, i + 12);
     }
+    bias.accel_bias_valid = healthy && bias.accel_device_id != 0 &&
+                            bias_valid(matrix::Vector3f(bias.accel_bias), matrix::Vector3f(bias.accel_bias_variance));
+    bias.gyro_bias_valid = healthy && bias.gyro_device_id != 0 &&
+                           bias_valid(matrix::Vector3f(bias.gyro_bias), matrix::Vector3f(bias.gyro_bias_variance));
+    // Temporary learning inhibition is not loss of the stored estimate. Stable stays false:
+    // this module has no PX4 calibration-learning/convergence monitor.
     record_publication(m_bias_pub.publish(bias));
 }
 
@@ -487,7 +550,7 @@ int FormalEskf::print_status()
              int(snapshot.gnss_quality), snapshot.qualified, snapshot.metadata_valid,
              unsigned(snapshot.gps_failure_flags), snapshot.gps_position_active, snapshot.gps_velocity_active,
              unsigned(snapshot.position_resets), unsigned(snapshot.velocity_resets));
-    PX4_INFO("rejections=%u numerical_errors=%u gap_holds=%u max_gps_age_us=%llu", snapshot.rejections, snapshot.errors,
+    PX4_INFO("rejections=%u estimator_errors=%u gap_holds=%u max_gps_age_us=%llu", snapshot.rejections, snapshot.errors,
              snapshot.gaps, (unsigned long long)snapshot.maximum_gps_age_us);
     PX4_INFO("p=[%.3f %.3f %.3f] v=[%.3f %.3f %.3f]", snapshot.position[0], snapshot.position[1], snapshot.position[2],
              snapshot.velocity[0], snapshot.velocity[1], snapshot.velocity[2]);

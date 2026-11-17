@@ -4450,8 +4450,8 @@
             "symbol": "bool FormalEskf::accept_imu("
           },
           {
-            "file": "integrations/px4/module/FormalEskf.cpp",
-            "symbol": "FormalEskf::imu_type FormalEskf::ImuInput::mean_rates()"
+            "file": "integrations/px4/module/ImuHistory.hpp",
+            "symbol": "ImuInput<Linalg>::mean_rates()"
           },
           {
             "file": "include/formal_eskf/runtime/imu.hpp",
@@ -5518,6 +5518,58 @@
             "symbol": "void verify_gnss_transition("
           }
         ]
+      }
+    },
+    {
+      "id": "R-PX4-IMU-HISTORY",
+      "title": "Delayed IMU timeline: native-tested timing owner; formal proof and live integration remain open",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-PX4-IMU-HISTORY: delayed IMU timeline"
+          },
+          {
+            "file": "docs/spec/px4-timing-profile.md",
+            "symbol": "### PX4-TIME-IMU: retained interval owner"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "integrations/px4/module/ImuHistory.hpp",
+            "symbol": "bool configure_timing("
+          },
+          {
+            "file": "integrations/px4/module/ImuHistory.hpp",
+            "symbol": "class ImuHistory"
+          },
+          {
+            "file": "integrations/px4/module/ImuHistory.hpp",
+            "symbol": "ImuHistory<Linalg>::configure("
+          },
+          {
+            "file": "integrations/px4/module/ImuHistory.hpp",
+            "symbol": "ImuHistory<Linalg>::seed("
+          },
+          {
+            "file": "integrations/px4/module/ImuHistory.hpp",
+            "symbol": "ImuHistory<Linalg>::push("
+          },
+          {
+            "file": "integrations/px4/module/ImuHistory.hpp",
+            "symbol": "ImuHistory<Linalg>::delayed()"
+          },
+          {
+            "file": "integrations/px4/module/ImuHistory.hpp",
+            "symbol": "ImuHistory<Linalg>::complete("
+          },
+          {
+            "file": "integrations/px4/module/ImuHistory.hpp",
+            "symbol": "ImuHistory<Linalg>::reset()"
+          }
+        ],
+        "esbmc": []
       }
     },
     {

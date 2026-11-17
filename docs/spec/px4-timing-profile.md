@@ -1,8 +1,8 @@
 ## Summary
 
-Propose the first delayed-fusion timing profile for **F-04.1**, under
-[PX4-TIME, PX4-OUT and PX4-RT](px4-module-architecture.md). This is a design for
-review, not implemented behavior or target acceptance. The current module still
+Define the first delayed-fusion timing profile for **F-04.1**, under
+[PX4-TIME, PX4-OUT and PX4-RT](px4-module-architecture.md). This is the design
+baseline, not a claim of deployed behavior or target acceptance. The current module still
 fuses at the latest IMU horizon. F-04.2 implements the reviewed design separately.
 
 Use the same reference as the architecture: **PX4 v1.16.2,
@@ -32,6 +32,14 @@ histories use the same derived length. Use `RingBuffer::allocate(length)` only
 during startup/restart, after validation. Reject unsupported values or required
 lengths exceeding capacity; do not silently clamp them, shorten history or fall
 back to another period. Running parameter changes take effect only after restart.
+
+For the initial mode, require the minimum fusion lag to cover the largest
+`source arrival-age limit + residual delay + maximum half-period offset`.
+The half-period bound is 2.1 ms. This puts admitted observations no earlier than
+the delayed horizon at admission; later selection still applies its age window.
+Together with the 64-slot capacity, integer-millisecond fusion-delay settings
+with zero residual delays can range from 153 through 239 ms. This is configuration
+admission, not a timing/accuracy qualification of every setting.
 
 The values below describe the **default configuration**, not fixed lengths for
 every configuration. A 10 ms setting needs rotation-aware accumulation and
@@ -295,6 +303,27 @@ and bounded traces. It does not prove these larger capacities, the module's time
 arithmetic, temporal ownership, output tracking or scheduling. Extend evidence
 to the instantiated paths and their assumptions; do not mark F-04 complete from
 component tests/proofs alone.
+
+### PX4-TIME-IMU: retained interval owner
+
+[ImuHistory.hpp](../../integrations/px4/module/ImuHistory.hpp) implements the first
+F-04.2 component: startup-value validation, configured fixed storage, seed/warmup,
+ordered interval admission, held-rate segments, oldest-interval selection and
+explicit completion. Its [requirements](verification-requirements.md#r-px4-imu-history-delayed-imu-timeline)
+separate this owner from the underlying buffer proof.
+
+The module shares its `ImuInput` and source identity types, but still uses immediate
+fusion. uORB timing-parameter binding, observation/context histories, output
+history/feedback and the switch to delayed fusion remain integration work. Do
+not expose timing controls on the running module until they control that path.
+The owner takes explicit arrival time; the adapter must supply the monotonic clock
+and acknowledge an interval only after successful numerical prediction.
+
+[Native tests](../../tests/test_px4_imu_history.cpp) exercise the owner with Eigen
+and PX4 matrix/binary64. They cover configuration boundaries, repeated wraps,
+payload/period preservation, gap holds, missing completion, faults/restart and
+timestamps near `UINT64_MAX`. These are regression tests, not a formal proof of
+the owner or deployed temporal alignment.
 
 ## Pinned reference points
 

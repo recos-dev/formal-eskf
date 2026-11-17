@@ -318,31 +318,6 @@ FormalEskf::ImuInput FormalEskf::decode_imu(vehicle_imu_s const & sample)
     return result;
 }
 
-bool FormalEskf::ImuSource::matches(ImuSource const & other) const
-{
-    return other.accelerometer_id == accelerometer_id && other.gyroscope_id == gyroscope_id &&
-           other.accelerometer_calibration == accelerometer_calibration &&
-           other.gyroscope_calibration == gyroscope_calibration;
-}
-
-double FormalEskf::ImuInput::angular_interval_s() const
-{
-    return static_cast<double>(angular_period_us) * profile::seconds_per_microsecond;
-}
-
-double FormalEskf::ImuInput::acceleration_interval_s() const
-{
-    return static_cast<double>(acceleration_period_us) * profile::seconds_per_microsecond;
-}
-
-FormalEskf::imu_type FormalEskf::ImuInput::mean_rates() const
-{
-    double const dt = angular_interval_s();
-    double const accel_dt = acceleration_interval_s();
-    return {vector3(delta_velocity_b(0) / accel_dt, delta_velocity_b(1) / accel_dt, delta_velocity_b(2) / accel_dt),
-            vector3(delta_angle_b(0) / dt, delta_angle_b(1) / dt, delta_angle_b(2) / dt)};
-}
-
 void FormalEskf::ImuHistory::record(ImuInput const & sample, imu_type const & imu)
 {
     measurement = imu;

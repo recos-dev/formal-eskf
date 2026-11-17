@@ -41,6 +41,7 @@
 #include "DeploymentProfile.hpp"
 #include "HeightAiding.hpp"
 #include "ImuPrediction.hpp"
+#include "ImuHistory.hpp"
 #include "MagneticModel.hpp"
 
 // Single writer: all filter state is owned by this work item. The core has no
@@ -95,33 +96,8 @@ private:
         void reset_samples();
     };
 
-    struct ImuSource
-    {
-        std::uint32_t accelerometer_id{};
-        std::uint32_t gyroscope_id{};
-        std::uint8_t accelerometer_calibration{};
-        std::uint8_t gyroscope_calibration{};
-
-        bool matches(ImuSource const & other) const;
-    };
-
-    // Integrated body-FRD input, independent of PX4 message layout. Keep both
-    // measured periods: gravity sampling consumes microseconds, not rounded dt.
-    struct ImuInput
-    {
-        vector3_type delta_angle_b{};    // rad
-        vector3_type delta_velocity_b{}; // m/s
-        std::uint64_t time_us{};
-        std::uint32_t angular_period_us{};
-        std::uint32_t acceleration_period_us{};
-        std::uint8_t accelerometer_clipping{};
-        std::uint8_t gyroscope_clipping{};
-        ImuSource source{};
-
-        double angular_interval_s() const;
-        double acceleration_interval_s() const;
-        imu_type mean_rates() const; // Requires admitted, positive periods.
-    };
+    using ImuSource = formal_eskf::px4::ImuSource;
+    using ImuInput = formal_eskf::px4::ImuInput<backend_type>;
 
     struct ImuHistory
     {

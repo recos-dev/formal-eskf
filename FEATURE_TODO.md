@@ -121,13 +121,13 @@ not just another constant in the existing barometer helper.
 
 | Task | Status and dependency | Completion criterion |
 |---|---|---|
-| F-04.1 — Timing design | Design review pending: [first timing profile](docs/spec/px4-timing-profile.md) defines source epochs, cadence, capacities, flow and budgets; runtime buffer (`9828944`) and scoped proof (`d59c0dd`) committed | Specify sample versus publication time, supported delays, fixed capacities, horizon, overflow/out-of-order policy, resets and latency/memory budgets against the pinned PX4 behavior. |
-| F-04.2 — Delayed fusion and output prediction | Blocked by F-04.1 design acceptance; buffer foundation is available | Implement the reviewed history/horizon/output path in bounded batches. Test deterministic delay, reordering, dropout and reset sequences; verify output timestamps, continuity and measured resource bounds. |
+| F-04.1 — Timing design | Completed for the initial 250 Hz SIH design (`f763ffb`, `8f6bda1`); target resource/accuracy acceptance remains F-07 | Specify sample versus publication time, supported delays, fixed capacities, horizon, overflow/out-of-order policy, resets and latency/memory budgets against the pinned PX4 behavior. |
+| F-04.2 — Delayed fusion and output prediction | First component implemented; review pending: [IMU history](integrations/px4/module/ImuHistory.hpp) validates startup timing and enforces warmup, gap holds and once-only completion. Native checks exist; formal proof and live delayed integration remain open | Implement the reviewed history/horizon/output path in bounded batches. Test deterministic delay, reordering, dropout and reset sequences; verify output timestamps, continuity and measured resource bounds. |
 
-F-04 is prioritized by request. The committed buffer and its component evidence
-remain disconnected from the immediate-fusion module. Review the
-[timing profile](docs/spec/px4-timing-profile.md) before F-04.2 changes the module's
-time horizons; buffer proof does not establish owner timing or output tracking.
+F-04 is prioritized by request. The module shares the IMU input/source types with
+the new history component, but still fuses immediately. The reviewed
+[timing profile](docs/spec/px4-timing-profile.md) governs the remaining integration;
+component evidence does not establish deployed time alignment or output tracking.
 
 ### F-05 — Sensor location and frames
 
@@ -172,10 +172,11 @@ Promoting one requires a reviewed scope and dependency; retain its ID.
 
 ## Next implementation
 
-**F-04.1: review the first timing profile**, followed by F-04.2 implementation
-in reviewed batches. This priority follows the requested buffer/timing work;
-F-03.2 barometer ground effect remains pending, not removed or completed.
+**F-04.2: review the IMU history component**, then implement the output predictor
+and matching output history. Observation/context buffering and uORB timing
+parameter binding accompany the later delayed-fusion cutover; do not expose
+settings that the live path ignores. F-03.2 barometer ground effect remains pending.
 
 F-01.2/F-01.3/F-02.1/F-03.1 are already committed. Keep these IDs and the other
-work groups unchanged. F-07 evidence accompanies implementation; this design-only
-change does not establish timing, accuracy or hardware acceptance.
+work groups unchanged. F-07 evidence accompanies implementation; component
+regression tests do not establish timing, accuracy or hardware acceptance.

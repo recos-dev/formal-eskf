@@ -2,6 +2,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <numbers>
 
@@ -61,6 +62,20 @@ inline constexpr double maximum_specific_force_m_s2 = 25.;
 inline constexpr double maximum_angular_rate_rad_s = 3.;
 inline constexpr double bias_learning_decay_s = 0.5;
 } // namespace imu
+
+// First delayed-fusion profile: one real SIH IMU interval per main-filter step.
+namespace history
+{
+inline constexpr std::int32_t filter_interval_us = 4000;
+inline constexpr std::int32_t fusion_delay_ms = 200;
+inline constexpr std::uint32_t minimum_period_us = 3800;
+inline constexpr std::uint32_t maximum_period_us = 4200;
+inline constexpr std::uint64_t maximum_lag_us = 300000;
+inline constexpr std::uint64_t gnss_arrival_age_us = 150000;
+inline constexpr std::uint64_t magnetic_arrival_age_us = 100000;
+inline constexpr std::uint64_t barometer_arrival_age_us = 100000;
+inline constexpr std::size_t imu_capacity = 64;
+} // namespace history
 
 namespace gravity
 {

@@ -47,6 +47,12 @@ Initialization, prediction, bias and gravity operations consume these internal
 values; vertical health receives only the clipping mask it needs. This input
 boundary does not introduce downsampling or change the fusion/publication order.
 
+`ImuInput` and `ImuSource` are shared with the
+[delayed IMU history component](../../integrations/px4/module/ImuHistory.hpp).
+That component validates startup timing, retains fixed-capacity intervals and
+requires explicit prediction completion. It is native-tested but not yet connected
+to the module's fusion time or output path; see [F-04.2](../../FEATURE_TODO.md#f-04--timing).
+
 `Initialization` owns startup accumulators and the magnetic source/watermark;
 motion clears the accumulators while retaining that source history. `ImuHistory`
 owns the previous measured rate, sample time and source/calibration identity used

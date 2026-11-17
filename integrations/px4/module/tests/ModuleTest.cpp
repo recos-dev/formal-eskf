@@ -214,17 +214,26 @@ public:
         baro.timestamp = clock_us;
         baro.timestamp_sample = clock_us;
         baro.baro_device_id = m_baro_device;
-        baro.baro_alt_meter = 488.f;
+        baro.baro_alt_meter = m_baro_altitude;
         m_baro_pub.publish(baro);
         vehicle_land_detected_s land{};
         land.timestamp = clock_us;
         land.landed = m_landed;
         land.at_rest = m_at_rest;
-        m_land_pub.publish(land);
+        land.in_ground_effect = m_in_ground_effect;
+        if (m_send_land)
+        {
+            m_land_pub.publish(land);
+        }
         vehicle_status_s vehicle{};
         vehicle.timestamp = clock_us;
         vehicle.arming_state = m_armed ? vehicle_status_s::ARMING_STATE_ARMED : vehicle_status_s::ARMING_STATE_DISARMED;
-        m_status_pub.publish(vehicle);
+        vehicle.vehicle_type =
+            m_fixed_wing ? vehicle_status_s::VEHICLE_TYPE_FIXED_WING : vehicle_status_s::VEHICLE_TYPE_ROTARY_WING;
+        if (m_send_status)
+        {
+            m_status_pub.publish(vehicle);
+        }
         m_imu_pub.publish(m_sample);
         auto const calls = watchdog_calls;
         m_filter.Run();
@@ -1678,6 +1687,109 @@ public:
         test.snapshot("gravity-invalid-metadata");
     }
 
+    static void ground_effect_in_run()
+    {
+        FormalEskfModuleTest test;
+        test.warmup();
+        auto & f = test.m_filter;
+        auto advance = [&](unsigned ticks)
+        {
+            for (unsigned i = 0; i < ticks; ++i)
+            {
+                test.m_sample.timestamp_sample += 4000U;
+                test.tick();
+            }
+        };
+        test.m_in_ground_effect = true;
+        advance(54);
+        expect(!f.m_ground_effect.active, "ground-effect request cannot activate while landed");
+        test.m_landed = test.m_at_rest = false;
+        test.m_armed = true;
+        for (unsigned i = 1; i <= 54; ++i)
+        {
+            advance(1);
+            expect(f.m_ground_effect.active == (i == 54),
+                   "ground-effect request applies at the delayed flight-context epoch, never on arrival");
+        }
+        test.m_baro_altitude -= 3.f;
+        advance(60);
+        auto const & baro = f.m_height_aiding.session(FormalEskf::height_type::Source::barometer);
+        expect(!f.m_fault && baro.fusion.decision == formal_eskf::runtime::FusionDecision::fused &&
+                   baro.fusion.innovation(0) > 1. && baro.fusion.innovation(0) < 4. && baro.fusion_innovation == 0. &&
+                   !baro.innovation_limited,
+               "production Run applies the 4 m deadzone to a selected low barometric altitude");
+        f.publish_status(clock_us);
+        estimator_status_s status{};
+        estimator_status_flags_s flags{};
+        orb_copy(ORB_ID(estimator_status), test.m_outputs[4], &status);
+        orb_copy(ORB_ID(estimator_status_flags), test.m_outputs[5], &flags);
+        expect(flags.cs_gnd_effect && (status.control_mode_flags & (1ULL << status.CS_GND_EFFECT)) != 0,
+               "both PX4 status outputs report the active ground-effect protection");
+        test.m_in_ground_effect = false;
+        advance(54);
+        auto const last_detection = f.m_ground_effect.last_detection_us;
+        for (unsigned i = 0; i < 2500 && f.m_time_us - last_detection < 10000000U; ++i)
+        {
+            advance(1);
+        }
+        expect(f.m_ground_effect.active && f.m_time_us - last_detection == 10000000U,
+               "negative requests do not clear the latch; exactly ten delayed seconds still held");
+        advance(1);
+        expect(!f.m_ground_effect.active, "ground-effect hold expires strictly after ten delayed seconds");
+        test.m_in_ground_effect = true;
+        advance(54);
+        expect(f.m_ground_effect.active, "new positive request reactivates after expiry");
+        test.m_fixed_wing = true;
+        advance(54);
+        expect(!f.m_ground_effect.active, "historical fixed-wing state disables protection");
+        test.m_fixed_wing = false;
+        test.m_in_ground_effect = false;
+        advance(54);
+        expect(!f.m_ground_effect.active, "cleared latch cannot reactivate from its old detection timestamp");
+        test.m_in_ground_effect = true;
+        advance(54);
+        test.m_landed = true;
+        advance(54);
+        expect(!f.m_ground_effect.active && !f.m_fault, "landing clears protection at the delayed epoch");
+    }
+
+    static void ground_effect_missing_context()
+    {
+        FormalEskfModuleTest test;
+        test.warmup();
+        auto & f = test.m_filter;
+        test.m_in_ground_effect = true;
+        test.m_armed = true;
+        test.m_landed = test.m_at_rest = false;
+        for (unsigned i = 0; i < 54; ++i)
+        {
+            test.m_sample.timestamp_sample += 4000U;
+            test.tick();
+        }
+        expect(f.m_ground_effect.active, "setup: known rotary-wing flight activates protection");
+        test.m_send_status = test.m_send_land = false;
+        for (unsigned i = 0; i < 54; ++i)
+        {
+            test.m_sample.timestamp_sample += 4000U;
+            test.tick();
+        }
+        auto const last_detection = f.m_ground_effect.last_detection_us;
+        for (unsigned i = 0; i < 10; ++i)
+        {
+            test.m_sample.timestamp_sample += 4000U;
+            test.tick();
+        }
+        expect(f.m_ground_effect.active && f.m_ground_effect.last_detection_us == last_detection,
+               "repeated context snapshots cannot renew detection without a new source message");
+        for (unsigned i = 0; i < 805; ++i)
+        {
+            test.m_sample.timestamp_sample += 4000U;
+            test.tick();
+        }
+        expect(!f.m_ground_effect.active && !f.m_fault,
+               "stale vehicle status is unknown, not permission to keep ground-effect protection active");
+    }
+
     static void delayed_pipeline()
     {
         FormalEskfModuleTest test;
@@ -2232,6 +2344,8 @@ private:
     vehicle_imu_s m_sample{};
     bool m_armed = false;
     bool m_landed = true, m_at_rest = true;
+    bool m_in_ground_effect = false, m_fixed_wing = false, m_send_status = true, m_send_land = true;
+    float m_baro_altitude = 488.f;
     bool m_send_gps = true;
     bool m_gps_velocity_valid = true;
     std::uint32_t m_gps_device = 201U, m_mag_device = 301U, m_baro_device = 401U;
@@ -2332,6 +2446,8 @@ int main(int argc, char ** argv)
     FormalEskfModuleTest::navigation_rejected_quality();
     FormalEskfModuleTest::navigation_timeout();
     FormalEskfModuleTest::height_combined_resets();
+    FormalEskfModuleTest::ground_effect_in_run();
+    FormalEskfModuleTest::ground_effect_missing_context();
     FormalEskfModuleTest::navigation_context(true, true);
     FormalEskfModuleTest::navigation_context(false, true);
     FormalEskfModuleTest::navigation_context(false, false);

@@ -146,7 +146,7 @@ public:
     [[nodiscard]] Result update(std::uint64_t now_us, Sample const & barometer, Sample const & gnss,
                                 bool vertical_velocity_aiding, state_type & state, covariance_type & covariance,
                                 configuration::Ins::BiasUpdate const & bias_update = {},
-                                Acceleration const & acceleration = {false, {0U, 0U}});
+                                Acceleration const & acceleration = {false, {0U, 0U}}, bool ground_effect = false);
 
     /** Inspect one sensor session; source must be barometer or gnss. */
     Session const & session(Source source) const { return m_sessions[index(source)]; }
@@ -189,7 +189,8 @@ private:
                  Acceleration const & acceleration);
     void process(Source source, std::uint64_t now_us, Sample const & sample, bool vertical_velocity_aiding,
                  state_type & state, covariance_type & covariance, Result & result,
-                 configuration::Ins::BiasUpdate const & bias_update, Acceleration const & acceleration);
+                 configuration::Ins::BiasUpdate const & bias_update, Acceleration const & acceleration,
+                 bool ground_effect);
     void reset_height(Source source, std::uint64_t now_us, value_type altitude, value_type variance, state_type & state,
                       covariance_type & covariance, Result & result);
 
@@ -353,7 +354,7 @@ template <typename Linalg>
 void HeightAiding<Linalg>::process(Source source, std::uint64_t now_us, Sample const & sample,
                                    bool vertical_velocity_aiding, state_type & state, covariance_type & covariance,
                                    Result & result, configuration::Ins::BiasUpdate const & bias_update,
-                                   Acceleration const & acceleration)
+                                   Acceleration const & acceleration, bool ground_effect)
 {
     auto & aid = m_sessions[index(source)];
     bool const barometer = source == Source::barometer;
@@ -403,7 +404,9 @@ void HeightAiding<Linalg>::process(Source source, std::uint64_t now_us, Sample c
     // altitude conversion stay here.
     auto const measurement = runtime::fuse_height(
         state, covariance, observation, observation_variance, static_cast<value_type>(profile::minimum_quaternion_norm),
-        static_cast<value_type>(profile::height::gate_sigma), acceleration.bad, state, covariance, bias_update);
+        static_cast<value_type>(profile::height::gate_sigma), acceleration.bad, state, covariance, bias_update,
+        barometer && ground_effect ? static_cast<value_type>(profile::height::ground_effect_deadzone_m)
+                                   : value_type{0});
     aid.fusion = measurement.fusion;
     aid.fusion_innovation = measurement.fusion_innovation(0U);
     aid.innovation_limited = measurement.innovation_limited;
@@ -433,7 +436,8 @@ template <typename Linalg>
 typename HeightAiding<Linalg>::Result
 HeightAiding<Linalg>::update(std::uint64_t now_us, Sample const & barometer, Sample const & gnss,
                              bool vertical_velocity_aiding, state_type & state, covariance_type & covariance,
-                             configuration::Ins::BiasUpdate const & bias_update, Acceleration const & acceleration)
+                             configuration::Ins::BiasUpdate const & bias_update, Acceleration const & acceleration,
+                             bool ground_effect)
 {
     Result result;
     if (m_started == 0U || now_us < m_started || now_us <= m_tick)
@@ -472,7 +476,7 @@ HeightAiding<Linalg>::update(std::uint64_t now_us, Sample const & barometer, Sam
             aid.bias.predict(dt);
         }
         candidate.process(source, now_us, source == Source::barometer ? barometer : gnss, vertical_velocity_aiding,
-                          next_state, next_covariance, result, bias_update, acceleration);
+                          next_state, next_covariance, result, bias_update, acceleration, ground_effect);
         if (!succeeded(result.status))
         {
             return Result{result.status};

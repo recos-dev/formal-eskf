@@ -242,6 +242,10 @@ estimator_status_s FormalEskf::publish_estimator_status(std::uint64_t now, Outpu
     {
         status.control_mode_flags |= (1ULL << status.CS_BARO_HGT);
     }
+    if (validity.healthy && m_ground_effect.active)
+    {
+        status.control_mode_flags |= (1ULL << status.CS_GND_EFFECT);
+    }
     if (m_imu_context.land.known && !m_imu_context.land.landed)
     {
         status.control_mode_flags |= (1ULL << status.CS_IN_AIR);
@@ -299,6 +303,7 @@ void FormalEskf::publish_status_flags(std::uint64_t now, OutputValidity const & 
     flags.cs_mag_field_disturbed =
         magnetic_field.diagnostics_valid && (magnetic_field.failures.strength || magnetic_field.failures.inclination);
     flags.cs_baro_hgt = validity.barometer;
+    flags.cs_gnd_effect = validity.healthy && m_ground_effect.active;
     flags.cs_baro_fault = m_height_aiding.session(height_type::Source::barometer).fault;
     flags.cs_in_air = m_imu_context.land.known && !m_imu_context.land.landed;
     flags.cs_inertial_dead_reckoning =

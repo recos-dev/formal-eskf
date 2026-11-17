@@ -1642,6 +1642,14 @@ variance; its strict exception bound applies even when the general quality
 speed-accuracy check is disabled. Both accuracy values must be finite, accuracy
 nonnegative and maximum positive, regardless of the fault flag.
 
+Height fusion additionally accepts a finite nonnegative `deadzone` in metres,
+zero by default. After the IMU-fault limit, transform a positive selected residual
+`r` to `max(r - deadzone, 0)`; retain zero/negative residuals. Never recompute or
+release the gate because of this transform. Nonfinite/negative settings fail
+before gate/correction and preserve outputs. `R-HEIGHT-FUSION` defines when the
+module may supply a nonzero value. `innovation_limited` continues to describe
+only the acceleration-fault clamp; `fusion_innovation` includes both transforms.
+
 `NavigationFusionResult` retains raw innovation, S and test ratio in `fusion`, and
 separately exposes `fusion_innovation` and `innovation_limited`. Raw ratio > 1
 can therefore accompany successful limited fusion. Selected innovation is valid
@@ -1686,7 +1694,9 @@ limiter and both public recovery callers in binary32/64 with all independent
 state/P alias modes. The limiter retains raw diagnostics, uses the selected
 variance for its root request and handles arbitrary scalar-library returns.
 The public callers preserve strict policy boundaries and publish only after
-successful correction. Same-type covariance/correction contracts and the
+successful correction. The height caller's symbolic deadzone covers disabled,
+positive and invalid values, ordering after the limit, unchanged raw gate evidence
+and all independent state/P alias modes. Same-type covariance/correction contracts and the
 separately checked exact limiter relation bound the composed caller proof;
 they are not proofs of external backend internals. Shared IEEE scalar lemmas
 establish nonnegative finite limits and sign/bounds under an explicit finite,
@@ -2747,9 +2757,9 @@ covariance preconditions; this helper does not prove or recheck positive semidef
 
 This profile covers GNSS and barometer with a fixed GNSS preference, including
 the bounded IMU-fault innovation exception and independent reset timing.
-Ground effect, dynamic-pressure correction, lever arms, delayed fusion, output
-prediction, range/vision height and configurable
-reference selection are not part of it. Native/backend tests and closed-loop
+The ground-effect extension is specified below; delayed/current timeline binding
+belongs to `R-PX4-DELAYED-FUSION`. Dynamic-pressure correction, lever arms,
+range/vision height and configurable reference selection remain outside this profile. Native/backend tests and closed-loop
 SITL are empirical evidence. `HeightBias.lean` proves the real scalar gain,
 unclamped posterior covariance (including Joseph equivalence), residual
 contraction and offset transport before source-specific re-alignment. It does
@@ -2776,6 +2786,50 @@ The complete height transaction, history induction, numerical callee composition
 actual module/replay ordering/publication and floating-point error bounds remain
 separate obligations. Bias estimates are not independent altitude truth or a
 proof of physical sensor health.
+
+
+#### PX4 module barometer ground effect
+
+F-03.2 follows the pinned v1.16.2 no-terrain branch. The module has no terrain or
+height-above-ground estimate; local Down position is not a substitute for HAGL.
+
+- Retain `vehicle_land_detected.in_ground_effect` and vehicle fixed-wing status
+  in known-at context history. Apply the policy at the delayed main IMU epoch,
+  before height fusion, using original message timestamps with strict 3 s
+  freshness. Fresh land state overrides armed-state flight fallback.
+- A new land/status message carrying a known positive ground-effect indication
+  activates protection only in flight and with fresh non-fixed-wing vehicle
+  status. Hold until strictly more than 10 s after its last delayed detection;
+  a negative request alone does not immediately clear it. Repeated snapshots of
+  unchanged source messages do not renew detection. Landing, fixed-wing state or
+  unavailable vehicle/flight context clears the latch; an old detection time alone
+  cannot reactivate it. Missing vehicle status is an explicit stricter guard than
+  the reference wrapper's default false fixed-wing flag.
+- Supply the public `EKF2_GND_EFF_DZ` default **4 m** from the fixed deployment
+  profile only to barometer fusion while protected. The internal PX4 parameter
+  struct initializes 5 m, but the wrapper binds the public default 4 m. This
+  module does not read live `EKF2_*` settings. Configurable tuning remains F-06.2.
+- Our NED residual is observed-minus-predicted, opposite to PX4's innovation.
+  A transient pressure increase lowers indicated altitude and produces a positive
+  residual here. Apply `r_used = max(r_selected - 4 m, 0)` only when positive,
+  after the existing bad-acceleration clamp. Negative residuals are unchanged.
+  Preserve raw innovation, variance and gate ratio; the deadzone alone never
+  authorizes fusion of a rejected observation. A zero selected residual still
+  executes covariance correction, matching the reference behavior.
+- GNSS, barometer scalar-bias learning, reference arbitration, timeout resets and
+  reset counters keep their existing rules. Vertical-health evidence consumes
+  the selected residual with the existing sign conversion. Publish protection
+  via `CS_GND_EFFECT` / `cs_gnd_effect`, gated by healthy current output; this flag
+  is not proof of actual ground proximity or successful barometer fusion.
+
+Reference: [barometer control](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/barometer/baro_height_control.cpp#L90),
+[mode/timeout](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/ekf_helper.cpp#L945)
+and [public parameters](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/params_barometer.yaml#L42).
+Native tests cover the actual module path and finite-state timing rules;
+`navigation-recovery` covers the scoped residual/correction composition. Physical
+rotor-wash response, tuned deadzone, terrain-based activation and whole-module
+formal proof remain separate; this does not resolve the retained SIH landing
+anomaly from F-04.
 
 ## Quaternion and SO(3)
 

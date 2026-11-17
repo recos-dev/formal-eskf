@@ -136,6 +136,10 @@ inline constexpr double gate_sigma = 5.;
 inline constexpr double barometer_lpf_gain = 0.1;
 inline constexpr unsigned barometer_warmup_samples = 20U;
 inline constexpr double reset_velocity_variance = 10.;
+// Pinned PX4 public parameter default; its internal struct initializer differs.
+inline constexpr double ground_effect_deadzone_m = 4.;
+inline constexpr std::uint64_t ground_effect_timeout_us = 10000000U;
+inline constexpr std::uint64_t context_maximum_age_us = 3000000U;
 } // namespace height
 
 namespace height_bias

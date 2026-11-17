@@ -10,7 +10,7 @@ Audited on 2026-11-12 against formal-eskf `a5b460f` and the in-tree
 `integrations/px4/` module. The behavior reference is PX4 v1.16.2,
 `54f0455ffcd755534539a7cf33a09a20bf71d29d`. Historical notes about the separate
 adapter checkout do not describe this baseline.
-Latest completion: F-03.1 was committed as `3fafdb6` on 2026-11-12.
+Latest completion: F-04.2 live delayed-fusion binding was committed as `65f8dc0` on 2026-11-17; its formal/target acceptance limits remain explicit below.
 
 - Keep task IDs and scope stable. Close completed items in place; do not renumber
   the remaining work or reintroduce completed work under another name.
@@ -44,7 +44,7 @@ are tracked below; they are not fresh integration tasks.
 | IMU health and bias permissions | Shared decaying-peak inhibition, vertical-innovation health, reset-safe history, permissions forwarded to module corrections | `a5b460f`; [integration contract](docs/spec/verification-requirements.md#r-px4-imu-bias-module-health-and-bias-learning-inhibition) |
 
 The module is a stationary-start, single-IMU/single-GNSS, binary64 SITL profile.
-It uses current-horizon fusion and fixed local Cartesian state, and requires
+It uses delayed main-state fusion with current-time output and fixed local Cartesian state, and requires
 restart after numerical faults or IMU identity/calibration discontinuity.
 F-01.1 now allows accel-clipped prediction after initialization; startup/gyro
 clipping remains rejected. Gravity correction is wired through the shared sampler
@@ -112,7 +112,7 @@ in F-02.1. Unknown required metadata is not a positive eligibility decision.
 | Task | Status and existing work | Completion criterion |
 |---|---|---|
 | F-03.1 — Vertical acceleration-fault recovery | Completed (`3fafdb6`): bounded GNSS velocity and GNSS/barometer height innovations, shared last-good reset timing, qualified-source checks and reset notifications wired; native/SITL regression passed | After F-01.1, wire the exception and independent reset criterion into module GNSS/height coordination. Preserve quality permission, raw rejection diagnostics, event ordering and actual reset notifications. Distinguish the 3 s held fault from the 500 ms last-good criterion. |
-| F-03.2 — Barometer ground effect | Planned: ordinary barometer fusion/offset handling exists | Review pinned PX4 conditions and residual sign, then test near-ground rejection/compensation and exit behavior. Declare any unavailable height-above-ground context; do not treat it as known. |
+| F-03.2 — Barometer ground effect | Implemented; review pending: delayed land-detector activation, 10 s hold, 4 m one-sided deadzone and status flags. Native/sanitizer and scoped ESBMC pass; SIH contact-condition penetration isolated, while repeatable stock-SIH landing acceptance remains open under F-07. See [validation](docs/validation-px4-ground-effect-20261117.md); no terrain/HAGL estimate is assumed | Review pinned PX4 conditions and residual sign, then test near-ground rejection/compensation and exit behavior. Declare any unavailable height-above-ground context; do not treat it as known. |
 
 Dynamic-pressure compensation is D-03: it needs a defensible airflow input/model,
 not just another constant in the existing barometer helper.
@@ -122,7 +122,7 @@ not just another constant in the existing barometer helper.
 | Task | Status and dependency | Completion criterion |
 |---|---|---|
 | F-04.1 — Timing design | Completed for the initial 250 Hz SIH design (`f763ffb`, `8f6bda1`); target resource/accuracy acceptance remains F-07 | Specify sample versus publication time, supported delays, fixed capacities, horizon, overflow/out-of-order policy, resets and latency/memory budgets against the pinned PX4 behavior. |
-| F-04.2 — Delayed fusion and output prediction | IMU, output and observation/context owners committed (`627379e`, `5605e27`, `6e72a92`); live delayed-fusion binding implemented for review. Native integration/sanitizer checks and final SIH acceptance passed; retain the earlier landing-check failure in the validation record. Source formal proof and target resource acceptance remain open | Bind startup timing parameters and source/context inputs, then connect delayed prediction/fusion and current output. Test deterministic delay, reordering, dropout and reset sequences; verify output timestamps, continuity and measured resource bounds. |
+| F-04.2 — Delayed fusion and output prediction | IMU, output and observation/context owners committed (`627379e`, `5605e27`, `6e72a92`); live delayed-fusion binding committed (`65f8dc0`). Native integration/sanitizer checks and final SIH acceptance passed; retain the earlier landing-check failure in the validation record. Source formal proof and target resource acceptance remain open | Bind startup timing parameters and source/context inputs, then connect delayed prediction/fusion and current output. Test deterministic delay, reordering, dropout and reset sequences; verify output timestamps, continuity and measured resource bounds. |
 
 F-04 is prioritized by request. The live module now separates current output
 from delayed prediction and fusion under the reviewed
@@ -174,11 +174,11 @@ Promoting one requires a reviewed scope and dependency; retain its ID.
 
 ## Next implementation
 
-**F-04.2: review the live delayed-fusion binding and its validation record**.
-Startup parameters, source/context history, delayed policy clocks and current
-output/reset paths are connected. Source formal proof, the retained SIH landing
-anomaly and F-07.2 target resource acceptance remain open; do not treat native
-integration results as those proofs. F-03.2 barometer ground effect remains pending.
+**F-03.2: barometer ground-effect protection**, following the pinned PX4
+no-terrain branch, with delayed context, unchanged raw gating and source-specific
+correction. Review the implementation and evidence before continuing to F-05.1.
+F-04 source formal proof, the retained SIH landing anomaly and F-07.2 resource
+acceptance remain open; they are not silently closed by this feature.
 
 F-01.2/F-01.3/F-02.1/F-03.1 are already committed. Keep these IDs and the other
 work groups unchanged. F-07 evidence accompanies implementation; component

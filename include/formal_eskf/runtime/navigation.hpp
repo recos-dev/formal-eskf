@@ -290,7 +290,11 @@ template <typename Linalg>
  * The adapter owns source policy and datum conversion. With a current vertical
  * acceleration fault, limit a rejected residual to +/- gate * sqrt(S) and fuse.
  * Preserve raw diagnostics, H, V, bias permissions and checked correction's
- * atomic output/whole-prior alias contracts. No source permission or reset here.
+ * atomic output/whole-prior alias contracts. A finite nonnegative deadzone (metres)
+ * reduces only positive z_D - p_D residuals, after the acceleration-fault limit.
+ * It never changes the raw gate decision/diagnostics; zero disables it. The
+ * adapter supplies it only for qualified barometric ground-effect conditions.
+ * No source permission or reset here.
  */
 template <typename Linalg>
 [[nodiscard]] NavigationFusionResult<Linalg, 1U>
@@ -299,14 +303,19 @@ fuse_height(configuration::Ins::NominalState<Linalg> const & state, linalg::Matr
             typename Linalg::value_type minimum_quaternion_norm, typename Linalg::value_type gate_sigma,
             bool bad_vertical_acceleration, configuration::Ins::NominalState<Linalg> & state_output,
             linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
-            configuration::Ins::BiasUpdate const & bias_update = {})
+            configuration::Ins::BiasUpdate const & bias_update = {}, typename Linalg::value_type deadzone = 0)
 {
     NavigationFusionResult<Linalg, 1U> result;
     using math_type = typename Linalg::scalar_math_type;
     if (!linalg::all_finite(state.p_n) || !scalar::is_finite<math_type>(position_down) ||
-        !scalar::is_finite<math_type>(variance))
+        !scalar::is_finite<math_type>(variance) || !scalar::is_finite<math_type>(deadzone))
     {
         result.fusion.status = Status::non_finite_input;
+        return result;
+    }
+    if (deadzone < typename Linalg::value_type{0})
+    {
+        result.fusion.status = Status::domain_error;
         return result;
     }
     auto const r = linalg::Vector<Linalg, 1U>::from_row_major({position_down - state.p_n(2U)});
@@ -320,6 +329,12 @@ fuse_height(configuration::Ins::NominalState<Linalg> const & state, linalg::Matr
     NavigationInnovationCheck<Linalg, 1U> check{
         check_measurement(state, covariance, r, H, V, minimum_quaternion_norm, gate_sigma)};
     detail::limit_vertical_innovation(check, 0U, gate_sigma, bad_vertical_acceleration);
+    // PX4 uses predicted-minus-observed Down; our residual has the opposite sign.
+    auto & innovation = check.fusion_innovation(0U);
+    if (succeeded(check.gate.status) && check.gate.diagnostics_valid && deadzone > 0 && innovation > 0)
+    {
+        innovation = innovation > deadzone ? innovation - deadzone : typename Linalg::value_type{0};
+    }
     return detail::correct_navigation_measurement(check, state, covariance, H, V, minimum_quaternion_norm, state_output,
                                                   covariance_output, bias_update);
 }

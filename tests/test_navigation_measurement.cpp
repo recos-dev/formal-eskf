@@ -141,6 +141,66 @@ template <typename Linalg> void test_policy(Context & test)
     }
 }
 
+template <typename Linalg> void test_height_deadzone(Context & test)
+{
+    using F = GnssMeasurementFixture<Linalg>;
+    using T = typename F::value_type;
+    char const * profile = "height-deadzone";
+    // P_DD=3, R=1: S=4, K_D=3/4; a 5-sigma gate ends at +/-10 m.
+    for (bool fault : {false, true})
+    {
+        for (T residual : {T{-12}, T{-4}, T{0}, T{2}, T{4}, T{6}, T{10}, T{12}})
+        {
+            F fixture;
+            auto output = fixture.state;
+            auto output_P = fixture.P;
+            auto const result =
+                formal_eskf::runtime::fuse_height(fixture.state, fixture.P, residual, T{1}, fixture.minimum_norm, T{5},
+                                                  fault, output, output_P, {}, T{4});
+            bool const rejected = std::abs(residual) > T{10};
+            bool const limited = rejected && fault;
+            T const bounded = limited ? (residual < 0 ? T{-10} : T{10}) : residual;
+            T const selected = bounded > 0 ? std::max(T{0}, bounded - T{4}) : bounded;
+            bool const fused = !rejected || fault;
+            test.expect(result.fusion.status == Status::success && result.fusion.diagnostics_valid &&
+                            result.fusion.innovation(0U) == residual &&
+                            result.fusion.test_ratio(0U) == residual * residual / T{100} &&
+                            result.fusion_innovation(0U) == selected && result.innovation_limited == limited &&
+                            result.fusion.decision == (fused ? FusionDecision::fused : FusionDecision::rejected),
+                        profile, "positive-only deadzone follows raw gating and the acceleration-fault limit");
+            test.expect(output.p_n(2U) == (fused ? T{0.75} * selected : T{0}) &&
+                            output_P(2U, 2U) == (fused ? T{0.75} : T{3}),
+                        profile, "zero residual still performs covariance correction; raw rejection preserves state/P");
+            // Independent core correction oracle includes all cross-state/frame effects and same-prior aliases.
+            auto expected = fixture.state;
+            auto expected_P = fixture.P;
+            if (fused)
+            {
+                auto const r = formal_eskf::linalg::Vector<Linalg, 1U>::from_row_major({selected});
+                auto const R = formal_eskf::linalg::Matrix<Linalg, 1U, 1U>::identity();
+                test.expect(formal_eskf::correct(expected, expected_P, r,
+                                                 formal_eskf::vertical_position_jacobian<Linalg>(), R,
+                                                 fixture.minimum_norm, expected, expected_P) == Status::success,
+                            profile, "independent selected-residual correction");
+            }
+            test.expect(same_state(expected, output) && same_bits(expected_P, output_P), profile,
+                        "applied correction matches the core oracle without changing H or R");
+        }
+    }
+    for (T deadzone : {T{-1}, std::numeric_limits<T>::infinity(), std::numeric_limits<T>::quiet_NaN()})
+    {
+        F fixture;
+        auto const prior = fixture;
+        auto const result =
+            formal_eskf::runtime::fuse_height(fixture.state, fixture.P, T{1}, T{1}, fixture.minimum_norm, T{5}, false,
+                                              fixture.state, fixture.P, {}, deadzone);
+        test.expect(result.fusion.status == (deadzone < 0 ? Status::domain_error : Status::non_finite_input) &&
+                        !result.fusion.diagnostics_valid && same_state(prior.state, fixture.state) &&
+                        same_bits(prior.P, fixture.P),
+                    profile, "invalid deadzone preserves whole-prior aliases and cannot expose gate evidence");
+    }
+}
+
 template <typename Linalg> void test_correction_contract(Context & test)
 {
     using F = GnssMeasurementFixture<Linalg>;
@@ -382,6 +442,8 @@ int main()
     using Double = formal_eskf::test::Backend<double>;
     test_policy<Float>(test);
     test_policy<Double>(test);
+    test_height_deadzone<Float>(test);
+    test_height_deadzone<Double>(test);
     test_correction_contract<Float>(test);
     test_correction_contract<Double>(test);
     test_rounded_boundary<Float>(test);

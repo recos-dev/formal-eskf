@@ -470,20 +470,22 @@ void historical_context(Context & test)
 {
     Session session;
     session.seed();
-    session.land = {1005000, true, false, false}; // Newer than the first endpoint.
-    session.vehicle = {1004000, true, true};
+    session.land = {1005000, true, false, false, true}; // Newer than the first endpoint.
+    session.vehicle = {1004000, true, true, true};
     session.tick();
     session.tick();
     session.land = {1005000, true, true, true}; // Same timestamp is the same immutable message.
     session.fuse_until(1004000);
     auto first = session.history.context(1004000, 3000000);
     test.expect(first.time_us == 1004000 && first.land.time_us == 1000000 && first.land.landed &&
-                    first.vehicle.time_us == 1004000 && first.vehicle.armed,
+                    first.vehicle.time_us == 1004000 && first.vehicle.armed && first.vehicle.fixed_wing &&
+                    !first.land.in_ground_effect,
                 "context", "future message cannot replace information known at an earlier endpoint");
     session.tick();
     auto second = session.history.context(1008000, 3000000);
-    test.expect(second.land.time_us == 1005000 && !second.land.landed && !second.land.at_rest, "context",
-                "same timestamp cannot rewrite an already observed message");
+    test.expect(second.land.time_us == 1005000 && !second.land.landed && !second.land.at_rest &&
+                    second.land.in_ground_effect,
+                "context", "same timestamp cannot rewrite an already observed message");
     auto stale = session.history.context(1008000, 3000);
     test.expect(!stale.land.known && stale.land.time_us == 1005000 && !stale.vehicle.known, "context",
                 "freshness uses original message time, with strict age boundary");

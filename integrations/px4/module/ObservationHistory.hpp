@@ -102,13 +102,13 @@ public:
     struct LandState
     {
         std::uint64_t time_us{}; // Original land-detector message time.
-        bool known{}, landed{}, at_rest{};
+        bool known{}, landed{}, at_rest{}, in_ground_effect{};
     };
 
     struct VehicleState
     {
         std::uint64_t time_us{}; // Original vehicle-status message time.
-        bool known{}, armed{};
+        bool known{}, armed{}, fixed_wing{};
     };
 
     struct Context

@@ -70,8 +70,44 @@ template <typename Linalg> struct HeightFixture
     }
 };
 
+template <typename Linalg> void ground_effect(Context & test)
+{
+    using F = HeightFixture<Linalg>;
+    using T = typename F::value_type;
+    using A = typename F::aiding_type;
+    using Source = typename F::Source;
+    F baseline;
+    baseline.start(test);
+    for (bool barometer : {true, false})
+    {
+        auto protected_case = baseline;
+        auto ordinary = baseline;
+        typename A::Sample sample{baseline.now + 20000U, barometer ? 1U : 2U, 0,
+                                  (barometer ? baseline.baro_altitude : baseline.gnss_altitude) - T{3}, T{1}};
+        typename A::Sample empty{};
+        auto const result =
+            protected_case.aiding.update(sample.time_us, barometer ? sample : empty, barometer ? empty : sample, true,
+                                         protected_case.state, protected_case.P, {}, {}, true);
+        auto const unprotected = ordinary.aiding.update(sample.time_us, barometer ? sample : empty,
+                                                        barometer ? empty : sample, true, ordinary.state, ordinary.P);
+        auto const & selected = protected_case.aiding.session(barometer ? Source::barometer : Source::gnss);
+        auto const & original = ordinary.aiding.session(barometer ? Source::barometer : Source::gnss);
+        test.expect(result.status == Status::success && unprotected.status == Status::success && result.fused == 1 &&
+                        selected.fusion.innovation(0) == original.fusion.innovation(0) &&
+                        selected.fusion.test_ratio(0) == original.fusion.test_ratio(0) &&
+                        selected.bias.value == original.bias.value && selected.bias.variance == original.bias.variance,
+                    "ground-effect", "raw gate and scalar bias learning are unchanged");
+        test.expect(barometer
+                        ? selected.fusion_innovation == T{0} && protected_case.state.p_n(2) == baseline.state.p_n(2)
+                        : selected.fusion_innovation == original.fusion_innovation &&
+                              protected_case.state.p_n(2) == ordinary.state.p_n(2),
+                    "ground-effect", "only barometer correction is protected; GNSS residual is untouched");
+    }
+}
+
 template <typename Linalg> void run(Context & test)
 {
+    ground_effect<Linalg>(test);
     using F = HeightFixture<Linalg>;
     using Aiding = typename F::aiding_type;
     using Scalar = typename F::value_type;

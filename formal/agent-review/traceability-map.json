@@ -4814,7 +4814,7 @@
     },
     {
       "id": "R-GNSS-VERTICAL-RECOVERY",
-      "title": "Vertical recovery: real clipping bounds and scoped IEEE diagnostics, limiter and atomic callers; module/replay health ordering and root accuracy remain separate",
+      "title": "Vertical recovery: real clipping bounds and scoped IEEE gate/limiter/height-deadzone callers; module ordering and root accuracy remain separate",
       "references": {
         "spec": [
           {
@@ -5281,6 +5281,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "### R-HEIGHT-FUSION: PX4 GNSS/barometer height management"
+          },
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "#### PX4 module barometer ground effect"
           }
         ],
         "lean": [
@@ -5361,6 +5365,10 @@
           {
             "file": "integrations/px4/module/FormalEskfNavigation.cpp",
             "symbol": "bool FormalEskf::fuse_gps_velocity("
+          },
+          {
+            "file": "integrations/px4/module/FormalEskfNavigation.cpp",
+            "symbol": "void FormalEskf::update_ground_effect("
           }
         ],
         "esbmc": [

@@ -390,6 +390,33 @@ void FormalEskf::record_vertical_velocity_reset(double delta)
     ++m_vertical_velocity_reset_counter;
 }
 
+void FormalEskf::update_ground_effect()
+{
+    auto const context = m_observations.context(m_time_us, profile::height::context_maximum_age_us);
+    bool const updated = context.land.time_us > m_ground_effect.land_time_us ||
+                         context.vehicle.time_us > m_ground_effect.vehicle_time_us;
+    m_ground_effect.land_time_us = context.land.time_us;
+    m_ground_effect.vehicle_time_us = context.vehicle.time_us;
+    bool const in_air = context.land.known ? !context.land.landed : context.vehicle.known && context.vehicle.armed;
+    // The supported module has no terrain estimate. Use PX4's land-detector
+    // fallback, requiring fresh vehicle status instead of assuming non-fixed-wing flight.
+    if (!in_air || !context.vehicle.known || context.vehicle.fixed_wing)
+    {
+        m_ground_effect.active = false;
+        return;
+    }
+    if (updated && context.land.known && context.land.in_ground_effect)
+    {
+        m_ground_effect.last_detection_us = m_time_us;
+        m_ground_effect.active = true;
+    }
+    else if (m_ground_effect.active &&
+             m_time_us - m_ground_effect.last_detection_us > profile::height::ground_effect_timeout_us)
+    {
+        m_ground_effect.active = false;
+    }
+}
+
 void FormalEskf::fuse_height()
 {
     auto const & gps = m_gnss.input.sample;
@@ -415,8 +442,9 @@ void FormalEskf::fuse_height()
     auto const & health = m_vertical_health.state();
     height_type::Acceleration const acceleration{health.bad_vertical_acceleration,
                                                  {health.last_update_time_us, health.last_good_time_us}};
-    auto const result = m_height_aiding.update(m_time_us, barometer, gnss, m_gnss.lifecycle.state().velocity.active,
-                                               m_state, m_covariance, m_bias_learning_result.bias_update, acceleration);
+    auto const result =
+        m_height_aiding.update(m_time_us, barometer, gnss, m_gnss.lifecycle.state().velocity.active, m_state,
+                               m_covariance, m_bias_learning_result.bias_update, acceleration, m_ground_effect.active);
     if (!check(result.status))
     {
         return;

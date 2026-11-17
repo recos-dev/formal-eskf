@@ -180,6 +180,12 @@ private:
         bool usable{};
     };
 
+    struct GroundEffect
+    {
+        std::uint64_t last_detection_us{}, land_time_us{}, vehicle_time_us{};
+        bool active{};
+    };
+
     struct OutputValidity
     {
         bool healthy{}, gps_position{}, gps_velocity{}, gps{}, gps_height{};
@@ -261,6 +267,7 @@ private:
                                              magnetic_lifecycle_type::Sample & event);
     bool fuse_magnetic_observation(MagneticSample const & sample);
     status_type reset_magnetic_heading(std::uint64_t sample_time_us);
+    void update_ground_effect();
     void fuse_height();
     void fuse_gravity(ImuInput const & sample, imu_type const & imu);
     void record_vertical_velocity_reset(double delta);
@@ -330,6 +337,7 @@ private:
     bool m_fault{};
 
     height_type m_height_aiding{};
+    GroundEffect m_ground_effect{};
     double m_height_reset_delta{};
     std::uint8_t m_height_reset_counter{};
     formal_eskf::runtime::TiltAlignment<backend_type> m_tilt_alignment{};

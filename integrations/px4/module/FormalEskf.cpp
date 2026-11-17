@@ -396,13 +396,14 @@ void FormalEskf::record_admission(observation_history_type::PushResult const & r
 
 FormalEskf::observation_history_type::LandState FormalEskf::land_state() const
 {
-    return {m_land.timestamp, m_land.timestamp != 0, m_land.landed, m_land.at_rest};
+    return {m_land.timestamp, m_land.timestamp != 0, m_land.landed, m_land.at_rest, m_land.in_ground_effect};
 }
 
 FormalEskf::observation_history_type::VehicleState FormalEskf::vehicle_state() const
 {
     return {m_vehicle_status.timestamp, m_vehicle_status.timestamp != 0,
-            m_vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_ARMED};
+            m_vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_ARMED,
+            m_vehicle_status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_FIXED_WING};
 }
 
 FormalEskf::observation_history_type::Context FormalEskf::startup_context(std::uint64_t epoch,
@@ -560,6 +561,7 @@ void FormalEskf::predict_and_fuse(imu_history_type::Interval const & interval)
     {
         return;
     }
+    update_ground_effect();
     fuse_height();
     if (m_fault)
     {

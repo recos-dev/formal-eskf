@@ -156,7 +156,7 @@ generic sensor registry or buffer wrapper is required.
 |---|---|---|
 | IMU | 54 / 64 | One record per real interval, including any preceding permitted held-rate segment |
 | Output | 54 / 64 | Current output state captured at each matching real IMU endpoint |
-| Context | 128 / 128 | Flight/rest values, known flags and original context timestamps, sampled at real IMU endpoints |
+| Context | 128 / 128 | Flight/rest/ground-effect and vehicle-type values, known flags and original context timestamps, sampled at real IMU endpoints |
 | GNSS | 16 / 16 | One event shared by velocity, horizontal-position and height consumers |
 | Magnetometer | 64 / 64 | Field measurement and source/calibration metadata |
 | Barometer | 128 / 128 | Height measurement and source/calibration metadata |
@@ -501,8 +501,9 @@ new IMU, arrival monitoring/status continue without advancing delayed policy tim
 
 Raw uORB arrival caches remain separate from selected internal observations.
 GNSS quality uses event-time historical context; magnetic policy uses that context
-on a selected event, otherwise the delayed horizon. Bias/gravity use delayed IMU
-context. No observation is reconstructed as a retimestamped uORB message.
+on a selected event, otherwise the delayed horizon. Bias/gravity and barometer
+ground-effect policy use delayed IMU context with their respective freshness
+limits. No observation is reconstructed as a retimestamped uORB message.
 Trusted source generations can veto current validity and delayed use;
 requalification happens on a selected new generation, not on arrival.
 

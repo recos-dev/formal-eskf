@@ -232,8 +232,12 @@ reset progress and the 5 s height-validity window are separate.
 The reference policy is checked against the pinned [height controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/height_control.cpp),
 [GNSS height controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gnss_height_control.cpp)
 and [barometer controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/barometer/baro_height_control.cpp), using public parameter defaults.
-It uses the delayed fusion horizon with a fixed GNSS preference; dynamic-pressure
-and ground-effect corrections remain separate work. See [the height contract](../../docs/spec/verification-requirements.md#r-height-fusion-px4-gnssbarometer-height-management).
+It uses the delayed fusion horizon with a fixed GNSS preference. Ground-effect
+protection uses delayed land-detector indications in non-fixed-wing flight and
+a 10 s hold. Its fixed 4 m one-sided deadzone matches PX4's public default;
+raw gate rejection remains effective, and GNSS/bias learning are unchanged.
+`cs_gnd_effect` reports the active protection. Terrain-based activation and
+dynamic-pressure correction remain separate work. See [the height contract](../../docs/spec/verification-requirements.md#r-height-fusion-px4-gnssbarometer-height-management).
 
 The existing vertical-acceleration recovery policy is now connected. A held IMU
 fault can permit a bounded Down innovation from qualified GNSS velocity or either

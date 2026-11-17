@@ -314,7 +314,7 @@ void verify_navigation_limit(NavigationCheck check, std::size_t axis, Scalar sig
 void verify_navigation_recovery(State state, Covariance P, Residual observation, Noise V, Scalar minimum, Scalar sigma,
                                 Conditions conditions, bool bad_acceleration, Permissions permissions, Check gate,
                                 Scalar root, State state_output, Covariance covariance_output, State successful_state,
-                                Covariance successful_P, Status correction_status)
+                                Covariance successful_P, Status correction_status, Scalar deadzone)
 {
     __ESBMC_assume(diagnostic_contract(gate, sigma));
     auto const old_state = state;
@@ -364,9 +364,14 @@ void verify_navigation_recovery(State state, Covariance P, Residual observation,
     }
     else
     {
-        if (!correction_proof::finite_matrix(state.p_n) || !std::isfinite(observation(0U)) || !std::isfinite(V(0U, 0U)))
+        if (!correction_proof::finite_matrix(state.p_n) || !std::isfinite(observation(0U)) ||
+            !std::isfinite(V(0U, 0U)) || !std::isfinite(deadzone))
         {
             prefix = Status::non_finite_input;
+        }
+        else if (deadzone < Scalar{0})
+        {
+            prefix = Status::domain_error;
         }
     }
     if (prefix == Status::success && !correction_proof::finite_matrix(raw))
@@ -390,6 +395,15 @@ void verify_navigation_recovery(State state, Covariance P, Residual observation,
         expected.gate = gate;
         expected.fusion_innovation = gate.innovation;
         expected = limited(expected, width == 3U ? 2U : 0U, sigma, allowed, root);
+        if constexpr (width == 1U)
+        {
+            auto const residual = expected.fusion_innovation(0U);
+            if (expected.gate.status == Status::success && expected.gate.diagnostics_valid && deadzone > Scalar{0} &&
+                residual > Scalar{0})
+            {
+                expected.fusion_innovation(0U) = residual <= deadzone ? Scalar{0} : residual - deadzone;
+            }
+        }
     }
     bool const corrected =
         expected.gate.status == Status::success && expected.gate.diagnostics_valid && !expected.gate.rejected;
@@ -426,8 +440,9 @@ void verify_navigation_recovery(State state, Covariance P, Residual observation,
     auto const actual = formal_eskf::runtime::fuse_gnss_velocity(state, P, observation, V, minimum, sigma, conditions,
                                                                  *state_target, *P_target, permissions);
 #else
-    auto const actual = formal_eskf::runtime::fuse_height(state, P, observation(0U), V(0U, 0U), minimum, sigma,
-                                                          bad_acceleration, *state_target, *P_target, permissions);
+    auto const actual =
+        formal_eskf::runtime::fuse_height(state, P, observation(0U), V(0U, 0U), minimum, sigma, bad_acceleration,
+                                          *state_target, *P_target, permissions, deadzone);
 #endif
     using Decision = formal_eskf::runtime::FusionDecision;
     bool const fused = corrected && correction_status == Status::success;
@@ -437,15 +452,15 @@ void verify_navigation_recovery(State state, Covariance P, Residual observation,
         : expected.gate.status == Status::success && expected.gate.diagnostics_valid && expected.gate.rejected
             ? Decision::rejected
             : Decision::failed;
-    __ESBMC_assert(
-        actual.fusion.status == status && actual.fusion.decision == decision &&
-            actual.fusion.diagnostics_valid == expected.gate.diagnostics_valid &&
-            same_matrix(actual.fusion.innovation, expected.gate.innovation) &&
-            same_matrix(actual.fusion.innovation_variance, expected.gate.innovation_variance) &&
-            same_matrix(actual.fusion.test_ratio, expected.gate.test_ratio) &&
-            same_matrix(actual.fusion_innovation, expected.fusion_innovation) &&
-            actual.innovation_limited == expected.innovation_limited,
-        "R-GNSS-VERTICAL-RECOVERY: exact public validation, raw/selected diagnostics, limit policy and final decision");
+    __ESBMC_assert(actual.fusion.status == status && actual.fusion.decision == decision &&
+                       actual.fusion.diagnostics_valid == expected.gate.diagnostics_valid &&
+                       same_matrix(actual.fusion.innovation, expected.gate.innovation) &&
+                       same_matrix(actual.fusion.innovation_variance, expected.gate.innovation_variance) &&
+                       same_matrix(actual.fusion.test_ratio, expected.gate.test_ratio) &&
+                       same_matrix(actual.fusion_innovation, expected.fusion_innovation) &&
+                       actual.innovation_limited == expected.innovation_limited,
+                   "R-GNSS-VERTICAL-RECOVERY: exact public validation, raw/selected diagnostics, limit/deadzone policy "
+                   "and final decision");
     __ESBMC_assert(Call::checks == (prefix == Status::success ? 1U : 0U) &&
                        Call::corrections == (corrected ? 1U : 0U) &&
                        Call::limits == (prefix == Status::success ? 1U : 0U) && solve_proof::Math::sqrt.calls == 0U,

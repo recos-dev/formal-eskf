@@ -13,6 +13,7 @@ is separated below. These planning IDs are not verification requirement IDs.
 | V-01 | Runtime/module proof plan | The agreed stable-component sequence is accepted: E-INNOV, E-BIAS-UPDATE, E-MAG-TILT, portable R-MEASUREMENT-FUSION and the three portable IMU/bias policy components; see [the execution/review record and totals](docs/verification-extensions-20261115.md). Remaining caller/module, numerical and target claims stay open; the functional queue is unchanged. |
 | V-02 | Design and execution-evidence pilot | Pending, after the scope review. Use the E-STEP-PRED pilot below; add source-linked native evidence without treating it as new algebraic proof or rewriting all verification tools. Expand only after the pilot is reviewed. |
 | V-03 | AST mapping and review completeness | Design pending. AST inventory generation already exists. Review a versioned symbol-to-requirement baseline and completeness rules before connecting it to mandatory AI review; inventory generation alone does not prove coverage. |
+| V-05 | Generated/dense equivalence proof | Queued for later consideration: establish a reviewed equivalence contract and prove the generated production kernels against the dense implementation; see the scope below. Experiments and benchmarks are supporting evidence, not equivalence proofs. |
 
 Small functional integrations keep their existing contracts and tests current.
 They do not close V-01 or imply proof of the PX4 module. A-01 review is required
@@ -281,7 +282,7 @@ verification, numerical error bounds, and certification remain separate work.
 ## Planning ownership
 
 - Functional next steps and completed integration scope: [FEATURE_TODO.md](FEATURE_TODO.md).
-- Architecture/formal proposals: the fixed A-01/V-01/V-02/V-03 tracks above.
+- Architecture/formal proposals: A-01, V-01–V-03 and V-05 above.
 - Behavior and proof obligations: [specifications](docs/spec/) and
   [traceability map](formal/agent-review/traceability-map.json).
 - Tested module configurations and empirical results: [PX4 integration](integrations/px4/README.md).
@@ -319,3 +320,49 @@ producer/caller evidence before adoption. A candidate can be retained with a
 specific technical reason; a deferred or unproved proposal is not an implemented
 optimization. Sparse propagation/reset/selector algebra requires separate numerical
 acceptance and must not be silently substituted for the existing arithmetic.
+
+### DC-09 — Reusable call-graph review script
+
+Queued on 2026-11-18 for future refactors; not started and does not reorder the
+current F-06.2 work. Turn the previous defensive-check/computation call-graph
+extraction into a reusable script under `scripts/`, reusing the existing Clang
+inventory infrastructure where appropriate.
+
+- Generate explicit caller → callee edges with call-site locations, per-function
+  incoming/outgoing lists, readable group diagrams and a numbered review inventory
+  for defensive checks and repeated computations. Keep the analyzed entry points,
+  dependencies and build profiles explicit; report unresolved/indirect calls.
+- Record Git revision, source hashes, compile configuration and tool version;
+  place generated snapshots under `output/`. Make regeneration reproducible.
+- Compare with a previous snapshot: identify added, removed and changed entries,
+  preserve review identities/conclusions, and mark affected conclusions stale
+  rather than silently carrying them forward or overwriting them.
+- Retain the prior review method: inspect each call chain's premises, value/alias
+  changes, status precedence and failure outputs. A repeated predicate or graph
+  edge alone does not prove redundancy or authorize removing a check.
+- Validate extraction against known calls/branches and representative build
+  profiles. Acceptance is a rerunnable graph and review queue with documented
+  coverage limits, not automatic semantic review or automatic code modification.
+
+## V-05 — Generated/dense equivalence proof
+
+Queued on 2026-11-18 for later consideration, alongside the existing codegen
+evaluation. This does not reorder current implementation work or authorize
+replacing the dense path.
+
+- Fix the compared dense/generated revisions, derivation, generated artifacts,
+  state/frame conventions, scalar/backend and compiler modes. Use this project's
+  formulation and make generation reproducible.
+- Define the equivalence claim before proving it: exact-real algebraic equality,
+  IEEE-754 result equivalence and observable API behavior are distinct obligations.
+  Preserve discovered counterexamples. If reordering prevents bitwise equality,
+  report it; a bounded-error alternative requires an explicitly reviewed contract,
+  not a silently widened test tolerance or narrowed input domain.
+- Prove the actual generated kernels, beginning with individual operations and
+  then their integration. Include validation/status precedence, non-finite and
+  overflow behavior, aliasing and failure-output preservation. Mathematical
+  equality alone does not establish C++ implementation equivalence.
+- Connect each kernel to requirements, source identities and proof evidence;
+  report completed obligations, assumptions and remaining gaps. Distinguish proof
+  of specific generated artifacts from proof of the generator itself. Differential
+  tests, high-precision comparisons and benchmarks remain separate evidence.

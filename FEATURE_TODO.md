@@ -146,7 +146,7 @@ current Cartesian model supports; it does not pre-authorize new core equations.
 | Task | Status and existing work | Completion criterion |
 |---|---|---|
 | F-06.1 — Confidence and failure reporting | Implemented: independent capability flags, honest bias validity, matching packed/named faults, measurement-time innovation summaries and covariance-proxy audit. See [assessment](docs/validation-px4-confidence-20261117.md). | Retain the declared limits: no bias-convergence claim, transported/current-time covariance or dead-reckoning residual inflation; 10 Hz transition counts are not an event log. Numerical/history faults require restart. Formal module proof, calibrated uncertainty and flight/resource qualification remain separate. |
-| F-06.2 — Deployment parameters | Partial: startup magnetic-declination settings exist; most module settings are fixed | Expose the approved noise/gate/source/limit settings with documented units, bounds and startup/live-update semantics. Validate configuration changes without silently importing live EKF2 settings. |
+| F-06.2 — Deployment parameters | In progress: 15 existing startup/boot parameters; [layered configuration inventory and Kconfiglib assessment](docs/configuration-inventory.md) prepared for review. Most noise/gate/policy settings remain fixed | Review ownership, units/domains and supported combinations before exposing approved settings. Preserve startup/restart semantics initially; validate configuration changes without silently importing live EKF2 settings. |
 
 ### F-07 — Deployment validation
 
@@ -176,8 +176,9 @@ Promoting one requires a reviewed scope and dependency; retain its ID.
 
 **F-05.1/F-05.2/F-06.1** are complete in their declared scope; confidence/failure
 reporting retains explicit uncertainty limits and the failed SIH landing criterion.
-Next is **F-06.2: deployment parameters**, beginning with the agreed inventory of
-adjustable/selectable settings and the Kconfiglib assessment. The F-05.2
+Current work is **F-06.2: deployment parameters**. The layered option/parameter
+inventory and Kconfiglib recommendation are ready for review; new parameter
+bindings are not implemented yet. The F-05.2
 operating error budget remains a decision; no new geodetic core is authorized.
 F-04 source formal proof, the retained SIH landing anomaly and F-07.2 resource
 acceptance remain open; they are not silently closed by this feature.
@@ -185,3 +186,29 @@ acceptance remain open; they are not silently closed by this feature.
 F-01.2/F-01.3/F-02.1/F-03.1 are already committed. Keep these IDs and the other
 work groups unchanged. F-07 evidence accompanies implementation; component
 regression tests do not establish timing, accuracy or hardware acceptance.
+
+## Queued follow-up — Configuration inventory and Kconfiglib evaluation
+
+Originally queued as a follow-up; inventory/evaluation was brought into F-06.2
+on 2026-11-18, including core, runtime and PX4 module by explicit request.
+The [review draft](docs/configuration-inventory.md) recommends retaining CMake
+and PX4 startup parameters, without adding standalone Kconfig infrastructure now.
+The remaining functional order is unchanged; tool adoption still requires review.
+
+- Inventory tunable parameters and selectable options across the core, backends,
+  runtime and integrations: defaults, units/ranges, dependencies, configuration
+  owner and whether changes apply at build time, startup or during operation.
+- Evaluate [sysprog21/Kconfiglib](https://github.com/sysprog21/Kconfiglib) for
+  option dependencies and configuration generation, including its fit with
+  existing CMake options and PX4 configuration. Avoid competing sources of
+  configuration and preserve standalone library use.
+- Propose whether to adopt it, the intended scope and migration steps, and how
+  supported configurations would connect to tests and formal evidence. Present
+  the recommendation for review before introducing Kconfig or menuconfig.
+
+## Queued follow-up — Symbolic code generation versus dense computation
+
+Formal equivalence of generated and dense implementations is a separate queued
+proof task, [V-05](ROADMAP.md#v-05--generateddense-equivalence-proof). Establish
+the equivalence contract before implementation adoption; successful numerical
+comparisons alone do not close that task.

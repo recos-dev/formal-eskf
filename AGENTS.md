@@ -6,18 +6,11 @@ formal-eskf is a portable C++20 error-state Kalman filter with INS and rotation-
 
 ## Specifications
 
-Read the relevant specifications in `docs/spec/` before changing behavior. Keep detailed contracts and equations there, not in this entry file:
-
-- Core/runtime/adapter boundaries: `eskf-software-architecture-and-verification-boundaries.md`.
-- PX4 module target architecture and real-time contracts: `px4-module-architecture.md`.
-- Language and runtime constraints: `cpp-portability-and-constraints.md`.
-- State conventions: `eskf-state-conventions.md`.
-- Linear algebra: `eskf-linear-algebra-abstraction-layer.md`.
-- SO(3) and quaternions: `so3-and-unit-quaternion-abstraction-layer.md`.
-- Numerical and failure semantics: `scalar-ieee754-and-failure-semantics.md`.
-- Static analysis: `cpp-static-analysis-policy.md`.
-- Requirements and evidence: `verification-requirements.md`, `formal-verification-strategy.md` and `formal-verification-traceability-and-review-criteria.md`.
-- Function inventory and review queue: `cpp-function-inventory-and-formal-proof-review-queue.md`.
+Use [docs/README.md](docs/README.md) to locate the relevant specification before
+changing behavior; read only the affected contracts and their dependencies.
+`docs/spec/` owns requirements and equations. `FEATURE_TODO.md` owns functional
+work; `ROADMAP.md` owns architecture and verification work. Neither development
+logs nor analysis proposals override an adopted specification.
 
 Verify paper symbols and equations against the actual reference before citing or implementing them. Report conflicts between specifications, papers and code instead of silently choosing a different model.
 

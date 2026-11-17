@@ -46,7 +46,7 @@ The first run downloads a pinned Kconfiglib into `tools/kconfiglib`; it does not
 install Python packages. Settings are saved in `.config` and applied to CMake
 by `make` (`build/demo`, two compile jobs by default; override with `JOBS=N`).
 Use `make defconfig` to restore defaults. Direct CMake builds remain available;
-see [configuration ownership](docs/configuration-inventory.md#kconfiglib-integration)
+see [configuration ownership](docs/guides/configuration.md#kconfiglib-integration)
 for scope and precedence.
 The **PX4 module configuration** menu also exposes feature switches, timeouts
 and tuning values; apply those with the [PX4 installation workflow](integrations/px4/README.md#configure-a-px4-profile).

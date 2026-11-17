@@ -39,7 +39,13 @@ FMA contraction: disabled unless explicitly modeled
 NaN and infinity: invalid for consumed ESKF state and sensor input
 ~~~
 
-Correctness must not depend on preserving subnormal values. Required input bounds and numerical thresholds must remain safely inside the selected normal range.
+Correctness must not depend on preserving subnormal values. Required input bounds
+and numerical thresholds must remain safely inside the selected normal range.
+This portability requirement remains an acceptance obligation; the existing
+IEEE source-proof profiles preserve subnormals and do not establish it.
+Flush-to-zero or denormals-are-zero is a different execution profile and cannot reuse those
+claims without review. Normal-range divisor/threshold checks do not make all
+intermediate arithmetic independent of subnormal behavior.
 
 ## Valid inputs
 
@@ -52,9 +58,18 @@ required quaternion normalization candidates have norm >= minimum_quaternion_nor
 every divisor magnitude >= its minimum safe magnitude
 SPD solve inputs satisfy the configured symmetry and conditioning bounds
 sensor values remain inside the configured physical ranges
+physical frames, units and model validity satisfy the caller's declared assumptions
 ~~~
 
-Concrete bounds belong to the selected estimator configuration and must be present before the corresponding floating-point proof is claimed.
+Distinguish mathematical caller premises from runtime checks. The core does not
+validate physical sensor ranges globally. `solve_spd` checks finite inputs, exact
+symmetry, factorization and finite output; it imposes no condition-number cutoff.
+A numerical-error or deployment claim needs its own reviewed domain, conditioning
+and residual bounds. Concrete bounds belong to the selected configuration and
+must be present before the corresponding floating-point proof is claimed.
+Conditioning-policy enforcement or matching caller evidence remains to be
+established; this gap does not remove the required domain. Source-control/status
+proofs do not supply these bounds or prove physical sensor validity.
 
 Nominal prediction (INS/AHRS) and INS covariance prediction additionally check the prior's squared-norm residual against `quaternion_squared_norm_tolerance`. It must be finite and in `(0,1)`, with `abs(squared_norm(q_nb) - 1) <= tolerance`. Zero defaults require explicit configuration. This prior validation never repairs the input; it is distinct from normalization's safe-divisor threshold. AHRS covariance does not consume prior attitude or this tolerance. See the ordered checks in [nominal prediction requirements](verification-requirements.md#e-pred-input-consumed-inputs-and-caller-premises).
 
@@ -73,7 +88,10 @@ IllConditioned
 NonFiniteResult
 ~~~
 
-Equivalent names may be used, but distinct causes must not collapse into an undocumented successful result.
+The C++ names are defined by `formal_eskf::Status`. Not every operation emits
+every category: `ill_conditioned` exists in the enum, but the current SPD solve
+does not perform a condition-number test. Distinct detected failures must not
+collapse into an undocumented successful result.
 
 Operations must not silently:
 
@@ -104,7 +122,11 @@ solve_spd(S, B)
   requires S to satisfy the configured SPD and conditioning policy
 ~~~
 
-A domain violation returns failure rather than an arbitrary numeric value.
+Checked domain violations return failure. The unit-quaternion premise of the
+mathematical Log map is not a claim that the C++ Log API measures a unit-norm
+residual. Its actual coefficient/domain checks and the independent mathematical
+premise must remain distinct. Likewise, matrix/scalar arithmetic operators are
+not interchangeable with checked normalization or solve operations.
 
 ## Failure atomicity
 
@@ -160,7 +182,7 @@ Exact mathematical equality and bounded IEEE-754 residuals must be reported as d
 
 ## State-output behavior
 
-On success:
+On success, the required postconditions are:
 
 ~~~text
 all nominal-state coefficients are finite
@@ -170,6 +192,15 @@ the covariance satisfies its configured symmetry residual
 the operation-specific residual bounds hold
 ~~~
 
-On failure, no success postcondition may be inferred other than failure atomicity.
+These are acceptance obligations, not a claim that all have been established.
+Finite-result and covariance-symmetry checks apply at the documented operation
+boundaries. Quaternion and operation-specific residual bounds are not checked
+by every API; the matching numerical evidence remains required.
+In particular, prediction checks its prior quaternion residual; normalization of
+a candidate does not prove that every future step meets a deployment tolerance.
+No new global tolerance or hidden repair is introduced.
+
+On failure, no success postcondition may be inferred other than the specified
+failure atomicity. Runtime history and platform effects have their own contracts.
 
 Compiler options that assume NaN, infinity, signed-zero, or associativity behavior incompatible with this specification are not permitted in a conforming build.

@@ -148,7 +148,7 @@ Keeping these shared prevents the backends from developing different mathematica
 
 The abstraction must support INS (16 nominal coefficients, 15 error coordinates) and AHRS (4 nominal coefficients, 3 error coordinates). For error dimension D and measurement dimension M, this includes MxD observation Jacobians, DxM gains and MxM innovation systems.
 
-Required compile-time dimensions include:
+Required compile-time dimensions remain:
 
 ~~~text
 Vectors: 1, 2, 3, 4, 6, 15, 16
@@ -165,7 +165,18 @@ Matrices:
   16x15
 ~~~
 
-The `Mx16` forms are INS nominal-state observation Jacobians. A model that uses this representation obtains an `Mx15` error-state Jacobian through the `16x15` perturbation mapping. Models may instead derive the error-state Jacobian directly; this chain is not a mandatory correction API.
+This is an abstraction-support requirement, not a claim that every shape has
+a production observation API or a completed proof profile.
+
+Current corrections use measurement sizes 1, 2 and 3; generic matrix operations
+remain dimension templates. INS propagation uses a 15x15 state covariance,
+12x12 source-noise covariance and 15x12 noise injection; AHRS uses 3x3 attitude
+error covariance. Quaternion coefficients use four-element storage.
+
+The 16 nominal INS coefficients do not make the correction operate on a 16x16
+covariance. Current observation code derives Mx15 error-state Jacobians directly.
+An Mx16 nominal Jacobian and 16x15 perturbation lift may be used for derivation,
+but are not required C++ correction interfaces or extra state dimensions.
 
 ## Minimal backend surface
 

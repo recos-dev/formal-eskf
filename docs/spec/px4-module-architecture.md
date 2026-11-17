@@ -1,9 +1,9 @@
 ## Summary
 
 Define the target architecture of the single-instance formal-eskf PX4 module.
-This is the module design baseline for review: subsequent work must implement
-these boundaries and contracts, rather than choose a new architecture in each
-refactor. It does not claim that the current SITL module already implements them.
+This is the module design baseline. The current SITL implementation includes
+single-writer ownership, delayed fusion and current-time output. Native scenario
+evidence does not establish full source proof or target real-time acceptance.
 
 The behavioral reference is **PX4 v1.16.2,
 `54f0455ffcd755534539a7cf33a09a20bf71d29d`**. Adopt its single-writer execution,
@@ -16,9 +16,8 @@ describe the layers and current implementation. This specification owns the
 target module behavior. Sensor equations, gates and lifecycle rules remain in
 the [verification requirements](verification-requirements.md).
 
-The [first timing profile](px4-timing-profile.md) proposes concrete source
-bindings, capacities and timing budgets for F-04.1 review. It does not establish
-that the module implements or meets this target.
+The [timing profile](px4-timing-profile.md) defines the implemented source
+bindings and capacities. Its proposed target execution budgets remain unqualified.
 
 ## Scope
 
@@ -328,7 +327,7 @@ The existing `FESKF_*` startup bindings keep their validated restart semantics.
 Required initialization sensors, INS/double/PX4 matrix, timing/storage envelopes,
 frame conventions and numerical failure checks remain fixed unless separately
 specified. Replay retains its own settings. The
-[configuration inventory](../configuration-inventory.md#px4-deployment-menu)
+[configuration inventory](../guides/configuration.md#px4-deployment-menu)
 owns the menu, units and detailed configuration boundaries.
 
 ## PX4-LIFE: initialization, failure and shutdown

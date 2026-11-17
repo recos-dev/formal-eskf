@@ -211,11 +211,11 @@ INS horizontal/vertical position, horizontal/3D velocity, magnetometer and accel
 - Disabling bias updates does not bypass input checks or solve failures. Preserve the existing validation order, statuses, whole-state/covariance alias support and atomic publication on success; all failures preserve both outputs.
 - All-enabled permissions must agree with unrestricted correction. Test all 64 permission combinations against an independent constrained-gain/Joseph/injection/reset oracle, including nonzero cross-covariance, correlated measurement noise and both reset modes.
 
-The caller owns the learning policy. Runtime policy wiring, IMU fault detection, recovery timing and adaptive process noise are separate work. Lean proves the exact constrained-gain algebra, disabled-axis estimate/prior-variance retention and the existing correction invariants. The `bias` ESBMC suite checks the actual row constraints, controlled INS correction transactions and six sensor wrappers with all six permissions symbolic, both scalar formats and all state/covariance aliases. It reuses the same-backend `E-CORRECT` and injection/reset producer obligations; it does not prove IEEE positive semidefiniteness. Magnetic wrappers in this suite select `ESKF_MAG_TILT=0`; the `magnetic` suite separately covers the projected M1 path with the same six symbolic permissions. Native tests retain the all-64-mask numerical/Joseph regression. See the [execution and review record](../verification-extensions-20261115.md).
+The caller owns the learning policy. Runtime policy wiring, IMU fault detection, recovery timing and adaptive process noise are separate work. Lean proves the exact constrained-gain algebra, disabled-axis estimate/prior-variance retention and the existing correction invariants. The `bias` ESBMC suite checks the actual row constraints, controlled INS correction transactions and six sensor wrappers with all six permissions symbolic, both scalar formats and all state/covariance aliases. It reuses the same-backend `E-CORRECT` and injection/reset producer obligations; it does not prove IEEE positive semidefiniteness. Magnetic wrappers in this suite select `ESKF_MAG_TILT=0`; the `magnetic` suite separately covers the projected M1 path with the same six symbolic permissions. Native tests retain the all-64-mask numerical/Joseph regression. See the [verification scope and evidence rules](../guides/verification.md).
 
 ### E-MAG-TILT: magnetic tilt protection
 
-AHRS/INS magnetic correction uses compile-time `ESKF_MAG_TILT=1` by default; `0` selects the original unrestricted full-field update. Both use the same full-vector residual, Jacobian and observation covariance; protection is not a scalar heading-observation model. No runtime mode argument or selection branch is permitted. The setting must be consistent across translation units, with values other than 0/1 rejected at compile time. See [the geometric explanation and API](../magnetometer-tilt-protection.md).
+AHRS/INS magnetic correction uses compile-time `ESKF_MAG_TILT=1` by default; `0` selects the original unrestricted full-field update. Both use the same full-vector residual, Jacobian and observation covariance; protection is not a scalar heading-observation model. No runtime mode argument or selection branch is permitted. The setting must be consistent across translation units, with values other than 0/1 rejected at compile time. See [the geometric explanation and API](../guides/magnetic-tilt-protection.md).
 
 - Under the existing unit-prior premise, form `u_b = R(q_nb)^T * [0,0,1]^T` from the prior attitude. After the gain solve, replace only its attitude block by `K_theta' = (u_b * u_b^T) * K_theta`. Use AHRS rows 0..2 and INS rows 6..8. Do not select body X/Y axes or change H.
 - Preserve other INS gain rows, except for disabled bias rows under `E-BIAS-UPDATE`. Use this same final gain in the error correction and full Joseph update, followed by existing right-multiplicative injection and covariance reset.
@@ -223,7 +223,7 @@ AHRS/INS magnetic correction uses compile-time `ESKF_MAG_TILT=1` by default; `0`
 - When protection is enabled, check the computed vertical axis, projector and projected gain for non-finite results, returning `non_finite_result`. Retain existing input/covariance checks and downstream status propagation. Unit prior and PSD/SPD remain caller premises; no implicit repair is introduced.
 - Publish state and covariance together only on success. Preserve both on any failure and support all four independent whole-state/covariance alias arrangements. `ESKF_MAG_TILT=0` must agree with the original full-field behavior and must not compile the projection path.
 
-Lean establishes the exact unit-axis projector identities and tilt preservation under right-multiplicative injection, including exact normalization of any nonzero parallel-axis increment candidate. This includes the Taylor candidate without claiming its angle equals exact Exp. The `magnetic` ESBMC suite checks actual observation preparation, ordered projector/gain products, M1 AHRS/INS transactions, all four state/covariance aliases and symbolic INS bias masks in binary32/binary64. It composes with the existing same-backend rotation, correction/Joseph and injection/reset producers. E-OBS and the `bias` suite retain M0 coverage; native tests in both modes supplement these source claims. Floating-point tilt-error bounds, external backends and target execution remain separate obligations. See the [execution and review record](../verification-extensions-20261115.md).
+Lean establishes the exact unit-axis projector identities and tilt preservation under right-multiplicative injection, including exact normalization of any nonzero parallel-axis increment candidate. This includes the Taylor candidate without claiming its angle equals exact Exp. The `magnetic` ESBMC suite checks actual observation preparation, ordered projector/gain products, M1 AHRS/INS transactions, all four state/covariance aliases and symbolic INS bias masks in binary32/binary64. It composes with the existing same-backend rotation, correction/Joseph and injection/reset producers. E-OBS and the `bias` suite retain M0 coverage; native tests in both modes supplement these source claims. Floating-point tilt-error bounds, external backends and target execution remain separate obligations. See the [verification scope and evidence rules](../guides/verification.md).
 
 ### E-INNOV: componentwise innovation gate
 
@@ -235,7 +235,7 @@ This pure operation consumes a fixed-size innovation vector `r`, the diagonal of
 - On success, publish every finite nonnegative ratio and the aggregate rejection flag, even when rejected. `success` reports valid diagnostics, not permission to fuse. The caller must require both success and no rejection before treating the gate as passed.
 - On failure, preserve the entire diagnostic output. Its vector may alias either complete input vector; otherwise inputs are unchanged. Do not exit early on an outlier and miss invalid later axes. No estimator state or covariance is modified.
 
-Lean establishes the exact-real ratio, sign invariance, inclusive boundary and componentwise aggregation. The `innovation` ESBMC suite checks the actual production body for binary32/binary64, dimensions 1/2/3 and all five whole-vector alias partitions, with arbitrary IEEE inputs and old diagnostics. It covers ordered statuses, every computed ratio and atomic publication; no arithmetic summary or success premise is used. Floating-point decisions need not agree with the exact-real boundary. Native tests provide additional regression evidence. `R-MEASUREMENT-FUSION` composes the gate with correction; sensor-specific settings and deployment wiring remain separate obligations. See the [execution and review record](../verification-extensions-20261115.md).
+Lean establishes the exact-real ratio, sign invariance, inclusive boundary and componentwise aggregation. The `innovation` ESBMC suite checks the actual production body for binary32/binary64, dimensions 1/2/3 and all five whole-vector alias partitions, with arbitrary IEEE inputs and old diagnostics. It covers ordered statuses, every computed ratio and atomic publication; no arithmetic summary or success premise is used. Floating-point decisions need not agree with the exact-real boundary. Native tests provide additional regression evidence. `R-MEASUREMENT-FUSION` composes the gate with correction; sensor-specific settings and deployment wiring remain separate obligations. See the [verification scope and evidence rules](../guides/verification.md).
 
 ## Magnetic aiding
 
@@ -287,7 +287,7 @@ enabled in F-SOLVE; a raw-root equivalence check and factor regression establish
 that changing this passive observer does not change values on the proved pivot
 domain. This closes the backend boundary for field preparation, not the complete
 public fusion transaction or library-accuracy claim. See the
-[continuation evidence](../verification-extensions-20261116.md).
+[verification scope and evidence rules](../guides/verification.md).
 
 ### R-MAGNETIC-HEADING: aided heading consistency
 
@@ -887,8 +887,9 @@ old/new covariance frames. Public AHRS/INS APIs prove simultaneous publication
 and complete rollback for all four state/P aliases, even with partially written
 helper scratch. INS position/velocity/bias values are checked before composition
 and retained exactly. Floating-point accuracy/PSD bounds, external backends and
-adapter sequencing remain separate obligations. The [completion record](../verification-extensions-20261116.md)
-identifies accepted profiles and supersedes the earlier INS expansion gap.
+adapter sequencing remain separate obligations. The
+[verification guide](../guides/verification.md) describes evidence scope and retention;
+execution status must be checked against the claimed source and configuration.
 
 #### PX4 module magnetic aiding
 
@@ -1197,8 +1198,8 @@ and [output reference point](https://github.com/PX4/PX4-Autopilot/blob/54f0455ff
 
 The module retains a fixed local origin and its current small-area Cartesian
 model. Projection accuracy, model fidelity and estimator accuracy are distinct;
-the [F-05.2 assessment](../validation-px4-frame-envelope-20261117.md) records the
-measured geographic domain and remaining operating-envelope decisions.
+F-05.2 in the [functional backlog](../../FEATURE_TODO.md#f-05--sensor-location-and-frames)
+tracks geographic-domain validation and the remaining operating-envelope decisions.
 
 - The core's attitude error is body-local. For the delayed attitude/covariance
   pair compute `P_theta_n = R(q_nb) P_theta_b R(q_nb)^T`, retaining all attitude
@@ -1767,7 +1768,7 @@ These models preserve the corresponding core API's units, full within-group nois
 
 Each call is independent: a rejected or failed group neither undoes previous fusion nor automatically rejects later groups. After a successful group, form the next residual/Jacobian and gate using the newly committed state/covariance; after rejection/failure retain the prior. No fixed sensor order or whole-GNSS transaction is imposed. Separate groups require uncorrelated measurement noise across groups, not zero state cross-covariance; use a joint model if cross-group noise correlations must be retained. Alignment, GNSS quality, source lifecycle, persistent-rejection recovery, clocks and last-fusion timestamps remain caller/runtime work.
 
-Native tests cover INS/AHRS, binary32/binary64, legal aliases, grouped rejection, input/arithmetic and downstream failures, bias permissions and a cross-coupled sequential-fusion case. They do not establish flight suitability. The `fusion` ESBMC suite checks the public covariance-preparation frame, actual portable check/fuse control flow and these four named wrappers: binary32/binary64, INS/AHRS where applicable, observation sizes 1/2/3, every legal state/covariance alias and symbolic INS bias permissions. It composes with the same-backend `E-INNOV`, correction and injection/reset producers; arbitrary inputs and failing intermediate results remain admitted. The source assertions cover skipped correction on rejection, diagnostics retained on downstream failure, unchanged inputs and atomic publication. Existing Lean gate/correction theorems are mathematical dependencies, not a new proof of the runtime state machine or a machine-checked Lean-to-C++ refinement. Replay GNSS settings/wiring below, caller history/timing, external backends and numerical error bounds remain open. See the [execution and review record](../verification-extensions-20261115.md#r-measurement-fusion).
+Native tests cover INS/AHRS, binary32/binary64, legal aliases, grouped rejection, input/arithmetic and downstream failures, bias permissions and a cross-coupled sequential-fusion case. They do not establish flight suitability. The `fusion` ESBMC suite checks the public covariance-preparation frame, actual portable check/fuse control flow and these four named wrappers: binary32/binary64, INS/AHRS where applicable, observation sizes 1/2/3, every legal state/covariance alias and symbolic INS bias permissions. It composes with the same-backend `E-INNOV`, correction and injection/reset producers; arbitrary inputs and failing intermediate results remain admitted. The source assertions cover skipped correction on rejection, diagnostics retained on downstream failure, unchanged inputs and atomic publication. Existing Lean gate/correction theorems are mathematical dependencies, not a new proof of the runtime state machine or a machine-checked Lean-to-C++ refinement. Replay GNSS settings/wiring below, caller history/timing, external backends and numerical error bounds remain open. See the [verification scope and evidence rules](../guides/verification.md).
 
 #### Replay GNSS gating
 
@@ -2230,7 +2231,7 @@ F-LINALG producer; arbitrary IEEE quotient replies include non-finite failures.
 Integration and magnitude producers supply the remaining same-type contracts.
 The proof is for `IntervalUs=10000`; it does not certify other template periods,
 exact 100 Hz cadence, target libm accuracy or module/replay sequencing. See the
-[completion record](../verification-extensions-20261116.md).
+[verification scope and evidence rules](../guides/verification.md).
 
 ### R-IMU-DYNAMICS: instantaneous IMU magnitude check
 
@@ -2458,7 +2459,7 @@ rollback. Same-type actual selector producers and E-STEP supply its explicit
 callee frames; arbitrary callee statuses/results are admitted. This is helper
 wiring under the proof backend, not the actual PX4 Matrix instantiation, input
 scheduler, health timing, fault latch or output publisher. See the
-[verification record](../verification-extensions-20261115.md#portable-imu-and-bias-policies).
+[verification scope](../guides/verification.md).
 
 ### R-BIAS-PROCESS-NOISE: variance-dependent bias driving noise
 
@@ -2679,8 +2680,7 @@ solving to bound memory.
 
 Scalar-root accuracy, physical detection validity and module/replay sequencing
 remain **open**. No new Lean algebra is needed for the scoped state-transition
-properties. See the [state-safety record](../verification-extensions-20261115.md#vertical-health-state-safety)
-and [source-equation completion](../verification-extensions-20261116.md#vertical-health-source-equations).
+properties. See the [verification scope and evidence rules](../guides/verification.md).
 
 Replay integration:
 
@@ -2765,7 +2765,7 @@ consumption and input purity. Native tests remain supporting evidence.
 Adapter metadata, coordinate conversion, caller chronology and physical sensor
 validity remain open. This monitor does not implement innovation gating,
 source-specific fusion lifecycle, stationary-motion detection or jamming detection.
-See the [verification record](../verification-extensions-20261115.md#gnss-quality-policy-and-health).
+See the [verification scope](../guides/verification.md).
 
 #### Replay GNSS quality
 

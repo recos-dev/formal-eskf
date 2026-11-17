@@ -1,227 +1,74 @@
 ## Summary
 
-The numerical core computes estimator operations; portable runtime components manage sensor and fusion policies; deployment adapters own platform effects. This specification defines those responsibility boundaries and maps the current PX4 implementation to them. Mathematical behavior belongs to the [state conventions](eskf-state-conventions.md) and [requirements](verification-requirements.md).
-
-Verification claims follow the [Formal Verification Strategy](formal-verification-strategy.md); implementation constraints follow the [C++ subset](cpp-portability-and-constraints.md). The source map below describes the current implementation; it does not establish full module correctness or compliance with the target execution architecture.
-
-The [PX4 module architecture](px4-module-architecture.md) defines the target
-execution, timing, output and real-time contracts for review. The current-source
-description below remains the refactor baseline; it does not override that target
-or imply that delayed fusion/output prediction are already implemented.
+The numerical core computes estimator operations; portable runtime components
+manage sensor/fusion policies; adapters own platform effects. These boundaries
+are implemented separately from any claim of whole-module formal verification.
+[State conventions](eskf-state-conventions.md) and [requirements](verification-requirements.md)
+own equations and behavior. [PX4 architecture](px4-module-architecture.md) owns
+execution and real-time contracts; [timing](px4-timing-profile.md) owns its
+implemented 250 Hz delayed-fusion profile.
 
 ## Architecture
 
 | Layer | Responsibility | Must not own |
 |---|---|---|
-| Numerical core | Prediction, correction, injection and covariance operations | Clocks, queues, sensor selection or OS effects |
-| Portable estimator runtime | Lifecycle, event ordering, fusion decisions and coherent estimates | Device access, OS scheduling or publication |
-| PX4 adapter | Message conversion, time sources, serialized access and publication | Undocumented changes to core equations |
+| Numerical core | Prediction, correction, injection/reset and covariance | Clocks, queues, sensor policy or OS effects |
+| Portable runtime | Qualification, history, lifecycle and fusion decisions | Device access, scheduling or publication |
+| Platform adapter | Message/time conversion, session ordering and output | Undocumented changes to core equations |
 
-Keep the numerical functions independently callable. The runtime is an optional consumer, not a replacement that forces every application into PX4's scheduling model. These are responsibility boundaries, not a prescribed class hierarchy.
-
-Use explicit ownership and isolate external effects in the adapter. Integration must establish serialized estimator access rather than treating a sequential component proof as a concurrency proof.
+Keep numerical APIs independently callable and backend/platform effects behind
+their declared boundaries. These are responsibilities, not a required class
+hierarchy or a generic dispatch framework. Portable runtime has no single object
+that owns and schedules an entire estimator for every platform.
 
 ## Current implementation and ownership
 
-The numerical library supports INS and rotation-only AHRS. The in-tree PX4 module selects INS, double precision and `Px4MatrixBackend`. Portable runtime components are independently usable; there is no single portable runtime object that currently owns and schedules the whole estimator.
+The library supports INS and rotation-only AHRS. The PX4 package selects INS,
+binary64 and PX4 matrix, with one estimator owner and serialized updates.
 
 | Component | Source | Ownership and use |
 |---|---|---|
-| Numerical core | [eskf/](../../include/formal_eskf/eskf/), [so3/](../../include/formal_eskf/so3/), [linalg/](../../include/formal_eskf/linalg/), [scalar/](../../include/formal_eskf/scalar/) | Operates on caller-supplied state, covariance and parameters; configuration selects related types and dimensions. No sensor clock or scheduler. |
-| Portable sensor policies | [runtime/](../../include/formal_eskf/runtime/) | Components retain their own qualification, sampling and lifecycle history. Callers supply time, measurements and context; fusion operations borrow the estimator state/covariance. |
-| Portable timestamped history | [runtime/ring_buffer.hpp](../../include/formal_eskf/runtime/ring_buffer.hpp) | Fixed backing storage with PX4-style history access. The caller owns admission, timing and loss policy under [PX4-TIME-BUFFER](px4-module-architecture.md#px4-time-buffer-sample-storage-and-selection). Component and caller-fixture tests exist; the module's delayed-fusion path is not connected yet. |
+| Numerical core | [eskf/](../../include/formal_eskf/eskf), [so3/](../../include/formal_eskf/so3), [linalg/](../../include/formal_eskf/linalg), [scalar/](../../include/formal_eskf/scalar) | Operates on caller-supplied state, covariance and parameters; configuration selects related types and dimensions. No sensor clock or scheduler. |
+| Portable sensor policies | [runtime/](../../include/formal_eskf/runtime) | Components retain their own qualification, sampling and lifecycle history. Callers supply time, measurements and context; fusion operations borrow the estimator state/covariance. |
+| Portable timestamped history | [runtime/ring_buffer.hpp](../../include/formal_eskf/runtime/ring_buffer.hpp) | Fixed backing storage with PX4-style history access. The caller owns admission, timing and loss policy under [PX4-TIME-BUFFER](px4-module-architecture.md#px4-time-buffer-sample-storage-and-selection). Used by the implemented delayed-history owners; buffer proof does not prove their temporal composition. |
 | Deployment coordination | [ImuPrediction.hpp](../../integrations/px4/module/ImuPrediction.hpp), [HeightAiding.hpp](../../integrations/px4/module/HeightAiding.hpp), [MagneticModel.hpp](../../integrations/px4/module/MagneticModel.hpp) | Bind deployment settings and compose runtime/core operations. Helpers own their distinct prediction, height-arbitration or geographic-reference contract; they do not own uORB publication. |
 | PX4 module | [FormalEskf.hpp](../../integrations/px4/module/FormalEskf.hpp), [FormalEskf.cpp](../../integrations/px4/module/FormalEskf.cpp) | Owns the INS state/covariance, runtime/helper instances, geographic origin, sensor subscriptions, sample times, fault state and published reset counters. |
-| Host replay | [examples/](../../examples/) | Owns log decoding, replay scheduling and output. Calling the same core does not establish equivalence to the PX4 module's timing or integration. |
+| Host replay | [examples/](../../examples) | Owns log decoding, replay scheduling and output. Calling the same core does not establish equivalence to the PX4 module's timing or integration. |
+| Delayed timeline | [ImuHistory.hpp](../../integrations/px4/module/ImuHistory.hpp), [ObservationHistory.hpp](../../integrations/px4/module/ObservationHistory.hpp), [OutputPredictor.hpp](../../integrations/px4/module/OutputPredictor.hpp) | Retained IMU intervals, observation/context admission/selection and current-time output tracking; the module owns their ordering and feedback. |
 
-The PX4 module remains one class. Its entry, initialization and IMU path are in
-`FormalEskf.cpp`; [navigation](../../integrations/px4/module/FormalEskfNavigation.cpp),
-[attitude aiding](../../integrations/px4/module/FormalEskfAttitude.cpp) and
-[output](../../integrations/px4/module/FormalEskfOutput.cpp) definitions are grouped
-by responsibility. They do not introduce additional estimator owners.
-
-`Run()` converts `vehicle_imu_s` once through `decode_imu()` into `ImuInput`:
-body-FRD increments, separate measured periods, sample time, clipping and an
-`ImuSource` identity/calibration record. IMU admission precedes mean-rate division.
-Initialization, prediction, bias and gravity operations consume these internal
-values; vertical health receives only the clipping mask it needs. This input
-boundary does not introduce downsampling or change the fusion/publication order.
-
-`ImuInput` and `ImuSource` are shared with the
-[delayed IMU history component](../../integrations/px4/module/ImuHistory.hpp).
-That component validates startup timing, retains fixed-capacity intervals and
-requires explicit prediction completion. It is native-tested but not yet connected
-to the module's fusion time or output path; see [F-04.2](../../FEATURE_TODO.md#f-04--timing).
-
-`Initialization` owns startup accumulators and the magnetic source/watermark;
-motion clears the accumulators while retaining that source history. `ImuHistory`
-owns the previous measured rate, sample time and source/calibration identity used
-for continuity, held-rate prediction and reporting. `NavigationOrigin` owns the
-projection and its timestamp/MSL/ellipsoid datum. Entry and IMU deployment
-settings are defined in
-[DeploymentProfile.hpp](../../integrations/px4/module/DeploymentProfile.hpp),
-separately from platform effects and the aiding controllers' policies.
-
-Module-specific tuning and age limits belong to `DeploymentProfile.hpp`;
-`recent()` requires an explicit age policy and evaluates it at the admitted IMU
-horizon. Existing portable policy defaults remain with their runtime types;
-do not duplicate them merely to list every value in the module profile.
-`formal_eskf_params.c` and `load_startup_parameters()` own the startup-only PX4
-overrides. `FormalEskf` selects INS/binary64/PX4 matrix; the module CMake target
-owns language, floating-point and algorithm flags.
-
-The module owns `TiltAlignment` independently of gravity enablement or sample
-history. Its `Gravity` record holds the existing runtime sampler, mode activity
-and reporting counters. `fuse_gravity()` directly sequences alignment, sampling,
-eligibility/correction and bias limiting; it introduces no controller wrapper.
-Admission establishes valid periods and known clipping before this private phase.
-Observation resets leave alignment and counters intact. Replay retains its own
-estimator-level alignment owner and its distinct evaluation horizon below.
-
-Magnetic coordination also uses direct module operations. `Magnetic` groups
-sensor history and diagnostics; heading alignment and quaternion reset bookkeeping
-belong to the estimator. `consume_magnetic_sample()` performs admission once for
-both geographic lookup and observation preparation. Its arrival watermark is
-distinct from lifecycle receipt and successful-fusion clocks. Source/field
-preparation, correction feedback and heading reset have named operations;
-`fuse_mag()` retains their ordered coordination and partial-failure behavior.
-`MagneticModel` keeps its independent reference/lookup lifetime. The replay keeps
-its separate admission, timing and settings instead of using a module controller.
-
-GNSS quality/drift history, lifecycle and diagnostics are grouped in `Gnss`.
-Message conversion and wall-clock motion context precede quality evaluation;
-velocity and horizontal-position operations consume the lifecycle's coupled
-reset decisions in that order. Rejected quality may retain velocity health
-evidence without authorizing correction. `HeightAiding` retains two-source
-arbitration, offsets and an all-or-nothing state/P/history update; its result
-returns applied reset counts/deltas. The estimator owns the published height
-reset history and updates it only after that transaction succeeds. `HeightBias`
-is kept with its sole owner in the same header.
-
-```mermaid
-flowchart TD
-    U["PX4 sensor/context messages"] --> A["FormalEskf: time, state, scheduling, publication"]
-    A --> D["Deployment coordination helpers"]
-    A --> R["Portable runtime policies"]
-    D --> R
-    A --> C["Numerical core"]
-    D --> C
-    R --> C
-    C --> M["SO(3), scalar math and linalg backend"]
-    A --> O["PX4 estimate/status topics"]
-```
-
-Arrows show use, not ownership transfer. The module currently coordinates multiple policies itself; moving that coordination into a portable owner requires the separate architecture review recorded in [ROADMAP.md](../../ROADMAP.md).
-
-### PX4 update sequence
-
-The current `FormalEskf::Run()` path is:
-
-1. Read sensor/context subscriptions and validate a new integrated IMU sample and its timing. Before initialization, qualify startup inputs and establish the initial estimate.
-2. After initialization, reject discontinuities or changed IMU identity/calibration. For an admitted short gap, predict with the previous measured rate.
-3. Update bias-learning permissions, select process noise and run nominal/covariance prediction for the actual IMU interval.
-4. Update magnetic acceleration context, process GNSS velocity/horizontal position, then evaluate vertical IMU health and process height aiding.
-5. Process gravity aiding, then magnetic aiding, when their respective conditions permit.
-6. Publish estimates while initialized and fault-free. Publish status separately at its scheduled interval, including when no new IMU sample arrives.
-
-`Run()` owns scheduling, subscription updates and status publication. Named
-topic publishers retain the estimate horizon, narrowing and reset mapping.
-The owner updates a fixed-size diagnostic snapshot with one nonblocking lock
-attempt; a busy exchange skips only the snapshot. Shell readers copy that
-snapshot under the exchange lock and format it after unlocking, without reading
-live estimator or performance-counter state. The snapshot carries its epoch,
-sequence, skipped exchanges and publication failures. Startup prepares topic
-storage with explicitly invalid, zero-epoch messages before enabling callbacks;
-returned preparation failures abort startup. These mechanisms do not establish
-target timing or exception safety of all PX4 dependencies. Normal reader lifetime
-uses PX4's module guard; its forced-stop timeout remains a separate lifecycle gap.
-
-`process_imu()` owns sample admission,
-timeline consumption, initialization and estimate publication. For an initialized
-filter, `predict_and_fuse()` handles continuity, gap holds and the ordered aiding
-sequence above. A failed stage prevents later aiding and estimate publication.
-After entering this prediction path, the caller stores the admitted sample as
-previous-IMU metadata even if prediction or fusion fails; earlier admission,
-finite-data and GNSS-quality failures retain the previous metadata.
-For a healthy initialized tick, the previous admitted horizon equals the recorded
-IMU history time. A consuming early failure latches a fault and prevents entry
-into prediction, so gap calculation uses that history directly. Initialization
-records it before enabling normal prediction. These invariants do not authorize
-resetting the fault latch independently of estimator reinitialization.
-Numerical failure or a discontinuity can latch a module fault requiring restart. Rejected observations and failed numerical operations have different meanings. Individual checked-operation guarantees do not establish that the entire tick is one failure-atomic transaction.
-
-The [integration guide](../../integrations/px4/README.md#adapter-behavior-and-verification-boundary) owns the pinned target, setup, deployment settings and current limitations. Core/runtime contracts remain in the specifications; the guide's SITL results do not extend their formal proof boundaries.
-
-### Integration invariants and proof boundaries
-
-| Boundary | Owner and invariant | Premise for composition |
-|---|---|---|
-| Timeline and mutation | The module serializes each tick. Admission failure preserves the horizon; admitted non-finite data consumes the horizon and faults an initialized filter. Watchdog/status scheduling continues without new IMU. | Adapter timestamps, units, identity and work-queue serialization must be established separately from numerical correctness. |
-| Prediction and health | Configured noise is selected afresh for each interval. Bias learning uses preceding vertical health; current GNSS velocity and preceding height evidence feed the next health evaluation before height correction. Held rates never become fresh observations. | Sample integration intervals and clipping/context availability are supplied honestly. Module and replay retain their distinct missing-data policies. |
-| Source actions and feedback | Each controller owns its qualification/history. Its current action authorizes a call; only actual correction/reset results acknowledge progress. Numerical failure, rejection and deliberate inhibition remain distinct. | The caller uses the same sample/prior and completes feedback before the next update; no fabricated successful fusion or reset. |
-| Geographic and magnetic references | Navigation origin, previous GNSS fix, selected magnetic observation reference and optional magnetic-health reference have different lifetimes and purposes. | Source/calibration/reference changes follow their existing reset rules; similar coordinates do not justify merging their history. |
-| Publication and recovery | The module owns fault latching and reset counters/deltas. Successful operations may precede a later failure in the same tick; published estimates require initialization and no fault. | Per-operation output preservation is not whole-tick rollback, and native/SITL evidence is not a concurrency or hardware-safety proof. |
-
-The replay keeps CSV cursors, its log-time scheduler and evidence files. Its
-`predict_interval()` explicitly receives the prior, configured parameters and
-available noise context; prediction statistics describe the executed intervals.
-Sharing runtime components does not make replay and module scheduling equivalent.
-
-### Caller differences before shared aiding
-
-The following differences were checked before consolidating runtime headers and
-retiring the unused timed IMU qualification policy. File consolidation preserves
-both callers; it does not make their integration profiles equivalent.
-
-| Boundary | PX4 module | Replay | Refactor treatment |
-|---|---|---|---|
-| Gravity sampling and tilt | `FormalEskf::fuse_gravity` evaluates estimator-owned tilt and samples after navigation/height corrections. Separate angle/velocity periods preserve the measured angle integral. | `replay` evaluates tilt and samples on the predicted prior, before navigation corrections; its prepared sample supplies one common period. | Preserve the documented horizons and integration periods. Sharing a controller must not silently move these evaluations. |
-| Horizontal aiding | Gravity and magnetic conditions consume current GNSS lifecycle activity. | `ReplayFusionConditions` retains activity for 7 s after an actual horizontal correction/reset. | Preserve caller-supplied meaning; do not infer one from the other in a common helper. |
-| Missing IMU metadata | The module validates actual clipping/identity metadata and faults on unsupported discontinuities. | Missing clipping assumes clear only for bias learning; it blocks gravity fusion and invalidates vertical-health history. | Keep input compatibility in the adapter; absence must not become measured health. |
-| Magnetic admission and settings | `consume_magnetic_sample()` discards arrivals aged 500 ms or more before lifecycle receipt and rejects unusable external fields. `DeploymentProfile` binds fixed settings. | Replay selects the newest arrived sample per tick and passes it to the lifecycle without the same admission filter; parameters and field checks can come from replay inputs. | Preserve existing admission/configuration boundaries; sharing lower-level code does not establish equal decisions. |
-| Magnetic heading alignment | `fuse_mag()` clears estimator-owned alignment on an unaided stop and explicitly supplies `heading_aligned` to the lifecycle. | Replay supplies its owned flag and clears it when update or fusion feedback ends an active session without horizontal aiding. A successful heading reset restores alignment. | The replay omission is corrected separately from structural refactoring. Preserve this behavior and each caller's horizontal-aiding policy. |
-| Height sources | `HeightAiding` arbitrates barometer/GNSS and owns their offsets and datum. | Replay uses its GNSS-only vertical lifecycle. | Keep source arbitration and datum ownership distinct; a header merge cannot substitute one controller for the other. |
-| Numerical failure | A module fault prevents later aiding/publication and requires restart. | Replay terminates with an error; earlier successful operations remain observable in its evidence. | Preserve each caller's failure boundary; neither provides whole-tick rollback. |
-
-Source boundaries: [module update sequence](../../integrations/px4/module/FormalEskf.cpp),
-[gravity coordination](../../integrations/px4/module/FormalEskfAttitude.cpp),
-[magnetic coordination](../../integrations/px4/module/FormalEskfAttitude.cpp),
-[replay sequence](../../examples/replay_ins.cpp), and
-[replay conditions](../../examples/replay_conditions.hpp).
-
-After an unaided stop, returning qualified magnetic data must establish heading
-alignment before ordinary fusion. Restored horizontal aiding alone cannot set
-that flag; a stop while horizontally aided retains it. The
-[replay regressions](../../tests/test_replay_magnetometer_reset.cmake) cover data
-outages and stops during field qualification or rejected-fusion feedback, including
-GNSS recovery before magnetic recovery. Earlier source-change tests alone did
-not catch the omission because the lifecycle separately remembers source-required
-resets. This fix does not unify the other integration-profile differences above.
-
-These are composition boundaries for the software verification plan. Existing
-core proofs remain scoped to their own contracts; runtime/controller and complete
-module formal proofs remain pending.
+`FormalEskf.cpp` owns entry, initialization and IMU flow. Navigation, attitude
+aiding and publication definitions are grouped in the three corresponding C++
+files; they do not create additional estimator owners. uORB arrivals are converted
+at the adapter boundary, with raw arrival caches distinct from delayed selections.
+Platform effects stay outside numerical operations.
 
 ## Software proof obligations
-
-Use Lean to establish abstract state-transition invariants and ESBMC to check production C++ behavior under explicit assumptions and bounds. Review their correspondence separately; agent review is not a machine-checked proof bridge.
 
 | Area | Property to establish |
 |---|---|
 | Ownership and memory | Valid lifetimes and accesses under the declared ownership model |
 | Lifecycle | Initialization and recovery follow legal transitions |
-| State updates | Success is coherent; rejection/failure preserves the estimate |
+| State updates | Success is coherent; rejection/failure preserves the estimate at the specified transaction boundary |
 | Time and context | Fusion respects alignment, identity and coordinate/configuration rules |
 | Output | Published estimates have consistent state, time and validity |
 | Resources and progress | Operations stay bounded; progress claims state their environment assumptions |
 
+- Make inputs, outputs, owner lifetime and state transitions explicit. Timestamp,
+  source/configuration changes and policy feedback belong to the caller contract.
+- A numerical operation's failure atomicity does not imply rollback of all owner
+  history, a callback, multiple sensor updates or multiple topic publications.
+- A callee summary requires separately verified production producers with matching
+  domains/configurations. Component evidence does not establish scheduler safety.
+- Keep clocks, source admission, known-at context, reset reporting and output epochs
+  visible at integration boundaries. No stale or unknown context grants permission.
+- Follow the [C++ constraints](cpp-portability-and-constraints.md) and module
+  real-time contract. Fixed containers alone do not establish bounded response time.
+
 ## Review and development gates
 
-| Gate | Required outcome |
-|---|---|
-| Architecture | Agree on responsibilities, ownership and side effects |
-| Behavior | Define operation contracts and lifecycle rules |
-| Environment | Identify integration assumptions and supported configurations |
-| Proof design | Identify invariants, dependencies and applicable evidence |
-| Implementation | Develop components together with their verification |
-| Acceptance | Review actual evidence and keep unresolved gaps visible |
+Maintain the requirement→design/source→evidence chain in the existing map. Run
+checks appropriate to affected contracts and configurations; report missing
+producer/caller, numerical and target obligations explicitly. Use the
+[review criteria](formal-verification-traceability-and-review-criteria.md) for
+acceptance and [ROADMAP.md](../../ROADMAP.md) for planned extensions. No document,
+AI assessment or reference count establishes certification.

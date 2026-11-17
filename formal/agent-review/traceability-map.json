@@ -2900,7 +2900,7 @@
             "symbol": "### E-MAG-TILT: magnetic tilt protection"
           },
           {
-            "file": "docs/magnetometer-tilt-protection.md",
+            "file": "docs/guides/magnetic-tilt-protection.md",
             "symbol": "## Projection in our attitude coordinates"
           }
         ],

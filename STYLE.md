@@ -1,6 +1,6 @@
 # Coding Style Guide
 
-This lightweight C++ style guide is derived from [solvcon](https://github.com/solvcon/solvcon/blob/875cc3a8e731d3e6474745dee6b7b256983ae99a/STYLE.md) and adapted for formal-eskf.
+This guide defines the C++ naming, readability and organization rules for formal-eskf.
 
 For estimator design, the primary reference is ArduPilot's actual same-layer practice: concrete mathematical types and direct calls in [its EKF](https://github.com/ArduPilot/ardupilot/blob/546cf152a8c868acbac82dd326f9649da66d6ba1/libraries/AP_NavEKF3/AP_NavEKF3_core.cpp#L625), alongside its [style guide](https://ardupilot.org/dev/docs/style-guide.html). The [design baseline and template boundaries](docs/spec/cpp-portability-and-constraints.md#design-baseline) define how to apply that reference while retaining C++20. ArduPilot's allocator, floating-point flags and platform conventions are not adopted by this reference.
 
@@ -56,11 +56,12 @@ Check formatting without changing files:
 
 ## Documentation
 
+- Write project documentation in English, including specifications, requirements, guides and analysis drafts.
 - Lead with the behavior or decision, then its rationale and assumptions. State required success/failure behavior and link the applicable requirement and evidence boundary.
 - Keep requirements and contracts in `docs/spec/`. Use stable requirement IDs; describe sources, units, frames, configuration scope and exclusions where relevant. Distinguish adopted rules from proposals and existing implementation.
-- Preserve the requirement-to-design/source-to-evidence chain defined by the [review criteria](docs/spec/formal-verification-traceability-and-review-criteria.md#record-ownership). Simplifying prose must not remove acceptance conditions, assumptions or unresolved gaps.
+- Preserve the requirement-to-design/source-to-evidence chain defined by the [review criteria](docs/spec/formal-verification-traceability-and-review-criteria.md#record-ownership). Simplifying prose must not remove stable requirement IDs, acceptance conditions, assumptions or unresolved gaps. When moving a definition, update its traceability references and links; retire a requirement only through an explicit reviewed decision.
 - Keep current functional work in `FEATURE_TODO.md` and architecture/verification plans in `ROADMAP.md`. Reference their existing IDs instead of creating another task list.
-- Keep README files focused on entry points, operation and current limitations. Put dated validation summaries separately, retaining source/configuration identity, evidence paths, failed attempts and claim limits; never present historical results as current verification.
+- Keep README files focused on entry points, operation and current limitations. Keep development logs and trial notes in ignored local output. Retain release evidence as retrievable artifacts with source/configuration identity, failed cases and claim limits; never present historical results as current verification.
 - Link to the authoritative definition instead of copying changing counts or full contracts. When a requirement, implementation boundary or evidence source changes, review affected links and summaries as well as the traceability mapping.
 
 ## Applying This Guide

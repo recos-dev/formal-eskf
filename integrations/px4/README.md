@@ -2,6 +2,8 @@
 
 This directory owns the PX4 wrapper, board configuration, installation tools and flight tests. The numerical core remains in `include/formal_eskf/`. Installing copies both the wrapper and core headers into PX4; the PX4 build does not reference the original formal-eskf checkout.
 
+Unless stated otherwise, behavior below describes the default profile.
+
 The supported target is **PX4 v1.16.2**, commit `54f0455ffcd755534539a7cf33a09a20bf71d29d`, on Linux with GCC 11 or newer and C++20. The dedicated `px4_sitl_formal_eskf` board replaces EKF2 with a single-instance formal-eskf INS using the PX4 matrix backend and double precision.
 
 ## Source ownership
@@ -23,7 +25,7 @@ Run these commands from the formal-eskf repository root. `PX4_ROOT` can be anywh
 ```bash
 PX4_ROOT="$(pwd)/../PX4-Autopilot"
 ./integrations/px4/setup.sh "$PX4_ROOT"
-make -C "$PX4_ROOT" px4_sitl_formal_eskf -j8
+make -C "$PX4_ROOT" px4_sitl_formal_eskf -j2
 ```
 
 `setup.sh` clones the pinned revision if the target does not exist, initializes only the required MAVLink, events and compression submodules, and installs the package. An existing PX4 checkout must match the pinned commit. It preserves unrelated edits and stops on conflicting files.
@@ -38,7 +40,7 @@ For an existing PX4 checkout with dependencies already initialized, installation
 
 ```bash
 python3 integrations/px4/install.py --px4 "$PX4_ROOT"
-make -C "$PX4_ROOT" px4_sitl_formal_eskf -j8
+make -C "$PX4_ROOT" px4_sitl_formal_eskf -j2
 python3 integrations/px4/install.py --px4 "$PX4_ROOT" --check
 ```
 
@@ -61,7 +63,7 @@ The menu includes exact/approximate prediction and reset, magnetic tilt
 protection, plus 64 module settings: WMM, ground-effect/gravity/bias enablement,
 GNSS and magnetic checks, lifecycle timeouts, noise, gates, bias limits and output
 tracking time constants. Decimal values are validated before packaging. See
-[configuration ownership](../../docs/configuration-inventory.md#px4-deployment-menu)
+[configuration ownership](../../docs/guides/configuration.md#px4-deployment-menu)
 for units, defaults and retained constraints.
 
 `make px4-install` uses `.config` (override with `CONFIG_FILE=...`), generates the
@@ -84,7 +86,7 @@ The new directory contains `overlay/`, `manifest.json`, the small PX4 patch and 
 
 ```bash
 python3 /path/to/px4-package/install.py --px4 /path/to/PX4-Autopilot
-make -C /path/to/PX4-Autopilot px4_sitl_formal_eskf -j8
+make -C /path/to/PX4-Autopilot px4_sitl_formal_eskf -j2
 ```
 
 The destination requires the pinned PX4 checkout and its build dependencies. It does not need the formal-eskf source repository. Exports require a new directory to avoid overwriting an earlier package. The manifest detects accidental changes to exported payload files and the host patch.
@@ -173,9 +175,9 @@ python3 integrations/px4/analyze_frame.py "$PX4_ROOT"
 ```
 
 This writes the geographic grid, independent-oracle comparisons and source hashes
-under `output/px4-frame-envelope/`. See the
-[F-05.2 assessment](../../docs/validation-px4-frame-envelope-20261117.md) for
-measured differences and limitations. The module has no geographic-range guard;
+under `output/px4-frame-envelope/`. Review measured differences and limitations
+under [F-05.2](../../FEATURE_TODO.md#f-05--sensor-location-and-frames).
+The module has no geographic-range guard;
 normal validity flags do not establish a flight-qualified operating radius.
 
 ## Automatic flight
@@ -250,155 +252,20 @@ flowchart LR
 - Holds the previous IMU rate for small missing intervals; discontinuities beyond 50 ms and IMU identity/calibration changes latch a fault. Numerical failures also latch a fault. Restart is required for recovery.
 - Reserves a 60 KiB work-queue stack. The module disables fast-math, FMA contraction, exceptions and RTTI. Lockstep virtual-time performance counters do not measure wall-clock CPU cost.
 
-This is a single-sensor SITL POC with stationary startup and simulated sensor noise. It has no redundant sensors or wind, terrain and magnetic-bias states. Delayed fusion and current output prediction use the 250 Hz SIH profile below; physical receiver delays require their own producer binding and qualification. Magnetic fusion retains a three-component observation with `ESKF_MAG_TILT=1`; it reports heading aiding, not 3D magnetic-state estimation. AUTO/3D switching and terrain-based in-flight realignment remain unconnected. See [the magnetic integration contract](../../docs/spec/verification-requirements.md#px4-module-magnetic-aiding). Heading variance uses the navigation-frame rotation proxy defined by [R-PX4-FRAME-OUTPUT](../../docs/spec/verification-requirements.md#r-px4-frame-output-geographic-and-rotation-variance-output-frames); it is not an exact Euler-yaw variance. Sensor failure checks cover flag withdrawal and recovery on the ground, not continued flight through sensor failures.
+This is a single-sensor SITL POC with stationary startup and simulated sensor noise. It has no redundant sensors or wind, terrain and magnetic-bias states. Delayed fusion and current output prediction use the 250 Hz SIH timing profile; physical receiver delays require their own producer binding and qualification. Magnetic fusion retains a three-component observation with `ESKF_MAG_TILT=1` by default; it reports heading aiding, not 3D magnetic-state estimation. AUTO/3D switching and terrain-based in-flight realignment remain unconnected. See [the magnetic integration contract](../../docs/spec/verification-requirements.md#px4-module-magnetic-aiding). Heading variance uses the navigation-frame rotation proxy defined by [R-PX4-FRAME-OUTPUT](../../docs/spec/verification-requirements.md#r-px4-frame-output-geographic-and-rotation-variance-output-frames); it is not an exact Euler-yaw variance. Sensor failure checks cover flag withdrawal and recovery on the ground, not continued flight through sensor failures.
 
-### Geographic magnetic reference
+Detailed magnetic, gravity, height, GNSS and bias policies belong to the
+[requirements](../../docs/spec/verification-requirements.md). The module uses its
+own packaged defaults and startup settings; live EKF2 parameter changes do not
+configure it. Default `ESKF_MAG_TILT=1` protects tilt, but the build can select
+unrestricted correction. Gravity support is a build choice and `FESKF_GRAV_EN`
+is a startup permission; both must allow it. No gravity innovation gate is added.
 
-The module queries PX4's host WMM at startup and then at intervals greater than
-10 s while its own horizontal position is valid. It expresses each model in the
-fixed origin NED and adopts changes greater than 1 degree or 1 microtesla.
-Unavailable lookups retain the last valid model; without one, strength checks
-use the broad fallback range. `formal_eskf status` reports lookup count, model
-and heading revisions, selected source and unavailable attempts.
-
-| Startup parameter | Default | Meaning |
-| --- | --- | --- |
-| `FESKF_DECL_TYPE` | 3 | Bit 0: geographic heading when available; bit 1: permit stored declination fallback |
-| `FESKF_MAG_DECL` | 0° | Stored east-positive declination, -180° to 180° |
-
-Mask 0 selects magnetic north; 1 selects geographic or zero; 2 selects stored
-or zero; 3 selects geographic, then stored, then zero. Restart the module after
-changing settings. WMM still supplies independent health checks when geographic
-heading is disabled; its updates cannot rewrite the seed-based heading reference
-in that mode. Parameters use `FESKF_` because this board excludes EKF2.
-There is no learned-field branch or automatic declination saving.
-See [the reference contract](../../docs/spec/verification-requirements.md#px4-module-geographic-magnetic-reference).
-
-### Height aiding
-
-`HeightAiding` manages GNSS and barometer together, with GNSS as preferred height
-reference. Each source has a separate altitude-offset estimate outside the INS;
-the reference's offset is frozen and the secondary offset can learn relative drift.
-The main correction uses the prior offset and includes its variance.
-
-| Fixed deployment setting | Value |
-| --- | --- |
-| Barometer noise / height gates | 3.5 m standard deviation / 5 sigma |
-| GNSS height noise | `max(epv, 0.75 m)`, capped at 10 m while barometer is active |
-| Barometer warmup / reset LPF | More than 20 samples / alpha 0.1 |
-| Missing-data stop | Barometer 400 ms; GNSS 1 s |
-| Unsuccessful fusion timeout | Strictly more than 5 s |
-
-A stopped reference falls back to the remaining active source without resetting
-navigation. Qualified GNSS re-entry reclaims the reference with a real height
-reset; barometer re-entry aligns its offset. Persistent rejection stops the bad
-source while another works. Only a fresh reference measurement can reset height
-when shared height progress times out or the independent acceleration criterion
-below requests recovery. A barometer fault caused by persistent
-rejection requires source/calibration change or module restart to clear.
-
-Height resets transport the sensor offsets and publish matching local/global/status
-reset counters and deltas. Down-velocity resets have their own counter; they do not
-increment horizontal-velocity reset counters. Source sessions, successful fusion,
-reset progress and the 5 s height-validity window are separate.
-
-The reference policy is checked against the pinned [height controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/height_control.cpp),
-[GNSS height controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gnss_height_control.cpp)
-and [barometer controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/barometer/baro_height_control.cpp), using public parameter defaults.
-It uses the delayed fusion horizon with a fixed GNSS preference. Ground-effect
-protection uses delayed land-detector indications in non-fixed-wing flight and
-a 10 s hold. Its fixed 4 m one-sided deadzone matches PX4's public default;
-raw gate rejection remains effective, and GNSS/bias learning are unchanged.
-`cs_gnd_effect` reports the active protection. Terrain-based activation and
-dynamic-pressure correction remain separate work. See [the height contract](../../docs/spec/verification-requirements.md#r-height-fusion-px4-gnssbarometer-height-management).
-
-The existing vertical-acceleration recovery policy is now connected. A held IMU
-fault can permit a bounded Down innovation from qualified GNSS velocity or either
-height source; velocity additionally requires passing horizontal innovations and
-receiver speed accuracy strictly below its limit. Raw gate ratios remain visible;
-health uses the selected residual. This never bypasses source quality/lifecycle.
-
-The independent reset criterion uses last-good acceleration, not the held fault:
-known health with no good sample or strictly more than 500 ms since the last good
-sample can request recovery even after successful bounded fusion. Velocity uses
-preceding health; height uses the current pre-height evaluation. Only fresh,
-qualified observations authorize real resets, with the existing counter/delta
-notifications. The separate 5 s shared-height timeout remains in force.
-
-### IMU health and bias learning
-
-The module and replay share `runtime::ImuBiasInhibition`. Before prediction, it
-checks bias-corrected decaying peaks with fixed 25 m/s² / 3 rad/s limits and a
-0.5 s decay constant. Accel and gyro use their own integration durations. High
-dynamics or the preceding vertical-acceleration fault freezes accel-bias updates;
-gyro learning remains enabled. All current GNSS, height and magnetic corrections
-receive the same permissions and retain their ordinary state corrections.
-
-Vertical health uses current GNSS velocity and preceding height innovations from
-active sources, after GNSS velocity and before height fusion. Rejected measurements
-remain evidence; pre-reset innovations do not. The detector's three-second fault
-hold feeds the next IMU tick's bias policy. Module status prints the permission
-masks, high-dynamics result and health availability. No fake-aiding modes are
-inferred from loss of GNSS.
-
-After initialization the module continues prediction with accelerometer-clipped
-samples. Before prediction, the production `ImuPrediction.hpp` path selects
-`4.9^2 m²/s⁴` sampled accel variance per clipped body axis, or on all axes when
-the preceding vertical-health verdict is bad. It starts from configured noise
-each time, preserving gyro variance. It then selects each bias driving intensity
-using the prior bias variance and selected IMU variance: equality or a larger
-bias variance suppresses that axis's increment. Gap holds apply this bias-noise
-rule with configured IMU variance. Intensities retain `intensity * dt` scaling
-and can resume after a later covariance reduction. Current
-clipping also inhibits the corresponding accel-bias learning and reaches the
-health detector after GNSS velocity, before height fusion.
-
-Startup clipping, gyro clipping and undefined clipping bits remain rejected.
-Rejected/missing IMU data resets health continuity; synthetic gap holds retain
-configured noise without inventing clipping metadata. This is the pinned PX4
-noise-selection rule, not reconstruction of lost acceleration or complete EKF2
-timing equivalence. See
-[the noise contract](../../docs/spec/verification-requirements.md#r-imu-process-noise-fault-dependent-sampled-imu-variance)
-and [the health/bias contract](../../docs/spec/verification-requirements.md#r-px4-imu-bias-module-health-and-bias-learning-inhibition).
-
-Gravity aiding uses the shared replay sampler and tilt-alignment test. The module
-owns alignment independently of gravity enablement and sampling history, and
-directly sequences the gravity phase in `FormalEskfAttitude.cpp`.
-Actual IMU increments form rotation-aware, non-overlapping observations near
-10 ms; the last emitted duration is printed in module status. Prediction holds
-are excluded and discontinuities clear sampler/LPF history. The module supplies
-actual GNSS lifecycle activity, fresh land-detector rest information and
-interval clipping. An aligned, unaided filter may correct when gravity-band or
-rest conditions permit; clipping still blocks correction. Successful corrections
-apply the same bias limits as the other measurement groups.
-
-`FESKF_GRAV_EN=1` enables this path by default; read at startup, with 0 available
-for A/B checks. The model and g² I observation weight are unchanged from replay.
-PX4 v1.16.2 supplies the eligibility/downsampling reference; its normalized,
-sequential, innovation-gated correction is not reproduced. Gravity innovation
-gating remains deferred. `cs_gravity_vector` reports mode activity; the printed
-fusion count increases only after an actual successful correction.
-
-The wrapper is outside the portable numerical core and its existing Lean/ESBMC claims. Magnetic, height and IMU/bias integration are linked in the requirement/traceability map with its formal evidence still pending; no proof of PX4, concurrency, total stack use or hardware flight is asserted. Native tests and closed-loop SITL are separate empirical evidence.
-
-The host patch selects the estimator at boot, starts the lockstep logger from IMU updates during alignment, logs odometry variances and adds SIH's direct `lat_lon_alt` dependency. The reduced board can print missing optional DDS, GPS-driver, camera and VTOL command/parameter messages from the shared startup script.
-
-## GNSS integration scope
-
-Behavior is checked against the pinned
-[GNSS checks](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gps_checks.cpp)
-and [fusion controller](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gps_control.cpp).
-The adapter uses their fixed default quality/noise/gate settings; live EKF2
-parameter changes do not configure this module. Quality recovery, reset feedback
-and message conventions are specified in
-[PX4 GNSS integration](../../docs/spec/verification-requirements.md#px4-gnss-integration).
-
-The single-source GNSS height lifecycle remains disabled; `HeightAiding` now
-coordinates the GNSS/barometer height sources. Emergency yaw and receiver selection
-remain separate work. GNSS now uses the delayed observation queue;
-its sample-time binding differs from EKF2's publication-time binding as specified
-in the [timing profile](../../docs/spec/px4-timing-profile.md#source-timestamps-and-admission).
-This is not complete EKF2 parity.
+The module's GNSS sample-time binding differs from pinned EKF2's publication-time
+binding; see the [timing profile](../../docs/spec/px4-timing-profile.md#source-timestamps-and-admission).
+The delayed owner retains actual event epochs; package/build choices do not turn
+this into full EKF2 parity. Full module source proof and target qualification
+remain open even where portable components already have evidence.
 
 ## Developer checks
 
@@ -433,13 +300,10 @@ The test target is opt-in and is not linked into the flight binary.
 
 ## Validation evidence
 
-[Dated validation records](validation-history.md) retain the native, sanitizer,
-package and SITL results, including unsuccessful runs and their limitations.
-They describe the recorded source/binary baselines, not a fresh check of the
-current checkout. Local `output/` paths are repository-root-relative and may
-not be present in a new clone; summaries alone are not replacement evidence.
-
-Use the installed package manifest, binary hash and per-run reports to identify
-what was tested. Requirement mappings remain in the
-[traceability map](../../formal/agent-review/traceability-map.json), and formal
-acceptance follows the [review criteria](../../docs/spec/formal-verification-traceability-and-review-criteria.md).
+Use the installed package manifest, tested binary hash and per-run reports to
+identify what actually ran. Development logs remain in local `output/`; they are
+not current acceptance simply because they contain PASS. For releases retain the
+necessary manifests/results as retrievable artifacts. The
+[verification guide](../../docs/guides/verification.md) describes claim boundaries;
+[requirements and traceability](../../formal/agent-review/traceability-map.json)
+link the declared obligations to source and proof references.

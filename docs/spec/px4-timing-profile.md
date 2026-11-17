@@ -170,7 +170,7 @@ derive sufficient active lengths within the same backing limits and recheck
 context coverage; changing the IMU history alone is insufficient.
 This allows oldest/superseded entries to remain until the next bounded selection.
 It does not authorize
-processing a backlog after an unsupported IMU outage. Once the latest IMU exceeds
+processing a backlog after an unsupported IMU outage. Once the latest IMU's age reaches
 the 100 ms output-age limit, stop queueing fusion observations; arrival/status
 monitoring continues. A source-selection miss must not erase its admission
 watermark.
@@ -313,8 +313,8 @@ explicit completion. Its [requirements](verification-requirements.md#r-px4-imu-h
 separate this owner from the underlying buffer proof.
 
 The module shares its `ImuInput` and source identity types, but still uses immediate
-fusion. uORB timing-parameter binding, observation/context histories, connection
-to the output predictor and the switch to delayed fusion remain integration work. Do
+fusion. uORB timing-parameter binding, connection to observation/context histories
+and the output predictor, and the switch to delayed fusion remain integration work. Do
 not expose timing controls on the running module until they control that path.
 The owner takes explicit arrival time; the adapter must supply the monotonic clock
 and acknowledge an interval only after successful numerical prediction.
@@ -399,11 +399,89 @@ only valid until the next mutation; callers must use them synchronously.
 Storage and work are bounded by the 64-record backing capacity. History-wide
 translation/reset uses persistent candidate storage, not a callback-local array.
 The native binary64 instances use 23,600 bytes for IMU owner plus output predictor,
-including this workspace; the 64 KiB budget still must include future observation
-and context histories. No WCET or target stack bound follows from this size check.
+including this workspace. Combined storage accounting is recorded below; no WCET
+or target stack bound follows from these size checks.
 [Native tests](../../tests/test_px4_output_predictor.cpp) cover analytic motion,
 tracking, wrap, reset and failures on both backends; formal source proof and live
 delayed-fusion integration remain open under `R-PX4-OUTPUT-PREDICTOR`.
+
+### PX4-TIME-OBSERVATIONS: observation and context ownership
+
+[ObservationHistory.hpp](../../integrations/px4/module/ObservationHistory.hpp)
+implements the next F-04.2 component. It directly owns four fixed-storage runtime
+rings: GNSS, magnetic, barometer and context. Capacities are the full active lengths
+in the table above for all supported timing settings; compile-time checks enforce
+coverage of the maximum retention/rate envelope. There is no generic sensor
+registry, dynamic allocation, uORB message storage or independent fusion policy.
+
+Configure with the IMU owner's startup settings. Seed at alignment with a context
+snapshot and the source identities/raw timestamp watermarks already observed.
+Reject inconsistent/future seed watermarks without mutation. The adapter separately
+transfers qualification valid at that epoch. Events at/before the seed's effective
+time cannot become new corrections.
+
+The single-owner call sequence is explicit:
+
+1. After each admitted real IMU interval, `record_imu` captures context known at
+   that endpoint. Preserve original land/status timestamps and known flags;
+   repeated timestamps do not overwrite values or refresh age. Future messages
+   cannot enter the snapshot, and late arrivals cannot backfill older snapshots.
+   A permitted held gap creates no additional snapshots.
+2. `push_gnss`, `push_magnetic` and `push_barometer` take explicit arrival time.
+   They check timestamp order, source identity, source arrival age, current IMU
+   age, offset arithmetic and effective-time spacing. Record raw/effective/arrival
+   epochs, fixed residual delay and the half-period offset used for this event.
+   Rejected observed timestamps still advance their raw watermark; impossible
+   timestamps/clock regression do not. Popping or a selection miss never clears it.
+3. After successful delayed prediction, call `begin_fusion` with that admitted
+   interval. Require the next start epoch, supported lag and at most one advance
+   per latest IMU endpoint. Update the period average using
+   `0.99 * previous + 0.01 * (angular_period + acceleration_period) / 2` in
+   microseconds. Only delayed real periods count, matching the pinned EKF's
+   averaging reference; the supported periods already satisfy its clamp bounds.
+   Admission uses `floor(average / 2)` and never retimes queued observations.
+4. Pop each source at most once at that fusion epoch. Return the newest event no
+   later than the horizon and strictly younger than 100 ms; retain future events.
+   A miss preserves the output argument. Return older-retirement counts:
+   superseded on selection, expired on a miss. One GNSS event serves all its
+   position, velocity and height consumers.
+5. Look up context at the selected effective event time, or the delayed IMU epoch
+   for IMU policies. Use each policy's context-age limit against original message
+   timestamps. Missing history, stale metadata and explicit unknown flags must
+   not grant fusion permission. Context lookup is non-consuming and cannot look
+   beyond the begun fusion epoch.
+
+An admission result reports its rejection reason, source change, number of
+old-generation records discarded and whether an oldest pending record was
+overwritten. A new nonzero source/calibration or an unavailable source (device ID
+zero at a valid newer timestamp) clears that source's pending history, even if
+the event fails age/rate/IMU-freshness checks. Preserve rate watermarks across a
+switch. The adapter must handle these results, count losses/reasons and require
+requalification; uORB generation losses remain a separate adapter counter.
+
+Queueing only establishes temporal admission. Raw numerical/quality metadata,
+including invalid velocity, spoofing flags and nonfinite payloads, is retained for
+the existing delayed validators. No buffer success advances health qualification,
+successful-fusion time, alignment or reset counters. Current source failures may
+veto use; they must not turn into a retroactive historical qualification result.
+Session reset clears all histories, watermarks and averaging state, retaining
+configuration. Caller errors in seed/IMU/fusion sequencing preserve owner state;
+the adapter must stop the delayed path rather than skip intervals after a failure.
+
+Compared with pinned PX4, this component retains the reviewed fixed rate/capacity
+bounds, explicit clock checks/provenance, persistent watermarks and context
+snapshots with known flags. PX4 buffers system-flag events with a half-period
+offset; our context snapshots deliberately use actual IMU endpoints and original
+message epochs, without that offset. GNSS sample-time binding remains the
+previously documented difference. No live adapter binding is changed in this batch.
+
+Native binary64 builds on Eigen and PX4 matrix reserve **43,264 bytes** for IMU,
+output and observation/context owners combined, including output staging and
+owner metadata, below the 64 KiB profile ceiling. The test build enforces that
+sum; deployment aggregation and target layout/stack/WCET acceptance remain open.
+[Scenario tests](../../tests/test_px4_observation_history.cpp) exercise timing,
+selection, source changes, context and bounded overflow. Formal source proof and
+live delayed integration remain open under `R-PX4-OBSERVATION-HISTORY`.
 
 ## Pinned reference points
 

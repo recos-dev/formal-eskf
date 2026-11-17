@@ -75,6 +75,14 @@ inline constexpr std::uint64_t gnss_arrival_age_us = 150000;
 inline constexpr std::uint64_t magnetic_arrival_age_us = 100000;
 inline constexpr std::uint64_t barometer_arrival_age_us = 100000;
 inline constexpr std::size_t imu_capacity = 64;
+inline constexpr std::size_t context_capacity = 128;
+inline constexpr std::size_t gnss_capacity = 16;
+inline constexpr std::size_t magnetic_capacity = 64;
+inline constexpr std::size_t barometer_capacity = 128;
+inline constexpr std::uint64_t observation_maximum_age_us = 100000;
+inline constexpr std::uint64_t gnss_spacing_us = 50000;
+inline constexpr std::uint64_t magnetic_spacing_us = 10000;
+inline constexpr std::uint64_t barometer_spacing_us = 5000;
 inline constexpr std::size_t storage_budget_bytes = 64 * 1024;
 } // namespace history
 

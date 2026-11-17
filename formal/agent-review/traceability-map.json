@@ -5629,6 +5629,82 @@
       }
     },
     {
+      "id": "R-PX4-OBSERVATION-HISTORY",
+      "title": "Delayed observations and context: native-tested temporal owner; formal proof and live integration remain open",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/verification-requirements.md",
+            "symbol": "### R-PX4-OBSERVATION-HISTORY: delayed observations and context"
+          },
+          {
+            "file": "docs/spec/px4-timing-profile.md",
+            "symbol": "### PX4-TIME-OBSERVATIONS: observation and context ownership"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "integrations/px4/module/ObservationHistory.hpp",
+            "symbol": "class ObservationHistory"
+          },
+          {
+            "file": "integrations/px4/module/ObservationHistory.hpp",
+            "symbol": "ObservationHistory<Linalg>::configure("
+          },
+          {
+            "file": "integrations/px4/module/ObservationHistory.hpp",
+            "symbol": "ObservationHistory<Linalg>::seed("
+          },
+          {
+            "file": "integrations/px4/module/ObservationHistory.hpp",
+            "symbol": "ObservationHistory<Linalg>::record_imu("
+          },
+          {
+            "file": "integrations/px4/module/ObservationHistory.hpp",
+            "symbol": "ObservationHistory<Linalg>::begin_fusion("
+          },
+          {
+            "file": "integrations/px4/module/ObservationHistory.hpp",
+            "symbol": "ObservationHistory<Linalg>::admit("
+          },
+          {
+            "file": "integrations/px4/module/ObservationHistory.hpp",
+            "symbol": "ObservationHistory<Linalg>::push_gnss("
+          },
+          {
+            "file": "integrations/px4/module/ObservationHistory.hpp",
+            "symbol": "ObservationHistory<Linalg>::push_magnetic("
+          },
+          {
+            "file": "integrations/px4/module/ObservationHistory.hpp",
+            "symbol": "ObservationHistory<Linalg>::push_barometer("
+          },
+          {
+            "file": "integrations/px4/module/ObservationHistory.hpp",
+            "symbol": "ObservationHistory<Linalg>::pop_gnss("
+          },
+          {
+            "file": "integrations/px4/module/ObservationHistory.hpp",
+            "symbol": "ObservationHistory<Linalg>::pop_magnetic("
+          },
+          {
+            "file": "integrations/px4/module/ObservationHistory.hpp",
+            "symbol": "ObservationHistory<Linalg>::pop_barometer("
+          },
+          {
+            "file": "integrations/px4/module/ObservationHistory.hpp",
+            "symbol": "ObservationHistory<Linalg>::context("
+          },
+          {
+            "file": "integrations/px4/module/ObservationHistory.hpp",
+            "symbol": "ObservationHistory<Linalg>::reset()"
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
       "id": "R-RING-BUFFER",
       "title": "Fixed-storage ring history: configuration, ordered overwrite, time selection and inductive storage invariants",
       "references": {

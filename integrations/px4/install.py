@@ -19,7 +19,7 @@ MODULE_FILES = (
     "CMakeLists.txt", "FormalEskf.cpp", "FormalEskf.hpp", "FormalEskfNavigation.cpp",
     "FormalEskfAttitude.cpp", "FormalEskfOutput.cpp", "DeploymentProfile.hpp",
     "MagneticModel.hpp", "HeightAiding.hpp",
-    "ImuPrediction.hpp", "ImuHistory.hpp", "OutputPredictor.hpp", "Kconfig", "formal_eskf_params.c",
+    "ImuPrediction.hpp", "ImuHistory.hpp", "OutputPredictor.hpp", "ObservationHistory.hpp", "Kconfig", "formal_eskf_params.c",
     "tests/ModuleTest.cpp",
 )
 HEADER_SUFFIXES = (".h", ".hpp", ".hxx", ".inl", ".tpp")

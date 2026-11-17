@@ -1124,6 +1124,44 @@ analytic motion, variable periods, repeated wraps, feedback, reset and numerical
 rollback. Lean/ESBMC source evidence, nonlinear stability/error bounds, live
 module wiring, target resource bounds and flight acceptance remain open.
 
+### R-PX4-OBSERVATION-HISTORY: delayed observations and context
+
+`px4::ObservationHistory` owns source time admission and retained observations /
+context under [PX4-TIME-OBSERVATIONS](px4-timing-profile.md#px4-time-observations-observation-and-context-ownership).
+It does not own numerical validation, source qualification, lifecycle or fusion.
+
+- Validate startup timing settings. Seed at a nonzero alignment epoch with known
+  context and existing source watermarks; reject invalid/repeated seeds and live
+  reconfiguration without mutation. Never replay pre-seed events as new corrections.
+- Record one context snapshot per admitted real IMU endpoint. Preserve original
+  message times and explicit known flags; reject IMU sequence errors. Future or
+  late-arriving messages cannot rewrite past snapshots. Held gaps are not evidence.
+- Admit source observations in monotonic raw-time order using explicit arrival
+  clocks, per-source age bounds, effective-time spacing and current IMU freshness.
+  Check offset subtraction before use. Retain raw/effective/arrival epochs, source
+  identity, calibration and frozen offsets; keep watermarks across empty buffers.
+- Apply source/calibration invalidation before rate/age rejection: clear only
+  that source's pending generation and report the change/loss. Keep raw numerical
+  and quality metadata for delayed validation; queued does not mean usable.
+- Begin fusion only at the next admitted delayed interval, within lag bounds and
+  once per latest IMU endpoint. Update the half-period reference from delayed real
+  integration periods. Main numerical success remains a caller premise.
+- Select each source at most once per fusion step: newest unconsumed event at or
+  before the horizon, strictly within the age window. Retire older superseded or
+  expired records with counts, preserve future entries, and preserve output on
+  a miss. Share the selected GNSS event across all GNSS consumers.
+- Resolve context at/before the requested effective epoch using original message
+  age. Missing/stale/explicit unknown context cannot grant fusion permission.
+- Use fixed bounded storage/work; report aiding overwrites without claiming a
+  successful fusion or moving the horizon. Reset clears temporal state while
+  retaining configuration. Caller sequencing errors must not partially advance it.
+
+Current evidence is native binary64 scenario testing on Eigen and PX4 matrix,
+including timing limits, source switches, independent selection and context
+histories. Formal source evidence, live policy/time binding, deployed storage /
+stack/WCET and flight acceptance remain open. Existing ring-buffer proof does
+not prove this owner's provenance, larger concrete payloads or temporal protocol.
+
 ### R-GNSS-RESET: checked GNSS position and velocity reset
 
 These caller-invoked INS operations replace navigation estimates; they are not

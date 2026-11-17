@@ -665,3 +665,35 @@ The test now exercises 20-second tracking; no production gain was changed to mak
 it pass. The shadowing name was corrected and the checks rerun. Source formal
 proof, nonlinear tracking bounds, deployed timing/stack acceptance and live
 delayed integration remain open; no flight or full-module proof is claimed.
+
+## Observation/context history validation: 2026-11-17
+
+F-04.2 adds the fixed-storage `ObservationHistory` owner under
+`R-PX4-OBSERVATION-HISTORY`. GNSS, magnetic and barometer events preserve their
+raw/effective/arrival times and source metadata; historical land/status snapshots
+preserve original timestamps and known flags. No numerical-core or live module
+fusion path changes. The pinned reference remains PX4
+`54f0455ffcd755534539a7cf33a09a20bf71d29d`; fixed admission limits, explicit epoch
+checks and context-snapshot differences are recorded in the timing specification.
+
+Six native and six ASan/UBSan suites passed on Eigen and PX4 matrix/binary64,
+covering the three history owners. Sanitizer builds disable exceptions/RTTI and
+use `detect_leaks=0`; this run supplies no LeakSanitizer result. New scenarios cover
+minimum/default/maximum fusion-delay settings, timestamp limits, frozen offsets,
+strict arrival/selection ages, source changes despite rate/staleness rejection,
+once-only GNSS selection, overflow, historical context and held gaps. Invalid
+numerical/quality metadata is retained for delayed validation, never accepted as
+a quality result by the temporal owner.
+
+All owners reserve 43,264 bytes including output staging and owner metadata;
+the host test build asserts the 64 KiB ceiling. Context lookup copies only the
+selected snapshot. Formatting, unix32/unix64 Cppcheck (173 active checkers),
+8 package tests and traceability-reference validation passed. Evidence and
+source/binary hashes are in `output/px4-observation-history-20261117/`, based on
+parent `5605e27`. The initial test-only signed-conversion build failure is
+retained; its timestamp type was corrected and verification rerun.
+
+Self-review confirmed that rejected inputs cannot silently mix source generations,
+selection cannot erase watermarks, and late context cannot rewrite historical
+permissions. Startup/uORB binding, delayed policy/publication integration,
+formal source proof and target timing/stack/flight acceptance remain open.

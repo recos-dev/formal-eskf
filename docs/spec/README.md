@@ -70,7 +70,25 @@ verification scope; an indexed requirement or linked proof is not a passing resu
 
 | ID | Required behavior |
 |---|---|
+| `R-MAGNETIC-FIELD` | [instantaneous magnetic-field plausibility](requirements/runtime/magnetic/field.md) |
+| `R-MAGNETOMETER-FUSION` | [field checks and gated magnetic correction](requirements/runtime/magnetic/fusion.md) |
+| `R-MAGNETOMETER-RESET` | [fixed-field heading and covariance reset](requirements/runtime/magnetic/heading-reset.md) |
+| `R-MAGNETIC-HEADING` | [aided heading consistency](requirements/runtime/magnetic/heading.md) |
+| `R-MAGNETOMETER-LIFECYCLE` | [magnetic health and fusion lifecycle](requirements/runtime/magnetic/lifecycle.md) |
+| `R-MAGNETIC-REFERENCE` | [geographic magnetic reference adoption](requirements/runtime/magnetic/reference.md) |
+| `R-MAGNETOMETER-FILTER` | [magnetic data for heading reset](requirements/runtime/magnetic/reset-filter.md) |
 | `R-RING-BUFFER` | [Fixed-capacity timestamped history](requirements/runtime/ring-buffer.md) |
+
+## Integration requirements
+
+| ID | Required behavior |
+|---|---|
+| `R-PX4-MAGNETIC-AIDING` | [PX4 module magnetic aiding](requirements/integration/px4/magnetic-aiding.md) |
+| `R-PX4-MAGNETIC-MODEL` | [PX4 module geographic magnetic reference](requirements/integration/px4/magnetic-model.md) |
+| `R-REPLAY-MAGNETIC-FIELD` | [Replay magnetic field checks](requirements/integration/replay/magnetic-field.md) |
+| `R-REPLAY-MAGNETIC-LIFECYCLE` | [Replay magnetic lifecycle](requirements/integration/replay/magnetic-lifecycle.md) |
+| `R-REPLAY-MAGNETIC-MODEL` | [Replay geographic magnetic model](requirements/integration/replay/magnetic-model.md) |
+| `R-REPLAY-MAGNETIC-OBSERVATION` | [Replay magnetic observations](requirements/integration/replay/magnetic-observation.md) |
 
 ## Additional contracts
 

@@ -3034,19 +3034,19 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-MAGNETIC-FIELD: instantaneous magnetic-field plausibility"
+            "file": "docs/spec/requirements/runtime/magnetic/field.md",
+            "symbol": "# R-MAGNETIC-FIELD: instantaneous magnetic-field plausibility"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/magnetic/fusion.md",
             "symbol": "#### Replay magnetic field checks"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/magnetic/heading-reset.md",
             "symbol": "#### PX4 module magnetic aiding"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/magnetic/heading-reset.md",
             "symbol": "#### PX4 module geographic magnetic reference"
           }
         ],
@@ -3168,15 +3168,15 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-MAGNETIC-HEADING: aided heading consistency"
+            "file": "docs/spec/requirements/runtime/magnetic/heading.md",
+            "symbol": "# R-MAGNETIC-HEADING: aided heading consistency"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/magnetic/heading-reset.md",
             "symbol": "#### PX4 module magnetic aiding"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/magnetic/heading-reset.md",
             "symbol": "#### PX4 module geographic magnetic reference"
           }
         ],
@@ -3302,15 +3302,15 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-MAGNETIC-REFERENCE: geographic magnetic reference adoption"
+            "file": "docs/spec/requirements/runtime/magnetic/reference.md",
+            "symbol": "# R-MAGNETIC-REFERENCE: geographic magnetic reference adoption"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/magnetic/fusion.md",
             "symbol": "#### Replay geographic magnetic model"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/magnetic/heading-reset.md",
             "symbol": "#### PX4 module geographic magnetic reference"
           }
         ],
@@ -3452,15 +3452,15 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-MAGNETOMETER-FUSION: field checks and gated magnetic correction"
+            "file": "docs/spec/requirements/runtime/magnetic/fusion.md",
+            "symbol": "# R-MAGNETOMETER-FUSION: field checks and gated magnetic correction"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/magnetic/heading-reset.md",
             "symbol": "#### PX4 module magnetic aiding"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/magnetic/heading-reset.md",
             "symbol": "#### PX4 module geographic magnetic reference"
           }
         ],
@@ -3525,19 +3525,19 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-MAGNETOMETER-LIFECYCLE: magnetic health and fusion lifecycle"
+            "file": "docs/spec/requirements/runtime/magnetic/lifecycle.md",
+            "symbol": "# R-MAGNETOMETER-LIFECYCLE: magnetic health and fusion lifecycle"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/magnetic/fusion.md",
             "symbol": "#### Replay magnetic lifecycle"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/magnetic/heading-reset.md",
             "symbol": "#### PX4 module magnetic aiding"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/magnetic/heading-reset.md",
             "symbol": "#### PX4 module geographic magnetic reference"
           }
         ],
@@ -3610,11 +3610,11 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-MAGNETOMETER-FILTER: magnetic data for heading reset"
+            "file": "docs/spec/requirements/runtime/magnetic/reset-filter.md",
+            "symbol": "# R-MAGNETOMETER-FILTER: magnetic data for heading reset"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/magnetic/heading-reset.md",
             "symbol": "#### PX4 module magnetic aiding"
           }
         ],
@@ -3668,15 +3668,15 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-MAGNETOMETER-RESET: fixed-field heading and covariance reset"
+            "file": "docs/spec/requirements/runtime/magnetic/heading-reset.md",
+            "symbol": "# R-MAGNETOMETER-RESET: fixed-field heading and covariance reset"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/magnetic/heading-reset.md",
             "symbol": "#### PX4 module magnetic aiding"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/magnetic/heading-reset.md",
             "symbol": "#### PX4 module geographic magnetic reference"
           }
         ],

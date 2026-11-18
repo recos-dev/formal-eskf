@@ -2,6 +2,8 @@
 
 **ID:** `E-STEP-CORRECT`
 
+**Status:** Draft
+
 **Applies to:** INS/AHRS correct and magnetic correction transactions.
 
 **Parent:** [E-STEP](composed-steps.md).

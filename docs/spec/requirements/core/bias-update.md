@@ -2,6 +2,8 @@
 
 **ID:** `E-BIAS-UPDATE`
 
+**Status:** Draft
+
 **Applies to:** Shared core correction policy; configurations and limits specified below.
 
 ## Required behavior

@@ -2,6 +2,8 @@
 
 **ID:** `E-PRED-ATTITUDE`
 
+**Status:** Draft
+
 **Applies to:** INS and AHRS; the selected ESKF_QUAT_APPROX configuration.
 
 **Parent:** [E-PRED](prediction.md). Its input validation, prior snapshot, status and atomicity rules apply.

@@ -2,6 +2,8 @@
 
 **ID:** `Q-ROTATE`
 
+**Status:** Draft
+
 **Applies to:** Exact quaternion/SO(3) behavior; ESKF frame usage is defined by E-STATE.
 
 ## Basis

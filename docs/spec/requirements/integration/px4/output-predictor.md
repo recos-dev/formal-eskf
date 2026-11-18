@@ -2,6 +2,8 @@
 
 **ID:** `R-PX4-OUTPUT-PREDICTOR`
 
+**Status:** Draft
+
 **Applies to:** Single-owner PX4 INS module; active deployment profile and stated dependencies apply.
 
 ## Required behavior
@@ -55,16 +57,18 @@ feedback. For velocity and position, independently:
 
 \[
 \bar{\Delta t}_k = 0.8\bar{\Delta t}_{k-1} + 0.2\Delta t_{d,k},\quad
-g = \bar{\Delta t}_k / 0.25,\quad
+g_x = \bar{\Delta t}_k / \tau_x,\quad
 e = x_m-x_d,\quad s_k=s_{k-1}+e,\quad
-\delta x = g e + 0.1g^2s_k.
+\delta x = g_x e + 0.1g_x^2s_k.
 \]
 
 Initialize the average to 4 ms and both sums to zero. Apply each translation to
 every retained output and the current output; commit only after all candidates
 are finite. Bias feedback takes effect on the next prediction. Constants live in
-`profile::output`; the 0.25 s time constants are PX4 reference defaults, not flight
-tuning validated for this module.
+`profile::output`; tau_x is the selected velocity or position time constant,
+respectively. Both default to 0.25 s and may be configured independently under
+[PX4-CONFIG](configuration.md). These PX4 reference defaults are not flight tuning
+validated for this module.
 
 `apply_reset` applies the same left quaternion delta and additive NED velocity /
 position deltas as the main reset, to the current output and every retained

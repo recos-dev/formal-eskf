@@ -2,6 +2,8 @@
 
 **ID:** `R-IMU-BIAS-INHIBITION`
 
+**Status:** Draft
+
 **Applies to:** Portable INS runtime policy; caller-established mode/fault conditions.
 
 ## Basis

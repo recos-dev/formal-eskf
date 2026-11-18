@@ -2,6 +2,8 @@
 
 **ID:** `R-REPLAY-MAGNETIC-LIFECYCLE`
 
+**Status:** Draft
+
 **Applies to:** PX4 replay host preparation/execution.
 
 **Uses:** [R-MAGNETOMETER-LIFECYCLE](../../runtime/magnetic/lifecycle.md), [R-MAGNETOMETER-RESET](../../runtime/magnetic/heading-reset.md).

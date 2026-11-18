@@ -2,7 +2,11 @@
 
 **ID:** `R-HEIGHT-FUSION`
 
+**Status:** Draft
+
 **Applies to:** Single-owner PX4 INS module; active deployment profile and stated dependencies apply.
+
+**Uses:** [R-GNSS-VERTICAL-RECOVERY](../../runtime/gnss/vertical-recovery.md), [R-GNSS-RESET](../../runtime/gnss/reset.md), [PX4-CONFIG](configuration.md).
 
 ## Required behavior
 
@@ -21,7 +25,8 @@ covariance preconditions; this helper does not prove or recheck positive semidef
   barometer is enabled, barometer standard deviation 3.5 m, GNSS standard deviation
   `max(epv, 0.75 m)` capped at 10 m when barometer is active, and 5-sigma height gates.
   Process barometer before GNSS, after horizontal/velocity operations. These are
-  fixed deployment settings, not live `EKF2_*` parameter bindings.
+  deployment defaults for the configurable noise/gate values; source preference
+  and processing order are fixed. No live `EKF2_*` parameters are read.
 - With altitude `h = origin_altitude - p_D`, define each offset as `b = z_h - h`.
   The core observes `p_D = origin_altitude - z_h + b` with variance `R + P_b`.
   Freeze the current observation at the prior offset before training the offset
@@ -48,16 +53,17 @@ covariance preconditions; this helper does not prove or recheck positive semidef
   to the current estimate without resetting navigation. Track session startup
   grace separately from actual successful fusion/reset progress. An invalid or
   unqualified observation stops only that source; it cannot claim fusion success.
-- Missing-data deadlines are 400 ms for barometer and 1 s for GNSS, equality
+- Missing-data deadlines default to 400 ms for barometer and 1 s for GNSS, equality
   expired. The helper retains its sample-age checks (200/500 ms); the live adapter
   applies the stricter `PX4-TIME-LIVE` admission and selection limits first.
   Future buffered samples wait; duplicate/stale samples cannot refresh progress. When the reference
   stops, select an active GNSS source, otherwise active barometer, otherwise none.
   Fallback selection alone changes no state/P or reset counter.
-- After the current height attempt, a source whose progress is >5 s old stops
+- After the current height attempt, a source whose progress exceeds the configured
+  fusion timeout (default 5 s) stops
   if it cannot reset. A failed barometer is fault-latched when another height
   source still has recent progress; ordinary good samples do not clear that latch.
-  A reset is required if all height progress is >5 s old OR available health has
+  A reset is required if all height progress exceeds that timeout OR available health has
   no last-good acceleration or that last-good time is strictly >500 ms old.
   This predicate is shared with `GnssFusion::VerticalAccelerationTimes`; it is
   independent of the 3 s held fault. Height consumes current pre-height health;
@@ -80,7 +86,8 @@ covariance preconditions; this helper does not prove or recheck positive semidef
   reset metadata is separate. Publish applied Down/altitude deltas with opposite
   signs and matching local/global/status counters, plus aggregate odometry reset
   count. Accumulate multiple reset deltas within a tick. Height validity lasts
-  at most 5 s after actual height fusion/reset, separately from session activity.
+  through the configured fusion timeout after actual height fusion/reset
+  (default 5 s, equality allowed), separately from session activity.
 
 This profile covers GNSS and barometer with a fixed GNSS preference, including
 the bounded IMU-fault innovation exception and independent reset timing.
@@ -119,3 +126,18 @@ proof of physical sensor health.
 ## Caller bindings
 
 - PX4 module barometer ground effect: [R-PX4-BARO-GROUND-EFFECT](barometer-ground-effect.md).
+
+## Vertical innovation recovery binding
+
+The PX4 module connects the checked velocity/height entry points under
+[R-GNSS-VERTICAL-RECOVERY](../../runtime/gnss/vertical-recovery.md).
+Velocity consumes the preceding detector verdict and receiver-reported speed
+accuracy; quality/lifecycle failure never grants fusion or reset. A numerically
+valid quality-rejected sample from a still-active velocity source updates only
+the gate/health diagnostics, not state/P or progress. Invalid metadata clears
+that cache. Both GNSS and barometer convert their qualified altitude/offset
+observations to scalar NED Down before using the existing bounded-height path.
+The shared `fuse_height` entry point contains no receiver policy. No horizontal
+position exception is added. Raw test ratios remain visible even after a limited
+fusion; health consumes the selected innovation with the core-to-monitor sign
+conversion. Last-good timing separately drives the height-recovery rule above.

@@ -2,6 +2,8 @@
 
 **ID:** `E-OBS-POSITION`
 
+**Status:** Draft
+
 **Applies to:** INS horizontal and vertical position correction.
 
 **Parent:** [E-OBS](observations.md).

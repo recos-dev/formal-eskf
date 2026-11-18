@@ -2,6 +2,8 @@
 
 **ID:** `R-REPLAY-GNSS-LIFECYCLE`
 
+**Status:** Draft
+
 **Applies to:** Host replay input preparation and same-horizon execution.
 
 **Uses:** [R-GNSS-FUSION](../../runtime/gnss/lifecycle.md).

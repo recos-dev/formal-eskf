@@ -2,6 +2,8 @@
 
 **ID:** `R-REPLAY-MAGNETIC-MODEL`
 
+**Status:** Draft
+
 **Applies to:** PX4 replay host preparation/execution.
 
 **Uses:** [R-MAGNETIC-REFERENCE](../../runtime/magnetic/reference.md).

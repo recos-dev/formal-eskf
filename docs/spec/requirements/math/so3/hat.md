@@ -2,7 +2,9 @@
 
 **ID:** `SO3-HAT`
 
-**Applies to:** Exact quaternion/SO(3) behavior; ESKF frame usage is defined by E-STATE.
+**Status:** Draft
+
+**Applies to:** Real three-vectors; no unit-quaternion premise.
 
 ## Basis
 
@@ -29,6 +31,6 @@ transpose(hat(a)) = -hat(a)
 
 ## Acceptance and verification
 
-Establish the stated exact identities on the declared real/unit-quaternion
-domain. Checked C++ behavior, scalar assumptions and numerical residual bounds
-remain separate obligations; a finite output does not prove a rotation invariant.
+Establish the coefficient, cross-product and skew-symmetry identities for arbitrary
+real vectors. The C++ operation is unchecked; its coefficient correspondence and
+the caller's finite-input/result obligations are separate from exact algebra.

@@ -2,6 +2,8 @@
 
 **ID:** `E-OBS`
 
+**Status:** Draft
+
 **Applies to:** Shared core sensor models and correction wrappers; caller bindings are separate.
 
 ## Required behavior

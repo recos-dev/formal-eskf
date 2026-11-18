@@ -2,6 +2,8 @@
 
 **ID:** `F-JR`
 
+**Status:** Draft
+
 **Applies to:** Checked SO(3) operation used by exact covariance reset; binary32/binary64.
 
 **Uses:** [C-NUMERICAL-PROFILE](../../common/numerical-profile.md), [C-INPUT-DOMAIN](../../common/input-domain.md), [C-FAILURE](../../common/failure.md), [C-NUMERICAL-ACCEPTANCE](../../common/numerical-acceptance.md).

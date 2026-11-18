@@ -2,7 +2,9 @@
 
 **ID:** `C-FAILURE`
 
-**Applies to:** Numerical operations and their selected deployment/verification configurations.
+**Status:** Draft
+
+**Applies to:** Checked numerical APIs and public ESKF transitions in their selected deployment/verification configurations.
 
 ## Basis
 
@@ -12,7 +14,10 @@ Shared finite-precision and failure policy; operation equations remain in their 
 
 ### Operation failures
 
-Numerical operations must report failure explicitly. Required failure categories are:
+Checked operations shall report failure explicitly. Raw arithmetic operators and
+unchecked geometry functions have no status channel; their callers establish
+the applicable input domain and validate results before checked publication.
+Required failure categories are:
 
 ~~~text
 NonFiniteInput

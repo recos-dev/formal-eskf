@@ -5,8 +5,16 @@ identifies ownership, not requirement derivation. Requirement definitions, desig
 explanations, deployment profiles and verification policy have separate owners.
 
 Use [TEMPLATE.md](TEMPLATE.md) when authoring requirements or architecture.
+Each requirement's `Status` records Draft or Approved under the
+[approval rules](TEMPLATE.md#requirement-status), independently of verification results.
 The [traceability map](../../formal/agent-review/traceability-map.json) registers
 verification scope; an indexed requirement or linked proof is not a passing result.
+
+Some existing review rows aggregate several contracts. Their `spec` references
+must retain every extracted scope; splitting a file does not increase the passing
+count. For example, `R-ACCELEROMETER-FUSION` still registers fusion, sampling and
+caller bindings separately identified below. Execution results retain their own
+source/configuration identity and must be assessed against the claimed scope.
 
 ## Common requirements
 
@@ -77,6 +85,7 @@ verification scope; an indexed requirement or linked proof is not a passing resu
 | `R-ACCELEROMETER-CONDITIONS` | [gravity-fusion prerequisites](requirements/runtime/gravity/conditions.md) |
 | `R-ACCELEROMETER-FUSION` | [conditional gravity correction](requirements/runtime/gravity/fusion.md) |
 | `R-ACCELEROMETER-MAGNITUDE` | [filtered gravity-band diagnostic](requirements/runtime/gravity/magnitude.md) |
+| `R-ACCELEROMETER-SAMPLING` | [Rotation-aware gravity observation sampling](requirements/runtime/gravity/sampling.md) |
 | `R-IMU-BIAS-INHIBITION` | [Decaying-peak bias-learning permissions](requirements/runtime/imu/bias-inhibition.md) |
 | `R-BIAS-LIMITS` | [per-axis bias-value limits](requirements/runtime/imu/bias-limits.md) |
 | `R-BIAS-PROCESS-NOISE` | [variance-dependent bias driving noise](requirements/runtime/imu/bias-process-noise.md) |
@@ -102,6 +111,7 @@ verification scope; an indexed requirement or linked proof is not a passing resu
 | `R-PX4-DELAYED-FUSION` | [live module timeline](requirements/integration/px4/delayed-fusion.md) |
 | `PX4-EXEC` | [execution and data flow](requirements/integration/px4/execution.md) |
 | `R-PX4-GNSS-QUALITY` | [PX4 GNSS integration](requirements/integration/px4/gnss-quality.md) |
+| `R-PX4-GRAVITY` | [Delayed gravity-aiding binding](requirements/integration/px4/gravity-aiding.md) |
 | `R-HEIGHT-FUSION` | [PX4 GNSS/barometer height management](requirements/integration/px4/height-fusion.md) |
 | `R-PX4-IMU-BIAS` | [module health and bias-learning inhibition](requirements/integration/px4/imu-bias.md) |
 | `R-PX4-IMU-HISTORY` | [delayed IMU timeline](requirements/integration/px4/imu-history.md) |

@@ -27,6 +27,10 @@ policy defines evidence acceptance. None is a second copy of a requirement.
 - Each file identifies applicability, assumptions, required behavior, basis and
   acceptance. Use shared-contract links rather than repeating definitions. Name
   who establishes each premise and which checks the operation performs.
+- Keep reusable policy separate from caller-specific scheduling, configuration
+  loading and output formats. A shared component's contract must not be owned by
+  one demo that calls it. Use named parameters in equations when values are
+  configurable; distinguish defaults from fixed constants and acceptance bounds.
 - Replace vague claims such as "safe", "fast" and "robust" with observable
   properties. Unknown bounds or undecided behavior remain explicit open decisions.
 - Unresolved required behavior or bounds prevent acceptance of the affected claim;
@@ -36,23 +40,42 @@ policy defines evidence acceptance. None is a second copy of a requirement.
   or specific link. Preserve relevant tables and diagrams.
 - Cite paper versions/equations and upstream revisions/locations. State adaptations
   explicitly. A reference alone does not establish behavioral equivalence.
-- Mark proposed behavior **Draft**. Adopted text is identified by its reviewed Git
-  baseline; a file-level approval label is not required and is not evidence of
-  implementation or proof completion. Do not infer approval from a passing test.
+- Every requirement carries an explicit **Status**, following the approval rules
+  below. Approval and implementation/verification completion are separate facts.
 - Remove unused placeholders and optional sections. Avoid repeating a summary,
   scope and statement that say the same thing. Git owns revision history; keep
   development diaries, migration ledgers and execution logs outside specifications.
 
+## Requirement status
+
+| Status | Meaning |
+|---|---|
+| `Draft` | Awaiting explicit approval; this is the initial status. |
+| `Approved` | Explicitly approved by the project owner or a designated reviewer for an identified requirement revision. |
+
+Approval may cover one requirement or an explicitly identified group at a Git
+revision. Retain the approval decision and its scope with the baseline review
+record. AI self-review, passing checks and permission to commit do not constitute
+requirement approval. An Approved requirement may still lack implementation or
+verification evidence; track those gaps through traceability and evidence.
+
+Substantive changes to approved behavior, assumptions or scope return the changed
+requirement to Draft pending approval. Editorial changes that preserve meaning,
+such as formatting or link repairs, do not revoke approval.
+
 ## Requirement template
 
-The metadata and sections may be shortened when the necessary information is
-already explicit. Acceptance must remain identifiable; equations and condition
-rows can be acceptance criteria without repeating them in another checklist.
+ID and Status are required. Other metadata and sections may be shortened when
+the necessary information is already explicit. Acceptance must remain identifiable;
+equations and condition rows can be acceptance criteria without repeating them in
+another checklist.
 
 ````markdown
 # <ID>: <Required behavior>
 
 **ID:** `<Stable ID>`
+
+**Status:** Draft
 
 **Applies to:** <Owning layer, configurations and domain; exclusions where relevant.>
 
@@ -63,7 +86,7 @@ rows can be acceptance criteria without repeating them in another checklist.
 ## Basis
 
 <Source and rationale, including project adaptations. A linked parent may own
-shared sources. Use Status: Draft when the behavior is still a proposal.>
+shared sources.>
 
 ## Required behavior
 

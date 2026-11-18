@@ -2,6 +2,8 @@
 
 **ID:** `E-STEP`
 
+**Status:** Draft
+
 **Applies to:** Sequential shared-core operations on valid objects; no concurrency or exception recovery.
 
 ## Required behavior

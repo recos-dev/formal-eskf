@@ -2,6 +2,8 @@
 
 **ID:** `PX4-VERIFY`
 
+**Status:** Draft
+
 **Applies to:** Single-instance PX4 INS module; linked deployment profile bounds apply.
 
 ## Basis

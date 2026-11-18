@@ -2,6 +2,8 @@
 
 **ID:** `R-REPLAY-GRAVITY-CONDITIONS`
 
+**Status:** Draft
+
 **Applies to:** Host replay input preparation and same-horizon execution.
 
 **Uses:** [R-ACCELEROMETER-CONDITIONS](../../runtime/gravity/conditions.md).
@@ -22,12 +24,14 @@ separately as specified in [R-REPLAY-GRAVITY-SAMPLING](gravity-sampling.md).
   A constructed quaternion alone is not alignment. Unit attitude and PSD
   covariance remain caller premises; non-finite/negative computed tilt variance
   is a replay error, not permission to fuse.
-- Horizontal aiding starts only after replay horizontal correction succeeds,
+- Horizontal aiding starts only after horizontal position/velocity correction
+  or a permitted full horizontal-position/velocity reset succeeds,
   remains active between navigation events and expires when elapsed time since
   the last successful event reaches 7 seconds. A resumed successful event
-  reactivates it. Initialization is not a fusion event. This is limited to the
-  existing fail-fast replay: every accepted navigation event fuses position and
-  velocity or ends the run. Its successful-event timer is not a substitute for
+  reactivates it. Height and Down-only velocity resets do not refresh this timer;
+  the initial seed is not a fusion event. With the quality/lifecycle profile,
+  each navigation group may reject independently. Legacy ungated input retains
+  fail-fast correction behavior. This successful-progress timer is not a substitute for
   independent source lifecycle, quality qualification or recovery in deployment.
 - PX4 preparation takes explicit `vehicle_land_detected.at_rest` at or before
   each IMU timestamp, with age strictly below 3 seconds. Absent/stale data is

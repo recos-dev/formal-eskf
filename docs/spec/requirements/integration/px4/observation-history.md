@@ -2,6 +2,8 @@
 
 **ID:** `R-PX4-OBSERVATION-HISTORY`
 
+**Status:** Draft
+
 **Applies to:** Single-owner PX4 INS module; active deployment profile and stated dependencies apply.
 
 ## Required behavior
@@ -68,8 +70,10 @@ At begin_fusion, update the mean period in microseconds as
 real delayed intervals. Admission freezes `floor(mean_period / 2)` in each event;
 queued timestamps never change. Context snapshots use actual IMU endpoints and
 original message times, without this half-period offset. This differs from PX4's
-system-flag event buffer. Non-consuming context lookup cannot exceed the begun
-fusion epoch. Sequence errors preserve state; callers stop rather than skip work.
+system-flag event buffer. Ordinary `context()` lookup cannot exceed the begun
+fusion epoch; `prediction_context()` separately permits only the next admissible
+delayed interval before prediction. Neither lookup advances selection/history.
+Sequence errors preserve state; callers stop rather than skip work.
 
 Queueing preserves raw numerical/quality data, including invalid velocity,
 spoofing indicators and non-finite payloads, for delayed validators. It never

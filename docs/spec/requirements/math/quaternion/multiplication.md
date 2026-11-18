@@ -2,11 +2,15 @@
 
 **ID:** `Q-MUL`
 
-**Applies to:** Exact quaternion/SO(3) behavior; ESKF frame usage is defined by E-STATE.
+**Status:** Draft
+
+**Applies to:** Hamilton products of real quaternion coefficients; rotation interpretation additionally requires unit inputs.
 
 ## Basis
 
-Hamilton, scalar-first active rotations on column vectors. The coefficient and multiplication convention is defined here.
+Hamilton, scalar-first active rotations on column vectors, following
+[Solà, Quaternion kinematics for the error-state Kalman filter, v1](https://arxiv.org/pdf/1711.02508v1),
+equation (12). The coefficient and multiplication convention is defined here.
 
 ## Required behavior
 
@@ -37,9 +41,11 @@ q_a ⊗ q_b = [
 
 ## Acceptance and verification
 
-Establish the stated exact identities on the declared real/unit-quaternion
-domain. Checked C++ behavior, scalar assumptions and numerical residual bounds
-remain separate obligations; a finite output does not prove a rotation invariant.
+Establish each Hamilton coefficient for arbitrary real inputs and unit closure
+under unit-input premises. The raw C++ operator is unchecked and does not
+normalize. Its ordered coefficient computations and numerical residual bounds
+are separate obligations; checked publication belongs to
+[Q-ROT-COMPOSE](composition.md).
 
 ## Scope
 

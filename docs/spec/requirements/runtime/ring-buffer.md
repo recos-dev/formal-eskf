@@ -2,6 +2,8 @@
 
 **ID:** `R-RING-BUFFER`
 
+**Status:** Draft
+
 **Applies to:** Portable, single-owner runtime storage; payload and timestamp premises below.
 
 ## Basis

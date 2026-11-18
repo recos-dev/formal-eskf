@@ -2,6 +2,8 @@
 
 **ID:** `C-INPUT-DOMAIN`
 
+**Status:** Draft
+
 **Applies to:** Numerical operations and their selected deployment/verification configurations.
 
 ## Basis

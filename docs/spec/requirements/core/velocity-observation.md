@@ -2,6 +2,8 @@
 
 **ID:** `E-OBS-VELOCITY`
 
+**Status:** Draft
+
 **Applies to:** INS horizontal and three-dimensional velocity correction.
 
 **Parent:** [E-OBS](observations.md).

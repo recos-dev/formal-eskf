@@ -2,6 +2,8 @@
 
 **ID:** `C-CPP-SUBSET`
 
+**Status:** Draft
+
 **Applies to:** Handwritten numerical core and portable runtime; backend/platform exceptions are explicit below.
 
 ## Required behavior

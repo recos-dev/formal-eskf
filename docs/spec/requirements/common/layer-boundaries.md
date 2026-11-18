@@ -2,6 +2,8 @@
 
 **ID:** `C-LAYER-BOUNDARY`
 
+**Status:** Draft
+
 **Applies to:** Shared numerical core, portable runtime and deployment adapters.
 
 ## Basis

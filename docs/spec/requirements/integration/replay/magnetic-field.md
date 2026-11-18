@@ -2,6 +2,8 @@
 
 **ID:** `R-REPLAY-MAGNETIC-FIELD`
 
+**Status:** Draft
+
 **Applies to:** PX4 replay host preparation/execution.
 
 **Uses:** [R-MAGNETIC-FIELD](../../runtime/magnetic/field.md).

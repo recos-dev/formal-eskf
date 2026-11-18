@@ -2,6 +2,8 @@
 
 **ID:** `E-PRED-INS`
 
+**Status:** Draft
+
 **Applies to:** INS nominal prediction; body-frame specific force, NED position/velocity.
 
 **Parent:** [E-PRED](prediction.md). Its input validation, prior snapshot, status and atomicity rules apply.

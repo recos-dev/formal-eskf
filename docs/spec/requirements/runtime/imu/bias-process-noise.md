@@ -2,6 +2,8 @@
 
 **ID:** `R-BIAS-PROCESS-NOISE`
 
+**Status:** Draft
+
 **Applies to:** Portable runtime policy; integrations supply timestamps, metadata and deployment parameters.
 
 **Uses:** [E-NOISE](../../core/process-noise.md).
@@ -50,15 +52,7 @@ PX4's bias-driving parameters instead have units m/s³ and rad/s² and contribut
 This feature aligns the threshold decision, not parameter values or discretization.
 Do not copy PX4's bias-noise numbers into our intensity fields unchanged.
 
-Replay applies bias-noise selection before every real or gap-hold prediction,
-using the IMU variances selected by `R-IMU-PROCESS-NOISE` (or configured variances
-when that selection is unavailable) and unchanged configured intensities
-(1e-6 m²/s⁵ and 1e-8 rad²/s³). These are explicit replay settings, not newly
-calibrated flight noise. Prediction failure still aborts.
-`bias_learning.csv` records the six selected-noise flags for real IMU ticks;
-summary inhibition counts include gap-hold predictions and count only configured
-positive intensities suppressed by the rule. Selection is not proof that a tiny
-floating-point increment changed P. Native backend, threshold, rollback,
+Native backend, threshold, rollback,
 correction/recovery and replay tests support the rule. The `imu-policies` ESBMC
 suite verifies the actual portable selector, both scalar formats/aliases, every
 consumed coefficient, equality behavior, unchanged P and failure publication.
@@ -68,15 +62,7 @@ exact PSD preservation under the existing prediction premises. These results
 do not prove a hard covariance bound, IEEE PSD preservation or caller sequencing.
 Full PX4 covariance constraints remain separate work.
 
-The PX4 module applies the same production selector through `px4::predict_imu`
-before real and synthetic gap-hold predictions. Real intervals first select
-fault/clipping-dependent IMU variance; gap holds use configured IMU variance.
-Both use the prior covariance and start from configured intensities on every
-call, so suppression does not latch. Fixed intensities remain 1e-6 m²/s⁵ and
-1e-8 rad²/s³, with the existing `intensity * dt` scaling. No correction permission
-or bias-value limit is introduced here. Native module tests check equality,
-above/below threshold, clipping-dependent release, subsequent recovery and
-failure rollback. The `imu-prediction` suite now covers this actual helper's
-ordering, configured-noise restoration and atomic return, with matching
-same-type selector and E-STEP frames. Module-level decisions to call it, the
-real/synthetic distinction and target backend remain separate obligations.
+## Caller bindings
+
+- [R-REPLAY-BIAS](../../integration/replay/imu-bias.md).
+- [R-PX4-IMU-BIAS](../../integration/px4/imu-bias.md).

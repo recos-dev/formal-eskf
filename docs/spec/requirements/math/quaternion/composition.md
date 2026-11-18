@@ -2,7 +2,11 @@
 
 **ID:** `Q-ROT-COMPOSE`
 
-**Applies to:** Exact quaternion/SO(3) behavior; ESKF frame usage is defined by E-STATE.
+**Status:** Draft
+
+**Applies to:** Unit real quaternions and checked finite-precision rotation composition.
+
+**Uses:** [Q-MUL](multiplication.md), [Q-NORMALIZE](normalization.md).
 
 ## Basis
 
@@ -19,8 +23,16 @@ R(q_ac) = R(q_ab) * R(q_bc)
 
 The rightmost rotation is applied first.
 
+`compose_normalized` shall compute the Hamilton product, then apply
+[Q-NORMALIZE](normalization.md) with the supplied threshold. Propagate that
+normalization status unchanged. Publish only on success; failure preserves output,
+including an output alias to either complete input. The raw multiplication
+operator does not normalize or return a status. ESKF callers own any remapping
+of an invalid intermediate product to a caller-facing failure category.
+
 ## Acceptance and verification
 
-Establish the stated exact identities on the declared real/unit-quaternion
-domain. Checked C++ behavior, scalar assumptions and numerical residual bounds
-remain separate obligations; a finite output does not prove a rotation invariant.
+Establish the rotation-order identity for unit real inputs. Check the product to
+normalization handoff, unchanged threshold/status, publication and aliases in
+the selected scalar/backend profile. Neither a finite output nor normalization
+success proves a floating-point rotation invariant.

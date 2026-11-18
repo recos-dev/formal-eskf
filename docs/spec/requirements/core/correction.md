@@ -2,6 +2,8 @@
 
 **ID:** `E-CORRECT`
 
+**Status:** Draft
+
 **Applies to:** Shared INS/AHRS core; binary32/binary64 under the selected build configuration.
 
 **Uses:** [C-NUMERICAL-PROFILE](../common/numerical-profile.md), [C-INPUT-DOMAIN](../common/input-domain.md), [C-FAILURE](../common/failure.md), [C-NUMERICAL-ACCEPTANCE](../common/numerical-acceptance.md).

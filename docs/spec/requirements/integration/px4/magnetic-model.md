@@ -2,6 +2,8 @@
 
 **ID:** `R-PX4-MAGNETIC-MODEL`
 
+**Status:** Draft
+
 **Applies to:** PX4 module magnetic caller binding; portable policies retain their own contracts.
 
 **Uses:** [R-MAGNETIC-REFERENCE](../../runtime/magnetic/reference.md).

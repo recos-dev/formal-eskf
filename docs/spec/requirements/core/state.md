@@ -2,6 +2,8 @@
 
 **ID:** `E-STATE`
 
+**Status:** Draft
+
 **Applies to:** INS and rotation-only AHRS; logical coefficients, not binary serialization.
 
 ## Required behavior

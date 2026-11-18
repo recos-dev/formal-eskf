@@ -2,6 +2,8 @@
 
 **ID:** `F-LINALG`
 
+**Status:** Draft
+
 **Applies to:** Compile-time dimensions, supported scalar/backend profiles and the shapes below.
 
 ## Basis

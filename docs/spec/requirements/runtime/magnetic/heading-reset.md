@@ -2,6 +2,8 @@
 
 **ID:** `R-MAGNETOMETER-RESET`
 
+**Status:** Draft
+
 **Applies to:** Portable magnetic runtime policy; caller bindings are specified separately.
 
 **Uses:** [E-STATE](../../core/state.md), [R-MAGNETOMETER-FILTER](reset-filter.md).

@@ -2,6 +2,8 @@
 
 **ID:** `E-STEP-INJECT-RESET`
 
+**Status:** Draft
+
 **Applies to:** INS/AHRS inject_and_reset transaction.
 
 **Parent:** [E-STEP](composed-steps.md).

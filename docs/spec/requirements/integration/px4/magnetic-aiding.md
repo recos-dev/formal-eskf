@@ -2,6 +2,8 @@
 
 **ID:** `R-PX4-MAGNETIC-AIDING`
 
+**Status:** Draft
+
 **Applies to:** PX4 module magnetic caller binding; portable policies retain their own contracts.
 
 **Uses:** [R-MAGNETOMETER-FUSION](../../runtime/magnetic/fusion.md), [R-MAGNETOMETER-LIFECYCLE](../../runtime/magnetic/lifecycle.md), [E-MAG-TILT](../../core/magnetic-tilt.md).

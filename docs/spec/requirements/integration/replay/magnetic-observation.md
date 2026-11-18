@@ -2,6 +2,8 @@
 
 **ID:** `R-REPLAY-MAGNETIC-OBSERVATION`
 
+**Status:** Draft
+
 **Applies to:** PX4 replay host preparation/execution.
 
 **Uses:** [E-OBS-MAGNETIC](../../core/magnetic-observation.md), [R-MAGNETOMETER-FUSION](../../runtime/magnetic/fusion.md).

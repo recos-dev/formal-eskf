@@ -2,6 +2,8 @@
 
 **ID:** `R-MAGNETOMETER-FILTER`
 
+**Status:** Draft
+
 **Applies to:** Portable magnetic runtime policy; caller bindings are specified separately.
 
 ## Required behavior

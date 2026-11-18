@@ -2,6 +2,8 @@
 
 **ID:** `R-REPLAY-GNSS-QUALITY`
 
+**Status:** Draft
+
 **Applies to:** Host replay input preparation and same-horizon execution.
 
 **Uses:** [R-GNSS-QUALITY](../../runtime/gnss/quality.md).

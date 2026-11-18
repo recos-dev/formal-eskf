@@ -2,6 +2,8 @@
 
 **ID:** `R-PX4-FRAME-OUTPUT`
 
+**Status:** Draft
+
 **Applies to:** Single-owner PX4 INS module; active deployment profile and stated dependencies apply.
 
 ## Required behavior

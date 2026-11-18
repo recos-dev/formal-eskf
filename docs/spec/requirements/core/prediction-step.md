@@ -2,6 +2,8 @@
 
 **ID:** `E-STEP-PRED`
 
+**Status:** Draft
+
 **Applies to:** INS/AHRS predict transaction.
 
 **Parent:** [E-STEP](composed-steps.md).

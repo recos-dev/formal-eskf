@@ -2,6 +2,8 @@
 
 **ID:** `R-GNSS-FUSION`
 
+**Status:** Draft
+
 **Applies to:** Portable runtime policy; integrations supply timestamps, metadata and deployment parameters.
 
 ## Required behavior
@@ -178,8 +180,11 @@ Reference: PX4 v1.16.2
 [height reset predicate](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/ekf_helper.cpp#L48),
 [velocity control](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gps_control.cpp#L132)
 and [height control](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gnss_height_control.cpp#L103).
-This profile remains GNSS-only with an established height reference. Native
-transition/replay evidence covers the new criterion; Lean/ESBMC evidence is pending.
+This profile remains GNSS-only with an established height reference. The
+continuous-acceleration criterion is part of the controller's scoped source
+obligations above; actual monitor provenance and replay/module ordering require
+their own evidence. Execution acceptance uses the registered profile results,
+not a completion label in this specification.
 
 ## Caller bindings
 

@@ -2,6 +2,8 @@
 
 **ID:** `R-MAGNETOMETER-FUSION`
 
+**Status:** Draft
+
 **Applies to:** Portable magnetic runtime policy; caller bindings are specified separately.
 
 **Uses:** [R-MAGNETIC-FIELD](field.md), [E-OBS-MAGNETIC](../../core/magnetic-observation.md), [E-INNOV](../../core/innovation.md).

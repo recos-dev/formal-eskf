@@ -2,6 +2,8 @@
 
 **ID:** `R-MEASUREMENT-FUSION`
 
+**Status:** Draft
+
 **Applies to:** Portable runtime policy; integrations supply timestamps, metadata and deployment parameters.
 
 **Uses:** [E-CORRECT](../core/correction.md), [E-INNOV](../core/innovation.md), [E-OBS](../core/observations.md).

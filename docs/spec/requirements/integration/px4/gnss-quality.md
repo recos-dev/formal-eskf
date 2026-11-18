@@ -2,6 +2,8 @@
 
 **ID:** `R-PX4-GNSS-QUALITY`
 
+**Status:** Draft
+
 **Applies to:** PX4 module GNSS input and quality binding.
 
 **Uses:** [R-GNSS-QUALITY](../../runtime/gnss/quality.md).
@@ -12,7 +14,7 @@ The SITL adapter in `integrations/px4/module/` consumes the current portable
 quality, gating and horizontal lifecycle APIs. Its behavior reference is PX4
 v1.16.2 (`54f0455ffcd755534539a7cf33a09a20bf71d29d`), not moving `main`.
 
-- Use the default deployment settings: all ten quality checks, 10 s initial health,
+- Bind the selected build-time quality settings; defaults are all ten checks, 10 s initial health,
   and strictly more than 1 s of good checks after a failure. Source identity
   changes reset qualification, drift continuity and horizontal sessions.
 - Convert receiver accuracies as standard deviations, PDOP as `hypot(hdop, vdop)`,
@@ -42,12 +44,13 @@ v1.16.2 (`54f0455ffcd755534539a7cf33a09a20bf71d29d`), not moving `main`.
   local position, horizontal reset count in global position, aggregate count in
   odometry and corresponding estimator-status counters. Never invent a reset
   notification after rejection/failure. Publish individual quality failure bits.
-- GNSS is the sole horizontal source in this profile. The 7 s stop and coupled
-  7/14 s reset rules follow `R-GNSS-FUSION`; renewed quality is required after
+- GNSS is the sole horizontal source in this profile. The configured timeout
+  (default 7 s) and coupled one/two-timeout reset rules follow `R-GNSS-FUSION`; renewed quality is required after
   stopping. Separate aiding/validity/session status: after 1 s without horizontal
   position OR velocity progress report dead reckoning; after 5 s withdraw
-  horizontal position/velocity validity. These do not prematurely stop the 7 s
-  session. Alignment persists through loss of magnetometer freshness.
+  horizontal position/velocity validity. Output validity and session timeout are
+  separate; with the default 7 s timeout, validity expires before the session.
+  Alignment persists through loss of magnetometer freshness.
   Height is managed separately by `R-HEIGHT-FUSION`; the GNSS-only height
   lifecycle remains disabled. Its shared height-progress timeout authorizes
   the Down-only velocity reset after normal velocity correction and before height

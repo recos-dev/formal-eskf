@@ -2,6 +2,8 @@
 
 **ID:** `R-REPLAY-GNSS-GATING`
 
+**Status:** Draft
+
 **Applies to:** Host replay input preparation and same-horizon execution.
 
 **Uses:** [R-MEASUREMENT-FUSION](../../runtime/measurement-fusion.md), [E-INNOV](../../core/innovation.md).
@@ -52,3 +54,21 @@ and GNSS reset execution, including height and Down-only velocity recovery.
 Delay compensation and changes to magnetic/gravity scheduling are not included.
 Without the parameter file, retain legacy/KITTI ungated noise and fusion order.
 Replay checks are integration evidence, not new Lean/ESBMC proofs or accuracy claims.
+
+## Vertical innovation recovery binding
+
+Replay enables velocity recovery only with a quality/lifecycle profile, using
+its existing maximum-speed-accuracy setting. It consumes the preceding valid
+health verdict for velocity, then evaluates current velocity/preceding height
+health before attempting height. Both health caches use selected innovations;
+quality-rejected velocity updates evidence without correction. Missing clipping
+or a broken IMU interval clears health, so no stale fault releases a gate.
+Multiple due events retain the existing sequential estimator updates and the
+[single-monitor-transition batching rule](imu-bias.md#vertical-health-binding).
+
+`gnss_updates.csv` adds the selected innovation and group-level limit flag;
+summary counts limited successful velocity/height fusions separately. Rejected
+quality/lifecycle conditions still skip correction and do not refresh progress.
+Horizontal position has no exception. Existing timeouts/reset behavior is
+separate from the gate exception; the independent 500 ms last-good-acceleration
+reset is specified in `R-GNSS-FUSION`.

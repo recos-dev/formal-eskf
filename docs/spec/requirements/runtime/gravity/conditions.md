@@ -2,6 +2,8 @@
 
 **ID:** `R-ACCELEROMETER-CONDITIONS`
 
+**Status:** Draft
+
 **Applies to:** Portable runtime policy; integrations supply timestamps, metadata and deployment parameters.
 
 **Uses:** [R-ACCELEROMETER-MAGNITUDE](magnitude.md).

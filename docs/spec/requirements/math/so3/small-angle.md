@@ -2,7 +2,9 @@
 
 **ID:** `SO3-SMALL-ANGLE`
 
-**Applies to:** Exact quaternion/SO(3) behavior; ESKF frame usage is defined by E-STATE.
+**Status:** Draft
+
+**Applies to:** Rotation vectors near zero and principal unit quaternions near identity, with q0 > 0 for the Log expansion.
 
 ## Basis
 
@@ -49,8 +51,23 @@ For the principal quaternion logarithm, let `r = norm(qv)` after selecting
 The truncated expressions are approximations, not alternative definitions of
 `Exp_q`, `Log_q`, or `Exp_R`.
 
+### C++ branch binding
+
+Let epsilon be the selected scalar format's machine epsilon. For Exp, the Taylor
+branch applies when the computed t=theta² is <= epsilon. Its candidate uses
+`q0 = 1 - t/8 + t²/384` and `qv = (1/2 - t/48 + t²/3840) * phi`, followed by
+[Q-NORMALIZE](../quaternion/normalization.md). Above the threshold use checked
+square root and half-angle sine/cosine.
+
+For Log, computed r²=0 returns zero first. For 0 < r² <= epsilon, require
+computed q0² > 0, then use `2/q0 * (1 - r²/(3*q0²))`; an unsafe divisor returns
+`zero_or_unsafe_divisor`. Above the threshold use checked square root and atan2.
+Both maps retain their finite-result/status/publication checks. These branches
+do not supply a universal numerical error tolerance or principal-range proof.
+
 ## Acceptance and verification
 
-Establish the stated exact identities on the declared real/unit-quaternion
-domain. Checked C++ behavior, scalar assumptions and numerical residual bounds
-remain separate obligations; a finite output does not prove a rotation invariant. Bound truncation and rounding separately before asserting numerical accuracy.
+Establish the limiting/Taylor relations in the stated near-zero domains. Check
+zero, threshold equality and both executable branches separately. Bound
+truncation, rounding and branch transitions before asserting numerical accuracy;
+a finite result does not establish these bounds.

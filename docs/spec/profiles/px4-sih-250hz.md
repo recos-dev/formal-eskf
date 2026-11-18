@@ -158,7 +158,7 @@ Logs/producers without these sample fields require a separate timestamp binding.
 
 ## Histories and ownership
 
-Use the existing [runtime ring buffer contract](../requirements/integration/px4/timestamps.md#px4-time-timestamps-and-bounded-history).
+Use the existing [runtime ring buffer contract](../requirements/runtime/ring-buffer.md).
 Store internal values and provenance, not whole uORB messages. Each observation
 carries source/calibration identity and the timestamps needed above. No new
 generic sensor registry or buffer wrapper is required.
@@ -315,18 +315,10 @@ Acceptance of this profile requires evidence for:
   wall-time/stack/dependency acceptance for the declared target under F-07.2.
 
 The `R-RING-BUFFER` evidence covers its declared sample type, capacities
-and bounded traces. It does not prove these larger capacities, the module's time
+and inductive operation invariants. It does not prove these larger capacities, the module's time
 arithmetic, temporal ownership, output tracking or scheduling. Extend evidence
 to the instantiated paths and their assumptions; do not claim profile acceptance from
 component tests/proofs alone.
-
-
-
-
-
-
-
-
 
 ## Pinned reference points
 

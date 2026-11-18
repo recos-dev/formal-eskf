@@ -3442,6 +3442,22 @@
           {
             "file": "docs/spec/requirements/integration/px4/magnetic-model.md",
             "symbol": "# R-PX4-MAGNETIC-MODEL: PX4 module geographic magnetic reference"
+          },
+          {
+            "file": "docs/spec/requirements/integration/replay/magnetic-field.md",
+            "symbol": "# R-REPLAY-MAGNETIC-FIELD: Replay magnetic field checks"
+          },
+          {
+            "file": "docs/spec/requirements/integration/replay/magnetic-lifecycle.md",
+            "symbol": "# R-REPLAY-MAGNETIC-LIFECYCLE: Replay magnetic lifecycle"
+          },
+          {
+            "file": "docs/spec/requirements/integration/replay/magnetic-model.md",
+            "symbol": "# R-REPLAY-MAGNETIC-MODEL: Replay geographic magnetic model"
+          },
+          {
+            "file": "docs/spec/requirements/integration/replay/magnetic-observation.md",
+            "symbol": "# R-REPLAY-MAGNETIC-OBSERVATION: Replay magnetic observations"
           }
         ],
         "lean": [],
@@ -4004,6 +4020,10 @@
           {
             "file": "docs/spec/requirements/runtime/measurement-fusion.md",
             "symbol": "# R-MEASUREMENT-FUSION: gated correction of one observation group"
+          },
+          {
+            "file": "docs/spec/requirements/integration/replay/gnss-gating.md",
+            "symbol": "# R-REPLAY-GNSS-GATING: Replay GNSS gating"
           }
         ],
         "lean": [
@@ -4176,6 +4196,10 @@
           {
             "file": "docs/spec/requirements/runtime/gravity/conditions.md",
             "symbol": "# R-ACCELEROMETER-CONDITIONS: gravity-fusion prerequisites"
+          },
+          {
+            "file": "docs/spec/requirements/integration/replay/gravity-conditions.md",
+            "symbol": "# R-REPLAY-GRAVITY-CONDITIONS: Replay condition sources (host demo)"
           }
         ],
         "lean": [
@@ -4262,6 +4286,18 @@
           {
             "file": "docs/spec/requirements/runtime/gravity/fusion.md",
             "symbol": "# R-ACCELEROMETER-FUSION: conditional gravity correction"
+          },
+          {
+            "file": "docs/spec/requirements/integration/px4/gravity-aiding.md",
+            "symbol": "# R-PX4-GRAVITY: Delayed gravity-aiding binding"
+          },
+          {
+            "file": "docs/spec/requirements/integration/replay/gravity-sampling.md",
+            "symbol": "# R-REPLAY-GRAVITY-SAMPLING: Replay sampling and tuning"
+          },
+          {
+            "file": "docs/spec/requirements/runtime/gravity/sampling.md",
+            "symbol": "# R-ACCELEROMETER-SAMPLING: Rotation-aware gravity observation sampling"
           }
         ],
         "lean": [
@@ -4554,6 +4590,14 @@
           {
             "file": "docs/spec/requirements/runtime/imu/process-noise.md",
             "symbol": "# R-IMU-PROCESS-NOISE: fault-dependent sampled IMU variance"
+          },
+          {
+            "file": "docs/spec/requirements/integration/px4/imu-bias.md",
+            "symbol": "# R-PX4-IMU-BIAS: module health and bias-learning inhibition"
+          },
+          {
+            "file": "docs/spec/requirements/integration/replay/imu-bias.md",
+            "symbol": "# R-REPLAY-BIAS: Replay bias-learning binding"
           }
         ],
         "lean": [
@@ -4636,6 +4680,14 @@
           {
             "file": "docs/spec/requirements/runtime/imu/bias-process-noise.md",
             "symbol": "# R-BIAS-PROCESS-NOISE: variance-dependent bias driving noise"
+          },
+          {
+            "file": "docs/spec/requirements/integration/px4/imu-bias.md",
+            "symbol": "# R-PX4-IMU-BIAS: module health and bias-learning inhibition"
+          },
+          {
+            "file": "docs/spec/requirements/integration/replay/imu-bias.md",
+            "symbol": "# R-REPLAY-BIAS: Replay bias-learning binding"
           }
         ],
         "lean": [
@@ -4722,6 +4774,14 @@
           {
             "file": "docs/spec/requirements/runtime/imu/bias-limits.md",
             "symbol": "# R-BIAS-LIMITS: per-axis bias-value limits"
+          },
+          {
+            "file": "docs/spec/requirements/integration/px4/imu-bias.md",
+            "symbol": "# R-PX4-IMU-BIAS: module health and bias-learning inhibition"
+          },
+          {
+            "file": "docs/spec/requirements/integration/replay/imu-bias.md",
+            "symbol": "# R-REPLAY-BIAS: Replay bias-learning binding"
           }
         ],
         "lean": [],
@@ -4779,6 +4839,10 @@
           {
             "file": "docs/spec/requirements/runtime/imu/vertical-health.md",
             "symbol": "# R-VERTICAL-ACCELERATION: apparent falling and clipping detection"
+          },
+          {
+            "file": "docs/spec/requirements/integration/replay/imu-bias.md",
+            "symbol": "# R-REPLAY-BIAS: Replay bias-learning binding"
           }
         ],
         "lean": [],
@@ -4836,6 +4900,14 @@
           {
             "file": "docs/spec/requirements/runtime/gnss/vertical-recovery.md",
             "symbol": "# R-GNSS-VERTICAL-RECOVERY: bounded vertical innovations during IMU faults"
+          },
+          {
+            "file": "docs/spec/requirements/integration/px4/height-fusion.md",
+            "symbol": "# R-HEIGHT-FUSION: PX4 GNSS/barometer height management"
+          },
+          {
+            "file": "docs/spec/requirements/integration/replay/gnss-gating.md",
+            "symbol": "# R-REPLAY-GNSS-GATING: Replay GNSS gating"
           }
         ],
         "lean": [

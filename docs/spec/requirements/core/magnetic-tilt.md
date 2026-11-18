@@ -2,6 +2,8 @@
 
 **ID:** `E-MAG-TILT`
 
+**Status:** Draft
+
 **Applies to:** Shared core correction policy; configurations and limits specified below.
 
 ## Required behavior

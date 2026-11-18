@@ -2,6 +2,8 @@
 
 **ID:** `E-PRED`
 
+**Status:** Draft
+
 **Applies to:** One INS/AHRS predict_nominal call; binary32/binary64 and the selected attitude mode.
 
 ## Required behavior

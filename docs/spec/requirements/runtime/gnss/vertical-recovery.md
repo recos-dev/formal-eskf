@@ -2,6 +2,8 @@
 
 **ID:** `R-GNSS-VERTICAL-RECOVERY`
 
+**Status:** Draft
+
 **Applies to:** Portable runtime policy; integrations supply timestamps, metadata and deployment parameters.
 
 **Uses:** [E-INNOV](../../core/innovation.md).
@@ -50,22 +52,6 @@ non_finite_input/domain_error. Rejection or any failure, including
 LLT/normalization after limiting, preserves both outputs.
 Independent whole-prior state/P aliases are supported; other storage is disjoint.
 
-Replay enables velocity recovery only with a quality/lifecycle profile, using
-its existing maximum-speed-accuracy setting. It consumes the preceding valid
-health verdict for velocity, then evaluates current velocity/preceding height
-health before attempting height. Both health caches use selected innovations;
-quality-rejected velocity updates evidence without correction. Missing clipping
-or a broken IMU interval clears health, so no stale fault releases a gate.
-Multiple due events retain the existing sequential estimator updates and the
-single-monitor-transition batching rule in `R-VERTICAL-ACCELERATION`.
-
-`gnss_updates.csv` adds the selected innovation and group-level limit flag;
-summary counts limited successful velocity/height fusions separately. Rejected
-quality/lifecycle conditions still skip correction and do not refresh progress.
-Horizontal position has no exception. Existing timeouts/reset behavior is
-separate from the gate exception; the independent 500 ms last-good-acceleration
-reset is specified in `R-GNSS-FUSION`.
-
 Behavior reference: PX4 v1.16.2
 [velocity exception](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/aid_sources/gnss/gps_control.cpp#L209)
 and [height exception](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/position_fusion.cpp#L36).
@@ -92,14 +78,7 @@ nonnegative-root premise. Root accuracy, machine-checked real-to-C++ refinement,
 external source permission and actual module/replay health ordering remain
 separate obligations.
 
-The PX4 module connects the same checked velocity/height entry points.
-Velocity consumes the preceding detector verdict and receiver-reported speed
-accuracy; quality/lifecycle failure never grants fusion or reset. A numerically
-valid quality-rejected sample from a still-active velocity source updates only
-the gate/health diagnostics, not state/P or progress. Invalid metadata clears
-that cache. Both GNSS and barometer convert their qualified altitude/offset
-observations to scalar NED Down before using the existing bounded-height path.
-That historical GNSS-named entry point contains no receiver policy. No horizontal
-position exception is added. Raw test ratios remain visible even after a limited
-fusion; health consumes the selected innovation with the core-to-monitor sign
-conversion. Last-good timing separately drives `R-HEIGHT-FUSION` recovery.
+## Caller bindings
+
+- [R-REPLAY-GNSS-GATING](../../integration/replay/gnss-gating.md).
+- [R-HEIGHT-FUSION](../../integration/px4/height-fusion.md).

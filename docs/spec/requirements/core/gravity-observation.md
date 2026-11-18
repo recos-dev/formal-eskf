@@ -2,6 +2,8 @@
 
 **ID:** `E-OBS-ACCEL`
 
+**Status:** Draft
+
 **Applies to:** INS/AHRS gravity observation; binary32/binary64.
 
 **Parent:** [E-OBS](observations.md).

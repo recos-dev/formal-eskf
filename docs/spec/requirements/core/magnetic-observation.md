@@ -2,6 +2,8 @@
 
 **ID:** `E-OBS-MAGNETIC`
 
+**Status:** Draft
+
 **Applies to:** INS/AHRS full-vector magnetic correction with either tilt build mode.
 
 **Parent:** [E-OBS](observations.md).

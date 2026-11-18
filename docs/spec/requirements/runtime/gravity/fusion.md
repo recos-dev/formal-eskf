@@ -2,6 +2,8 @@
 
 **ID:** `R-ACCELEROMETER-FUSION`
 
+**Status:** Draft
+
 **Applies to:** Portable runtime policy; integrations supply timestamps, metadata and deployment parameters.
 
 **Uses:** [R-ACCELEROMETER-CONDITIONS](conditions.md), [E-OBS-ACCEL](../../core/gravity-observation.md).
@@ -50,3 +52,4 @@ noise independence, tuned V, full external-estimator equivalence or flight safet
 ## Caller bindings
 
 - Replay sampling and tuning: [R-REPLAY-GRAVITY-SAMPLING](../../integration/replay/gravity-sampling.md).
+- [R-PX4-GRAVITY](../../integration/px4/gravity-aiding.md).

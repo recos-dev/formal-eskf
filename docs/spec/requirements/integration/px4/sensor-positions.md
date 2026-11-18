@@ -2,6 +2,8 @@
 
 **ID:** `R-PX4-SENSOR-POSITIONS`
 
+**Status:** Draft
+
 **Applies to:** Single-owner PX4 INS module; active deployment profile and stated dependencies apply.
 
 ## Required behavior
@@ -33,7 +35,8 @@ of gravity. These are different points in the same FRD/NED frames.
   drift checks, buffered data and source metadata remain at the antenna.
 - At publication, subtract `R_current imu_b` from current IMU position and
   `R_current (omega_output cross imu_b)` from current IMU velocity. Use the
-  latest output propagation rate defined above. All three navigation topics
+  latest propagated, bias/tracking-corrected body rate retained under
+  [R-PX4-OUTPUT-PREDICTOR](output-predictor.md). All three navigation topics
   use this same point and output epoch; their publication does not mutate the
   retained IMU state. `z_deriv` retains the existing corrected-velocity convention.
 - Main resets still transform the retained/current IMU output. An orientation

@@ -35,12 +35,7 @@ validity remain open. This monitor does not implement innovation gating,
 source-specific fusion lifecycle, stationary-motion detection or jamming detection.
 See the [verification scope](../../../../guides/verification.md).
 
-
-
-
-
-
 ## Caller bindings
 
-- Replay GNSS quality: [gnss-quality.md](../../integration/replay/gnss-quality.md).
-- PX4 GNSS integration: [gnss-quality.md](../../integration/px4/gnss-quality.md).
+- Replay GNSS quality: [R-REPLAY-GNSS-QUALITY](../../integration/replay/gnss-quality.md).
+- PX4 GNSS integration: [R-PX4-GNSS-QUALITY](../../integration/px4/gnss-quality.md).

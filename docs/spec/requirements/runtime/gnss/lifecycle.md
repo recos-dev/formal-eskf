@@ -181,9 +181,6 @@ and [height control](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534
 This profile remains GNSS-only with an established height reference. Native
 transition/replay evidence covers the new criterion; Lean/ESBMC evidence is pending.
 
-
-
-
 ## Caller bindings
 
-- Replay GNSS lifecycle: [gnss-lifecycle.md](../../integration/replay/gnss-lifecycle.md).
+- Replay GNSS lifecycle: [R-REPLAY-GNSS-LIFECYCLE](../../integration/replay/gnss-lifecycle.md).

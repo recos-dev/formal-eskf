@@ -29,6 +29,8 @@ policy defines evidence acceptance. None is a second copy of a requirement.
   who establishes each premise and which checks the operation performs.
 - Replace vague claims such as "safe", "fast" and "robust" with observable
   properties. Unknown bounds or undecided behavior remain explicit open decisions.
+- Unresolved required behavior or bounds prevent acceptance of the affected claim;
+  they do not silently become waived obligations.
 - Keep notation, domain and failure definitions close to their equations. After
   extraction, replace context-dependent phrases such as "above" with a definition
   or specific link. Preserve relevant tables and diagrams.

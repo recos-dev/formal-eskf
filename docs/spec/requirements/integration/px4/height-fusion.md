@@ -116,10 +116,6 @@ actual module/replay ordering/publication and floating-point error bounds remain
 separate obligations. Bias estimates are not independent altitude truth or a
 proof of physical sensor health.
 
-
-
-
-
 ## Caller bindings
 
-- PX4 module barometer ground effect: [barometer-ground-effect.md](barometer-ground-effect.md).
+- PX4 module barometer ground effect: [R-PX4-BARO-GROUND-EFFECT](barometer-ground-effect.md).

@@ -4,6 +4,8 @@
 
 **Applies to:** Shared INS/AHRS core; binary32/binary64 under the selected build configuration.
 
+**Uses:** [C-NUMERICAL-PROFILE](../common/numerical-profile.md), [C-INPUT-DOMAIN](../common/input-domain.md), [C-FAILURE](../common/failure.md), [C-NUMERICAL-ACCEPTANCE](../common/numerical-acceptance.md).
+
 ## Basis
 
 [Cheng and Huang, SICE 2023](https://doi.org/10.23919/SICE59929.2023.10354209), (15), (18), and [Sola, Quaternion kinematics for the error-state Kalman filter, v1](https://arxiv.org/pdf/1711.02508v1), (457). Per-axis variances extend the isotropic paper model.

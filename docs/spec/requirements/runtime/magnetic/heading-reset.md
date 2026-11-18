@@ -70,12 +70,7 @@ adapter sequencing remain separate obligations. The
 [verification guide](../../../../guides/verification.md) describes evidence scope and retention;
 execution status must be checked against the claimed source and configuration.
 
-
-
-
-
-
 ## Caller bindings
 
-- PX4 module magnetic aiding: [magnetic-aiding.md](../../integration/px4/magnetic-aiding.md).
-- PX4 module geographic magnetic reference: [magnetic-model.md](../../integration/px4/magnetic-model.md).
+- PX4 module magnetic aiding: [R-PX4-MAGNETIC-AIDING](../../integration/px4/magnetic-aiding.md).
+- PX4 module geographic magnetic reference: [R-PX4-MAGNETIC-MODEL](../../integration/px4/magnetic-model.md).

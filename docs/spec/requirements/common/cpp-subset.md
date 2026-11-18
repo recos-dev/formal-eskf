@@ -6,19 +6,19 @@
 
 ## Required behavior
 
-## Summary
+### Summary
 
 This specification defines the C++ language and runtime profile for the shared ESKF core within the boundary established by [Formal Verification Strategy](../../verification/assurance.md). It owns source-language and portability constraints; [STYLE.md](../../../../STYLE.md) owns readability, naming and organization.
 
 The language-subset rules apply to handwritten numerical-core and portable-runtime code. Backend and platform interfaces follow the boundaries below; their external implementation requirements do not expand the shared-code subset. Host tools and tests may use facilities outside the core profile, with the same readability principles.
 
-## Language baseline
+### Language baseline
 
 The shared core uses C++20 language mode with the restricted subset below.
 
 The standard version alone does not authorize every C++20 feature. Each used construct must be supported by the selected verifier and all supported target compilers. Permission to use a feature is not evidence that a particular use has been proved.
 
-## Design baseline
+### Design baseline
 
 ArduPilot's actual implementation practice is the primary reference for the structure of estimator and runtime code. The reference is the concrete types and direct member-function sequence in [its EKF](https://github.com/ArduPilot/ardupilot/blob/546cf152a8c868acbac82dd326f9649da66d6ba1/libraries/AP_NavEKF3/AP_NavEKF3_core.cpp#L613), with generic numeric utilities in [AP_Math](https://github.com/ArduPilot/ardupilot/blob/546cf152a8c868acbac82dd326f9649da66d6ba1/libraries/AP_Math/AP_Math.h#L24). These links pin the reviewed revision. Naming and formatting remain defined by STYLE.md and `.clang-format`.
 
@@ -26,7 +26,7 @@ Compare equivalent design patterns in the same layer, including their C++11 spel
 
 C++20 remains available within this subset. Newer syntax must make the permitted design clearer, rather than introduce another dispatch or abstraction framework. This reference does not import ArduPilot's allocation, global-state, virtual-interface or floating-point conventions into the shared core.
 
-## Template boundaries
+### Template boundaries
 
 | Code responsibility | Required approach |
 |---|---|
@@ -46,11 +46,11 @@ For new or redesigned estimator/runtime code:
 
 Preserve the reusable fixed-size linalg abstraction and independently callable numerical APIs. These rules do not require a global backend selection, a single precision, a particular class hierarchy, or duplication of shared ESKF mathematics. Extensions to these boundaries follow the specification-change rule below.
 
-## Language subset
+### Language subset
 
 The examples illustrate syntax, not new API declarations or required class designs. Use the existing project types and abstractions. A permitted syntax feature must also satisfy the template boundaries above.
 
-### Ordinary code
+#### Ordinary code
 
 | Feature | Example | Rule |
 |---|---|---|
@@ -70,7 +70,7 @@ The examples illustrate syntax, not new API declarations or required class desig
 | Result-use annotations | `[[nodiscard]] Status update();` | Mark operation statuses and validation/fusion decisions that callers must handle. Omit from ordinary getters, constants, arithmetic and value-returning math functions. |
 | Explicit/defaulted/deleted special members | `explicit Estimator(parameters_type const &);`, `Estimator(Estimator const &) = delete;` | Use when conversion, construction or ownership semantics require them; omit redundant declarations. |
 
-### Features with restricted use
+#### Features with restricted use
 
 | Feature | Example | Restriction |
 |---|---|---|
@@ -90,7 +90,7 @@ Concepts/requires clauses, SFINAE overload machinery, variadic/forwarding framew
 
 Standard-library facilities are selected by their actual behavior and verification support. Existing fixed-size facilities such as `std::array` do not need custom replacements merely to avoid `std::`. Introduce additional dependencies only under the dependency boundary below.
 
-### Readable failure handling
+#### Readable failure handling
 
 Keep the success/commit boundary explicit. For example, where the operation's contract permits this validation order:
 
@@ -107,7 +107,7 @@ return Status::success;
 
 This is a syntax example, not a change to existing APIs. For state/covariance transitions, all required outputs must succeed together before publication. Keep domain-specific result data where it distinguishes rejected, failed and fused operations.
 
-## Disallowed core features
+### Disallowed core features
 
 The shared ESKF core does not use:
 
@@ -133,7 +133,7 @@ restricts adapter allocation phases, synchronization, I/O, dependency failure
 paths and target resource budgets; permission to use OS facilities does not waive
 those real-time obligations.
 
-## Memory and execution
+### Memory and execution
 
 All matrix dimensions and maximum loop bounds are compile-time constants. Bounded loops may exit early; their maximum work must remain statically bounded.
 
@@ -153,7 +153,7 @@ reinterpretation of object representation
 
 The core is deterministic for the same input and numerical profile.
 
-## Error handling
+### Error handling
 
 Do not add explicit `noexcept` to project functions. Enforce the core's no-exception restriction through source, dependency review and target build settings; function annotations do not establish it. Defaulted special members retain the exception specification inferred by C++.
 
@@ -166,7 +166,7 @@ Status
 
 The core does not throw, abort, log, retry, or select a platform-specific fallback. Public transitions commit state only after all required operations succeed.
 
-## Dependency boundary
+### Dependency boundary
 
 The shared core may depend only on:
 
@@ -181,7 +181,7 @@ Eigen types and expressions do not appear in shared-core state, interfaces, or e
 
 Standard mathematical functions are isolated behind the scalar-math boundary. New standard-library dependencies require checked allocation, lifetime, bounded-execution and verifier/target behavior; do not infer support from the C++ standard version alone.
 
-## Configuration and reproducibility
+### Configuration and reproducibility
 
 Algorithm variants use explicit configuration choices, simple compile-time branches, separate functions or documented macros. Keep these choices at the relevant boundary instead of spreading type dispatch through the estimator. Preprocessor conditionals do not silently change state layout or ESKF equations.
 
@@ -202,7 +202,7 @@ reference to the selected numerical profile
 
 Floating-point behavior and flags are owned by the scalar/IEEE-754 contract rather than repeated here.
 
-## Adoption and review
+### Adoption and review
 
 Apply the subset to new code and changes in the current task. Existing code may predate these rules; record deviations as refactor candidates rather than expanding them or performing a blanket rewrite. A style deviation alone is not a correctness defect. Preserve public interfaces, behavior, failure/aliasing contracts and compile-time defaults unless their change is explicitly in scope.
 
@@ -216,7 +216,7 @@ For each change, check that:
 
 Template definitions may remain in headers. Moving them into `.cpp` with explicit instantiations changes the supported linking/extension model and requires an explicit design decision; it is not mandatory style cleanup.
 
-## Trusted computing base
+### Trusted computing base
 
 Source-level verification does not by itself verify the compiler, assembler, linker, runtime libraries, operating system, generated machine code, or processor.
 

@@ -10,7 +10,7 @@ Shared finite-precision and failure policy; operation equations remain in their 
 
 ## Required behavior
 
-## Comparison and residual behavior
+### Comparison and residual behavior
 
 No single global epsilon is used.
 
@@ -45,7 +45,7 @@ linear solve:    max_abs(S * X - B)
 
 Exact mathematical equality and bounded IEEE-754 residuals must be reported as different claims.
 
-## State-output behavior
+### State-output behavior
 
 On success, the required postconditions are:
 

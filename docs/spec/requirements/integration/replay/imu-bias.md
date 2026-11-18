@@ -42,7 +42,6 @@ held measurements or reset envelopes.
   `bias_learning.csv` records metadata, assumptions, peaks, permissions and the
   health verdict actually consumed; counts describe IMU ticks, not corrections.
 
-
 ## Acceptance and verification
 
 Check metadata parsing, parameter/default reporting, real-sample sequencing and

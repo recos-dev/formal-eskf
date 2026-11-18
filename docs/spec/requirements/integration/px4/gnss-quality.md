@@ -12,7 +12,7 @@ The SITL adapter in `integrations/px4/module/` consumes the current portable
 quality, gating and horizontal lifecycle APIs. Its behavior reference is PX4
 v1.16.2 (`54f0455ffcd755534539a7cf33a09a20bf71d29d`), not moving `main`.
 
-- Use the fixed reference defaults: all ten quality checks, 10 s initial health,
+- Use the default deployment settings: all ten quality checks, 10 s initial health,
   and strictly more than 1 s of good checks after a failure. Source identity
   changes reset qualification, drift continuity and horizontal sessions.
 - Convert receiver accuracies as standard deviations, PDOP as `hypot(hdop, vdop)`,
@@ -34,8 +34,8 @@ v1.16.2 (`54f0455ffcd755534539a7cf33a09a20bf71d29d`), not moving `main`.
   ticks. Velocity precedes horizontal position. Each gate uses the latest
   committed prior; rejection of one group does not reject other groups.
   Use the reference's 0.5 m / 0.3 m/s noise floors, 10 m horizontal noise cap,
-  2.25 Down velocity variance multiplier, and 5-sigma gates. These are fixed
-  SITL settings, not reads of live `EKF2_*` parameters or calibrated tuning.
+  2.25 Down velocity variance multiplier, and 5-sigma gates. These are build-time
+  deployment defaults, not reads of live `EKF2_*` parameters or calibrated tuning.
 - Execute checked velocity/position resets at first start, re-entry and permitted
   fusion timeout. Reset acknowledgments and actual fusion feedback remain distinct.
   Preserve local-origin coordinates. Publish successful reset deltas/counters in

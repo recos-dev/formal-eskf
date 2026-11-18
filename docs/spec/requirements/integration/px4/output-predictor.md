@@ -87,5 +87,6 @@ The intended differences from PX4 are explicit:
   IMU-point state and latest propagated body rate; the module converts to the
   body output point under `R-PX4-SENSOR-POSITIONS`.
 
-
 History-wide translation/reset uses persistent candidate storage, not a callback-local array.
+
+Borrowed history views are valid only until the next owner mutation; callers shall consume them synchronously.

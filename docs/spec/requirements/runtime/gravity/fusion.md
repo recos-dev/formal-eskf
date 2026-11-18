@@ -47,9 +47,6 @@ freshness and actual module/replay wiring remain separate obligations.
 The composition does not establish a valid physical gravity observation,
 noise independence, tuned V, full external-estimator equivalence or flight safety.
 
-
-
-
 ## Caller bindings
 
-- Replay sampling and tuning: [gravity-sampling.md](../../integration/replay/gravity-sampling.md).
+- Replay sampling and tuning: [R-REPLAY-GRAVITY-SAMPLING](../../integration/replay/gravity-sampling.md).

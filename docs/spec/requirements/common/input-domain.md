@@ -10,7 +10,7 @@ Shared finite-precision and failure policy; operation equations remain in their 
 
 ## Required behavior
 
-## Valid inputs
+### Valid inputs
 
 Public ESKF transitions accept only inputs satisfying their documented domains:
 
@@ -36,7 +36,7 @@ proofs do not supply these bounds or prove physical sensor validity.
 
 Nominal prediction (INS/AHRS) and INS covariance prediction additionally check the prior's squared-norm residual against `quaternion_squared_norm_tolerance`. It must be finite and in `(0,1)`, with `abs(squared_norm(q_nb) - 1) <= tolerance`. Zero defaults require explicit configuration. This prior validation never repairs the input; it is distinct from normalization's safe-divisor threshold. AHRS covariance does not consume prior attitude or this tolerance. See the ordered checks in [nominal prediction requirements](../core/prediction.md#e-pred-input-consumed-inputs-and-caller-premises).
 
-## Domain behavior
+### Domain behavior
 
 ~~~text
 divide(a, b)

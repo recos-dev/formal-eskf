@@ -4,6 +4,8 @@
 
 **Applies to:** Shared INS/AHRS core; binary32/binary64 under the selected build configuration.
 
+**Uses:** [C-NUMERICAL-PROFILE](../common/numerical-profile.md), [C-INPUT-DOMAIN](../common/input-domain.md), [C-FAILURE](../common/failure.md), [C-NUMERICAL-ACCEPTANCE](../common/numerical-acceptance.md).
+
 ## Basis
 
 [Cheng and Huang, SICE 2023](https://doi.org/10.23919/SICE59929.2023.10354209), (14), (18), with the non-isotropic injection described after [Sola, Quaternion kinematics for the error-state Kalman filter, v1](https://arxiv.org/pdf/1711.02508v1), (457). The project uses the explicit noise-source frame rather than the paper's isotropic shortcut.

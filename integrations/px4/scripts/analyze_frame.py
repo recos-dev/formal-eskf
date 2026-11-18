@@ -194,7 +194,9 @@ def write_manifest(PX4, OUT, RESULT):
     SOURCES += [REPO / "integrations/px4/module" / NAME for NAME in
                 ("FormalEskf.hpp", "MagneticModel.hpp", "DeploymentProfile.hpp")]
     SOURCES += [REPO / "integrations/px4/tests/ModuleTest.cpp"]
-    SOURCES += [REPO / "docs/spec/eskf-state-conventions.md", REPO / "docs/spec/verification-requirements.md"]
+    SOURCES += [REPO / "docs/spec/requirements" / NAME for NAME in
+                ("core/state.md", "integration/px4/output-frames.md",
+                 "integration/px4/magnetic-model.md", "integration/replay/gnss-quality.md")]
     MANIFEST = {"formal_eskf_head": subprocess.check_output(["git", "-C", str(REPO), "rev-parse", "HEAD"], text=True).strip(),
                 "px4_head": subprocess.check_output(["git", "-C", str(PX4), "rev-parse", "HEAD"], text=True).strip(),
                 "source_sha256": {str(P): sha256(P) for P in SOURCES},

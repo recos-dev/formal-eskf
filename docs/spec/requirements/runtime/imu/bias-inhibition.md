@@ -11,7 +11,6 @@ Behavioral reference: PX4 v1.16.2
 [learning limits](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/params_accel_bias.yaml),
 and [legacy parameter semantics](https://docs.px4.io/v1.13/en/advanced_config/parameter_reference#EKF2_AID_MASK).
 
-
 ## Required behavior
 
 `runtime::ImuBiasInhibition` owns the two decaying envelopes and returns six

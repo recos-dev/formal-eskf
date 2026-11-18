@@ -6,13 +6,13 @@
 
 ## Required behavior
 
-## Summary
+### Summary
 
 This specification defines the state layout, frames, units and perturbation convention used by the ESKF.
 
 These conventions are shared by prediction, correction, measurement models, state injection, and covariance reset.
 
-## Supported configurations
+### Supported configurations
 
 | Configuration | Nominal state | Nominal coefficients | Error state | Error dimension / P |
 |---|---|---|---|---|
@@ -21,7 +21,7 @@ These conventions are shared by prediction, correction, measurement models, stat
 
 These are logical coefficient layouts, not a C++ memory-layout or serialization contract.
 
-## AHRS state
+### AHRS state
 
 AHRS contains rotation only. Its nominal coefficients are `q_nb = [q0, q1, q2, q3]`, and its error coordinates are `delta_theta_b`. It does not estimate position, velocity or IMU biases; gyroscope bias calibration is external to this configuration.
 
@@ -33,7 +33,7 @@ P = Cov(delta_theta_b) in R^(3x3)
 
 The attitude error is local and right-multiplicative, as in INS. The covariance describes the three-dimensional tangent error, not four quaternion coefficients.
 
-## INS nominal state
+### INS nominal state
 
 The nominal state has 16 scalar coefficients:
 
@@ -67,7 +67,7 @@ The quantities have the following meanings:
 | `b_a` | Accelerometer bias | body | m/s² |
 | `b_g` | Gyroscope bias | body | rad/s |
 
-## INS error state
+### INS error state
 
 The error state has 15 scalar coefficients:
 
@@ -94,7 +94,7 @@ P = Cov(delta_x) in R^(15x15)
   = E[delta_x * transpose(delta_x)] when the error mean is zero
 ~~~
 
-## INS true-state relationship
+### INS true-state relationship
 
 The true state is related to the nominal state by:
 
@@ -128,7 +128,7 @@ b_g  <- b_g + estimated_delta_b_g
 
 The covariance-reset transformation after injection is specified separately.
 
-## Frame and sign conventions
+### Frame and sign conventions
 
 The navigation frame is NED:
 
@@ -155,7 +155,7 @@ Accelerometer and gyroscope measurements, including their biases, are expressed 
 
 All angular quantities used inside the ESKF are in radians. Degrees are allowed only at external input/output boundaries with explicit conversion.
 
-## State validity
+### State validity
 
 A valid nominal state satisfies:
 

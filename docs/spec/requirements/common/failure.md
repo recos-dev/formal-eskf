@@ -10,7 +10,7 @@ Shared finite-precision and failure policy; operation equations remain in their 
 
 ## Required behavior
 
-## Operation failures
+### Operation failures
 
 Numerical operations must report failure explicitly. Required failure categories are:
 
@@ -40,7 +40,7 @@ return a zero matrix after solve failure
 continue with NaN or infinity
 ~~~
 
-## Failure atomicity
+### Failure atomicity
 
 A failed public ESKF transition leaves externally visible estimator state unchanged:
 

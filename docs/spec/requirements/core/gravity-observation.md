@@ -26,7 +26,6 @@ The columns are `[delta_p_n, delta_v_n, delta_theta_b, delta_b_a, delta_b_g]`, u
 - Neither accelerometer API takes angular rate. The complete INS state must still be finite for correction/injection. Reject non-finite bias subtraction, prediction or residual arithmetic as `non_finite_result`; retain existing checked-correction statuses, alias support and atomic output publication.
 - Use caller-supplied effective measurement covariance in raw specific-force units. Motion gating, model error and prior/measurement correlation remain caller responsibilities; no gating, differencing or correlated-noise update is introduced here.
 
-
 ## Acceptance and verification
 
 Verify the stated residual and local Jacobian, including zero bias columns,

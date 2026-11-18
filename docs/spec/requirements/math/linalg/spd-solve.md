@@ -4,6 +4,8 @@
 
 **Applies to:** Fixed-size linalg solves, supported dimensions and selected scalar/backend profile.
 
+**Uses:** [C-NUMERICAL-PROFILE](../../common/numerical-profile.md), [C-INPUT-DOMAIN](../../common/input-domain.md), [C-FAILURE](../../common/failure.md), [C-NUMERICAL-ACCEPTANCE](../../common/numerical-acceptance.md).
+
 ## Basis
 
 The linalg solve surface replaces inversion in Kalman-gain calculation.

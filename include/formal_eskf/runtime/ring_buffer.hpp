@@ -13,7 +13,7 @@ namespace formal_eskf::runtime
  * Sample is a bounded, allocation-free value with uint64_t time_us. The caller
  * admits strictly increasing, nonzero timestamps and handles pending-history
  * loss before pushing into a full buffer. Payload copies must not throw or block.
- * See PX4-TIME-BUFFER in docs/spec/px4-module-architecture.md for the IMU,
+ * See PX4-TIME in docs/spec/requirements/integration/px4/timestamps.md for the IMU,
  * observation and output-history caller contracts. No clock or scheduler is owned.
  */
 template <typename Sample, std::size_t Capacity> class RingBuffer

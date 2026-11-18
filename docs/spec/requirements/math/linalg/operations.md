@@ -10,16 +10,16 @@ The backend boundary and shared-operation allocation are defined by [numerical a
 
 ## Required behavior
 
-## Summary
+### Summary
 
 This specification defines the minimum fixed-size linear-algebra surface required by the ESKF. It separates backend-dependent primitives from shared derived operations and ESKF-specific domain logic, and records the vector and matrix dimensions required by the current algorithm.
 
-## Required operations
+### Required operations
 
 The shared interface exposes these operations. Backend-dependent primitives
-are listed separately in the minimal backend surface below.
+are defined by the [minimal backend surface](../../../architecture/numerics.md#minimal-backend-surface).
 
-### 1. Fixed-size types
+#### 1. Fixed-size types
 
 ~~~text
 Scalar
@@ -37,7 +37,7 @@ entry points; backends supply storage and primitive operations, not additional
 configuration boundaries; do not introduce another traits or dispatch layer.
 Include the frontend header and the selected backend header explicitly.
 
-### 2. Construction
+#### 2. Construction
 
 ~~~text
 zero<R,C>()
@@ -45,7 +45,7 @@ identity<N>()
 from_coefficients<R,C>(...)
 ~~~
 
-### 3. Coefficient and block access
+#### 3. Coefficient and block access
 
 ~~~text
 A(row, column)
@@ -68,7 +68,7 @@ addition. Coefficient reads and writes use `operator()`; there is no separate
 internal `MatrixAccess` to reach backend storage without making it part of the
 public matrix API.
 
-### 4. Basic arithmetic
+#### 4. Basic arithmetic
 
 ~~~text
 add(A, B)
@@ -80,7 +80,7 @@ divide(A, scalar)
 
 Restricted operator overloads such as +, -, and scalar * express these same operations. The list defines the semantic surface, not a required spelling for every C++ function.
 
-### 5. Products
+#### 5. Products
 
 ~~~text
 multiply(Mat<R,K>, Mat<K,C>) -> Mat<R,C>
@@ -88,20 +88,20 @@ multiply(Mat<R,C>, Vec<C>)   -> Vec<R>
 dot(Vec<N>, Vec<N>)          -> Scalar
 ~~~
 
-### 6. Transpose
+#### 6. Transpose
 
 ~~~text
 transpose(Mat<R,C>) -> Mat<C,R>
 ~~~
 
-### 7. Vector magnitude
+#### 7. Vector magnitude
 
 ~~~text
 squared_norm(Vec<N>) -> Scalar
 norm(Vec<N>)         -> Scalar
 ~~~
 
-### 8. Scalar-math dependency
+#### 8. Scalar-math dependency
 
 ~~~text
 scalar_math_type
@@ -112,11 +112,11 @@ finite-value inspection and elementary functions. `all_finite(Vec<N>)` and
 `all_finite(Mat<R,C>)` are shared bounded loops over `is_finite(Scalar)`; they
 are not separate linalg-backend primitives.
 
-### 9. Symmetric positive-definite solve
+#### 9. Symmetric positive-definite solve
 
 Use [F-SOLVE](spd-solve.md).
 
-## Shared derived operations
+### Shared derived operations
 
 These operations are required by the ESKF, but should be implemented once on top of the backend primitives rather than independently in every backend.
 
@@ -132,9 +132,9 @@ sandwich(A, P) = A * P * transpose(A)
 right_solve_spd(B, S)          // X*S = B
 ~~~
 
-Keeping these shared prevents the backends from developing different mathematical behavior. The hat/skew rotation convention is defined by [SO(3) and Unit Quaternion](../quaternion/multiplication.md), not by a second linalg definition.
+Keeping these shared prevents the backends from developing different mathematical behavior. The hat/skew rotation convention is defined by [SO3-HAT](../so3/hat.md), not by a second linalg definition.
 
-## ESKF dimensions currently required
+### ESKF dimensions currently required
 
 The abstraction must support INS (16 nominal coefficients, 15 error coordinates) and AHRS (4 nominal coefficients, 3 error coordinates). For error dimension D and measurement dimension M, this includes MxD observation Jacobians, DxM gains and MxM innovation systems.
 

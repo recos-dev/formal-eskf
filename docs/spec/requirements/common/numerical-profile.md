@@ -10,7 +10,7 @@ Shared finite-precision and failure policy; operation equations remain in their 
 
 ## Required behavior
 
-## Scalar models
+### Scalar models
 
 The project distinguishes three scalar meanings:
 
@@ -22,7 +22,7 @@ The project distinguishes three scalar meanings:
 
 A proof over mathematical reals is not a proof of the corresponding `float` or `double` implementation.
 
-## IEEE-754 profile
+### IEEE-754 profile
 
 Each verified or released configuration must record:
 

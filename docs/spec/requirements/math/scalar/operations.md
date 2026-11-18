@@ -4,6 +4,8 @@
 
 **Applies to:** Binary32/binary64 scalar frontends and their selected math backends.
 
+**Uses:** [C-NUMERICAL-PROFILE](../../common/numerical-profile.md), [C-INPUT-DOMAIN](../../common/input-domain.md), [C-FAILURE](../../common/failure.md), [C-NUMERICAL-ACCEPTANCE](../../common/numerical-acceptance.md).
+
 ## Basis
 
 The project's [checked scalar API](../../../../../include/formal_eskf/scalar/math.hpp)

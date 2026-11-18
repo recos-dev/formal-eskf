@@ -168,7 +168,7 @@ State resets also transform retained/current output.
 | `FESKF_BARO_DLY` | 0 | ms residual barometer delay |
 
 Settings are validated together and require restart. See the
-[timing profile](../../docs/spec/px4-timing-profile.md) for rate, capacity, offset,
+[timing profile](../../docs/spec/profiles/px4-sih-250hz.md) for rate, capacity, offset,
 freshness, gap and fault rules. Storage does not resize during operation.
 
 Current attitude/navigation timestamps identify latest IMU output; estimator
@@ -193,7 +193,7 @@ body-point reset deltas. This follows PX4's nominal point-compensation design.
 Receiver noise and core covariance equations are unchanged. Installation
 uncertainty and preprocessing correlations are not modeled; published variances
 remain delayed IMU-state proxies, and local acceleration remains at the IMU.
-See [the reference-point contract](../../docs/spec/verification-requirements.md#r-px4-sensor-positions-sensor-and-output-reference-points)
+See [the reference-point contract](../../docs/spec/requirements/integration/px4/sensor-positions.md#r-px4-sensor-positions-sensor-and-output-reference-points)
 for frames, signs, timing and evidence limits. Physical nonzero installations
 require their own validation.
 
@@ -290,7 +290,7 @@ flowchart LR
 - Holds the previous IMU rate for small missing intervals; discontinuities beyond 50 ms and IMU identity/calibration changes latch a fault. Numerical failures also latch a fault. Restart is required for recovery.
 - Reserves a 60 KiB work-queue stack. The module disables fast-math, FMA contraction, exceptions and RTTI. Lockstep virtual-time performance counters do not measure wall-clock CPU cost.
 
-This is a single-sensor SITL POC with stationary startup and simulated sensor noise. It has no redundant sensors or wind, terrain and magnetic-bias states. Delayed fusion and current output prediction use the 250 Hz SIH timing profile; physical receiver delays require their own producer binding and qualification. Magnetic fusion retains a three-component observation with `ESKF_MAG_TILT=1` by default; it reports heading aiding, not 3D magnetic-state estimation. AUTO/3D switching and terrain-based in-flight realignment remain unconnected. See [the magnetic integration contract](../../docs/spec/requirements/runtime/magnetic/heading-reset.md#px4-module-magnetic-aiding). Heading variance uses the navigation-frame rotation proxy defined by [R-PX4-FRAME-OUTPUT](../../docs/spec/verification-requirements.md#r-px4-frame-output-geographic-and-rotation-variance-output-frames); it is not an exact Euler-yaw variance. Sensor failure checks cover flag withdrawal and recovery on the ground, not continued flight through sensor failures.
+This is a single-sensor SITL POC with stationary startup and simulated sensor noise. It has no redundant sensors or wind, terrain and magnetic-bias states. Delayed fusion and current output prediction use the 250 Hz SIH timing profile; physical receiver delays require their own producer binding and qualification. Magnetic fusion retains a three-component observation with `ESKF_MAG_TILT=1` by default; it reports heading aiding, not 3D magnetic-state estimation. AUTO/3D switching and terrain-based in-flight realignment remain unconnected. See [the magnetic integration contract](../../docs/spec/requirements/runtime/magnetic/heading-reset.md#px4-module-magnetic-aiding). Heading variance uses the navigation-frame rotation proxy defined by [R-PX4-FRAME-OUTPUT](../../docs/spec/requirements/integration/px4/output-frames.md#r-px4-frame-output-geographic-and-rotation-variance-output-frames); it is not an exact Euler-yaw variance. Sensor failure checks cover flag withdrawal and recovery on the ground, not continued flight through sensor failures.
 
 Detailed magnetic, gravity, height, GNSS and bias policies belong to the
 [requirements](../../docs/spec/verification-requirements.md). The module uses its
@@ -300,7 +300,7 @@ unrestricted correction. Gravity support is a build choice and `FESKF_GRAV_EN`
 is a startup permission; both must allow it. No gravity innovation gate is added.
 
 The module's GNSS sample-time binding differs from pinned EKF2's publication-time
-binding; see the [timing profile](../../docs/spec/px4-timing-profile.md#source-timestamps-and-admission).
+binding; see the [timing profile](../../docs/spec/profiles/px4-sih-250hz.md#source-timestamps-and-admission).
 The delayed owner retains actual event epochs; package/build choices do not turn
 this into full EKF2 parity. Full module source proof and target qualification
 remain open even where portable components already have evidence.

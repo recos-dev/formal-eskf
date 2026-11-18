@@ -1,7 +1,9 @@
+# PX4 SIH 250 Hz Deployment Profile
+
 ## Summary
 
-Define the first delayed-fusion timing profile for **F-04.1**, under
-[PX4-TIME, PX4-OUT and PX4-RT](px4-module-architecture.md). This design
+Bind the 250 Hz SIH delayed-fusion profile under
+[PX4-TIME, PX4-OUT and PX4-RT](../architecture/px4-module.md). This design
 baseline is implemented by the live SIH module. Native/SIH evidence is configuration-specific;
 source formal proof and target timing/resource acceptance remain separate.
 
@@ -9,6 +11,15 @@ Use the same reference as the architecture: **PX4 v1.16.2,
 `54f0455ffcd755534539a7cf33a09a20bf71d29d`**. The first profile targets the existing
 250 Hz SIH setup, INS/binary64 and `Px4MatrixBackend`. Hardware and other sensor
 rates need their own profile; these values are not universal flight tuning.
+
+
+Numeric tuning in the module-binding requirements denotes the default deployment
+profile unless explicitly identified as an invariant or bound. Only settings
+exposed under [PX4-CONFIG](../requirements/integration/px4/configuration.md) may
+be selected at build/startup; use the packaged configuration and
+[configuration guide](../../guides/configuration.md) to identify effective values.
+Changing a tunable does not waive validation, temporal ordering, atomicity or
+resource limits, and does not extend proof evidence to the new configuration.
 
 ## Startup parameters and fixed storage
 
@@ -78,7 +89,7 @@ is independent of the main-filter period and remains unchanged.
 | Observation selection age | Strictly less than 100 ms behind the fusion horizon |
 | Residual sensor delays | Zero for this SIH profile; explicit per-source values in any later profile |
 
-The 3.8 ms minimum bounds storage demand; it is a new, deliberately narrower
+The 3.8 ms minimum bounds storage demand; it is a deliberately narrower
 deployment envelope than the core's accepted time-step domain. Out-of-envelope
 IMU data must not be clamped into the profile. The nominal 4 ms period is supported
 by the existing SIH configuration, but the full envelope still requires testing.
@@ -147,7 +158,7 @@ Logs/producers without these sample fields require a separate timestamp binding.
 
 ## Histories and ownership
 
-Use the existing [runtime ring buffer contract](px4-module-architecture.md#px4-time-buffer-sample-storage-and-selection).
+Use the existing [runtime ring buffer contract](../requirements/integration/px4/timestamps.md#px4-time-timestamps-and-bounded-history).
 Store internal values and provenance, not whole uORB messages. Each observation
 carries source/calibration identity and the timestamps needed above. No new
 generic sensor registry or buffer wrapper is required.
@@ -229,7 +240,7 @@ output at `t0 + 216 ms` and the first completed main estimate at `t0 + 4 ms`;
 the next tick advances both by 4 ms.
 No interpolation, duplicate prediction or loop that drains all pending IMU is
 needed in this profile. Output-tracking equations must be checked independently
-with our quaternion/frame conventions in F-04.2; timing agreement alone does not
+with our quaternion/frame conventions under R-PX4-OUTPUT-PREDICTOR; timing agreement alone does not
 establish their numerical correctness.
 
 ## Loss, timeout and reset
@@ -263,7 +274,7 @@ proxies alongside current output. Document this approximation in the topic
 mapping and expose the covariance epoch/lag in diagnostics; they are **not** a
 propagated current-time covariance or a certified current-error bound. Rotate
 body-local attitude covariance with the matching delayed attitude under
-[R-PX4-FRAME-OUTPUT](verification-requirements.md#r-px4-frame-output-geographic-and-rotation-variance-output-frames).
+[R-PX4-FRAME-OUTPUT](../requirements/integration/px4/output-frames.md#r-px4-frame-output-geographic-and-rotation-variance-output-frames).
 With a nonzero
 IMU installation offset these remain IMU-state proxies; the module's body-point
 position/velocity transform does not transport their covariance. Suppress valid
@@ -289,7 +300,7 @@ drop work or change the main-filter period.
 
 ## Review and implementation acceptance
 
-F-04.1 completes when this profile is reviewed. F-04.2 must retain evidence for:
+Acceptance of this profile requires evidence for:
 
 - Startup parameter conversion and derived lengths, exact-capacity/over-capacity
   cases, unsupported period modes and restart-only configuration changes.
@@ -303,227 +314,19 @@ F-04.1 completes when this profile is reviewed. F-04.2 must retain evidence for:
 - Actual storage accounting and production-path bounded-work checks, followed by
   wall-time/stack/dependency acceptance for the declared target under F-07.2.
 
-The committed `R-RING-BUFFER` evidence covers its declared sample type, capacities
+The `R-RING-BUFFER` evidence covers its declared sample type, capacities
 and bounded traces. It does not prove these larger capacities, the module's time
 arithmetic, temporal ownership, output tracking or scheduling. Extend evidence
-to the instantiated paths and their assumptions; do not mark F-04 complete from
+to the instantiated paths and their assumptions; do not claim profile acceptance from
 component tests/proofs alone.
 
-### PX4-TIME-IMU: retained interval owner
 
-[ImuHistory.hpp](../../integrations/px4/module/ImuHistory.hpp) implements the first
-F-04.2 component: startup-value validation, configured fixed storage, seed/warmup,
-ordered interval admission, held-rate segments, oldest-interval selection and
-explicit completion. Its [requirements](verification-requirements.md#r-px4-imu-history-delayed-imu-timeline)
-separate this owner from the underlying buffer proof.
 
-The live module uses this owner for both latest-output propagation and oldest-interval
-main prediction. It supplies the monotonic arrival clock and acknowledges the IMU
-only after main prediction/fusion and exact-epoch output feedback succeed.
-No immediate-fusion compatibility path remains after alignment.
 
-[Native tests](../../tests/test_px4_imu_history.cpp) exercise the owner with Eigen
-and PX4 matrix/binary64. They cover configuration boundaries, repeated wraps,
-payload/period preservation, gap holds, missing completion, faults/restart and
-timestamps near `UINT64_MAX`. These are regression tests, not a formal proof of
-the owner or deployed temporal alignment.
 
-### PX4-TIME-OUTPUT: current-time output and tracking
 
-[OutputPredictor.hpp](../../integrations/px4/module/OutputPredictor.hpp) owns a
-current INS nominal output and its matching fixed-capacity history, without a
-second covariance. Configure it with the same timing settings as `ImuHistory`,
-then seed both at the same alignment epoch. A seed does not fabricate history.
-After each successful IMU admission, `predict(*imu.latest())` advances the output
-once: the retained held-rate segment, if any, then the real interval. Each uses
-the existing `predict_nominal` model and latest feedback biases. Store one output
-endpoint per real input, with the original start time and angular period.
 
-After successful main-filter prediction/fusion, call `correct(time, state)` at
-the exact oldest eligible output epoch, then complete the IMU interval. Its start
-must match the previous completed epoch. Different settings, missed feedback or
-wrong epochs must not silently shift the history pairing. Invalid/numerical
-updates latch a fault and preserve the prior output, history and feedback state;
-the caller must stop valid publication and restart the session. This is local
-atomicity, not a transaction spanning the main filter and both owners.
 
-The tracking structure follows the pinned PX4 output predictor. Let subscript
-`d` denote the matching delayed output, `m` the completed main state, and
-`lag = (t_current - t_d)` in seconds. Use the shortest-sign, normalized difference:
-
-\[
-q_e = q_m^{-1} \otimes q_d,\qquad
-e_\theta = -2\,\operatorname{sign}_+(q_{e,0})\,q_{e,v},\qquad
-\delta\omega = \frac{0.5}{\mathrm{lag}}e_\theta,
-\]
-
-where `sign_+(0) = +1`. This is PX4's small-angle tracking error, not quaternion
-Log; the exactly-180-degree choice is ambiguous. Add `delta_omega` to the next
-prediction's body angular rate. Do not rewrite past attitudes during ordinary
-feedback. For velocity and position, independently:
-
-\[
-\bar{\Delta t}_k = 0.8\bar{\Delta t}_{k-1} + 0.2\Delta t_{d,k},\quad
-g = \bar{\Delta t}_k / 0.25,\quad
-e = x_m-x_d,\quad s_k=s_{k-1}+e,\quad
-\delta x = g e + 0.1g^2s_k.
-\]
-
-Initialize the average to 4 ms and both sums to zero. Apply each translation to
-every retained output and the current output; commit only after all candidates
-are finite. Bias feedback takes effect on the next prediction. Constants live in
-`profile::output`; the 0.25 s time constants are PX4 reference defaults, not flight
-tuning validated for this module.
-
-`apply_reset` applies the same left quaternion delta and additive NED velocity /
-position deltas as the main reset, to the current output and every retained
-record. Preserve epochs. Common transforms leave the delayed tracking residuals
-and their sums unchanged; preserve them. The caller owns reset counters and must
-stop on failure. This operation is not a coordinate-frame rotation of NED vectors.
-`reset()` instead clears all temporal/tracking state and fault for a new session.
-
-The intended differences from PX4 are explicit:
-
-- Reuse this project's prior-attitude, constant-acceleration prediction; PX4's
-  output predictor rotates its delta velocity with the updated attitude.
-- Average the matching real angular periods, not callback wall time. Apply
-  attitude feedback as a rate across held and real segments; at a fixed period
-  it equals PX4's `0.5 * dt / lag` angle correction. Permitted gaps do not count
-  as additional observations or feedback updates.
-- Require exact epochs and failure-atomic history updates. Keep local Cartesian
-  position; no global-reference recentering, separate vertical-position-derivative
-  filter or unaided-yaw output is implemented here. The predictor retains the
-  IMU-point state and latest propagated body rate; the module converts to the
-  body output point under `R-PX4-SENSOR-POSITIONS`.
-
-`ready()` means feedback has begun and no component fault is latched. It does not
-prove wall-clock freshness, tracking-error bounds or downstream validity. Those
-remain publication/integration responsibilities. Borrowed history pointers are
-only valid until the next mutation; callers must use them synchronously.
-
-Storage and work are bounded by the 64-record backing capacity. History-wide
-translation/reset uses persistent candidate storage, not a callback-local array.
-The native binary64 instances use 23,600 bytes for IMU owner plus output predictor,
-including this workspace. Combined storage accounting is recorded below; no WCET
-or target stack bound follows from these size checks.
-[Native tests](../../tests/test_px4_output_predictor.cpp) cover analytic motion,
-tracking, wrap, reset and failures on both backends. Formal source proof remains
-open under `R-PX4-OUTPUT-PREDICTOR`; module binding is covered separately below.
-
-### PX4-TIME-OBSERVATIONS: observation and context ownership
-
-[ObservationHistory.hpp](../../integrations/px4/module/ObservationHistory.hpp)
-implements the next F-04.2 component. It directly owns four fixed-storage runtime
-rings: GNSS, magnetic, barometer and context. Capacities are the full active lengths
-in the table above for all supported timing settings; compile-time checks enforce
-coverage of the maximum retention/rate envelope. There is no generic sensor
-registry, dynamic allocation, uORB message storage or independent fusion policy.
-
-Configure with the IMU owner's startup settings. Seed at alignment with a context
-snapshot and the source identities/raw timestamp watermarks already observed.
-Reject inconsistent/future seed watermarks without mutation. The adapter separately
-transfers qualification valid at that epoch. Events at/before the seed's effective
-time cannot become new corrections.
-
-The single-owner call sequence is explicit:
-
-1. After each admitted real IMU interval, `record_imu` captures context known at
-   that endpoint. Preserve original land/status timestamps and known flags;
-   repeated timestamps do not overwrite values or refresh age. Future messages
-   cannot enter the snapshot, and late arrivals cannot backfill older snapshots.
-   A permitted held gap creates no additional snapshots.
-2. `push_gnss`, `push_magnetic` and `push_barometer` take explicit arrival time.
-   They check timestamp order, source identity, source arrival age, current IMU
-   age, offset arithmetic and effective-time spacing. Record raw/effective/arrival
-   epochs, fixed residual delay and the half-period offset used for this event.
-   Rejected observed timestamps still advance their raw watermark; impossible
-   timestamps/clock regression do not. Popping or a selection miss never clears it.
-3. After successful delayed prediction, call `begin_fusion` with that admitted
-   interval. Require the next start epoch, supported lag and at most one advance
-   per latest IMU endpoint. Before prediction, `prediction_context` may read
-   context for that same next admissible interval without advancing fusion or
-   granting selection. It validates the same sequence/lag constraints.
-   Update the period average using
-   `0.99 * previous + 0.01 * (angular_period + acceleration_period) / 2` in
-   microseconds. Only delayed real periods count, matching the pinned EKF's
-   averaging reference; the supported periods already satisfy its clamp bounds.
-   Admission uses `floor(average / 2)` and never retimes queued observations.
-4. Pop each source at most once at that fusion epoch. Return the newest event no
-   later than the horizon and strictly younger than 100 ms; retain future events.
-   A miss preserves the output argument. Return older-retirement counts:
-   superseded on selection, expired on a miss. One GNSS event serves all its
-   position, velocity and height consumers.
-5. Look up context at the selected effective event time, or the delayed IMU epoch
-   for IMU policies. Use each policy's context-age limit against original message
-   timestamps. Missing history, stale metadata and explicit unknown flags must
-   not grant fusion permission. Context lookup is non-consuming and cannot look
-   beyond the begun fusion epoch.
-
-An admission result reports its rejection reason, source change, number of
-old-generation records discarded and whether an oldest pending record was
-overwritten. A new nonzero source/calibration or an unavailable source (device ID
-zero at a valid newer timestamp) clears that source's pending history, even if
-the event fails age/rate/IMU-freshness checks. Preserve rate watermarks across a
-switch. Store a monotonically increasing source-generation number with each
-observation, including switches whose payload is rejected. Switching away and back
-before selection must still invalidate old qualification, filter and height-bias
-history. The adapter counts losses/reasons and requires requalification; uORB
-generation losses remain a separate adapter counter.
-
-Queueing only establishes temporal admission. Raw numerical/quality metadata,
-including invalid velocity, spoofing flags and nonfinite payloads, is retained for
-the existing delayed validators. No buffer success advances health qualification,
-successful-fusion time, alignment or reset counters. Current source failures may
-veto use; they must not turn into a retroactive historical qualification result.
-Session reset clears all histories, watermarks and averaging state, retaining
-configuration. Caller errors in seed/IMU/fusion sequencing preserve owner state;
-the adapter must stop the delayed path rather than skip intervals after a failure.
-
-Compared with pinned PX4, this component retains the reviewed fixed rate/capacity
-bounds, explicit clock checks/provenance, persistent watermarks and context
-snapshots with known flags. PX4 buffers system-flag events with a half-period
-offset; our context snapshots deliberately use actual IMU endpoints and original
-message epochs, without that offset. GNSS sample-time binding remains the
-previously documented difference.
-
-Native binary64 builds on Eigen and PX4 matrix reserve **44,952 bytes** for IMU,
-output and observation/context owners combined, including output staging and
-owner metadata, below the 64 KiB profile ceiling. The native test and live module enforce that
-sum; target layout/stack/WCET acceptance remain open. The increase from 43,264 bytes
-adds explicit source generations for delayed invalidation.
-[Scenario tests](../../tests/test_px4_observation_history.cpp) exercise timing,
-selection, source changes, context and bounded overflow. Formal source proof
-remains open under `R-PX4-OBSERVATION-HISTORY`.
-
-### PX4-TIME-LIVE: module binding
-
-`FormalEskf::Run` reads at most one update per source. `process_imu` admits the
-newest IMU, captures known-at context, propagates current output and publishes
-attitude with prior feedback. Then arrivals enter the observation owner.
-`advance_fusion` predicts at most one retained delayed interval, selects aiding
-once, executes the existing fusion order and applies matching output feedback.
-Only then does it acknowledge the IMU and publish current navigation. Without
-new IMU, arrival monitoring/status continue without advancing delayed policy time.
-
-Raw uORB arrival caches remain separate from selected internal observations.
-GNSS quality uses event-time historical context; magnetic policy uses that context
-on a selected event, otherwise the delayed horizon. Bias/gravity and barometer
-ground-effect policy use delayed IMU context with their respective freshness
-limits. No observation is reconstructed as a retimestamped uORB message.
-Trusted source generations can veto current validity and delayed use;
-requalification happens on a selected new generation, not on arrival.
-
-Horizontal/vertical position, velocity and magnetic-heading resets apply their
-common output/history transform before reporting counters. Startup resets precede
-seeding; ordinary feedback never increments reset counters. Current publications
-use the output epoch. Status/bias/covariance diagnostics retain the delayed main
-epoch; navigation uncertainty remains the documented delayed-covariance proxy.
-
-Status exposes both horizons, lag, readiness, occupancy, arrival/rate/staleness
-losses, source-generation discards, overflow, retired events and uORB generation
-loss. Output/main phase counters use the PX4 clock; lockstep values are not
-wall-time execution bounds. Integration acceptance is owned by
-[R-PX4-DELAYED-FUSION](verification-requirements.md#r-px4-delayed-fusion-live-module-timeline).
 
 ## Pinned reference points
 

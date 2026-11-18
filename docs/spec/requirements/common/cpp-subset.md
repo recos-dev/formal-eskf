@@ -128,7 +128,7 @@ ranges, coroutines, or format
 
 Platform adapters may use OS facilities and framework-required interfaces outside the shared core. For example, a PX4 work-item override does not permit virtual dispatch inside the numerical core. Portable runtime decisions remain separate from device access, scheduling and publication as specified in [the architecture boundaries](../../eskf-software-architecture-and-verification-boundaries.md).
 
-The [PX4 module contract](../../px4-module-architecture.md#px4-rt-real-time-constraints)
+The [PX4 module contract](../integration/px4/real-time.md#px4-rt-real-time-constraints)
 restricts adapter allocation phases, synchronization, I/O, dependency failure
 paths and target resource budgets; permission to use OS facilities does not waive
 those real-time obligations.

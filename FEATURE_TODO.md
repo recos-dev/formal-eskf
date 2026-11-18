@@ -41,7 +41,7 @@ are tracked below; they are not fresh integration tasks.
 | Magnetic aiding | Field/heading checks, lifecycle, source/calibration changes, fixed-field correction with tilt protection, real heading resets | `73b7683`; [magnetic fusion](integrations/px4/module/FormalEskfAttitude.cpp) |
 | Geographic magnetic reference | Host WMM lookup, periodic adoption using own estimated position, separate health/heading references, geographic/saved/zero declination | `e7f660d`; [MagneticModel](integrations/px4/module/MagneticModel.hpp) |
 | Height sources | GNSS/barometer arbitration, scalar offsets, fallback/re-entry, timeout recovery and coordinated height/Down-velocity reset publication | `a115afe`; [HeightAiding](integrations/px4/module/HeightAiding.hpp) |
-| IMU health and bias permissions | Shared decaying-peak inhibition, vertical-innovation health, reset-safe history, permissions forwarded to module corrections | `a5b460f`; [integration contract](docs/spec/verification-requirements.md#r-px4-imu-bias-module-health-and-bias-learning-inhibition) |
+| IMU health and bias permissions | Shared decaying-peak inhibition, vertical-innovation health, reset-safe history, permissions forwarded to module corrections | `a5b460f`; [integration contract](docs/spec/requirements/integration/px4/imu-bias.md#r-px4-imu-bias-module-health-and-bias-learning-inhibition) |
 
 The module is a stationary-start, single-IMU/single-GNSS, binary64 SITL profile.
 It uses delayed main-state fusion with current-time output and fixed local Cartesian state, and requires
@@ -101,7 +101,7 @@ in F-02.1. Unknown required metadata is not a positive eligibility decision.
 | Task | Status and existing work | Completion criterion |
 |---|---|---|
 | F-03.1 — Vertical acceleration-fault recovery | Completed (`3fafdb6`): bounded GNSS velocity and GNSS/barometer height innovations, shared last-good reset timing, qualified-source checks and reset notifications wired; native/SITL regression passed | After F-01.1, wire the exception and independent reset criterion into module GNSS/height coordination. Preserve quality permission, raw rejection diagnostics, event ordering and actual reset notifications. Distinguish the 3 s held fault from the 500 ms last-good criterion. |
-| F-03.2 — Barometer ground effect | Committed (`e742f7e`): delayed land-detector activation, 10 s hold, 4 m one-sided deadzone and status flags. Native/sanitizer and scoped ESBMC pass; SIH contact-condition penetration isolated, while repeatable stock-SIH landing acceptance remains open under F-07. See the [ground-effect contract](docs/spec/verification-requirements.md#px4-module-barometer-ground-effect); no terrain/HAGL estimate is assumed | Review pinned PX4 conditions and residual sign, then test near-ground rejection/compensation and exit behavior. Declare any unavailable height-above-ground context; do not treat it as known. |
+| F-03.2 — Barometer ground effect | Committed (`e742f7e`): delayed land-detector activation, 10 s hold, 4 m one-sided deadzone and status flags. Native/sanitizer and scoped ESBMC pass; SIH contact-condition penetration isolated, while repeatable stock-SIH landing acceptance remains open under F-07. See the [ground-effect contract](docs/spec/requirements/integration/px4/height-fusion.md#px4-module-barometer-ground-effect); no terrain/HAGL estimate is assumed | Review pinned PX4 conditions and residual sign, then test near-ground rejection/compensation and exit behavior. Declare any unavailable height-above-ground context; do not treat it as known. |
 
 Dynamic-pressure compensation is D-03: it needs a defensible airflow input/model,
 not just another constant in the existing barometer helper.
@@ -115,7 +115,7 @@ not just another constant in the existing barometer helper.
 
 F-04 is prioritized by request. The live module now separates current output
 from delayed prediction and fusion under the reviewed
-[timing profile](docs/spec/px4-timing-profile.md). The
+[timing profile](docs/spec/profiles/px4-sih-250hz.md). The
 [verification guide](docs/guides/verification.md) separates integration tests
 from source proof and target acceptance. Run records remain local tracking or
 release artifacts; the SIH contact-model landing failure stays open under F-07.1.
@@ -124,8 +124,8 @@ release artifacts; the SIH contact-model landing failure stays open under F-07.1
 
 | Task | Status and existing work | Completion criterion |
 |---|---|---|
-| F-05.1 — Lever arms and output reference point | Committed in `9618d18`: restart-only IMU/GNSS FRD offsets, delayed GNSS position/height/velocity compensation, current body-point output and reset deltas. Nominal geometry only; installation uncertainty is not modeled. See the [sensor-position contract](docs/spec/verification-requirements.md#r-px4-sensor-positions-sensor-and-output-reference-points) | Define IMU/GNSS/output points, frames and calibration ownership; implement position/velocity compensation with rotation and uncertainty handling. Independent rotating-rig cases must expose sign/point mistakes. |
-| F-05.2 — Fixed-frame operating envelope | Output-frame fixes are implemented; assessment remains a draft awaiting systematic review. No accepted flight envelope yet. See the [frame-output contract](docs/spec/verification-requirements.md#r-px4-frame-output-geographic-and-rotation-variance-output-frames) | Quantify projection/frame/curvature error against an independent geographic oracle; declare usable distance, height datum, exclusions and behavior beyond the envelope. Review heading-variance/frame assumptions. No silent public-origin reset. |
+| F-05.1 — Lever arms and output reference point | Committed in `9618d18`: restart-only IMU/GNSS FRD offsets, delayed GNSS position/height/velocity compensation, current body-point output and reset deltas. Nominal geometry only; installation uncertainty is not modeled. See the [sensor-position contract](docs/spec/requirements/integration/px4/sensor-positions.md#r-px4-sensor-positions-sensor-and-output-reference-points) | Define IMU/GNSS/output points, frames and calibration ownership; implement position/velocity compensation with rotation and uncertainty handling. Independent rotating-rig cases must expose sign/point mistakes. |
+| F-05.2 — Fixed-frame operating envelope | Output-frame fixes are implemented; assessment remains a draft awaiting systematic review. No accepted flight envelope yet. See the [frame-output contract](docs/spec/requirements/integration/px4/output-frames.md#r-px4-frame-output-geographic-and-rotation-variance-output-frames) | Quantify projection/frame/curvature error against an independent geographic oracle; declare usable distance, height datum, exclusions and behavior beyond the envelope. Review heading-variance/frame assumptions. No silent public-origin reset. |
 
 A geodetic nominal-state extension is D-07. F-05.2 first establishes what the
 current Cartesian model supports; it does not pre-authorize new core equations.
@@ -134,7 +134,7 @@ current Cartesian model supports; it does not pre-authorize new core equations.
 
 | Task | Status and existing work | Completion criterion |
 |---|---|---|
-| F-06.1 — Confidence and failure reporting | Implemented: independent capability flags, honest bias validity, matching packed/named faults, measurement-time innovation summaries and covariance-proxy audit. See the [output contract](docs/spec/verification-requirements.md#r-px4-status-confidence-and-failure-reporting). | Retain the declared limits: no bias-convergence claim, transported/current-time covariance or dead-reckoning residual inflation; 10 Hz transition counts are not an event log. Numerical/history faults require restart. Formal module proof, calibrated uncertainty and flight/resource qualification remain separate. |
+| F-06.1 — Confidence and failure reporting | Implemented: independent capability flags, honest bias validity, matching packed/named faults, measurement-time innovation summaries and covariance-proxy audit. See the [output contract](docs/spec/requirements/integration/px4/status.md#r-px4-status-confidence-and-failure-reporting). | Retain the declared limits: no bias-convergence claim, transported/current-time covariance or dead-reckoning residual inflation; 10 Hz transition counts are not an event log. Numerical/history faults require restart. Formal module proof, calibrated uncertainty and flight/resource qualification remain separate. |
 | F-06.2 — Deployment parameters | In progress: 15 existing startup/boot parameters; `make menuconfig` now binds algorithm modes and 64 PX4 build-profile controls for features, checks, noise, gates, timeouts and predictor tracking. See [configuration inventory](docs/guides/configuration.md#px4-deployment-menu). Replay remains separate | Review supported tuning profiles and any additional startup bindings. Preserve units, default behavior, restart semantics and configuration-specific evidence; do not silently import live EKF2 settings. |
 
 ### F-07 — Deployment validation

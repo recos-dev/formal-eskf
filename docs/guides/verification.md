@@ -27,7 +27,7 @@ it is neither a proof nor a mandatory review of every function.
   the existing extractor does not enforce them.
 
 The current module's functional boundaries are in [the integration guide](../../integrations/px4/README.md),
-[PX4 timing](../spec/px4-timing-profile.md) and the F-series backlog. In particular,
+[PX4 timing](../spec/profiles/px4-sih-250hz.md) and the F-series backlog. In particular,
 the SIH contact-model failure tracked in F-07.1 is not
 converted into a passing landing result by excluding the failed scenario.
 

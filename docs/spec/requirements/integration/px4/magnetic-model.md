@@ -8,13 +8,19 @@
 
 ## Required behavior
 
+The configured host-lookup interval and the portable reference check cadence are
+separate. `R-MAGNETIC-REFERENCE` retains its strictly-greater-than-10-second
+periodic check unless an origin event requests an immediate check. A shorter host
+lookup interval does not force adoption: consume the returned `checked`/`changed`
+result, not lookup success alone.
+
 `MagneticModel` connects `R-MAGNETIC-REFERENCE` to the module without owning
 lookup I/O, estimator state/P or magnetic bias states. The host's WMM table and
 epoch remain external dependencies. No table is copied into formal-eskf.
 
 - Query the host at the qualified GNSS origin during stationary startup. Later,
-  on fresh usable magnetic samples, query strictly more than 10 s after the last
-  attempt while the module's own horizontal position is valid. Reproject the
+  on fresh usable magnetic samples, query strictly more than the configured lookup interval (default 10 s) after
+  the last attempt while the module's own horizontal position is valid. Reproject the
   **estimated position**, not an unchecked incoming GNSS fix. An origin change
   requests an immediate lookup, using the origin if position is invalid. This
   does not add an origin-rebasing API or change the estimator's coordinates.
@@ -25,7 +31,7 @@ epoch remain external dependencies. No table is copied into formal-eskf.
   local geographic NED; it is required by our fixed-frame estimator convention.
 - A missing/invalid lookup cannot replace either reference or authorize a reset.
   Retain an already accepted model and record the unavailable attempt. Attempts,
-  including failures, are spaced by the same 10 s rule. Without any accepted
+  including failures, are spaced by the same configured interval rule. Without any accepted
   model, use the existing broad 5–85 microtesla strength fallback, with model
   availability false; a measured seed is not WMM evidence.
 - Read `FESKF_DECL_TYPE` (mask 0..3, default 3) and `FESKF_MAG_DECL`

@@ -18,7 +18,7 @@ the [specification index](spec/README.md) locates canonical requirement definiti
 | Language/runtime restrictions | [C++ subset](spec/requirements/common/cpp-subset.md), [static analysis](spec/cpp-static-analysis-policy.md) |
 | Mathematical interfaces | [State/frames](spec/requirements/core/state.md), [linear algebra](spec/requirements/math/linalg/operations.md), [SO(3)/quaternions](spec/requirements/math/quaternion/multiplication.md), [scalar/failure semantics](spec/requirements/common/numerical-profile.md) |
 | Behavioral requirements | [Requirement catalogue](spec/verification-requirements.md) — use the relevant ID/section |
-| PX4 deployment | [Module architecture](spec/px4-module-architecture.md), [timing profile](spec/px4-timing-profile.md) |
+| PX4 deployment | [Module architecture](spec/architecture/px4-module.md), [timing profile](spec/profiles/px4-sih-250hz.md) |
 | Verification | [Strategy](spec/formal-verification-strategy.md), [review/traceability criteria](spec/formal-verification-traceability-and-review-criteria.md), [AST review boundary](spec/cpp-function-inventory-and-formal-proof-review-queue.md) |
 
 Specifications own required behavior and claim limits. A design proposal or local

@@ -96,9 +96,27 @@ verification scope; an indexed requirement or linked proof is not a passing resu
 
 | ID | Required behavior |
 |---|---|
+| `PX4-VERIFY` | [acceptance and change control](requirements/integration/px4/acceptance.md) |
+| `R-PX4-BARO-GROUND-EFFECT` | [PX4 module barometer ground effect](requirements/integration/px4/barometer-ground-effect.md) |
+| `PX4-CONFIG` | [packaged build profile](requirements/integration/px4/configuration.md) |
+| `R-PX4-DELAYED-FUSION` | [live module timeline](requirements/integration/px4/delayed-fusion.md) |
+| `PX4-EXEC` | [execution and data flow](requirements/integration/px4/execution.md) |
 | `R-PX4-GNSS-QUALITY` | [PX4 GNSS integration](requirements/integration/px4/gnss-quality.md) |
+| `R-HEIGHT-FUSION` | [PX4 GNSS/barometer height management](requirements/integration/px4/height-fusion.md) |
+| `R-PX4-IMU-BIAS` | [module health and bias-learning inhibition](requirements/integration/px4/imu-bias.md) |
+| `R-PX4-IMU-HISTORY` | [delayed IMU timeline](requirements/integration/px4/imu-history.md) |
+| `PX4-LIFE` | [initialization, failure and shutdown](requirements/integration/px4/lifecycle.md) |
 | `R-PX4-MAGNETIC-AIDING` | [PX4 module magnetic aiding](requirements/integration/px4/magnetic-aiding.md) |
 | `R-PX4-MAGNETIC-MODEL` | [PX4 module geographic magnetic reference](requirements/integration/px4/magnetic-model.md) |
+| `R-PX4-OBSERVATION-HISTORY` | [delayed observations and context](requirements/integration/px4/observation-history.md) |
+| `R-PX4-FRAME-OUTPUT` | [geographic and rotation-variance output frames](requirements/integration/px4/output-frames.md) |
+| `R-PX4-OUTPUT-PREDICTOR` | [current-time output tracking](requirements/integration/px4/output-predictor.md) |
+| `PX4-OWN` | [ownership and interfaces](requirements/integration/px4/ownership.md) |
+| `PX4-OUT` | [output prediction and publication](requirements/integration/px4/publication.md) |
+| `PX4-RT` | [real-time constraints](requirements/integration/px4/real-time.md) |
+| `R-PX4-SENSOR-POSITIONS` | [sensor and output reference points](requirements/integration/px4/sensor-positions.md) |
+| `R-PX4-STATUS` | [confidence and failure reporting](requirements/integration/px4/status.md) |
+| `PX4-TIME` | [timestamps and bounded history](requirements/integration/px4/timestamps.md) |
 | `R-REPLAY-GNSS-GATING` | [Replay GNSS gating](requirements/integration/replay/gnss-gating.md) |
 | `R-REPLAY-GNSS-LIFECYCLE` | [Replay GNSS lifecycle](requirements/integration/replay/gnss-lifecycle.md) |
 | `R-REPLAY-GNSS-QUALITY` | [Replay GNSS quality](requirements/integration/replay/gnss-quality.md) |
@@ -119,3 +137,8 @@ no second definition.
 ## Architecture
 
 - [Numerical Architecture](architecture/numerics.md).
+- [PX4 Module Architecture](architecture/px4-module.md).
+
+## Deployment profiles
+
+- [PX4 SIH 250 Hz Deployment Profile](profiles/px4-sih-250hz.md).

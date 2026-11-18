@@ -183,7 +183,7 @@ subscription exists. Metadata bounds are not a substitute for startup checks.
 | `FESKF_GPS_POS_X`, `FESKF_GPS_POS_Y`, `FESKF_GPS_POS_Z` | 0 each | Same installation convention and per-axis bounds |
 
 Timing formulas and supported envelope are owned by the
-[timing profile](../spec/px4-timing-profile.md#startup-parameters-and-fixed-storage)
+[timing profile](../spec/profiles/px4-sih-250hz.md#startup-parameters-and-fixed-storage)
 and [configure_timing](../../integrations/px4/module/ImuHistory.hpp). Requested lag,
 active length, reserved capacity and actual measured interval are different
 quantities. Active length is derived, not another independent parameter.

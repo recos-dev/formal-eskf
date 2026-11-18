@@ -4,8 +4,8 @@ The numerical core computes estimator operations; portable runtime components
 manage sensor/fusion policies; adapters own platform effects. These boundaries
 are implemented separately from any claim of whole-module formal verification.
 [State conventions](requirements/core/state.md) and [requirements](verification-requirements.md)
-own equations and behavior. [PX4 architecture](px4-module-architecture.md) owns
-execution and real-time contracts; [timing](px4-timing-profile.md) owns its
+own equations and behavior. [PX4 architecture](architecture/px4-module.md) owns
+execution and real-time contracts; [timing](profiles/px4-sih-250hz.md) owns its
 implemented 250 Hz delayed-fusion profile.
 
 ## Architecture
@@ -22,7 +22,7 @@ binary64 and PX4 matrix, with one estimator owner and serialized updates.
 |---|---|---|
 | Numerical core | [eskf/](../../include/formal_eskf/eskf), [so3/](../../include/formal_eskf/so3), [linalg/](../../include/formal_eskf/linalg), [scalar/](../../include/formal_eskf/scalar) | Operates on caller-supplied state, covariance and parameters; configuration selects related types and dimensions. No sensor clock or scheduler. |
 | Portable sensor policies | [runtime/](../../include/formal_eskf/runtime) | Components retain their own qualification, sampling and lifecycle history. Callers supply time, measurements and context; fusion operations borrow the estimator state/covariance. |
-| Portable timestamped history | [runtime/ring_buffer.hpp](../../include/formal_eskf/runtime/ring_buffer.hpp) | Fixed backing storage with PX4-style history access. The caller owns admission, timing and loss policy under [PX4-TIME-BUFFER](px4-module-architecture.md#px4-time-buffer-sample-storage-and-selection). Used by the implemented delayed-history owners; buffer proof does not prove their temporal composition. |
+| Portable timestamped history | [runtime/ring_buffer.hpp](../../include/formal_eskf/runtime/ring_buffer.hpp) | Fixed backing storage with PX4-style history access. The caller owns admission, timing and loss policy under [PX4-TIME-BUFFER](requirements/integration/px4/timestamps.md#px4-time-timestamps-and-bounded-history). Used by the implemented delayed-history owners; buffer proof does not prove their temporal composition. |
 | Deployment coordination | [ImuPrediction.hpp](../../integrations/px4/module/ImuPrediction.hpp), [HeightAiding.hpp](../../integrations/px4/module/HeightAiding.hpp), [MagneticModel.hpp](../../integrations/px4/module/MagneticModel.hpp) | Bind deployment settings and compose runtime/core operations. Helpers own their distinct prediction, height-arbitration or geographic-reference contract; they do not own uORB publication. |
 | PX4 module | [FormalEskf.hpp](../../integrations/px4/module/FormalEskf.hpp), [FormalEskf.cpp](../../integrations/px4/module/FormalEskf.cpp) | Owns the INS state/covariance, runtime/helper instances, geographic origin, sensor subscriptions, sample times, fault state and published reset counters. |
 | Host replay | [examples/](../../examples) | Owns log decoding, replay scheduling and output. Calling the same core does not establish equivalence to the PX4 module's timing or integration. |

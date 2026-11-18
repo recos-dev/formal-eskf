@@ -1,51 +1,71 @@
-# Agent Guidelines
+# Agent Instructions
 
-## Project
+formal-eskf is a portable C++20 ESKF with INS and rotation-only AHRS configurations.
+The numerical core is independent of deployment platforms and linalg backends.
 
-formal-eskf is a portable C++20 error-state Kalman filter with INS and rotation-only AHRS configurations. Keep the numerical core independent of deployment platforms and linear-algebra backends.
+## Start with the task
 
-## Specifications
+Run `git status --short`; preserve unrelated edits, staged files and ongoing runs.
+Read the affected source, callers and tests, then the relevant contracts below.
+Load only the task's documents and dependencies, not the entire spec tree.
 
-Use [docs/README.md](docs/README.md) to locate the relevant specification before
-changing behavior; read only the affected contracts and their dependencies.
-`docs/spec/` owns requirements and equations. [docs/roadmap.md](docs/roadmap.md)
-owns functional, architecture, verification and tooling work. Neither development
-logs nor analysis proposals override an adopted specification.
+| Task | Read |
+|---|---|
+| Behavior or architecture | [Documentation index](docs/README.md), then the affected [requirements](docs/spec/README.md) |
+| C++ implementation | [Coding style](docs/guides/coding-style.md), [C++ subset and ArduPilot design baseline](docs/spec/requirements/common/cpp-subset.md), [.clang-format](.clang-format) |
+| PX4 integration | [Module architecture](docs/spec/architecture/px4-module.md), [operation and tests](integrations/px4/README.md) |
+| Specification changes | [Writing template and approval rules](docs/spec/TEMPLATE.md) |
+| Verification | [Evidence policy](docs/spec/verification/assurance.md), [commands, scope and resource limits](docs/guides/verification.md) |
+| Build or CI | [README](README.md), [CI workflow](.github/workflows/ci.yml) |
+| Task planning or status | [Roadmap](docs/roadmap.md): preserve IDs, completed scope and agreed order; explain new gaps or priority changes |
 
-Use the [specification writing standard and template](docs/spec/TEMPLATE.md) for
-new or substantially revised specs. Preserve canonical requirement definitions,
-stable IDs and affected traceability references when changing document structure.
+Specifications own behavior; logs and analysis proposals do not override them.
+Verify paper notation/equations against the reference. Surface conflicts between
+requirements, references and code before choosing a different model. Task
+completion does not approve a Draft requirement or establish verification.
 
-Verify paper symbols and equations against the actual reference before citing or implementing them. Report conflicts between specifications, papers and code instead of silently choosing a different model.
+## Make the change
 
-## Implementation
+- Preserve behavior, defaults, numerical evaluation order, failure precedence,
+  atomicity and aliasing during refactors. Separate intended behavior changes
+  from structural cleanup; do not bundle unrelated work.
+- Keep the core fixed-size and bounded, without dynamic allocation, exceptions,
+  RTTI or OS facilities. Use existing abstractions; keep backend types, platform
+  effects and replay conveniences outside shared interfaces and equations.
+- Follow ArduPilot's same-layer design baseline through the linked subset.
+  Prefer direct numerical/control flow; avoid redundant wrappers and dispatch.
+- Reuse existing scripts. Use uppercase script variables and readable functions.
+  Do not vendor external platform code without authorization.
+- Write documentation in English. Update affected contracts and
+  [traceability entries](formal/agent-review/traceability-map.json); preserve IDs,
+  approval states and claim boundaries. Link canonical definitions instead of
+  copying requirements, mutable proof statistics or development diaries.
 
-- Use fixed-size types and bounded operations. Keep dynamic allocation, exceptions, RTTI and OS facilities outside the shared core.
-- Use the existing abstractions; backend types and platform effects must not enter shared-core interfaces or equations.
-- Preserve specified behavior, defaults and failure/aliasing contracts unless a change is explicitly in scope.
-- Follow the [coding style](docs/guides/coding-style.md), [C++ design baseline and subset](docs/spec/requirements/common/cpp-subset.md#design-baseline) and `.clang-format`. Use ArduPilot's actual same-layer practice as the estimator-design reference while retaining C++20; lack of an upstream prohibition does not justify additional generic machinery. Apply these rules within the task scope; do not start an unsolicited rewrite of existing code.
-- Use uppercase script variables and split scripts into readable functions. Avoid unnecessary wrappers, helpers and new scripts.
-- Keep platform integration and replay conveniences outside the core. Do not vendor external platform code without approval.
+## Validate the affected scope
 
-## Verification
+Choose checks for the changed behavior, dependencies and configurations. Use
+existing runners and their `--help`; prefer targeted suites. Read the verification
+guide's resource limits before heavy proofs. Documentation-only edits need link,
+reference and consistency checks, not a full proof run.
 
-- Keep Lean model proofs, bounded ESBMC checks, native tests, static analysis and agent review distinct. They do not constitute a machine-checked Lean-to-C++ refinement.
-- Scope claims to the analyzed production paths, assumptions and configurations. Record outstanding abstraction dependencies; do not extend claims to unverified targets.
-- Do not weaken requirements or assertions, assume away failures or replace production operations merely to obtain a passing result.
-- Maintain affected entries in `formal/agent-review/traceability-map.json`. Distinguish requirements, theorems, harnesses and execution profiles when reporting coverage; do not present their counts as interchangeable.
-- Missing or stale evidence, timeouts and incomplete unwinding are gaps, not passes.
+- Use `./scripts/format_cpp.sh --check` to inspect formatting; its default edits
+  files. Cppcheck only analyzes. ESBMC `--list` only inventories profiles.
+- For ESBMC/review tooling changes, run the applicable `./tests/test_esbmc.sh`
+  and `./tests/test_agent_review.sh`; their defaults test offline fixtures, not
+  real proof execution or an AI audit. Consult the CI workflow for other checks.
+- Verify production paths and all required producer/caller dependencies. Never
+  weaken requirements/assertions, assume away failures or substitute a rewritten
+  implementation just to pass.
+- Keep Lean, ESBMC, native/static checks and agent review distinct; no
+  machine-checked Lean-to-C++ refinement is claimed. Report coverage by property,
+  assumptions and profile; requirement/theorem/harness/profile counts are distinct.
+  Missing/stale evidence, timeouts and incomplete unwinding remain gaps.
 
-Use `README.md` for build setup and `.github/workflows/ci.yml` for CI checks. Reuse the existing `scripts/` entry points and consult their `--help` for options. Run checks appropriate to the change; prefer targeted proof suites over rerunning every proof for every edit.
+## Review and hand off
 
-For verification-tool changes, run `tests/test_esbmc.sh` and/or `tests/test_agent_review.sh` as applicable. Their default modes are offline regression tests, not proof execution or an AI audit.
-
-Use `scripts/format_cpp.sh --check` for read-only formatting checks; its default mode edits files. Cppcheck checks without fixing source. ESBMC `--list` inventories profiles without proving them.
-
-## Collaboration
-
-- Use `docs/roadmap.md` as the single work list: preserve task IDs, completed scope and agreed order when reporting next steps. Explain new gaps or proposed priority changes instead of silently regenerating the list. Task status does not approve requirements or establish proof/target acceptance.
-- Inspect the worktree first; preserve unrelated edits and staged changes. Do not interfere with other ongoing work or verification runs.
-- Keep changes scoped to the request. Separate proof, production-code, tooling and documentation changes when that helps review; do not bundle unrelated cleanup.
-- Self-review changes before handing them back. Report the result, checks performed and remaining gaps without claiming unrun checks passed.
-- Stage, commit, push or rewrite commit metadata only when explicitly requested. When staging, select exact task-related files and review the staged diff; exclude temporary notes and generated outputs.
-- Keep documentation concise and avoid duplicating specifications or hardcoding changing proof statistics here.
+- Review the complete task diff: what changed, why it is correct, whether behavior
+  is preserved, and what the checks establish. Report failures, unrun checks and
+  remaining gaps; do not extend claims to unverified targets.
+- Stage, commit, push or rewrite commit metadata only when explicitly authorized.
+  Select exact task files and review the staged diff. Exclude trial notes, logs
+  and generated outputs; retain release evidence as the verification guide requires.

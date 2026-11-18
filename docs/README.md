@@ -1,10 +1,10 @@
 # Documentation
 
 Read the entry relevant to the task, then its linked contracts. Do not load the
-whole document tree by default. [AGENTS.md](../AGENTS.md) and [STYLE.md](../STYLE.md)
+whole document tree by default. [AGENTS.md](../AGENTS.md) and the [coding style](guides/coding-style.md)
 provide implementation rules; the root [README](../README.md) provides build/replay
-commands. Functional work stays in [FEATURE_TODO.md](../FEATURE_TODO.md);
-architecture and verification work stays in [ROADMAP.md](../ROADMAP.md).
+commands. The [roadmap](roadmap.md) owns functional, architecture, verification
+and tooling work, with stable task IDs and separate acceptance boundaries.
 
 ## Specifications
 
@@ -24,6 +24,7 @@ experiment does not silently override them.
 
 ## Guides
 
+- [Coding style](guides/coding-style.md): naming, readability and organization; language permissions remain in the C++ subset.
 - [Configuration](guides/configuration.md): core/runtime options, menu ownership and packaged PX4 settings.
 - [PX4 operation](../integrations/px4/README.md): installation, module tests and SITL commands.
 - [Verification and evidence](guides/verification.md): tool responsibilities, remaining proof boundaries and evidence retention.
@@ -34,7 +35,7 @@ experiment does not silently override them.
 
 Systematic analysis remains planned work: F-05.2 covers the local-frame operating
 envelope, F-07.1 covers independent validation and the SIH contact issue, V-04
-covers FHA/FMEA/FTA, and V-05 covers generated/dense equivalence. Use the backlogs
+covers FHA/FMEA/FTA, and V-05 covers generated/dense equivalence. Use the roadmap
 linked above for scope and status. Draft analyses require separate review before
 being included as a repository baseline; they do not replace requirements.
 

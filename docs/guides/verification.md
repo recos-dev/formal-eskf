@@ -5,7 +5,7 @@ it. It is not a live pass report. Requirements belong to [spec/](../spec);
 [traceability-map.json](../../formal/agent-review/traceability-map.json) maps sources,
 Lean declarations and ESBMC harnesses. A reference or inventory row is not an
 executed proof. Consult the [review criteria](../spec/verification/assurance.md)
-for acceptance and the [roadmap](../../ROADMAP.md) for remaining work.
+for acceptance and the [roadmap](../roadmap.md) for remaining work.
 
 The [verification strategy](../spec/verification/assurance.md) defines the
 separate claims of Lean, ESBMC, native/static checks and agent review. Some source
@@ -27,8 +27,9 @@ it is neither a proof nor a mandatory review of every function.
   the existing extractor does not enforce them.
 
 The current module's functional boundaries are in [the integration guide](../../integrations/px4/README.md),
-[PX4 timing](../spec/profiles/px4-sih-250hz.md) and the F-series backlog. In particular,
-the SIH contact-model failure tracked in F-07.1 is not
+[PX4 timing](../spec/profiles/px4-sih-250hz.md) and the
+[functional roadmap](../roadmap.md#functional-work). The SIH contact-model failure
+tracked in F-07.1 is not
 converted into a passing landing result by excluding the failed scenario.
 
 ## Running checks
@@ -69,10 +70,19 @@ issue/analysis. Missing execution, timeout, OOM or incomplete unwinding stays a
 gap. Printed ESBMC programs lose information and are not an equivalence oracle;
 do not revive the withdrawn text-based deduplication optimization.
 
-For heavy proofs, use sequential pilots within the available resource budget.
-Measure process and aggregate memory separately. Review producer/caller
-decomposition when a query exceeds the budget; do not weaken its domain to pass.
+## Proof execution resources
 
+Run heavy profiles sequentially, without simultaneous builds or full suites.
+Before running, check an OS-enforced aggregate memory/wall-time limit and host
+headroom. Internal verifier limits and per-process RSS sampling are not a
+host-wide cap; measure process and aggregate use separately.
+
+The proposed profile for a 16 GB host is a 6 GiB aggregate cap, swap disabled,
+and at least 4 GiB available beyond the cap. This is an execution prerequisite
+to establish and check, not enforcement supplied by the verifier script or a
+measured worst-case proof cost. Review producer/caller decomposition when a
+query exceeds the budget; never narrow the domain or disable unwinding assertions
+to obtain a pass. Record the enforced limits and measured costs with the run.
 
 ## Running the agent review
 

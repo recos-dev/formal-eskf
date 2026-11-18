@@ -65,7 +65,7 @@ The development approach supports future ISO certification work through explicit
 | [Architecture](../architecture/overview.md) and production source | Responsibility boundaries, current ownership and the implemented behavior to inspect |
 | [Traceability map](../../../formal/agent-review/traceability-map.json) | Requirement-to-source, model, harness and test references; no execution-success claim |
 | Execution logs and validated review reports | Results for identified source/configuration/tool baselines, unresolved findings and evidence limitations |
-| [Functional backlog](../../../FEATURE_TODO.md) and [roadmap](../../../ROADMAP.md) | Agreed functional work and architecture/verification plans, respectively; no substitute for acceptance evidence |
+| [Roadmap](../../roadmap.md) | Agreed functional, architecture, verification and tooling work with stable task IDs; no substitute for requirement approval or acceptance evidence |
 
 Review the chain from requirement to design/source, verification method, execution result and acceptance decision. Preserve the baseline and failed attempts when retaining a result. A dated summary may point to evidence, but cannot replace missing logs or establish that later source revisions pass. Current proof totals belong in reports derived from the registered scope, not duplicated in specifications or backlog tables.
 

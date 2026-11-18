@@ -12,7 +12,7 @@
 
 The module retains a fixed local origin and its current small-area Cartesian
 model. Projection accuracy, model fidelity and estimator accuracy are distinct;
-F-05.2 in the [functional backlog](../../../../../FEATURE_TODO.md#f-05--sensor-location-and-frames)
+F-05.2 in the [functional backlog](../../../../roadmap.md#f-05--sensor-location-and-frames)
 tracks geographic-domain validation and the remaining operating-envelope decisions.
 
 - The core's attitude error is body-local. For the delayed attitude/covariance

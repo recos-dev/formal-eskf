@@ -10,7 +10,7 @@
 
 ### Summary
 
-This specification defines the C++ language and runtime profile for the shared ESKF core within the boundary established by [Formal Verification Strategy](../../verification/assurance.md). It owns source-language and portability constraints; [STYLE.md](../../../../STYLE.md) owns readability, naming and organization.
+This specification defines the C++ language and runtime profile for the shared ESKF core within the boundary established by [Formal Verification Strategy](../../verification/assurance.md). It owns source-language and portability constraints; the [coding style](../../../guides/coding-style.md) owns readability, naming and organization.
 
 The language-subset rules apply to handwritten numerical-core and portable-runtime code. Backend and platform interfaces follow the boundaries below; their external implementation requirements do not expand the shared-code subset. Host tools and tests may use facilities outside the core profile, with the same readability principles.
 
@@ -22,7 +22,7 @@ The standard version alone does not authorize every C++20 feature. Each used con
 
 ### Design baseline
 
-ArduPilot's actual implementation practice is the primary reference for the structure of estimator and runtime code. The reference is the concrete types and direct member-function sequence in [its EKF](https://github.com/ArduPilot/ardupilot/blob/546cf152a8c868acbac82dd326f9649da66d6ba1/libraries/AP_NavEKF3/AP_NavEKF3_core.cpp#L613), with generic numeric utilities in [AP_Math](https://github.com/ArduPilot/ardupilot/blob/546cf152a8c868acbac82dd326f9649da66d6ba1/libraries/AP_Math/AP_Math.h#L24). These links pin the reviewed revision. Naming and formatting remain defined by STYLE.md and `.clang-format`.
+ArduPilot's actual implementation practice is the primary reference for the structure of estimator and runtime code. The reference is the concrete types and direct member-function sequence in [its EKF](https://github.com/ArduPilot/ardupilot/blob/546cf152a8c868acbac82dd326f9649da66d6ba1/libraries/AP_NavEKF3/AP_NavEKF3_core.cpp#L613), with generic numeric utilities in [AP_Math](https://github.com/ArduPilot/ardupilot/blob/546cf152a8c868acbac82dd326f9649da66d6ba1/libraries/AP_Math/AP_Math.h#L24). These links pin the reviewed revision. Naming and formatting remain defined by the coding style and `.clang-format`.
 
 Compare equivalent design patterns in the same layer, including their C++11 spellings. A technique used in ArduPilot's math or HAL utilities does not establish a precedent for using it in estimator control flow. Where the inspected comparable code does not use a pattern, our default is not to introduce it; the absence of an explicit ArduPilot prohibition is not justification. This is formal-eskf's chosen design rule, not a claim that ArduPilot formally bans the technique everywhere.
 

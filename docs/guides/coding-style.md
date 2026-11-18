@@ -2,15 +2,20 @@
 
 This guide defines the C++ naming, readability and organization rules for formal-eskf.
 
-For estimator design, the primary reference is ArduPilot's actual same-layer practice: concrete mathematical types and direct calls in [its EKF](https://github.com/ArduPilot/ardupilot/blob/546cf152a8c868acbac82dd326f9649da66d6ba1/libraries/AP_NavEKF3/AP_NavEKF3_core.cpp#L625), alongside its [style guide](https://ardupilot.org/dev/docs/style-guide.html). The [design baseline and template boundaries](docs/spec/requirements/common/cpp-subset.md#design-baseline) define how to apply that reference while retaining C++20. ArduPilot's allocator, floating-point flags and platform conventions are not adopted by this reference.
+ArduPilot's actual same-layer practice is the primary estimator-design reference.
+The [design baseline](../spec/requirements/common/cpp-subset.md#design-baseline)
+pins the reference and defines its application while retaining C++20; it does not
+import ArduPilot's allocation, floating-point or platform conventions.
 
-The [C++ portability and constraints specification](docs/spec/requirements/common/cpp-subset.md#language-subset) owns the permitted language subset and examples. This guide owns naming, readability and organization. `.clang-format` owns formatting.
+The [C++ subset](../spec/requirements/common/cpp-subset.md#language-subset) owns
+language permissions and template boundaries. This guide owns naming, readability
+and organization; [.clang-format](../../.clang-format) owns formatting.
 
 ## Readability
 
 - Express estimator steps with ordinary types, named functions and direct control flow. A reader should be able to follow the numerical or fusion sequence without tracing a type-dispatch framework.
-- Keep templates within the specified numerical and configuration boundaries. Resolve related types together and use short, meaningful aliases throughout the implementation.
-- Use explicit overloads or named functions for distinct INS/AHRS behaviors instead of state-type detection inside a generic dispatcher. Share common mathematics; accept small duplication when removing it would require more type detection or forwarding layers.
+- Use short, meaningful aliases for the types resolved at the configuration boundary.
+- Share common mathematics; accept small duplication when removing it would require more dispatch or forwarding layers. Follow the subset's INS/AHRS and template rules.
 - Give each helper a numerical, contract or state-management responsibility. Avoid wrappers that only rename or forward an existing operation without providing a needed interface boundary.
 - Group related data when it has a common meaning or lifetime. Do not shorten argument lists by hiding unrelated dependencies in a catch-all context, global object or service framework.
 - Keep ownership and update order visible. Preserve numerical checks, failure atomicity, aliasing rules and the distinction between rejection and failure when simplifying code.
@@ -34,7 +39,7 @@ The [C++ portability and constraints specification](docs/spec/requirements/commo
 - Keep nontrivial member definitions outside the class declaration when this makes the interface easier to scan. Template definitions can remain in the same header.
 - Use closing comments for long class and namespace blocks, following the existing `/* end class Matrix */` convention.
 
-Check formatting without changing files:
+From the repository root, check formatting without changing files:
 
 ```bash
 ./scripts/format_cpp.sh --check
@@ -43,9 +48,7 @@ Check formatting without changing files:
 ## Types and Interfaces
 
 - Write references to const objects as `Type const &`.
-- Use `auto` when the type is apparent or spelling it out would obscure an expression. Keep important interface types explicit.
-- Use classes for encapsulated invariants; plain state and parameter aggregates do not need accessor wrappers.
-- Required borrowed inputs and outputs normally use references. Use non-owning pointers when absence or another explicit interface requirement makes them appropriate; document lifetime and null behavior.
+- Follow the subset's rules for type deduction, classes/aggregates and borrowing. Keep important interface types and ownership visible; do not add accessor wrappers to plain data.
 - Group explicitly defaulted or deleted special members. Do not add declarations solely for visual uniformity.
 
 ## Comments
@@ -57,13 +60,8 @@ Check formatting without changing files:
 ## Documentation
 
 - Write project documentation in English, including specifications, requirements, guides and analysis drafts.
-- Use the [specification writing standard and template](docs/spec/TEMPLATE.md) for spec structure, requirement content and acceptance boundaries.
-- Lead with the behavior or decision, then its rationale and assumptions. State required success/failure behavior and link the applicable requirement and evidence boundary.
-- Keep requirements and contracts in `docs/spec/`. Use stable requirement IDs; describe sources, units, frames, configuration scope and exclusions where relevant. Distinguish adopted rules from proposals and existing implementation.
-- Preserve the requirement-to-design/source-to-evidence chain defined by the [review criteria](docs/spec/verification/assurance.md#record-ownership). Simplifying prose must not remove stable requirement IDs, acceptance conditions, assumptions or unresolved gaps. When moving a definition, update its traceability references and links; retire a requirement only through an explicit reviewed decision.
-- Keep current functional work in `FEATURE_TODO.md` and architecture/verification plans in `ROADMAP.md`. Reference their existing IDs instead of creating another task list.
-- Keep README files focused on entry points, operation and current limitations. Keep development logs and trial notes in ignored local output. Retain release evidence as retrievable artifacts with source/configuration identity, failed cases and claim limits; never present historical results as current verification.
-- Link to the authoritative definition instead of copying changing counts or full contracts. When a requirement, implementation boundary or evidence source changes, review affected links and summaries as well as the traceability mapping.
+- Use the [specification template](../spec/TEMPLATE.md) for requirement writing and approval, and the [documentation index](../README.md#evidence-and-maintenance) for record ownership and maintenance.
+- Lead with the behavior or decision, then its rationale and assumptions. Link the authoritative contract instead of copying it. Keep README files focused on entry points, operation and current limitations.
 
 ## Applying This Guide
 

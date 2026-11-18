@@ -37,5 +37,5 @@ or refactor-only changes. Target resource acceptance remains a separate obligati
 
 Changes to this architecture require a reviewed specification change and impact
 assessment for affected contracts/evidence. Keep implementation status in
-[FEATURE_TODO.md](../../../../../FEATURE_TODO.md) and [ROADMAP.md](../../../../../ROADMAP.md), not
+[the roadmap](../../../../roadmap.md), not
 as a second changing backlog here.

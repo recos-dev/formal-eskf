@@ -94,10 +94,10 @@ OXTS GPS/INS estimates initialize and correct the filter; they are not independe
 |---|---|
 | Architecture and ownership | [Core, runtime and PX4 boundaries](docs/spec/architecture/overview.md) |
 | Requirements and design specifications | [Requirement index](docs/spec/README.md) |
-| Verification, traceability and acceptance | [Strategy](docs/spec/verification/assurance.md), [review criteria and commands](docs/spec/verification/assurance.md) |
+| Verification, traceability and acceptance | [Policy](docs/spec/verification/assurance.md), [scope and commands](docs/guides/verification.md) |
 | PX4 module setup and limitations | [SITL integration](integrations/px4/README.md) |
-| Current functionality and planned work | [Functional backlog](FEATURE_TODO.md), [architecture/verification roadmap](ROADMAP.md) |
-| Contribution rules | [Coding and documentation style](STYLE.md), [C++ subset](docs/spec/requirements/common/cpp-subset.md) |
+| Planned work and completed scope | [Roadmap](docs/roadmap.md) |
+| Contribution rules | [Coding style](docs/guides/coding-style.md), [C++ subset](docs/spec/requirements/common/cpp-subset.md) |
 
 ## References
 

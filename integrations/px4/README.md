@@ -214,7 +214,7 @@ python3 integrations/px4/scripts/analyze_frame.py "$PX4_ROOT"
 
 This writes the geographic grid, independent-oracle comparisons and source hashes
 under `output/px4-frame-envelope/`. Review measured differences and limitations
-under [F-05.2](../../FEATURE_TODO.md#f-05--sensor-location-and-frames).
+under [F-05.2](../../docs/roadmap.md#f-05--sensor-location-and-frames).
 The module has no geographic-range guard;
 normal validity flags do not establish a flight-qualified operating radius.
 

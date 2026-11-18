@@ -8,8 +8,8 @@ formal-eskf is a portable C++20 error-state Kalman filter with INS and rotation-
 
 Use [docs/README.md](docs/README.md) to locate the relevant specification before
 changing behavior; read only the affected contracts and their dependencies.
-`docs/spec/` owns requirements and equations. `FEATURE_TODO.md` owns functional
-work; `ROADMAP.md` owns architecture and verification work. Neither development
+`docs/spec/` owns requirements and equations. [docs/roadmap.md](docs/roadmap.md)
+owns functional, architecture, verification and tooling work. Neither development
 logs nor analysis proposals override an adopted specification.
 
 Use the [specification writing standard and template](docs/spec/TEMPLATE.md) for
@@ -23,7 +23,7 @@ Verify paper symbols and equations against the actual reference before citing or
 - Use fixed-size types and bounded operations. Keep dynamic allocation, exceptions, RTTI and OS facilities outside the shared core.
 - Use the existing abstractions; backend types and platform effects must not enter shared-core interfaces or equations.
 - Preserve specified behavior, defaults and failure/aliasing contracts unless a change is explicitly in scope.
-- Follow [STYLE.md](STYLE.md), the [C++ design baseline and subset](docs/spec/requirements/common/cpp-subset.md#design-baseline) and `.clang-format`. Use ArduPilot's actual same-layer practice as the estimator-design reference while retaining C++20; lack of an upstream prohibition does not justify additional generic machinery. Apply these rules within the task scope; do not start an unsolicited rewrite of existing code.
+- Follow the [coding style](docs/guides/coding-style.md), [C++ design baseline and subset](docs/spec/requirements/common/cpp-subset.md#design-baseline) and `.clang-format`. Use ArduPilot's actual same-layer practice as the estimator-design reference while retaining C++20; lack of an upstream prohibition does not justify additional generic machinery. Apply these rules within the task scope; do not start an unsolicited rewrite of existing code.
 - Use uppercase script variables and split scripts into readable functions. Avoid unnecessary wrappers, helpers and new scripts.
 - Keep platform integration and replay conveniences outside the core. Do not vendor external platform code without approval.
 
@@ -43,7 +43,7 @@ Use `scripts/format_cpp.sh --check` for read-only formatting checks; its default
 
 ## Collaboration
 
-- Use `FEATURE_TODO.md` as the functional backlog: preserve task IDs, completed scope and agreed order when reporting next steps. Keep architecture/formal plans in `ROADMAP.md`; explain new gaps or proposed priority changes instead of silently regenerating either list.
+- Use `docs/roadmap.md` as the single work list: preserve task IDs, completed scope and agreed order when reporting next steps. Explain new gaps or proposed priority changes instead of silently regenerating the list. Task status does not approve requirements or establish proof/target acceptance.
 - Inspect the worktree first; preserve unrelated edits and staged changes. Do not interfere with other ongoing work or verification runs.
 - Keep changes scoped to the request. Separate proof, production-code, tooling and documentation changes when that helps review; do not bundle unrelated cleanup.
 - Self-review changes before handing them back. Report the result, checks performed and remaining gaps without claiming unrun checks passed.

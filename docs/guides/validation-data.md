@@ -21,6 +21,6 @@ flight-qualification suite. Refer to `examples/replay_px4.py` and
 campaign needs its own reviewed scope; there is no automatic thousands-of-logs
 validation claim. Dataset availability and licensing must be checked at adoption.
 
-See [F-07 validation work](../../FEATURE_TODO.md#f-07--deployment-validation),
+See [F-07 validation work](../roadmap.md#f-07--deployment-validation),
 [deployment scope](../../integrations/px4/README.md) and
 [verification boundaries](../spec/verification/assurance.md).

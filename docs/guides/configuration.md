@@ -3,7 +3,7 @@
 F-06.2 configuration reference, reconciled with `0eb3add` on 2026-11-18. This records existing choices from numerical foundations through
 core, runtime and PX4. Kconfig now exposes build options and a packaged PX4
 deployment profile while preserving defaults. Replay retains its separate
-settings. The functional queue remains in [FEATURE_TODO](../../FEATURE_TODO.md).
+settings. Remaining configuration work is [F-06.2 in the roadmap](../roadmap.md#f-06--diagnostics-and-configuration).
 
 ## Scope and interpretation
 

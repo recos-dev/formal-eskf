@@ -62,5 +62,5 @@ Maintain the requirement→design/source→evidence chain in the existing map. R
 checks appropriate to affected contracts and configurations; report missing
 producer/caller, numerical and target obligations explicitly. Use the
 [review criteria](../verification/assurance.md) for
-acceptance and [ROADMAP.md](../../../ROADMAP.md) for planned extensions. No document,
+acceptance and the [roadmap](../../roadmap.md) for planned extensions. No document,
 AI assessment or reference count establishes certification.

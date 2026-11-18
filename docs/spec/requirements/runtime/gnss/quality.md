@@ -6,6 +6,8 @@
 
 **Applies to:** Portable runtime policy; integrations supply timestamps, metadata and deployment parameters.
 
+**Parent:** [SW-GNSS](../../software/gnss-aiding.md).
+
 ## Required behavior
 
 Define portable GNSS quality checks and health qualification without platform messages, clocks, geographic projection or EKF state.

@@ -6,6 +6,8 @@
 
 **Applies to:** Shared core sensor models and correction wrappers; caller bindings are separate.
 
+**Parent:** [SW-CORE](../software/core-estimation.md).
+
 ## Required behavior
 
 Observation residuals shall use measurement minus prediction, r=z-h(x).

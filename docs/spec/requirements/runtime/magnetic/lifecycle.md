@@ -6,6 +6,8 @@
 
 **Applies to:** Portable magnetic runtime policy; caller bindings are specified separately.
 
+**Parent:** [SW-MAGNETIC](../../software/magnetic-aiding.md).
+
 ## Required behavior
 
 `runtime::MagnetometerFusion` manages one selected magnetic source without owning

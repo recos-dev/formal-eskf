@@ -6,6 +6,8 @@
 
 **Applies to:** PX4 replay host preparation/execution.
 
+**Parent:** [SW-REPLAY](../../software/replay-aiding.md).
+
 **Uses:** [R-MAGNETIC-FIELD](../../runtime/magnetic/field.md).
 
 ## Required behavior

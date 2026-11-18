@@ -6,6 +6,8 @@
 
 **Applies to:** Shared core correction policy; configurations and limits specified below.
 
+**Parent:** [SW-CORE](../software/core-estimation.md).
+
 ## Required behavior
 
 This pure operation consumes a fixed-size innovation vector `r`, the diagonal of the innovation covariance `S = H P H^T + V`, and an explicit `gate_sigma > 0`. It does not compute S, validate its positive definiteness, apply correction or manage fusion lifecycle. Measurement-noise variances alone are not a substitute for `diag(S)`.

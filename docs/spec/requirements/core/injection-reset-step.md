@@ -8,6 +8,8 @@
 
 **Parent:** [E-STEP](composed-steps.md).
 
+**Uses:** [E-INJECT](injection.md), [E-RESET](covariance-reset.md).
+
 ## Required behavior
 
 `inject_and_reset` injects the complete supplied error first. Only if that succeeds, covariance reset receives the original covariance and the error **before zeroing**. Publish the nominal result, reset covariance and zero in every error-mean coordinate only after both succeed. Either failure preserves all three outputs and returns that failure.

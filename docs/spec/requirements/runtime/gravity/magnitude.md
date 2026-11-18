@@ -6,6 +6,8 @@
 
 **Applies to:** Portable runtime policy; integrations supply timestamps, metadata and deployment parameters.
 
+**Parent:** [SW-GRAVITY](../../software/gravity-aiding.md).
+
 ## Required behavior
 
 `runtime::AccelerometerMagnitude<Linalg>` filters body-frame specific force in

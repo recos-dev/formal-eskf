@@ -8,6 +8,8 @@
 
 **Parent:** [E-STEP](composed-steps.md).
 
+**Uses:** [E-CORRECT](correction.md), [F-SOLVE](../math/linalg/spd-solve.md), [E-INJECT](injection.md), [E-RESET](covariance-reset.md).
+
 ## Required behavior
 
 `correct` must propagate solve, covariance-finalization and injection/reset failures without publishing either output. Its complete composition must use the component preconditions and result relations established by `E-CORRECT`, `F-SOLVE`, `E-INJECT` and `E-RESET`. Proving the two earlier combined APIs alone does not discharge this clause.

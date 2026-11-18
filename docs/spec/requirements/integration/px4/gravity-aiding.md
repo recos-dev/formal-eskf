@@ -6,6 +6,8 @@
 
 **Applies to:** PX4 INS module at the delayed IMU/fusion horizon.
 
+**Parent:** [SW-PX4](../../software/px4-estimation.md).
+
 **Uses:** [R-ACCELEROMETER-SAMPLING](../../runtime/gravity/sampling.md), [R-ACCELEROMETER-FUSION](../../runtime/gravity/fusion.md), [PX4-CONFIG](configuration.md), [R-PX4-DELAYED-FUSION](delayed-fusion.md).
 
 ## Required behavior

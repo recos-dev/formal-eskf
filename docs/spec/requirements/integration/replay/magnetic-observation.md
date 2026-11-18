@@ -6,6 +6,8 @@
 
 **Applies to:** PX4 replay host preparation/execution.
 
+**Parent:** [SW-REPLAY](../../software/replay-aiding.md).
+
 **Uses:** [E-OBS-MAGNETIC](../../core/magnetic-observation.md), [R-MAGNETOMETER-FUSION](../../runtime/magnetic/fusion.md).
 
 ## Required behavior

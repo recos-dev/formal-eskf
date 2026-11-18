@@ -16,6 +16,39 @@ count. For example, `R-ACCELEROMETER-FUSION` still registers fusion, sampling an
 caller bindings separately identified below. Execution results retain their own
 source/configuration identity and must be assessed against the claimed scope.
 
+## Requirement hierarchy
+
+Start with the relevant software capability, then review its Decomposition table
+and linked children. Each child records its Parent; Uses records dependency,
+not derivation. The layer index below locates the same canonical contracts.
+
+| Software requirement | Complete behavior to review |
+|---|---|
+| [SW-CORE](requirements/software/core-estimation.md) | Portable prediction, correction and coherent state/covariance transactions. |
+| [SW-GNSS](requirements/software/gnss-aiding.md) | GNSS qualification, permission, actual update and recovery feedback. |
+| [SW-GRAVITY](requirements/software/gravity-aiding.md) | Real-interval observation preparation and conditional gravity correction. |
+| [SW-MAGNETIC](requirements/software/magnetic-aiding.md) | Fixed-field qualification, correction and heading recovery. |
+| [SW-IMU](requirements/software/imu-protection.md) | Consistent IMU-health, process-noise and bias-learning controls. |
+| [SW-PX4](requirements/software/px4-estimation.md) | Delayed estimation, current-time output and bounded platform execution. |
+| [SW-REPLAY](requirements/software/replay-aiding.md) | Recorded sensor-policy decisions and actual replay outcomes. |
+
+These are software-level obligations with explicit scope, not aircraft-level
+requirements. Most children are direct contracts. E-PRED, E-OBS and E-STEP retain
+their existing subrequirements under SW-CORE; those meaningful subgroups do not
+require equivalent extra levels elsewhere.
+
+Common and mathematical requirements remain shared contracts. E-STATE,
+R-MEASUREMENT-FUSION and R-RING-BUFFER also remain shared roots: state conventions,
+a generic gated transaction and storage behavior serve multiple capabilities.
+Their absence of a Parent does not waive evidence obligations. Integration
+requirements use portable contracts without becoming their children; in particular,
+PX4 two-source height management does not inherit the GNSS-only height profile.
+
+Each parent adds composition acceptance, not a new proof result. Preserve the
+registered evidence scopes and assess parent completeness separately; parent and
+child counts must not be combined into a verification percentage. All approval
+decisions remain governed by each requirement's Status.
+
 ## Common requirements
 
 | ID | Required behavior |

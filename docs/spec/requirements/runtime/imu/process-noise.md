@@ -6,6 +6,8 @@
 
 **Applies to:** Portable runtime policy; integrations supply timestamps, metadata and deployment parameters.
 
+**Parent:** [SW-IMU](../../software/imu-protection.md).
+
 **Uses:** [E-NOISE](../../core/process-noise.md).
 
 ## Required behavior

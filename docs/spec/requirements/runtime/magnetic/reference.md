@@ -6,6 +6,8 @@
 
 **Applies to:** Portable magnetic runtime policy; caller bindings are specified separately.
 
+**Parent:** [SW-MAGNETIC](../../software/magnetic-aiding.md).
+
 ## Required behavior
 
 `runtime::MagneticReference` consumes an externally supplied declination D,

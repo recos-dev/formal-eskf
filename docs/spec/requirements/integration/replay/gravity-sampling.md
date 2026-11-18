@@ -6,6 +6,8 @@
 
 **Applies to:** Host replay input preparation and same-horizon execution.
 
+**Parent:** [SW-REPLAY](../../software/replay-aiding.md).
+
 **Uses:** [R-ACCELEROMETER-SAMPLING](../../runtime/gravity/sampling.md), [R-ACCELEROMETER-FUSION](../../runtime/gravity/fusion.md).
 
 ## Required behavior

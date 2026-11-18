@@ -6,6 +6,8 @@
 
 **Applies to:** Portable runtime policy; integrations supply timestamps, metadata and deployment parameters.
 
+**Parent:** [SW-GNSS](../../software/gnss-aiding.md).
+
 ## Required behavior
 
 `runtime::GnssFusion` owns lifecycle metadata for horizontal position, vertical

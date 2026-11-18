@@ -6,6 +6,8 @@
 
 **Applies to:** One INS/AHRS predict_nominal call; binary32/binary64 and the selected attitude mode.
 
+**Parent:** [SW-CORE](../software/core-estimation.md).
+
 ## Required behavior
 
 These child IDs refine the mapped `E-PRED` requirement; they are not additional passing requirements. The scope is one call to either INS or AHRS `predict_nominal`, not covariance propagation or repeated-step stability. Deployment tolerances and numerical error bounds remain separate obligations.

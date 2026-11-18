@@ -6,6 +6,8 @@
 
 **Applies to:** PX4 module magnetic caller binding; portable policies retain their own contracts.
 
+**Parent:** [SW-PX4](../../software/px4-estimation.md).
+
 **Uses:** [R-MAGNETIC-REFERENCE](../../runtime/magnetic/reference.md).
 
 ## Required behavior

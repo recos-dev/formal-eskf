@@ -6,6 +6,8 @@
 
 **Applies to:** Single-owner PX4 INS module; active deployment profile and stated dependencies apply.
 
+**Parent:** [SW-PX4](../../software/px4-estimation.md).
+
 ## Required behavior
 
 `px4::OutputPredictor` owns current nominal INS output and matching history under

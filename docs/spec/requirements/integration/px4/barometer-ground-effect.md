@@ -6,6 +6,8 @@
 
 **Applies to:** PX4 module barometric residual policy; compile-time configuration applies.
 
+**Parent:** [SW-PX4](../../software/px4-estimation.md).
+
 **Uses:** [R-GNSS-VERTICAL-RECOVERY](../../runtime/gnss/vertical-recovery.md), [PX4-CONFIG](configuration.md).
 
 ## Required behavior

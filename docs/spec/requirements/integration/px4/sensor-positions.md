@@ -6,6 +6,8 @@
 
 **Applies to:** Single-owner PX4 INS module; active deployment profile and stated dependencies apply.
 
+**Parent:** [SW-PX4](../../software/px4-estimation.md).
+
 ## Required behavior
 
 F-05.1 adopts the pinned PX4 v1.16.2 nominal lever-arm compensation. The main

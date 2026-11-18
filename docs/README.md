@@ -14,7 +14,7 @@ the [specification index](spec/README.md) locates canonical requirement definiti
 
 | Subject | Entry |
 |---|---|
-| Requirements | [Canonical index by layer](spec/README.md) |
+| Requirements | [Capability hierarchy and canonical layer index](spec/README.md) |
 | Architecture | [Software boundaries](spec/architecture/overview.md), [numerical abstraction](spec/architecture/numerics.md), [PX4 module](spec/architecture/px4-module.md) |
 | Deployment profile | [PX4 SIH 250 Hz](spec/profiles/px4-sih-250hz.md) |
 | Verification policy | [Claims and traceability](spec/verification/assurance.md), [source inventory](spec/verification/source-inventory.md), [static analysis](spec/verification/static-analysis.md) |

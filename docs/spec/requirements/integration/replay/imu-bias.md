@@ -6,6 +6,8 @@
 
 **Applies to:** Host PX4 replay.
 
+**Parent:** [SW-REPLAY](../../software/replay-aiding.md).
+
 **Uses:** [R-IMU-BIAS-INHIBITION](../../runtime/imu/bias-inhibition.md), [R-VERTICAL-ACCELERATION](../../runtime/imu/vertical-health.md), [R-IMU-PROCESS-NOISE](../../runtime/imu/process-noise.md), [R-BIAS-PROCESS-NOISE](../../runtime/imu/bias-process-noise.md), [R-BIAS-LIMITS](../../runtime/imu/bias-limits.md).
 
 ## Required behavior

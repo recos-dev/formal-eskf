@@ -6,6 +6,8 @@
 
 **Applies to:** Portable INS runtime policy; caller-established mode/fault conditions.
 
+**Parent:** [SW-IMU](../../software/imu-protection.md).
+
 ## Basis
 
 Behavioral reference: PX4 v1.16.2

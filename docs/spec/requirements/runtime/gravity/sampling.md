@@ -6,6 +6,8 @@
 
 **Applies to:** Portable 10000 us sampler profile; replay and PX4 callers share the algorithm.
 
+**Parent:** [SW-GRAVITY](../../software/gravity-aiding.md).
+
 **Uses:** [R-ACCELEROMETER-MAGNITUDE](magnitude.md), [SO3-EXP](../../math/so3/exp.md).
 
 ## Basis

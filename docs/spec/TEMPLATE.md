@@ -46,6 +46,36 @@ policy defines evidence acceptance. None is a second copy of a requirement.
   scope and statement that say the same thing. Git owns revision history; keep
   development diaries, migration ledgers and execution logs outside specifications.
 
+## Requirement decomposition
+
+Use a shallow hierarchy of software capabilities and their allocated contracts.
+`requirements/software/` owns the `SW-*` capability requirements; these describe
+this software's behavior, not aircraft-level safety requirements or certification
+allocations. Preserve existing meaningful subgroups rather than forcing every
+branch to have the same depth.
+
+- A parent states the complete behavior, applicability and composition acceptance.
+  Its Decomposition table links direct children and names each allocated obligation.
+  Each child links back through Parent. Keep these links reciprocal and acyclic.
+- Preserve each child's scope and acceptance. Mark conditional applicability
+  explicitly; a parent cannot silently waive a child or broaden its domain.
+  Parent clauses address shared/composition behavior without copying child detail.
+  A composition-specific profile does not restrict a reusable child's standalone
+  API or make that child responsible for facts established by its caller.
+- Common numerical/language contracts and reusable primitives may remain independent
+  roots referenced through Uses. Do not invent a parent solely to eliminate a root,
+  mirror a directory or turn a call graph into requirement derivation.
+- Parent acceptance requires applicable child evidence, discharged dependencies and
+  evidence for the composition itself. A link, child PASS total or approved parent
+  does not establish these results or approve the children automatically.
+- Review changes in both directions: changed parent obligations affect their
+  children; changed child behavior or assumptions affect the parent and dependent
+  callers. Keep requirement approval separate from evidence applicability.
+
+New parents start as Draft. Preserve existing source/proof mappings when adding
+relationships; register evidence for a parent's composition before claiming that
+parent verified. Do not manufacture a passing map row by aggregating child results.
+
 ## Requirement status
 
 | Status | Meaning |
@@ -96,6 +126,11 @@ effects. Distinguish caller premises from checks performed by the operation.>
 
 <Use equations or a condition -> response -> modified/preserved state table when
 helpful. State whether cases are exhaustive and resolve overlapping conditions.>
+
+## Decomposition
+
+<Parents only: link each direct child and state its allocated obligation and any
+conditional applicability. Child files identify this requirement as Parent.>
 
 ## Acceptance and verification
 

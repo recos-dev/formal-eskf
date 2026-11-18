@@ -6,6 +6,8 @@
 
 **Applies to:** PX4 replay host preparation/execution.
 
+**Parent:** [SW-REPLAY](../../software/replay-aiding.md).
+
 **Uses:** [R-MAGNETOMETER-LIFECYCLE](../../runtime/magnetic/lifecycle.md), [R-MAGNETOMETER-RESET](../../runtime/magnetic/heading-reset.md).
 
 ## Required behavior

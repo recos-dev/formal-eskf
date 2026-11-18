@@ -6,6 +6,8 @@
 
 **Applies to:** Sequential shared-core operations on valid objects; no concurrency or exception recovery.
 
+**Parent:** [SW-CORE](../software/core-estimation.md).
+
 ## Required behavior
 
 These clauses refine `E-STEP`; they are not additional requirement families. They concern sequential calls on valid C++ objects, not concurrency, exception recovery or a new predict-plus-correct API. Numerical validity remains owned by the component and numerical requirements.

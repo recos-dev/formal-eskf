@@ -8,6 +8,8 @@
 
 **Parent:** [E-STEP](composed-steps.md).
 
+**Uses:** [E-PRED](prediction.md), [E-PCOV](covariance-prediction.md).
+
 ## Required behavior
 
 `predict` calls nominal prediction first. Only if that succeeds, covariance prediction receives the old covariance and the same IMU, `dt` and parameters. INS covariance also receives the **old** nominal state; AHRS covariance does not consume nominal state. Publish both component results unchanged only after both succeed; otherwise return the first failure and preserve both outputs.

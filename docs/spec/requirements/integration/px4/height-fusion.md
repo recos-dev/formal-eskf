@@ -6,6 +6,8 @@
 
 **Applies to:** Single-owner PX4 INS module; active deployment profile and stated dependencies apply.
 
+**Parent:** [SW-PX4](../../software/px4-estimation.md).
+
 **Uses:** [R-GNSS-VERTICAL-RECOVERY](../../runtime/gnss/vertical-recovery.md), [R-GNSS-RESET](../../runtime/gnss/reset.md), [PX4-CONFIG](configuration.md).
 
 ## Required behavior

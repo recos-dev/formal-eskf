@@ -6,6 +6,8 @@
 
 **Applies to:** Single-instance PX4 INS module; linked deployment profile bounds apply.
 
+**Parent:** [SW-PX4](../../software/px4-estimation.md).
+
 ## Basis
 
 [PX4 module architecture](../../../architecture/px4-module.md) identifies the pinned reference, project adaptations and scope.

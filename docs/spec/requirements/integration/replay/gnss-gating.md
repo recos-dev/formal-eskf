@@ -6,6 +6,8 @@
 
 **Applies to:** Host replay input preparation and same-horizon execution.
 
+**Parent:** [SW-REPLAY](../../software/replay-aiding.md).
+
 **Uses:** [R-MEASUREMENT-FUSION](../../runtime/measurement-fusion.md), [E-INNOV](../../core/innovation.md).
 
 ## Required behavior

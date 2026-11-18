@@ -6,6 +6,8 @@
 
 **Applies to:** PX4 module magnetic caller binding; portable policies retain their own contracts.
 
+**Parent:** [SW-PX4](../../software/px4-estimation.md).
+
 **Uses:** [R-MAGNETOMETER-FUSION](../../runtime/magnetic/fusion.md), [R-MAGNETOMETER-LIFECYCLE](../../runtime/magnetic/lifecycle.md), [E-MAG-TILT](../../core/magnetic-tilt.md).
 
 ## Required behavior

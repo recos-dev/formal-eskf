@@ -6,6 +6,8 @@
 
 **Applies to:** Shared core correction policy; configurations and limits specified below.
 
+**Parent:** [SW-CORE](../software/core-estimation.md).
+
 ## Required behavior
 
 INS `correct` accepts an optional trailing `Ins::BiasUpdate` with three body-axis permissions each for accelerometer and gyroscope biases. Every permission defaults to `true`; omitting the argument retains unrestricted correction. AHRS has no bias states and does not accept this control.

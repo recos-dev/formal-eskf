@@ -6,6 +6,8 @@
 
 **Applies to:** PX4 module GNSS input and quality binding.
 
+**Parent:** [SW-PX4](../../software/px4-estimation.md).
+
 **Uses:** [R-GNSS-QUALITY](../../runtime/gnss/quality.md).
 
 ## Required behavior

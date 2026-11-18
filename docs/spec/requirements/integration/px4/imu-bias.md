@@ -6,6 +6,8 @@
 
 **Applies to:** Single-owner PX4 INS module; active deployment profile and stated dependencies apply.
 
+**Parent:** [SW-PX4](../../software/px4-estimation.md).
+
 **Uses:** [R-IMU-BIAS-INHIBITION](../../runtime/imu/bias-inhibition.md), [R-VERTICAL-ACCELERATION](../../runtime/imu/vertical-health.md), [R-IMU-PROCESS-NOISE](../../runtime/imu/process-noise.md), [R-BIAS-PROCESS-NOISE](../../runtime/imu/bias-process-noise.md), [R-BIAS-LIMITS](../../runtime/imu/bias-limits.md), [PX4-CONFIG](configuration.md).
 
 ## Required behavior

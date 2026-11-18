@@ -1,3 +1,11 @@
+# E-STATE: State, frames and perturbation convention
+
+**ID:** `E-STATE`
+
+**Applies to:** INS and rotation-only AHRS; logical coefficients, not binary serialization.
+
+## Required behavior
+
 ## Summary
 
 This specification defines the state layout, frames, units and perturbation convention used by the ESKF.
@@ -174,3 +182,10 @@ q_nb and -q_nb represent the same nominal attitude
 ~~~
 
 Changing the state order, frame direction, quaternion convention, or perturbation side is an algorithm-wide semantic change.
+
+## Acceptance and verification
+
+Check each configuration's field/dimension correspondence, zero-error identity and
+right-multiplicative attitude relation. Numerical validity uses the scalar profile;
+exact covariance PSD and unit attitude are mathematical premises, not consequences
+of the C++ type name. State layout changes require review of every consumer.

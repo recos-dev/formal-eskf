@@ -26,7 +26,7 @@
             "symbol": "- `E-OBS`"
           },
           {
-            "file": "docs/spec/eskf-state-conventions.md",
+            "file": "docs/spec/requirements/core/state.md",
             "symbol": "## Summary"
           },
           {
@@ -188,12 +188,12 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "- `F-SCALAR`"
+            "file": "docs/spec/requirements/math/scalar/operations.md",
+            "symbol": "# F-SCALAR: Checked scalar operations"
           },
           {
-            "file": "docs/spec/scalar-ieee754-and-failure-semantics.md",
-            "symbol": "## Summary"
+            "file": "docs/spec/requirements/common/numerical-profile.md",
+            "symbol": "# C-NUMERICAL-PROFILE: Numerical execution profile"
           }
         ],
         "lean": [
@@ -370,8 +370,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
-            "symbol": "### Identity"
+            "file": "docs/spec/requirements/math/quaternion/identity.md",
+            "symbol": "# Q-IDENTITY: Identity"
           }
         ],
         "lean": [
@@ -408,8 +408,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
-            "symbol": "### Normalization"
+            "file": "docs/spec/requirements/math/quaternion/normalization.md",
+            "symbol": "# Q-NORMALIZE: Normalization"
           }
         ],
         "lean": [
@@ -490,8 +490,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
-            "symbol": "### Multiplication and composition"
+            "file": "docs/spec/requirements/math/quaternion/multiplication.md",
+            "symbol": "# Q-MUL: Hamilton multiplication"
           }
         ],
         "lean": [
@@ -528,8 +528,12 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
-            "symbol": "### Multiplication and composition"
+            "file": "docs/spec/requirements/math/quaternion/composition.md",
+            "symbol": "# Q-ROT-COMPOSE: Rotation composition"
+          },
+          {
+            "file": "docs/spec/requirements/math/quaternion/multiplication.md",
+            "symbol": "# Q-MUL: Hamilton multiplication"
           }
         ],
         "lean": [
@@ -590,8 +594,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
-            "symbol": "### Inverse"
+            "file": "docs/spec/requirements/math/quaternion/inverse.md",
+            "symbol": "# Q-INVERSE: Inverse"
           }
         ],
         "lean": [
@@ -640,7 +644,7 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
+            "file": "docs/spec/requirements/math/quaternion/rotation-matrix.md",
             "symbol": "R(q) = ["
           }
         ],
@@ -686,8 +690,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
-            "symbol": "### Rotation action"
+            "file": "docs/spec/requirements/math/quaternion/rotation-action.md",
+            "symbol": "# Q-ROTATE: Rotation action"
           }
         ],
         "lean": [
@@ -748,8 +752,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
-            "symbol": "### Quaternion sign equivalence"
+            "file": "docs/spec/requirements/math/quaternion/sign-equivalence.md",
+            "symbol": "# Q-SIGN: Quaternion sign equivalence"
           }
         ],
         "lean": [
@@ -806,8 +810,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
-            "symbol": "### Hat operator"
+            "file": "docs/spec/requirements/math/so3/hat.md",
+            "symbol": "# SO3-HAT: Hat operator"
           }
         ],
         "lean": [
@@ -848,8 +852,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
-            "symbol": "### Exponential map"
+            "file": "docs/spec/requirements/math/so3/exp.md",
+            "symbol": "# SO3-EXP: Exponential map"
           }
         ],
         "lean": [
@@ -954,8 +958,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
-            "symbol": "### Logarithmic map"
+            "file": "docs/spec/requirements/math/so3/log.md",
+            "symbol": "# SO3-LOG: Logarithmic map"
           }
         ],
         "lean": [
@@ -1044,8 +1048,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/so3-and-unit-quaternion-abstraction-layer.md",
-            "symbol": "### Small-angle behavior"
+            "file": "docs/spec/requirements/math/so3/small-angle.md",
+            "symbol": "# SO3-SMALL-ANGLE: Small-angle behavior"
           }
         ],
         "lean": [
@@ -1158,7 +1162,7 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/eskf-state-conventions.md",
+            "file": "docs/spec/requirements/core/state.md",
             "symbol": "## Supported configurations"
           }
         ],
@@ -2298,15 +2302,15 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/math/linalg/operations.md",
             "symbol": "`F-LINALG`"
           },
           {
-            "file": "docs/spec/eskf-linear-algebra-abstraction-layer.md",
+            "file": "docs/spec/requirements/math/linalg/operations.md",
             "symbol": "## Required operations"
           },
           {
-            "file": "docs/spec/eskf-linear-algebra-abstraction-layer.md",
+            "file": "docs/spec/requirements/math/linalg/operations.md",
             "symbol": "## Shared derived operations"
           }
         ],
@@ -2572,11 +2576,11 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/math/linalg/spd-solve.md",
             "symbol": "`F-SOLVE`"
           },
           {
-            "file": "docs/spec/eskf-linear-algebra-abstraction-layer.md",
+            "file": "docs/spec/requirements/math/linalg/operations.md",
             "symbol": "### 9. Symmetric positive-definite solve"
           }
         ],

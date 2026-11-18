@@ -4,7 +4,7 @@ Verification follows explicit requirements through mathematical models, producti
 
 The intended deployment environments include embedded Linux, FreeRTOS and NuttX. The estimator uses fixed-size linear algebra, nonlinear quaternion operations and IEEE-754 arithmetic.
 
-This specification owns the verification claim boundary. Mathematical behavior belongs to [linear algebra](eskf-linear-algebra-abstraction-layer.md), [SO(3)](so3-and-unit-quaternion-abstraction-layer.md) and [state conventions](eskf-state-conventions.md); numerical and language constraints belong to [scalar semantics](scalar-ieee754-and-failure-semantics.md) and [C++ portability](cpp-portability-and-constraints.md).
+This specification owns the verification claim boundary. Mathematical behavior belongs to [linear algebra](requirements/math/linalg/operations.md), [SO(3)](requirements/math/quaternion/multiplication.md) and [state conventions](requirements/core/state.md); numerical and language constraints belong to [scalar semantics](requirements/common/numerical-profile.md) and [C++ portability](requirements/common/cpp-subset.md).
 
 The [requirements](verification-requirements.md) define acceptance obligations. The [traceability and review criteria](formal-verification-traceability-and-review-criteria.md) define record ownership, evidence acceptance and change-impact review. This requirement-led assurance approach supports future ISO certification work; it does not make tool success a certification claim.
 

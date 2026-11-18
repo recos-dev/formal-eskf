@@ -8,7 +8,7 @@ evidence does not establish full source proof or target real-time acceptance.
 The behavioral reference is **PX4 v1.16.2,
 `54f0455ffcd755534539a7cf33a09a20bf71d29d`**. Adopt its single-writer execution,
 separate output prediction and delayed fusion, and explicit sensor timing.
-Retain our numerical contracts and the [C++ subset](cpp-portability-and-constraints.md);
+Retain our numerical contracts and the [C++ subset](requirements/common/cpp-subset.md);
 upstream inheritance, allocation choices and numerical shortcuts are not requirements.
 
 The [architecture boundaries](eskf-software-architecture-and-verification-boundaries.md)

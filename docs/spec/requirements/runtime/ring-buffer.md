@@ -15,7 +15,6 @@ counts active retained entries, unlike PX4's scan of all nonzero physical slots,
 which can include superseded data. Expired entries are retired even on a miss;
 PX4 may retain them. No PX4 source is vendored.
 
-
 ## Required behavior
 
 `include/formal_eskf/runtime/ring_buffer.hpp` provides the portable

@@ -1,6 +1,14 @@
+# C-CPP-SUBSET: C++ language and portability subset
+
+**ID:** `C-CPP-SUBSET`
+
+**Applies to:** Handwritten numerical core and portable runtime; backend/platform exceptions are explicit below.
+
+## Required behavior
+
 ## Summary
 
-This specification defines the C++ language and runtime profile for the shared ESKF core within the boundary established by [Formal Verification Strategy](formal-verification-strategy.md). It owns source-language and portability constraints; [STYLE.md](../../STYLE.md) owns readability, naming and organization.
+This specification defines the C++ language and runtime profile for the shared ESKF core within the boundary established by [Formal Verification Strategy](../../formal-verification-strategy.md). It owns source-language and portability constraints; [STYLE.md](../../../../STYLE.md) owns readability, naming and organization.
 
 The language-subset rules apply to handwritten numerical-core and portable-runtime code. Backend and platform interfaces follow the boundaries below; their external implementation requirements do not expand the shared-code subset. Host tools and tests may use facilities outside the core profile, with the same readability principles.
 
@@ -118,9 +126,9 @@ compiler-specific vector intrinsics
 ranges, coroutines, or format
 ~~~
 
-Platform adapters may use OS facilities and framework-required interfaces outside the shared core. For example, a PX4 work-item override does not permit virtual dispatch inside the numerical core. Portable runtime decisions remain separate from device access, scheduling and publication as specified in [the architecture boundaries](eskf-software-architecture-and-verification-boundaries.md).
+Platform adapters may use OS facilities and framework-required interfaces outside the shared core. For example, a PX4 work-item override does not permit virtual dispatch inside the numerical core. Portable runtime decisions remain separate from device access, scheduling and publication as specified in [the architecture boundaries](../../eskf-software-architecture-and-verification-boundaries.md).
 
-The [PX4 module contract](px4-module-architecture.md#px4-rt-real-time-constraints)
+The [PX4 module contract](../../px4-module-architecture.md#px4-rt-real-time-constraints)
 restricts adapter allocation phases, synchronization, I/O, dependency failure
 paths and target resource budgets; permission to use OS facilities does not waive
 those real-time obligations.
@@ -192,7 +200,7 @@ linker and runtime-library versions
 reference to the selected numerical profile
 ~~~
 
-Floating-point behavior and flags are owned by the scalar/IEEE-754 issue rather than repeated here.
+Floating-point behavior and flags are owned by the scalar/IEEE-754 contract rather than repeated here.
 
 ## Adoption and review
 
@@ -211,3 +219,9 @@ Template definitions may remain in headers. Moving them into `.cpp` with explici
 ## Trusted computing base
 
 Source-level verification does not by itself verify the compiler, assembler, linker, runtime libraries, operating system, generated machine code, or processor.
+
+## Acceptance and verification
+
+Review source and dependencies against the permitted subset and the layer-specific
+restrictions. Compiler acceptance alone does not establish bounded execution or
+verifier/target support. Preserve the declared build profile and reviewed deviations.

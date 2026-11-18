@@ -36,9 +36,9 @@ Lean and ESBMC provide separate evidence. There is no machine-checked real-to-fl
 
 | Requirement family | Specification |
 |---|---|
-| `Q-*` and `SO3-*` | [Quaternion and SO(3) behavior](so3-and-unit-quaternion-abstraction-layer.md), including normalization, composition, rotation, Exp/Log and small-angle behavior. |
-| `F-*` | [Supporting operations](verification-requirements.md#supporting-operations), [linear algebra](eskf-linear-algebra-abstraction-layer.md) and [scalar/failure semantics](scalar-ieee754-and-failure-semantics.md). |
-| `E-*` | [State conventions](eskf-state-conventions.md) and [core requirements](verification-requirements.md#eskf-core): prediction, process noise, covariance, correction, injection/reset, observations and composed steps. |
+| `Q-*` and `SO3-*` | [Quaternion and SO(3) behavior](requirements/math/quaternion/multiplication.md), including normalization, composition, rotation, Exp/Log and small-angle behavior. |
+| `F-*` | [Supporting operations](verification-requirements.md#supporting-operations), [linear algebra](requirements/math/linalg/operations.md) and [scalar/failure semantics](requirements/common/numerical-profile.md). |
+| `E-*` | [State conventions](requirements/core/state.md) and [core requirements](verification-requirements.md#eskf-core): prediction, process noise, covariance, correction, injection/reset, observations and composed steps. |
 | `R-*` | [Magnetic aiding](verification-requirements.md#magnetic-aiding) and [runtime requirements](verification-requirements.md#portable-runtime): sensor qualification, lifecycle, recovery and explicitly scoped replay/PX4 wiring. |
 
 Process noise, covariance prediction, injection/reset, correction/solve, sensor models and combined-step requirements are registered alongside quaternion and prediction requirements. Registration does not mean every entry has complete evidence: runtime and module claims must retain their missing formal layers as gaps. Inspect each mapped entry and its execution evidence before reporting completion.

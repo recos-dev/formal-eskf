@@ -2,9 +2,9 @@
 
 This guide defines the C++ naming, readability and organization rules for formal-eskf.
 
-For estimator design, the primary reference is ArduPilot's actual same-layer practice: concrete mathematical types and direct calls in [its EKF](https://github.com/ArduPilot/ardupilot/blob/546cf152a8c868acbac82dd326f9649da66d6ba1/libraries/AP_NavEKF3/AP_NavEKF3_core.cpp#L625), alongside its [style guide](https://ardupilot.org/dev/docs/style-guide.html). The [design baseline and template boundaries](docs/spec/cpp-portability-and-constraints.md#design-baseline) define how to apply that reference while retaining C++20. ArduPilot's allocator, floating-point flags and platform conventions are not adopted by this reference.
+For estimator design, the primary reference is ArduPilot's actual same-layer practice: concrete mathematical types and direct calls in [its EKF](https://github.com/ArduPilot/ardupilot/blob/546cf152a8c868acbac82dd326f9649da66d6ba1/libraries/AP_NavEKF3/AP_NavEKF3_core.cpp#L625), alongside its [style guide](https://ardupilot.org/dev/docs/style-guide.html). The [design baseline and template boundaries](docs/spec/requirements/common/cpp-subset.md#design-baseline) define how to apply that reference while retaining C++20. ArduPilot's allocator, floating-point flags and platform conventions are not adopted by this reference.
 
-The [C++ portability and constraints specification](docs/spec/cpp-portability-and-constraints.md#language-subset) owns the permitted language subset and examples. This guide owns naming, readability and organization. `.clang-format` owns formatting.
+The [C++ portability and constraints specification](docs/spec/requirements/common/cpp-subset.md#language-subset) owns the permitted language subset and examples. This guide owns naming, readability and organization. `.clang-format` owns formatting.
 
 ## Readability
 

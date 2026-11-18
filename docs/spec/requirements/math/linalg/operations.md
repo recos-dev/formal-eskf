@@ -1,21 +1,18 @@
+# F-LINALG: Fixed-size linear algebra operations
+
+**ID:** `F-LINALG`
+
+**Applies to:** Compile-time dimensions, supported scalar/backend profiles and the shapes below.
+
+## Basis
+
+The backend boundary and shared-operation allocation are defined by [numerical architecture](../../../architecture/numerics.md).
+
+## Required behavior
+
 ## Summary
 
 This specification defines the minimum fixed-size linear-algebra surface required by the ESKF. It separates backend-dependent primitives from shared derived operations and ESKF-specific domain logic, and records the vector and matrix dimensions required by the current algorithm.
-
-## Backend boundary
-
-The ESKF algorithm depends on a compile-time backend:
-
-~~~text
-EskfCore<Linalg>
-    |
-    +-- EigenBackend<float>
-    +-- EigenBackend<double>
-    +-- Px4MatrixBackend<Scalar>
-    +-- VerificationLinalg<Scalar>
-~~~
-
-ESKF equations use shared operations above the backend. The names above are schematic, not a required `EskfCore` class or an exhaustive backend list; backend selection is independent of the INS/AHRS configuration. The actual ownership and source layout are in the [architecture specification](eskf-software-architecture-and-verification-boundaries.md#current-implementation-and-ownership).
 
 ## Required operations
 
@@ -117,14 +114,7 @@ are not separate linalg-backend primitives.
 
 ### 9. Symmetric positive-definite solve
 
-~~~text
-solve_spd(
-    Mat<N,N> S,
-    Mat<N,M> B,
-    Mat<N,M> X) -> Status
-~~~
-
-This replaces direct matrix inversion and covers the LLT-based solve used by the Kalman gain calculation.
+Use [F-SOLVE](spd-solve.md).
 
 ## Shared derived operations
 
@@ -142,7 +132,7 @@ sandwich(A, P) = A * P * transpose(A)
 right_solve_spd(B, S)          // X*S = B
 ~~~
 
-Keeping these shared prevents the backends from developing different mathematical behavior. The hat/skew rotation convention is defined by [SO(3) and Unit Quaternion](so3-and-unit-quaternion-abstraction-layer.md), not by a second linalg definition.
+Keeping these shared prevents the backends from developing different mathematical behavior. The hat/skew rotation convention is defined by [SO(3) and Unit Quaternion](../quaternion/multiplication.md), not by a second linalg definition.
 
 ## ESKF dimensions currently required
 
@@ -178,21 +168,10 @@ covariance. Current observation code derives Mx15 error-state Jacobians directly
 An Mx16 nominal Jacobian and 16x15 perturbation lift may be used for derivation,
 but are not required C++ correction interfaces or extra state dimensions.
 
-## Minimal backend surface
+## Acceptance and verification
 
-The required minimum is:
-
-~~~text
-storage and scalar types
-zero initialization / coefficient access
-add / subtract / negate / scale / divide
-matrix-matrix multiply
-matrix-vector multiply
-dot / squared_norm / norm
-transpose
-SPD solve
-~~~
-
-Identity, row-major construction, blocks and segments are shared operations
-implemented through these primitives. Everything else should be shared code
-above this surface.
+For each supported backend/profile, check dimensions, initialization, access,
+block/segment value semantics and arithmetic correspondence. Use symbolic source
+checks only for their registered shapes/operations; native conformance does not
+prove backend internals or all template instantiations. Raw arithmetic is distinct
+from checked normalization and solve; preserve their own domain/failure contracts.

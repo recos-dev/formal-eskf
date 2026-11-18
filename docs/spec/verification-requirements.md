@@ -21,7 +21,7 @@ Requirement IDs remain stable when documentation is reorganized. Child clauses r
 
 ## ESKF core
 
-- `E-STATE` — INS/AHRS state, error and noise dimensions; coordinate ordering, frames, initialization and logical field correspondence.
+- `E-STATE` — [State, frames and perturbation convention](requirements/core/state.md).
 - `E-PRED` — Nominal-state propagation from the prior state, with applicable bias compensation and the selected paper-based integration and attitude models.
 - `E-NOISE` — Discretization of sampled IMU measurement noise and bias driving noise in noise-source coordinates, with the specified units and time scaling.
 - `E-PCOV` — Error-state covariance propagation using the selected transition model and injection of process noise into error-state coordinates.
@@ -2853,24 +2853,24 @@ anomaly from F-04.
 
 ## Quaternion and SO(3)
 
-- `Q-IDENTITY` — Scalar-first identity representation and two-sided quaternion identity behavior.
-- `Q-NORMALIZE` — Nonzero quaternion normalization, its exact unit-norm property and checked failure behavior.
-- `Q-MUL` — Raw Hamilton multiplication, coefficient ordering and the exact norm-product relationship, without implicit normalization.
-- `Q-ROT-COMPOSE` — Normalized rotation composition and agreement with matrix composition in the specified order.
-- `Q-INVERSE` — Unit-quaternion inversion by conjugation and its inverse laws.
-- `Q-ROT-MATRIX` — Quaternion-to-matrix conversion under the active, column-vector rotation convention.
-- `Q-ROTATE` — Forward and inverse vector rotation, inverse recovery and exact length preservation for unit rotations.
-- `Q-SIGN` — Equivalent rotations represented by opposite quaternion signs, distinct from coefficient equality.
-- `SO3-HAT` — Hat/cross-product correspondence and antisymmetry.
-- `SO3-EXP` — Rotation-vector exponential, its zero behavior and correspondence between quaternion and matrix rotations.
-- `SO3-LOG` — Principal rotation-vector logarithm, sign selection, the pi boundary and local inverse behavior.
-- `SO3-SMALL-ANGLE` — Exact-zero limits and correspondence of selected small-angle Exp/Log approximations to their exact maps.
+- `Q-IDENTITY` — [Identity](requirements/math/quaternion/identity.md).
+- `Q-NORMALIZE` — [Normalization](requirements/math/quaternion/normalization.md).
+- `Q-MUL` — [Hamilton multiplication](requirements/math/quaternion/multiplication.md).
+- `Q-ROT-COMPOSE` — [Rotation composition](requirements/math/quaternion/composition.md).
+- `Q-INVERSE` — [Inverse](requirements/math/quaternion/inverse.md).
+- `Q-ROT-MATRIX` — [Quaternion rotation matrix](requirements/math/quaternion/rotation-matrix.md).
+- `Q-ROTATE` — [Rotation action](requirements/math/quaternion/rotation-action.md).
+- `Q-SIGN` — [Quaternion sign equivalence](requirements/math/quaternion/sign-equivalence.md).
+- `SO3-HAT` — [Hat operator](requirements/math/so3/hat.md).
+- `SO3-EXP` — [Exponential map](requirements/math/so3/exp.md).
+- `SO3-LOG` — [Logarithmic map](requirements/math/so3/log.md).
+- `SO3-SMALL-ANGLE` — [Small-angle behavior](requirements/math/so3/small-angle.md).
 
 ## Supporting operations
 
-- `F-LINALG` — Fixed-size storage, access and arithmetic under backend-independent linear-algebra contracts.
-- `F-SOLVE` — Cholesky factorization and solution of SPD linear systems under declared scalar and failure contracts.
+- `F-LINALG` — [Fixed-size linear algebra operations](requirements/math/linalg/operations.md).
+- `F-SOLVE` — [Symmetric positive-definite linear solve](requirements/math/linalg/spd-solve.md).
 - `F-JR` — SO(3) right Jacobian, its zero behavior and selected approximation under the local right-error convention.
-- `F-SCALAR` — Elementary scalar functions, finite/domain checks, status reporting and output preservation under declared scalar profiles.
+- `F-SCALAR` — [Checked scalar operations](requirements/math/scalar/operations.md).
 
 Before claiming a requirement, define its applicable configurations, input domain and success/failure behavior. Exact mathematical properties, bounded C++ checks and numerical guarantees remain separate claims under the [review criteria](formal-verification-traceability-and-review-criteria.md).

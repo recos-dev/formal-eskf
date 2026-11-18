@@ -3,23 +3,15 @@
 The numerical core computes estimator operations; portable runtime components
 manage sensor/fusion policies; adapters own platform effects. These boundaries
 are implemented separately from any claim of whole-module formal verification.
-[State conventions](eskf-state-conventions.md) and [requirements](verification-requirements.md)
+[State conventions](requirements/core/state.md) and [requirements](verification-requirements.md)
 own equations and behavior. [PX4 architecture](px4-module-architecture.md) owns
 execution and real-time contracts; [timing](px4-timing-profile.md) owns its
 implemented 250 Hz delayed-fusion profile.
 
 ## Architecture
 
-| Layer | Responsibility | Must not own |
-|---|---|---|
-| Numerical core | Prediction, correction, injection/reset and covariance | Clocks, queues, sensor policy or OS effects |
-| Portable runtime | Qualification, history, lifecycle and fusion decisions | Device access, scheduling or publication |
-| Platform adapter | Message/time conversion, session ordering and output | Undocumented changes to core equations |
-
-Keep numerical APIs independently callable and backend/platform effects behind
-their declared boundaries. These are responsibilities, not a required class
-hierarchy or a generic dispatch framework. Portable runtime has no single object
-that owns and schedules an entire estimator for every platform.
+The [layer ownership contract](requirements/common/layer-boundaries.md) defines
+responsibilities and prohibited dependencies. The implementation allocation follows.
 
 ## Current implementation and ownership
 
@@ -61,7 +53,7 @@ Platform effects stay outside numerical operations.
   domains/configurations. Component evidence does not establish scheduler safety.
 - Keep clocks, source admission, known-at context, reset reporting and output epochs
   visible at integration boundaries. No stale or unknown context grants permission.
-- Follow the [C++ constraints](cpp-portability-and-constraints.md) and module
+- Follow the [C++ constraints](requirements/common/cpp-subset.md) and module
   real-time contract. Fixed containers alone do not establish bounded response time.
 
 ## Review and development gates

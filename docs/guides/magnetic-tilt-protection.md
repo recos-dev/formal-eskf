@@ -84,7 +84,7 @@ or the identity matrix. Multiplication order matters.
 
 ## Projection in our attitude coordinates
 
-The [state conventions](../spec/eskf-state-conventions.md) use body-to-NED rotation
+The [state conventions](../spec/requirements/core/state.md) use body-to-NED rotation
 and a local, right-multiplicative attitude error:
 
 ```text

@@ -10,7 +10,7 @@ architecture and verification work stays in [ROADMAP.md](../ROADMAP.md).
 
 Use the [specification writing standard and template](spec/TEMPLATE.md) when
 authoring or substantially revising a spec. It defines the shared format;
-the subject specifications below own the product and verification requirements.
+the [specification index](spec/README.md) locates canonical requirement definitions.
 
 | Subject | Authoritative definition |
 |---|---|

@@ -10,7 +10,7 @@ Evidence mappings belong to the [traceability map](../../formal/agent-review/tra
 
 | Concern | Requirements |
 |---|---|
-| State, prediction, correction and covariance | [ESKF core](#eskf-core), with detailed [prediction](#e-pred-nominal-prediction-requirements) and [composition](#e-step-composed-operation-requirements) clauses |
+| State, prediction, correction and covariance | [ESKF core](#eskf-core), with detailed [prediction](requirements/core/prediction.md#e-pred-nominal-prediction) and [composition](#e-step-composed-operation-requirements) clauses |
 | Magnetic observations, health and recovery | [Magnetic aiding](#magnetic-aiding), including explicitly named replay and PX4 module profiles |
 | GNSS, height, gravity and IMU/bias policies | [Portable runtime](#portable-runtime), including explicitly named deployment profiles |
 | PX4 module target architecture | [Module design clauses](px4-module-architecture.md), covering ownership, execution, timing, lifecycle, output and real-time acceptance; distinct from the currently mapped integration profiles |
@@ -36,137 +36,7 @@ Requirement IDs remain stable when documentation is reorganized. Child clauses r
 
 ### E-PRED: nominal prediction requirements
 
-These child IDs refine the mapped `E-PRED` requirement; they are not additional passing requirements. The scope is one call to either INS or AHRS `predict_nominal`, not covariance propagation or repeated-step stability. Deployment tolerances and numerical error bounds remain separate obligations.
-
-#### Sources and interpretation
-
-| Source | Required correspondence |
-|---|---|
-| Cheng and Huang, [SICE 2023](https://doi.org/10.23919/SICE59929.2023.10354209), equations (5), (9), (11) | Body-frame IMU measurements, bias subtraction, nominal kinematics and the selected discrete INS update. |
-| Solà, [Quaternion kinematics for the error-state Kalman filter, arXiv:1711.02508v1](https://arxiv.org/pdf/1711.02508v1), equations (97)–(101), (211)–(215), (260a)–(260e) | Quaternion Exp, body-rate integration by right multiplication, and the nominal-state update. |
-| [State conventions](eskf-state-conventions.md) and [scalar/failure semantics](scalar-ieee754-and-failure-semantics.md) | Project configuration, frames, units, finite-precision and checked-API behavior. These software requirements are not attributed to the papers. |
-
-The SICE prose before (4) describes the opposite frame direction to the one implied by (5), (9) and (11). Use the project's explicit body-to-navigation `q_nb` and `R(q_nb)` convention. The position formula includes a constant-acceleration term; the paper's use of the word Euler must not reduce it to `p_next = p_old + v_old * dt`.
-
-Solà's gravity state is not added to this project: INS takes fixed navigation-frame gravity as a parameter. AHRS is the rotation-only specialization with external gyro-bias calibration. Normalized Euler below is a project-selected truncation of (211)–(214) followed by normalization, not Solà's varying-rate first-order integrator in section 4.6.2.
-
-#### E-PRED-INPUT: consumed inputs and caller premises
-
-| Configuration | Consumed values, all finite |
-|---|---|
-| AHRS | Prior `q_nb`, `imu.angular_rate_b`, `dt`, `dt_min`, `dt_max`, `minimum_quaternion_norm`, `quaternion_squared_norm_tolerance`. |
-| INS | All AHRS values, prior `p_n`, `v_n`, `b_a`, `b_g`, `imu.specific_force_b`, and `gravity_n`. |
-
-IMU values are body-frame rates, not integrated increments. AHRS receives an already bias-calibrated angular rate; INS subtracts its estimated biases. The caller supplies consistent frames, units, gravity and a sample representative of the same step as `dt`; this API has no timestamps or frame identifiers to validate.
-
-Changing unconsumed fields must not change the result or status: AHRS ignores specific force, and both configurations ignore process-noise parameters. A full prediction step must validate process noise separately.
-
-The physical rotation model requires a unit prior quaternion over the reals. A floating-point `UnitQuaternion` value or successful normalization is not proof of exact unit norm. Finite-coefficient safety checks and the mathematical rotation premise are separate obligations.
-
-Public prediction must check the prior before attitude or translation calculations; it must not rely only on the caller or the type name. After the time/normalization-parameter checks below, require:
-
-~~~text
-0 < quaternion_squared_norm_tolerance < 1
-q_nb has finite coefficients
-norm_squared = squared_norm(q_nb.coefficients())
-norm_squared is finite
-abs(norm_squared - 1) <= quaternion_squared_norm_tolerance
-~~~
-
-Validate in that order: non-finite tolerance returns `non_finite_input`; a tolerance outside `(0,1)` returns `domain_error`; non-finite prior coefficients return `non_finite_input`; overflow of the computed squared norm returns `non_finite_result`; excessive residual returns `invalid_quaternion_norm`. Equality at the residual boundary is accepted. These checks precede the remaining consumed-input checks and prediction calculations.
-
-The tolerance is a dimensionless squared-norm residual, explicitly configured for the selected scalar/backend profile; its zero default is invalid. This predicate uses that profile's floating-point arithmetic, not exact real equality. Acceptance neither proves physical frame correctness nor a bound on all later numerical errors. Validation must not normalize or otherwise modify the old quaternion. `minimum_quaternion_norm` guards normalization candidates only; it is not this tolerance. Internal attitude helpers need not repeat this public residual check.
-
-#### E-PRED-TIME: time and threshold validation
-
-The accepted parameter domain is:
-
-~~~text
-0 < dt_min <= dt_max
-dt_min <= dt <= dt_max
-0 < minimum_quaternion_norm <= 1
-~~~
-
-All four values must be finite. Time bounds are inclusive, including the case `dt_min == dt_max`. Non-finite parameters return `non_finite_input`; otherwise invalid bounds or threshold return `domain_error`; otherwise a step outside the interval returns `out_of_range`. These parameter checks precede state and IMU processing. Mathematical zero-step identities do not make `dt == 0` a valid public call.
-
-#### E-PRED-INS: translation and bias propagation
-
-For the prior INS state, define the exact-real step by SICE (11), equivalently Solà (260a)–(260e):
-
-~~~text
-f_b      = imu.specific_force_b - b_a_old
-omega_b  = imu.angular_rate_b - b_g_old
-a_n      = R(q_nb_old) * f_b + gravity_n
-p_next   = p_old + v_old * dt + 0.5 * a_n * dt^2
-v_next   = v_old + a_n * dt
-b_a_next = b_a_old
-b_g_next = b_g_old
-~~~
-
-The integration freezes `a_n` over this step. It is not an exact solution of the fully coupled dynamics under arbitrary changing attitude or acceleration. In particular, the position increment must retain the factor `0.5` and use `v_old`, not `v_next`.
-
-#### E-PRED-ATTITUDE: selected attitude propagation
-
-Let `q_old = q_nb_old` and let `omega_b` be the INS bias-corrected rate above, or the supplied AHRS rate, held constant over the step. Use scalar-first coefficients and Hamilton multiplication:
-
-~~~text
-theta = omega_b * dt
-
-ESKF_QUAT_APPROX=0 (default):
-    q_next = q_old ⊗ Exp_q(theta)
-
-ESKF_QUAT_APPROX=1:
-    c      = q_old ⊗ [1, theta_x/2, theta_y/2, theta_z/2]
-    q_next = c / norm(c)
-~~~
-
-The default exact-real map solves `q_dot = 0.5 * q ⊗ [0, omega_b]` for a constant body rate. The approximation is normalized Euler; it must have the same first-order derivative at `dt = 0`, not be claimed equal to Exp for a finite nonzero step. Both preserve unit norm in the exact model for unit `q_old`.
-
-The C++ Exp path includes its existing small-angle branch and checked normalization of the increment and product. The Euler path normalizes its candidate without first normalizing the increment. Their finite-precision correspondence must be checked separately; the model equations above are not assertions of bitwise equality to real arithmetic.
-
-#### E-PRED-CONSISTENCY: prior-state and limiting behavior
-
-Every right-hand side must use the same prior snapshot, including the attitude used to rotate specific force and both subtracted biases. This is a data-dependency requirement, not a prescribed order of assignments. Attitude calculation must not feed `q_next` back into this step's translation.
-
-In the exact model, zero corrected angular rate preserves attitude; replacing `q_old` by `-q_old` negates the predicted quaternion without changing the physical prediction. INS with `v_old = 0`, `a_n = 0` and zero corrected angular rate preserves its nominal state. Floating-point re-normalization need not preserve quaternion coefficients bit for bit in the zero-rate case.
-
-#### E-PRED-SUCCESS: successful output
-
-When input validation and every required checked calculation succeed, return `success` and publish the complete nominal result. All output coefficients must be finite; INS biases must equal their prior values. The quaternion must be produced by the selected checked-normalization path, not silently replaced by identity or an old value.
-
-A C++ proof must establish the selected coefficient computations as well as the status. It must not assume success to avoid rejection or overflow paths. Finite inputs alone do not imply success: intermediate values or norms may overflow, or a computed normalization norm may fail its threshold.
-
-Exact unit norm is a mathematical postcondition. A numerical claim additionally needs the scalar policy's explicit unit-norm and operation-residual bounds; finite output or a status check does not establish those bounds.
-
-#### E-PRED-FAILURE: rejection and status propagation
-
-After the parameter checks, require these outcomes when the preceding relevant stages succeed:
-
-| Condition | Required outcome |
-|---|---|
-| A consumed state, IMU or gravity coefficient is non-finite | `non_finite_input`. |
-| Prior squared-norm residual exceeds `quaternion_squared_norm_tolerance` | `invalid_quaternion_norm`, before prediction; no implicit repair. |
-| Finite inputs produce a non-finite bias difference, increment, quaternion candidate, computed norm, acceleration, position or velocity | `non_finite_result`; an internally generated invalid value must not be mislabeled as invalid caller input. |
-| A required quaternion normalization has a finite computed norm below `minimum_quaternion_norm` | `invalid_quaternion_norm`; equality with the threshold is not rejected for being too small. |
-| A checked scalar/quaternion dependency otherwise fails | Propagate its failure; do not continue with its output. |
-
-Never clamp `dt`, repair invalid inputs, or publish a fallback estimate as success. Apart from the ordered parameter and prior checks above, simultaneous independent failures do not require one universal priority; isolated causes must retain their specified status.
-
-#### E-PRED-ATOMICITY: output and alias behavior
-
-On any failure, every logical field of the caller's output must remain as it was before the call, even if attitude succeeded before a later translation failure. The initial output is arbitrary, not assumed equal to the prior or to identity.
-
-The output may be the same complete nominal-state object as the prior. With otherwise disjoint input/parameter storage, in-place and separate-output calls must have the same status and, on success, the same result under the same scalar/backend profile. Separate prior state, IMU and parameters must not be modified. This is not a concurrency or object-padding contract.
-
-#### Evidence boundary and review decisions
-
-Each claim must identify INS/AHRS, binary32/binary64, attitude mode, backend/scalar contracts and its input domain. Historical harness limits such as corrected rates in `[-2,2]`, `dt` in `[2^-10,1]` and threshold `1/8` are not API limits. Full-domain profiles remove these restrictions and must check all prior-tolerance values, including rejection cases. Their complete execution inventory, not older bounded-profile or pre-validation results, is required as evidence. Fixed examples do not cover a symbolic domain. Callee summaries require matching actual-callee evidence and callers that establish their preconditions, including the Exp-to-attitude and attitude-to-public-API boundaries.
-
-Keep these boundaries explicit:
-
-- Consumed-field validation retains AHRS's independence from specific force and both nominal APIs' independence from process noise.
-- The public prior check and candidate normalization are different obligations. An accepted floating-point prior is not the exact unit-norm premise used by the real-number model.
-- Numerical output residual bounds and admissible deployment ranges are not yet proved. Tests may choose explicit input tolerances, but these are not certified deployment settings or evidence of a closed repeated-step invariant.
+See [prediction.md](requirements/core/prediction.md).
 
 ### E-STEP: composed-operation requirements
 
@@ -1008,57 +878,7 @@ none establishes calibration, model-epoch accuracy or long-distance flight quali
 
 ### R-RING-BUFFER: fixed-storage timestamped history
 
-`runtime::RingBuffer<Sample, Capacity>` follows
-[PX4-TIME-BUFFER](px4-module-architecture.md#px4-time-buffer-sample-storage-and-selection).
-It owns storage and selection, not source admission or fusion permission.
-
-Required properties:
-
-- Construction establishes empty history. Invalid allocation preserves every
-  field; unchanged length retains history; changed length and reset clear all
-  backing slots. Reset retains the configured length.
-- Valid histories have bounded count/indices, consecutive active slots in ring
-  order, strictly increasing nonzero active timestamps and zero inactive tags.
-  The next write slot follows the retained sequence, including the full case.
-- An admitted push appends exactly one sample, overwriting only the oldest when
-  full. Other slots and the borrowed input remain unchanged.
-- Selection returns the newest sample at/before the horizon with age strictly
-  less than the window, consumes the at-or-before prefix and preserves future
-  samples. A miss preserves output; null output preserves the entire buffer.
-  Ordered age subtraction must remain safe across the full `uint64_t` domain.
-- Endpoint/count/size/index queries are non-consuming. Indexed payload writes
-  retain timestamps, other payloads, occupancy and order. Empty endpoint access,
-  out-of-range indexing and an output alias into storage are outside the contract.
-
-The ESBMC scope is the actual header instantiated with a zero-default sample
-containing `uint64_t time_us` and one arbitrary `uint64_t` payload, with explicit
-fieldwise copy operations. Profiles use capacities 1, 3 and 8, every active length
-within each capacity, and both 32- and 64-bit word models. Timestamps, payloads, initial output, horizon and age window
-are symbolic; there is no small-time or successful-selection premise. The default
-two-argument selection has a separate one-sample check of its default-window
-binding; the general selection check quantifies every explicit window. Null output
-is checked with the non-consuming access operations. These profiles use a separate
-horizon object; horizon references aliased into output or buffer storage remain
-outside this proof scope, without adding an API restriction.
-
-Passing initialization and arbitrary invariant-state operation checks discharge
-the base/preservation obligations for histories of any operation count within
-those instantiations. All registered profiles must finish successfully; timeouts
-and incomplete unwinding leave a gap. This is not merely a fixed push/pop
-sequence, nor a proof for every template capacity or payload type. The harness exposes private state only
-to seed and check the invariant; no production operation is replaced. Seed
-metadata uses 8-bit integers covering every valid index/count in these capacities;
-production fields retain their actual types. An independent arbitrary slot index
-checks all storage positions universally. A fieldwise oracle snapshot avoids ESBMC 8.4's aggregate-copy conversion limitation; the production
-array still uses ESBMC's standard-library model. Native tests supply independent
-linear-list and IMU/observation/output caller scenarios.
-
-The caller must provide single ownership, ordered source admission, non-throwing
-bounded payload operations, loss handling and appropriate configuration phases.
-Monotonic fusion horizons, delayed-IMU continuity, output-epoch alignment and
-module integration remain separate obligations. These integer/storage checks
-need no real-number Lean model; they do not verify deployed standard-library
-internals, target layout, every payload type, scheduler behavior or target WCET.
+See [ring-buffer.md](requirements/runtime/ring-buffer.md).
 
 ### R-PX4-IMU-HISTORY: delayed IMU timeline
 

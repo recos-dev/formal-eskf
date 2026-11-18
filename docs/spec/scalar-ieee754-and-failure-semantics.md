@@ -71,7 +71,7 @@ Conditioning-policy enforcement or matching caller evidence remains to be
 established; this gap does not remove the required domain. Source-control/status
 proofs do not supply these bounds or prove physical sensor validity.
 
-Nominal prediction (INS/AHRS) and INS covariance prediction additionally check the prior's squared-norm residual against `quaternion_squared_norm_tolerance`. It must be finite and in `(0,1)`, with `abs(squared_norm(q_nb) - 1) <= tolerance`. Zero defaults require explicit configuration. This prior validation never repairs the input; it is distinct from normalization's safe-divisor threshold. AHRS covariance does not consume prior attitude or this tolerance. See the ordered checks in [nominal prediction requirements](verification-requirements.md#e-pred-input-consumed-inputs-and-caller-premises).
+Nominal prediction (INS/AHRS) and INS covariance prediction additionally check the prior's squared-norm residual against `quaternion_squared_norm_tolerance`. It must be finite and in `(0,1)`, with `abs(squared_norm(q_nb) - 1) <= tolerance`. Zero defaults require explicit configuration. This prior validation never repairs the input; it is distinct from normalization's safe-divisor threshold. AHRS covariance does not consume prior attitude or this tolerance. See the ordered checks in [nominal prediction requirements](requirements/core/prediction.md#e-pred-input-consumed-inputs-and-caller-premises).
 
 ## Operation failures
 

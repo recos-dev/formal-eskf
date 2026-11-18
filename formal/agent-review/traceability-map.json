@@ -1268,36 +1268,36 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "#### E-PRED-INPUT:"
+            "file": "docs/spec/requirements/core/prediction.md",
+            "symbol": "### E-PRED-INPUT: consumed inputs and caller premises"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "#### E-PRED-TIME:"
+            "file": "docs/spec/requirements/core/prediction.md",
+            "symbol": "### E-PRED-TIME: time and threshold validation"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "#### E-PRED-INS:"
+            "file": "docs/spec/requirements/core/translation-prediction.md",
+            "symbol": "# E-PRED-INS: INS translation prediction"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "#### E-PRED-ATTITUDE:"
+            "file": "docs/spec/requirements/core/attitude-prediction.md",
+            "symbol": "# E-PRED-ATTITUDE: Attitude prediction"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "#### E-PRED-CONSISTENCY:"
+            "file": "docs/spec/requirements/core/prediction.md",
+            "symbol": "### E-PRED-CONSISTENCY: prior-state and limiting behavior"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "#### E-PRED-SUCCESS:"
+            "file": "docs/spec/requirements/core/prediction.md",
+            "symbol": "### E-PRED-SUCCESS: successful output"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "#### E-PRED-FAILURE:"
+            "file": "docs/spec/requirements/core/prediction.md",
+            "symbol": "### E-PRED-FAILURE: rejection and status propagation"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "#### E-PRED-ATOMICITY:"
+            "file": "docs/spec/requirements/core/prediction.md",
+            "symbol": "### E-PRED-ATOMICITY: output and alias behavior"
           }
         ],
         "lean": [
@@ -6030,8 +6030,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-RING-BUFFER: fixed-storage timestamped history"
+            "file": "docs/spec/requirements/runtime/ring-buffer.md",
+            "symbol": "# R-RING-BUFFER: Fixed-capacity timestamped history"
           },
           {
             "file": "docs/spec/px4-module-architecture.md",

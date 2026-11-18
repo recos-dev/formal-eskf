@@ -12,14 +12,12 @@ Use the [specification writing standard and template](spec/TEMPLATE.md) when
 authoring or substantially revising a spec. It defines the shared format;
 the [specification index](spec/README.md) locates canonical requirement definitions.
 
-| Subject | Authoritative definition |
+| Subject | Entry |
 |---|---|
-| Layer ownership | [Architecture boundaries](spec/eskf-software-architecture-and-verification-boundaries.md) |
-| Language/runtime restrictions | [C++ subset](spec/requirements/common/cpp-subset.md), [static analysis](spec/cpp-static-analysis-policy.md) |
-| Mathematical interfaces | [State/frames](spec/requirements/core/state.md), [linear algebra](spec/requirements/math/linalg/operations.md), [SO(3)/quaternions](spec/requirements/math/quaternion/multiplication.md), [scalar/failure semantics](spec/requirements/common/numerical-profile.md) |
-| Behavioral requirements | [Requirement catalogue](spec/verification-requirements.md) — use the relevant ID/section |
-| PX4 deployment | [Module architecture](spec/architecture/px4-module.md), [timing profile](spec/profiles/px4-sih-250hz.md) |
-| Verification | [Strategy](spec/formal-verification-strategy.md), [review/traceability criteria](spec/formal-verification-traceability-and-review-criteria.md), [AST review boundary](spec/cpp-function-inventory-and-formal-proof-review-queue.md) |
+| Requirements | [Canonical index by layer](spec/README.md) |
+| Architecture | [Software boundaries](spec/architecture/overview.md), [numerical abstraction](spec/architecture/numerics.md), [PX4 module](spec/architecture/px4-module.md) |
+| Deployment profile | [PX4 SIH 250 Hz](spec/profiles/px4-sih-250hz.md) |
+| Verification policy | [Claims and traceability](spec/verification/assurance.md), [source inventory](spec/verification/source-inventory.md), [static analysis](spec/verification/static-analysis.md) |
 
 Specifications own required behavior and claim limits. A design proposal or local
 experiment does not silently override them.

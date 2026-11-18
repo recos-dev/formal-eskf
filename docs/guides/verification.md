@@ -4,10 +4,10 @@ This guide explains what the existing evidence can establish and how to review
 it. It is not a live pass report. Requirements belong to [spec/](../spec);
 [traceability-map.json](../../formal/agent-review/traceability-map.json) maps sources,
 Lean declarations and ESBMC harnesses. A reference or inventory row is not an
-executed proof. Consult the [review criteria](../spec/formal-verification-traceability-and-review-criteria.md)
+executed proof. Consult the [review criteria](../spec/verification/assurance.md)
 for acceptance and the [roadmap](../../ROADMAP.md) for remaining work.
 
-The [verification strategy](../spec/formal-verification-strategy.md) defines the
+The [verification strategy](../spec/verification/assurance.md) defines the
 separate claims of Lean, ESBMC, native/static checks and agent review. Some source
 proofs use actual producers plus caller summaries; all matching dependencies and
 profiles must be accepted together. The AST inventory discovers declarations;
@@ -69,7 +69,20 @@ issue/analysis. Missing execution, timeout, OOM or incomplete unwinding stays a
 gap. Printed ESBMC programs lose information and are not an equivalence oracle;
 do not revive the withdrawn text-based deduplication optimization.
 
-For new heavy proofs use sequential, resource-bounded pilots on the 16 GB host.
-Measure process and aggregate memory separately; the historical 55.11 GiB OOM
-was a failed monolithic query, not necessary RAM for every proof. Review the
-producer/caller decomposition instead of weakening the domain to obtain a pass.
+For heavy proofs, use sequential pilots within the available resource budget.
+Measure process and aggregate memory separately. Review producer/caller
+decomposition when a query exceeds the budget; do not weaken its domain to pass.
+
+
+## Running the agent review
+
+The runner requires Python 3 with `jsonschema` supporting Draft 2020-12, plus the
+verifier, analysis, sanitizer-build and agent prerequisites checked by the scripts.
+The offline regression checks report validation and runner behavior without
+executing real verifiers or an agent. Reports missing required tool results must
+be regenerated, not relabeled as having passed unrun checks.
+
+```bash
+./tests/test_agent_review.sh
+./scripts/run_agent_review.sh report.json
+```

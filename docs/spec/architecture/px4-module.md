@@ -13,10 +13,10 @@ separate output prediction and delayed fusion, and explicit sensor timing.
 Retain our numerical contracts and the [C++ subset](../requirements/common/cpp-subset.md);
 upstream inheritance, allocation choices and numerical shortcuts are not requirements.
 
-The [architecture boundaries](../eskf-software-architecture-and-verification-boundaries.md)
+The [architecture boundaries](overview.md)
 describe the layers and current implementation. The linked requirement files own the
 target module behavior. Sensor equations, gates and lifecycle rules remain in
-the [verification requirements](../verification-requirements.md).
+the [verification requirements](../README.md).
 
 The [timing profile](../profiles/px4-sih-250hz.md) defines the implemented source
 bindings and capacities. Its proposed target execution budgets remain unqualified.

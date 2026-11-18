@@ -49,7 +49,7 @@ v1.16.2 (`54f0455ffcd755534539a7cf33a09a20bf71d29d`), not moving `main`.
   horizontal position/velocity validity. These do not prematurely stop the 7 s
   session. Alignment persists through loss of magnetometer freshness.
   Height is managed separately by `R-HEIGHT-FUSION`; the GNSS-only height
-  lifecycle remains disabled. Its shared height-progress timeout now authorizes
+  lifecycle remains disabled. Its shared height-progress timeout authorizes
   the Down-only velocity reset after normal velocity correction and before height
   processing. Height does not refresh horizontal progress.
   The vertical-acceleration exception is governed by `R-PX4-IMU-BIAS` and

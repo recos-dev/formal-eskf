@@ -45,9 +45,9 @@ These rules follow [PX4 v1.16.2 heading consistency and reset](https://github.co
 and its [prediction acceleration filter](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/ekf.cpp).
 Our explicit weak-field/failure handling and absence of learned magnetic states
 are scoped differences. Native float/double backend tests are supporting
-evidence. The shared wrapped-heading helper now has real wrap/range theorems
+evidence. The shared wrapped-heading helper has real wrap/range theorems
 and scoped ESBMC scalar, failure-frame, IEEE-value and conditional range checks.
-The actual stateful controller now has complementary unconditional failure/call
+The actual stateful controller has complementary unconditional failure/call
 frames and successful IEEE history/latch profiles, plus validation, actual N/E
 norm and acceleration-filter producers. Construction and all reset/update
 transitions establish finite acceleration history. Bounded heading history is

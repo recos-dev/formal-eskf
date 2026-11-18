@@ -129,7 +129,7 @@ explicit source-change alignment recovery retains its separate reset policy.
 Native tests cover strict health/freshness boundaries, sample count, active versus
 startup behavior, data outages, both timeout actions, retry, real AHRS/INS gated
 correction, source changes, failure atomicity and unsigned-time extremes.
-Scoped ESBMC profiles now call the actual constructor/reset/restart, complete
+Scoped ESBMC profiles call the actual constructor/reset/restart, complete
 update, fusion feedback and reset feedback. All transitive controller helpers
 remain inline. Initialized and inductive invariants cover ordered clocks,
 saturated sample count, active-session progress and consumable permissions.

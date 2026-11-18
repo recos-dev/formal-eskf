@@ -32,7 +32,7 @@ requirements, source references and producer/caller evidence together.
 
 ## V-01: remaining proof boundaries
 
-Use the [requirements](docs/spec/verification-requirements.md),
+Use the [requirements](docs/spec/README.md),
 [traceability map](formal/agent-review/traceability-map.json) and actual runner
 results. Historical extension runs are not fresh execution against later revisions.
 See the [evidence boundaries](docs/guides/verification.md).

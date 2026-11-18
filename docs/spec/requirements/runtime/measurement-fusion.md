@@ -32,6 +32,9 @@ Each call is independent: a rejected or failed group neither undoes previous fus
 
 Native tests cover INS/AHRS, binary32/binary64, legal aliases, grouped rejection, input/arithmetic and downstream failures, bias permissions and a cross-coupled sequential-fusion case. They do not establish flight suitability. The `fusion` ESBMC suite checks the public covariance-preparation frame, actual portable check/fuse control flow and these four named wrappers: binary32/binary64, INS/AHRS where applicable, observation sizes 1/2/3, every legal state/covariance alias and symbolic INS bias permissions. It composes with the same-backend `E-INNOV`, correction and injection/reset producers; arbitrary inputs and failing intermediate results remain admitted. The source assertions cover skipped correction on rejection, diagnostics retained on downstream failure, unchanged inputs and atomic publication. Existing Lean gate/correction theorems are mathematical dependencies, not a new proof of the runtime state machine or a machine-checked Lean-to-C++ refinement. [Replay GNSS settings/wiring](../integration/replay/gnss-gating.md), caller history/timing, external backends and numerical error bounds remain open. See the [verification scope and evidence rules](../../../guides/verification.md).
 
-#### Replay GNSS gating
 
-See [gnss-gating.md](../integration/replay/gnss-gating.md).
+
+
+## Caller bindings
+
+- Replay GNSS gating: [gnss-gating.md](../integration/replay/gnss-gating.md).

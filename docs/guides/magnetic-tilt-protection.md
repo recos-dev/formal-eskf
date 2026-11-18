@@ -7,7 +7,7 @@ complete heading-fusion policy. Exact projection geometry and the scoped C++
 correction path have scoped Lean/ESBMC references in the traceability map.
 Floating-point error bounds and whole-module integration remain separate.
 Runtime field checks, fusion and lifecycle contracts belong to the
-[requirements](../spec/verification-requirements.md#magnetic-aiding).
+[requirements](../spec/README.md#runtime-requirements).
 
 ## Current behavior
 

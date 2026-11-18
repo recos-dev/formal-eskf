@@ -278,7 +278,7 @@ write_review_prompt()
             'Do not classify a coefficient-level IEEE-754 refinement as NUMERICAL merely' \
             'because Lean proves a separate exact-algebra theorem.' \
             'Apply these classifications to the current proof boundary explicitly stated in' \
-            'docs/spec/formal-verification-traceability-and-review-criteria.md. A target-specific claim listed under' \
+            'docs/spec/verification/assurance.md. A target-specific claim listed under' \
             '"Claims not made" is a report limitation, not missing evidence for a mapped' \
             'exact-mathematics or source-level requirement. Do not use that boundary to excuse' \
             'missing exact-algebra, C++ control-flow, coefficient, status, or atomicity evidence.' \

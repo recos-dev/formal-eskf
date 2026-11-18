@@ -23,7 +23,7 @@ evidence. They are not additional passing rows in the current agent-review map.
 Map each implemented scope to its requirements, source/configuration and retained
 test/proof results before claiming completion. Lean/ESBMC component results do
 not prove PX4 scheduling, dependency behavior or target WCET. The
-[traceability criteria](../../../formal-verification-traceability-and-review-criteria.md)
+[traceability criteria](../../../verification/assurance.md)
 continue to govern evidence and certification-related claims.
 
 Behavior-preserving refactors shall preserve the adopted contracts. Changes to

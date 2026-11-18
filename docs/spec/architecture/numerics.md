@@ -18,7 +18,7 @@ EskfCore<Linalg>
     +-- VerificationLinalg<Scalar>
 ~~~
 
-ESKF equations use shared operations above the backend. The names above are schematic, not a required `EskfCore` class or an exhaustive backend list; backend selection is independent of the INS/AHRS configuration. The actual ownership and source layout are in the [architecture specification](../eskf-software-architecture-and-verification-boundaries.md#current-implementation-and-ownership).
+ESKF equations use shared operations above the backend. The names above are schematic, not a required `EskfCore` class or an exhaustive backend list; backend selection is independent of the INS/AHRS configuration. The actual ownership and source layout are in the [architecture specification](overview.md#current-implementation-and-ownership).
 
 ## Minimal backend surface
 

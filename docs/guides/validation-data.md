@@ -23,4 +23,4 @@ validation claim. Dataset availability and licensing must be checked at adoption
 
 See [F-07 validation work](../../FEATURE_TODO.md#f-07--deployment-validation),
 [deployment scope](../../integrations/px4/README.md) and
-[verification boundaries](../spec/formal-verification-strategy.md).
+[verification boundaries](../spec/verification/assurance.md).

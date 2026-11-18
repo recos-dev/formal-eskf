@@ -26,7 +26,7 @@ Latest configuration implementation: `0eb3add` (2026-11-18). Functional completi
   `Completed` records accepted, committed functionality within its stated scope.
 - Completion here concerns scoped functionality and tests. Lean, ESBMC and
   numerical/physical assurance are separate claims tracked through the
-  [requirements](docs/spec/verification-requirements.md) and
+  [requirements](docs/spec/README.md) and
   [traceability map](formal/agent-review/traceability-map.json).
 
 ## Completed baseline
@@ -101,7 +101,7 @@ in F-02.1. Unknown required metadata is not a positive eligibility decision.
 | Task | Status and existing work | Completion criterion |
 |---|---|---|
 | F-03.1 — Vertical acceleration-fault recovery | Completed (`3fafdb6`): bounded GNSS velocity and GNSS/barometer height innovations, shared last-good reset timing, qualified-source checks and reset notifications wired; native/SITL regression passed | After F-01.1, wire the exception and independent reset criterion into module GNSS/height coordination. Preserve quality permission, raw rejection diagnostics, event ordering and actual reset notifications. Distinguish the 3 s held fault from the 500 ms last-good criterion. |
-| F-03.2 — Barometer ground effect | Committed (`e742f7e`): delayed land-detector activation, 10 s hold, 4 m one-sided deadzone and status flags. Native/sanitizer and scoped ESBMC pass; SIH contact-condition penetration isolated, while repeatable stock-SIH landing acceptance remains open under F-07. See the [ground-effect contract](docs/spec/requirements/integration/px4/height-fusion.md#px4-module-barometer-ground-effect); no terrain/HAGL estimate is assumed | Review pinned PX4 conditions and residual sign, then test near-ground rejection/compensation and exit behavior. Declare any unavailable height-above-ground context; do not treat it as known. |
+| F-03.2 — Barometer ground effect | Committed (`e742f7e`): delayed land-detector activation, 10 s hold, 4 m one-sided deadzone and status flags. Native/sanitizer and scoped ESBMC pass; SIH contact-condition penetration isolated, while repeatable stock-SIH landing acceptance remains open under F-07. See the [ground-effect contract](docs/spec/requirements/integration/px4/barometer-ground-effect.md#r-px4-baro-ground-effect-px4-module-barometer-ground-effect); no terrain/HAGL estimate is assumed | Review pinned PX4 conditions and residual sign, then test near-ground rejection/compensation and exit behavior. Declare any unavailable height-above-ground context; do not treat it as known. |
 
 Dynamic-pressure compensation is D-03: it needs a defensible airflow input/model,
 not just another constant in the existing barometer helper.

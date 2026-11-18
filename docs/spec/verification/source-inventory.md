@@ -1,12 +1,12 @@
-## Summary
+# C++ Function Inventory and Review Boundary
 
-This specification defines a source-derived inventory of project C++ functions and its intended connection to requirements, evidence and agent-assisted review. Newly added or unmapped code must remain visible even when every currently registered requirement passes. The claim boundary follows [Formal Verification Strategy](formal-verification-strategy.md).
+This specification defines a source-derived inventory of project C++ functions and its intended connection to requirements, evidence and agent-assisted review. Newly added or unmapped code must remain visible even when every currently registered requirement passes. The claim boundary follows [Formal Verification Strategy](assurance.md).
 
 ## Implementation boundary
 
-[inventory_cpp.py](../../scripts/inventory_cpp.py) already extracts declarations using Clang AST, the configured source roots and supplied compilation databases. It records input hashes and supports snapshot freshness checks. Its output is an inventory of declarations within that scope, not a proof of functions or all template executions.
+[inventory_cpp.py](../../../scripts/inventory_cpp.py) already extracts declarations using Clang AST, the configured source roots and supplied compilation databases. It records input hashes and supports snapshot freshness checks. Its output is an inventory of declarations within that scope, not a proof of functions or all template executions.
 
-A reviewed symbol-to-requirement baseline and mandatory per-function review completeness are still planned. The current [agent-review runner](../../scripts/run_agent_review.sh) audits registered requirements; it does not enforce the complete AST pipeline below. Track that integration in [ROADMAP.md](../../ROADMAP.md), without treating this design as completed coverage.
+A reviewed symbol-to-requirement baseline and mandatory per-function review completeness are still planned. The current [agent-review runner](../../../scripts/run_agent_review.sh) audits registered requirements; it does not enforce the complete AST pipeline below. Track that integration in [ROADMAP.md](../../../ROADMAP.md), without treating this design as completed coverage.
 
 ## Methodology
 

@@ -130,7 +130,7 @@ Reference requirements and the registered mapping without claiming executions.>
 
 ## Traceability and change handling
 
-The [review criteria](formal-verification-traceability-and-review-criteria.md#record-ownership)
+The [review criteria](verification/assurance.md#record-ownership)
 own the evidence process. Requirement files own normative text and metadata;
 the [traceability map](../../formal/agent-review/traceability-map.json) owns
 source/proof/test references; identified reports own execution results. The entry

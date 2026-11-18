@@ -47,10 +47,10 @@ The reference is PX4 v1.16.2
 and [yaw covariance reset](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/yaw_fusion.cpp#L118).
 PX4's global left-error definition is explicit in
 [its derivation](https://github.com/PX4/PX4-Autopilot/blob/54f0455ffcd755534539a7cf33a09a20bf71d29d/src/modules/ekf2/EKF/python/ekf_derivation/derivation.py#L152).
-The primitive consumes the caller-supplied body field. Replay now supplies the
+The primitive consumes the caller-supplied body field. Replay supplies the
 reset LPF after current field qualification, as PX4 does; PX4 additionally resets
 estimated magnetic states. Native AHRS/INS float/double and replay
-tests cover this narrower operation. Lean now proves exact Down-axis Exp,
+tests cover this narrower operation. Lean proves exact Down-axis Exp,
 normalized unit-attitude composition, tilt preservation, horizontal alignment
 under the stated polar-field premise, wrap invariance, yaw-axis removal, and
 covariance block equations/symmetry/PSD through congruence plus rank-one noise.
@@ -70,10 +70,12 @@ adapter sequencing remain separate obligations. The
 [verification guide](../../../../guides/verification.md) describes evidence scope and retention;
 execution status must be checked against the claimed source and configuration.
 
-#### PX4 module magnetic aiding
 
-See [magnetic-aiding.md](../../integration/px4/magnetic-aiding.md).
 
-#### PX4 module geographic magnetic reference
 
-See [magnetic-model.md](../../integration/px4/magnetic-model.md).
+
+
+## Caller bindings
+
+- PX4 module magnetic aiding: [magnetic-aiding.md](../../integration/px4/magnetic-aiding.md).
+- PX4 module geographic magnetic reference: [magnetic-model.md](../../integration/px4/magnetic-model.md).

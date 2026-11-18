@@ -1,8 +1,59 @@
-## Summary
+# Verification and Traceability Policy
 
-This specification defines how requirements, implementation and verification evidence support an auditable, scoped claim. It applies the [Formal Verification Strategy](formal-verification-strategy.md) to numerical-core dependencies, ESKF operations and the registered runtime/replay/PX4 integration requirements.
+Verification follows explicit requirements through mathematical models, production C++ and retained execution evidence. Each claim states which behavior, assumptions and configuration it covers. Runtime and deployment claims require evidence for their own boundaries in addition to the numerical core.
 
-The [traceability map](../../formal/agent-review/traceability-map.json) records the currently registered requirement IDs and evidence references. A mapping records where to review evidence; it is not evidence that the referenced proof ran or passed.
+The intended deployment environments include embedded Linux, FreeRTOS and NuttX. The estimator uses fixed-size linear algebra, nonlinear quaternion operations and IEEE-754 arithmetic.
+
+This specification owns the verification claim boundary. Mathematical behavior belongs to [linear algebra](../requirements/math/linalg/operations.md), [SO(3)](../requirements/math/quaternion/multiplication.md) and [state conventions](../requirements/core/state.md); numerical and language constraints belong to [scalar semantics](../requirements/common/numerical-profile.md) and [C++ portability](../requirements/common/cpp-subset.md).
+
+The [requirements](../README.md) define acceptance obligations. The record-ownership and acceptance sections below define evidence handling and change-impact review. This requirement-led assurance approach supports future ISO certification work; it does not make tool success a certification claim.
+
+## Numerical-core verification boundary
+
+~~~text
+┌────────────────────────────────────────────────────────────┐
+│                 Mathematical Specifications                │
+│          Linear Algebra · SO(3) · ESKF Transitions         │
+└─────────────────────────────┬──────────────────────────────┘
+                              │
+                              ▼
+┌────────────────────────────────────────────────────────────┐
+│          Shared, Platform-Independent C++ ESKF Core        │
+└─────────────────────────────┬──────────────────────────────┘
+                              │
+                    ┌─────────┴─────────┐
+                    │                   │
+                    ▼                   ▼
+┌─────────────────────────────┐   ┌─────────────────────────────┐
+│ Fixed-Array Proof Backend   │   │ Pluggable Matrix Backends   │
+├─────────────────────────────┤   ├─────────────────────────────┤
+│ • Proof harnesses           │   │ • EigenBackend              │
+│ • Symbolic inputs           │   │ • Px4MatrixBackend          │
+│ • Formal verification       │   │ • Conformance tests         │
+│                             │   │ • Differential tests        │
+└─────────────────────────────┘   └─────────────────────────────┘
+~~~
+
+Use Lean 4 and ESBMC 8.4 for the current proof workflow. Neither is a runtime
+dependency. A separately rewritten C++ model does not replace checking the
+production implementation.
+
+## Formal proof claim
+
+Source-level formal claims cover the analyzed shared-core paths instantiated with the fixed-array proof backend, subject to the accepted evidence for their dependencies. Each claim is scoped by its specified properties, assumptions and verification configurations; the diagram does not assert that every path or backend operation has been proved.
+
+If a target instead deploys an external matrix backend such as Eigen or PX4 matrix, the claim is limited to:
+
+> The shared ESKF algorithm satisfies the proved properties under the required linear-algebra and scalar-math contracts.
+
+This does not constitute formal verification of external backend internals, the platform math library, or all executions of those dependencies. Conformance and differential tests provide supporting evidence only. Runtime scheduling, sensor lifecycle and adapter publication require their own [software obligations](../architecture/overview.md#software-proof-obligations).
+
+## Scope and completion
+
+Each claimed property must record its specification, actual source, scalar and backend profile, dimensions, macro settings, assumptions, tool versions and successful execution results. A missing or stale dependency leaves a gap; timeouts and incomplete unwinding are not passing results.
+
+Exact algebra, bounded implementation checks, inductive runtime safety and target numerical guarantees must be reported separately. Source verification does not verify the compiler, generated machine code, operating system or CPU.
+
 
 ## Record ownership
 
@@ -10,11 +61,11 @@ The development approach supports future ISO certification work through explicit
 
 | Record | Authoritative content |
 |---|---|
-| [Specifications and requirement IDs](verification-requirements.md) | Required behavior, sources, assumptions, configuration scope and acceptance obligations |
-| [Architecture](eskf-software-architecture-and-verification-boundaries.md) and production source | Responsibility boundaries, current ownership and the implemented behavior to inspect |
-| [Traceability map](../../formal/agent-review/traceability-map.json) | Requirement-to-source, model, harness and test references; no execution-success claim |
+| [Specifications and requirement IDs](../README.md) | Required behavior, sources, assumptions, configuration scope and acceptance obligations |
+| [Architecture](../architecture/overview.md) and production source | Responsibility boundaries, current ownership and the implemented behavior to inspect |
+| [Traceability map](../../../formal/agent-review/traceability-map.json) | Requirement-to-source, model, harness and test references; no execution-success claim |
 | Execution logs and validated review reports | Results for identified source/configuration/tool baselines, unresolved findings and evidence limitations |
-| [Functional backlog](../../FEATURE_TODO.md) and [roadmap](../../ROADMAP.md) | Agreed functional work and architecture/verification plans, respectively; no substitute for acceptance evidence |
+| [Functional backlog](../../../FEATURE_TODO.md) and [roadmap](../../../ROADMAP.md) | Agreed functional work and architecture/verification plans, respectively; no substitute for acceptance evidence |
 
 Review the chain from requirement to design/source, verification method, execution result and acceptance decision. Preserve the baseline and failed attempts when retaining a result. A dated summary may point to evidence, but cannot replace missing logs or establish that later source revisions pass. Current proof totals belong in reports derived from the registered scope, not duplicated in specifications or backlog tables.
 
@@ -34,16 +85,11 @@ Lean and ESBMC provide separate evidence. There is no machine-checked real-to-fl
 
 ## Requirements
 
-| Requirement family | Specification |
-|---|---|
-| `Q-*` and `SO3-*` | [Quaternion and SO(3) behavior](requirements/math/quaternion/multiplication.md), including normalization, composition, rotation, Exp/Log and small-angle behavior. |
-| `F-*` | [Supporting operations](verification-requirements.md#supporting-operations), [linear algebra](requirements/math/linalg/operations.md) and [scalar/failure semantics](requirements/common/numerical-profile.md). |
-| `E-*` | [State conventions](requirements/core/state.md) and [core requirements](verification-requirements.md#eskf-core): prediction, process noise, covariance, correction, injection/reset, observations and composed steps. |
-| `R-*` | [Magnetic aiding](verification-requirements.md#magnetic-aiding) and [runtime requirements](verification-requirements.md#portable-runtime): sensor qualification, lifecycle, recovery and explicitly scoped replay/PX4 wiring. |
+The [specification index](../README.md) locates canonical requirement definitions.
 
 Process noise, covariance prediction, injection/reset, correction/solve, sensor models and combined-step requirements are registered alongside quaternion and prediction requirements. Registration does not mean every entry has complete evidence: runtime and module claims must retain their missing formal layers as gaps. Inspect each mapped entry and its execution evidence before reporting completion.
 
-The map is not a complete estimator coverage denominator. Unmapped code must remain visible through the [function inventory and review queue](cpp-function-inventory-and-formal-proof-review-queue.md); the mandatory function-by-function review baseline is still a design task. Keep registered-requirement coverage separate from whole-source and configuration coverage.
+The map is not a complete estimator coverage denominator. Unmapped code must remain visible through the [function inventory and review queue](source-inventory.md); the mandatory function-by-function review baseline is still a design task. Keep registered-requirement coverage separate from whole-source and configuration coverage.
 
 ## ESBMC assumptions
 
@@ -55,13 +101,13 @@ Normalization is checked compositionally: actual norm/root dispatch and raw divi
 
 Exp additionally separates its actual three-vector squared-norm producer from branch/control-flow verification. Summarized returns are unconstrained; the caller checks request arguments, eligibility, status propagation and exact publication. The actual producer and complete normalization chain must be verified before the composed source claim is accepted.
 
-The [rotation harness](../../formal/cpp/esbmc/rotation.cpp) separately verifies actual matrix coefficients over arbitrary IEEE inputs, action wiring under an unconstrained matrix-producer summary, and the actual backend's finite-matrix basis property. Acceptance requires every producer row and caller profile in both formats. Producer finiteness for bounded q discharges the basis premise; basis examples alone do not establish arbitrary-vector floating-point behavior. These source-level claims do not establish numerical orthogonality, length preservation or inverse recovery.
+The [rotation harness](../../../formal/cpp/esbmc/rotation.cpp) separately verifies actual matrix coefficients over arbitrary IEEE inputs, action wiring under an unconstrained matrix-producer summary, and the actual backend's finite-matrix basis property. Acceptance requires every producer row and caller profile in both formats. Producer finiteness for bounded q discharges the basis premise; basis examples alone do not establish arbitrary-vector floating-point behavior. These source-level claims do not establish numerical orthogonality, length preservation or inverse recovery.
 
 General Exp/Log flow checks use arbitrary scalar returns, including non-finite values, to verify checked scalar-result use and failures without an accuracy assumption. The retained Log witnesses use a first-quadrant `atan2f` contract because ESBMC 8.4 lacks its body: interior results are nondeterministic in `[0,pi/2]` and axis values are fixed. Neither is a proof of deployed math-library accuracy. General Log checks describe behavior even outside the mathematical unit-quaternion domain; they do not establish a runtime unit-norm check or principal-range bound for those inputs.
 
 ### Prediction proof assumptions
 
-The [prediction harness](../../formal/cpp/esbmc/prediction.cpp) owns per-entry domains, fixtures and scalar models; the [runner](../../scripts/verify_esbmc.sh) owns profile selection. These are verification evidence, not replacements for paper-based specifications.
+The [prediction harness](../../../formal/cpp/esbmc/prediction.cpp) owns per-entry domains, fixtures and scalar models; the [runner](../../../scripts/verify_esbmc.sh) owns profile selection. These are verification evidence, not replacements for paper-based specifications.
 
 General attitude-helper profiles quantify over arbitrary IEEE quaternion/rate coefficients and initial output, every finite positive `dt`, and every finite normalization threshold in `(0,1]`. Public callers cover all valid time bounds; INS translation covers all finite consumed vector coefficients, including subtraction and integration overflow. These are source-level coefficient/status/frame claims, not assumptions of unit norm or success. Root/trig contract models provide coarse enclosures, not numerical accuracy; root enclosures and model dispatch require independent checks. StandardMath fixtures remain separate execution witnesses, not deployed-libm proofs.
 
@@ -99,11 +145,4 @@ The runner executes Lean, ESBMC, Cppcheck, ASan/UBSan and the agent audit, in th
 
 The runner reports total elapsed wall time as `HH:MM:SS` on completion or failure. Static analysis and sanitizer runs may generate build caches, binaries and diagnostics, but do not fix or format source code.
 
-The runner requires Python 3 with `jsonschema` supporting Draft 2020-12, in addition to the verifier, static-analysis, sanitizer-build and agent prerequisites checked by the scripts. The offline regression test exercises report validation, execution-inventory checks and runner behavior without running the real analysis tools or agent. Reports missing any of the four tool results must be regenerated, not relabeled as having passed checks that were never run.
-
-Run the tool regression tests, then the proofs and semantic audit with:
-
-```sh
-./tests/test_agent_review.sh
-./scripts/run_agent_review.sh report.json
-```
+Use the [verification guide](../../guides/verification.md) for prerequisites and commands.

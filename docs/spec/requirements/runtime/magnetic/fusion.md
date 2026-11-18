@@ -17,18 +17,18 @@
 
 This is one stateless observation transaction, not full sensor health qualification, fusion lifecycle, persistent-rejection recovery, yaw initialization or adapter wiring. Native tests cover both configurations and scalar formats, full correlated covariance, all 64 INS bias masks, legal aliases and stage failures. ESBMC checks the shared field-first observation preparation in both scalar formats: the original health-reference selection and policy, field diagnostics, stop priority, exact measured-minus-predicted residual, finite-result checks and atomic disjoint scratch outputs. Same-type field qualification and inverse-action input-frame producers close this helper boundary. The complete public AHRS/INS transaction is checked compositionally in binary32/64, with all four independent state/covariance alias arrangements and all four optional health-reference arrangements. Actual finite-state validation, attitude Jacobian construction, stage ordering, exact diagnostic propagation, INS bias permissions and atomic publication consume the same-type field/observation, measurement-check and magnetic-correction producer contracts. Arbitrary producer statuses/results include failures; no successful, finite, unit or PSD input is assumed. The wrapper is independent of the tilt compile option and composes with both separately proved M0/M1 correction families. Module/replay sequencing remains outside this portable transaction claim. No new mathematical or target-libm accuracy claim follows.
 
-#### Replay magnetic observations
 
-See [magnetic-observation.md](../../integration/replay/magnetic-observation.md).
 
-#### Replay magnetic field checks
 
-See [magnetic-field.md](../../integration/replay/magnetic-field.md).
 
-#### Replay geographic magnetic model
 
-See [magnetic-model.md](../../integration/replay/magnetic-model.md).
 
-#### Replay magnetic lifecycle
 
-See [magnetic-lifecycle.md](../../integration/replay/magnetic-lifecycle.md).
+
+
+## Caller bindings
+
+- Replay magnetic observations: [magnetic-observation.md](../../integration/replay/magnetic-observation.md).
+- Replay magnetic field checks: [magnetic-field.md](../../integration/replay/magnetic-field.md).
+- Replay geographic magnetic model: [magnetic-model.md](../../integration/replay/magnetic-model.md).
+- Replay magnetic lifecycle: [magnetic-lifecycle.md](../../integration/replay/magnetic-lifecycle.md).

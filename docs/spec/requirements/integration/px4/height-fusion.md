@@ -117,6 +117,9 @@ separate obligations. Bias estimates are not independent altitude truth or a
 proof of physical sensor health.
 
 
-#### PX4 module barometer ground effect
 
-See [barometer-ground-effect.md](barometer-ground-effect.md).
+
+
+## Caller bindings
+
+- PX4 module barometer ground effect: [barometer-ground-effect.md](barometer-ground-effect.md).

@@ -128,17 +128,50 @@ verification scope; an indexed requirement or linked proof is not a passing resu
 | `R-REPLAY-MAGNETIC-MODEL` | [Replay geographic magnetic model](requirements/integration/replay/magnetic-model.md) |
 | `R-REPLAY-MAGNETIC-OBSERVATION` | [Replay magnetic observations](requirements/integration/replay/magnetic-observation.md) |
 
-## Additional contracts
-
-The [requirement catalogue](verification-requirements.md) and its subject links
-own requirements not defined in the entries above. A forwarding entry contains
-no second definition.
-
 ## Architecture
 
 - [Numerical Architecture](architecture/numerics.md).
+- [Software Architecture and Verification Boundaries](architecture/overview.md).
 - [PX4 Module Architecture](architecture/px4-module.md).
 
 ## Deployment profiles
 
 - [PX4 SIH 250 Hz Deployment Profile](profiles/px4-sih-250hz.md).
+
+## Verification policy
+
+- [Verification and Traceability Policy](verification/assurance.md).
+- [C++ Function Inventory and Review Boundary](verification/source-inventory.md).
+- [C++ Static Analysis Policy](verification/static-analysis.md).
+
+
+## Identity and scope
+
+One canonical file owns each independently reviewable requirement. Named child
+clauses may remain in that file when they are one operation's conditions or
+transaction frame; file and clause counts are not proof counts. Parent acceptance
+requires all applicable children. The current map preserves its registered IDs;
+newly separated caller/shared contracts do not automatically add passing rows.
+An unmapped requirement remains an obligation whose evidence must be registered
+before claiming its verification.
+
+### Legacy reference headings
+
+These former document headings identify reference scopes, not additional active
+requirements. Follow the owners below; the scopes are not interchangeable.
+
+| Former heading | Canonical owners |
+|---|---|
+| `PX4-TIME-BUFFER` | [R-RING-BUFFER](requirements/runtime/ring-buffer.md) owns storage; [PX4-TIME](requirements/integration/px4/timestamps.md) owns caller/history use; [PX4-RT](requirements/integration/px4/real-time.md) owns resource acceptance. |
+| `PX4-TIME-IMU` | [R-PX4-IMU-HISTORY](requirements/integration/px4/imu-history.md) |
+| `PX4-TIME-OUTPUT` | [R-PX4-OUTPUT-PREDICTOR](requirements/integration/px4/output-predictor.md) |
+| `PX4-TIME-OBSERVATIONS` | [R-PX4-OBSERVATION-HISTORY](requirements/integration/px4/observation-history.md) |
+| `PX4-TIME-LIVE` | [R-PX4-DELAYED-FUSION](requirements/integration/px4/delayed-fusion.md), with [PX4-EXEC](requirements/integration/px4/execution.md) and [PX4-OUT](requirements/integration/px4/publication.md). |
+
+### Reserved retired IDs
+
+`R-IMU-DYNAMICS` (standalone instantaneous detector) and `R-IMU-BIAS-LEARNING`
+(continuous-good qualification) are retired. Their contracts remain in Git at
+`7029404`; do not reuse their IDs or convert their missing evidence into PASS.
+The active [decaying-peak policy](requirements/runtime/imu/bias-inhibition.md) is
+not a behaviorally equivalent replacement for either retired public API.

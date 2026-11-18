@@ -249,7 +249,7 @@ startup values. Defaults alone do not identify a running session. Keep requested
 and derived timing values distinguishable in evidence.
 
 For each implementation batch, link the affected existing requirements in
-[verification-requirements](../spec/verification-requirements.md) and the
+[verification-requirements](../spec/README.md) and the
 [traceability map](../../formal/agent-review/traceability-map.json). Core mathematical
 theorems do not prove parameter parsing or real-time admissibility. Existing
 ESBMC results retain their actual scalar/backend/mode/domain scope; exposing a

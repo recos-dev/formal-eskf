@@ -55,6 +55,9 @@ proves the real tilt projection's nonnegativity, trace decomposition/bound and
 identity-frame formula under PSD covariance. It does not establish the truth
 of covariance-based attitude confidence, floating-point PSD, or target libraries.
 
-#### Replay condition sources (host demo)
 
-See [gravity-conditions.md](../../integration/replay/gravity-conditions.md).
+
+
+## Caller bindings
+
+- Replay condition sources (host demo): [gravity-conditions.md](../../integration/replay/gravity-conditions.md).

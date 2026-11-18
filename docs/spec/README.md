@@ -70,6 +70,18 @@ verification scope; an indexed requirement or linked proof is not a passing resu
 
 | ID | Required behavior |
 |---|---|
+| `R-GNSS-FUSION` | [GNSS fusion lifecycle](requirements/runtime/gnss/lifecycle.md) |
+| `R-GNSS-QUALITY` | [GNSS quality checks and health qualification](requirements/runtime/gnss/quality.md) |
+| `R-GNSS-RESET` | [checked GNSS position and velocity reset](requirements/runtime/gnss/reset.md) |
+| `R-GNSS-VERTICAL-RECOVERY` | [bounded vertical innovations during IMU faults](requirements/runtime/gnss/vertical-recovery.md) |
+| `R-ACCELEROMETER-CONDITIONS` | [gravity-fusion prerequisites](requirements/runtime/gravity/conditions.md) |
+| `R-ACCELEROMETER-FUSION` | [conditional gravity correction](requirements/runtime/gravity/fusion.md) |
+| `R-ACCELEROMETER-MAGNITUDE` | [filtered gravity-band diagnostic](requirements/runtime/gravity/magnitude.md) |
+| `R-IMU-BIAS-INHIBITION` | [Decaying-peak bias-learning permissions](requirements/runtime/imu/bias-inhibition.md) |
+| `R-BIAS-LIMITS` | [per-axis bias-value limits](requirements/runtime/imu/bias-limits.md) |
+| `R-BIAS-PROCESS-NOISE` | [variance-dependent bias driving noise](requirements/runtime/imu/bias-process-noise.md) |
+| `R-IMU-PROCESS-NOISE` | [fault-dependent sampled IMU variance](requirements/runtime/imu/process-noise.md) |
+| `R-VERTICAL-ACCELERATION` | [apparent falling and clipping detection](requirements/runtime/imu/vertical-health.md) |
 | `R-MAGNETIC-FIELD` | [instantaneous magnetic-field plausibility](requirements/runtime/magnetic/field.md) |
 | `R-MAGNETOMETER-FUSION` | [field checks and gated magnetic correction](requirements/runtime/magnetic/fusion.md) |
 | `R-MAGNETOMETER-RESET` | [fixed-field heading and covariance reset](requirements/runtime/magnetic/heading-reset.md) |
@@ -77,14 +89,22 @@ verification scope; an indexed requirement or linked proof is not a passing resu
 | `R-MAGNETOMETER-LIFECYCLE` | [magnetic health and fusion lifecycle](requirements/runtime/magnetic/lifecycle.md) |
 | `R-MAGNETIC-REFERENCE` | [geographic magnetic reference adoption](requirements/runtime/magnetic/reference.md) |
 | `R-MAGNETOMETER-FILTER` | [magnetic data for heading reset](requirements/runtime/magnetic/reset-filter.md) |
+| `R-MEASUREMENT-FUSION` | [gated correction of one observation group](requirements/runtime/measurement-fusion.md) |
 | `R-RING-BUFFER` | [Fixed-capacity timestamped history](requirements/runtime/ring-buffer.md) |
 
 ## Integration requirements
 
 | ID | Required behavior |
 |---|---|
+| `R-PX4-GNSS-QUALITY` | [PX4 GNSS integration](requirements/integration/px4/gnss-quality.md) |
 | `R-PX4-MAGNETIC-AIDING` | [PX4 module magnetic aiding](requirements/integration/px4/magnetic-aiding.md) |
 | `R-PX4-MAGNETIC-MODEL` | [PX4 module geographic magnetic reference](requirements/integration/px4/magnetic-model.md) |
+| `R-REPLAY-GNSS-GATING` | [Replay GNSS gating](requirements/integration/replay/gnss-gating.md) |
+| `R-REPLAY-GNSS-LIFECYCLE` | [Replay GNSS lifecycle](requirements/integration/replay/gnss-lifecycle.md) |
+| `R-REPLAY-GNSS-QUALITY` | [Replay GNSS quality](requirements/integration/replay/gnss-quality.md) |
+| `R-REPLAY-GRAVITY-CONDITIONS` | [Replay condition sources (host demo)](requirements/integration/replay/gravity-conditions.md) |
+| `R-REPLAY-GRAVITY-SAMPLING` | [Replay sampling and tuning](requirements/integration/replay/gravity-sampling.md) |
+| `R-REPLAY-BIAS` | [Replay bias-learning binding](requirements/integration/replay/imu-bias.md) |
 | `R-REPLAY-MAGNETIC-FIELD` | [Replay magnetic field checks](requirements/integration/replay/magnetic-field.md) |
 | `R-REPLAY-MAGNETIC-LIFECYCLE` | [Replay magnetic lifecycle](requirements/integration/replay/magnetic-lifecycle.md) |
 | `R-REPLAY-MAGNETIC-MODEL` | [Replay geographic magnetic model](requirements/integration/replay/magnetic-model.md) |

@@ -4022,8 +4022,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-MEASUREMENT-FUSION: gated correction of one observation group"
+            "file": "docs/spec/requirements/runtime/measurement-fusion.md",
+            "symbol": "# R-MEASUREMENT-FUSION: gated correction of one observation group"
           }
         ],
         "lean": [
@@ -4128,8 +4128,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-ACCELEROMETER-MAGNITUDE: filtered gravity-band diagnostic"
+            "file": "docs/spec/requirements/runtime/gravity/magnitude.md",
+            "symbol": "# R-ACCELEROMETER-MAGNITUDE: filtered gravity-band diagnostic"
           }
         ],
         "lean": [
@@ -4194,8 +4194,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-ACCELEROMETER-CONDITIONS: gravity-fusion prerequisites"
+            "file": "docs/spec/requirements/runtime/gravity/conditions.md",
+            "symbol": "# R-ACCELEROMETER-CONDITIONS: gravity-fusion prerequisites"
           }
         ],
         "lean": [
@@ -4280,8 +4280,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-ACCELEROMETER-FUSION: conditional gravity correction"
+            "file": "docs/spec/requirements/runtime/gravity/fusion.md",
+            "symbol": "# R-ACCELEROMETER-FUSION: conditional gravity correction"
           }
         ],
         "lean": [
@@ -4390,8 +4390,12 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-REPLAY-BIAS: replay bias-learning inhibition"
+            "file": "docs/spec/requirements/integration/replay/imu-bias.md",
+            "symbol": "# R-REPLAY-BIAS: Replay bias-learning binding"
+          },
+          {
+            "file": "docs/spec/requirements/runtime/imu/bias-inhibition.md",
+            "symbol": "# R-IMU-BIAS-INHIBITION: Decaying-peak bias-learning permissions"
           }
         ],
         "lean": [],
@@ -4465,6 +4469,10 @@
           {
             "file": "docs/spec/verification-requirements.md",
             "symbol": "### R-PX4-IMU-BIAS: module health and bias-learning inhibition"
+          },
+          {
+            "file": "docs/spec/requirements/runtime/imu/bias-inhibition.md",
+            "symbol": "# R-IMU-BIAS-INHIBITION: Decaying-peak bias-learning permissions"
           }
         ],
         "lean": [],
@@ -4564,8 +4572,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-IMU-PROCESS-NOISE: fault-dependent sampled IMU variance"
+            "file": "docs/spec/requirements/runtime/imu/process-noise.md",
+            "symbol": "# R-IMU-PROCESS-NOISE: fault-dependent sampled IMU variance"
           }
         ],
         "lean": [
@@ -4646,8 +4654,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-BIAS-PROCESS-NOISE: variance-dependent bias driving noise"
+            "file": "docs/spec/requirements/runtime/imu/bias-process-noise.md",
+            "symbol": "# R-BIAS-PROCESS-NOISE: variance-dependent bias driving noise"
           }
         ],
         "lean": [
@@ -4732,8 +4740,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-BIAS-LIMITS: per-axis bias-value limits"
+            "file": "docs/spec/requirements/runtime/imu/bias-limits.md",
+            "symbol": "# R-BIAS-LIMITS: per-axis bias-value limits"
           }
         ],
         "lean": [],
@@ -4789,8 +4797,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-VERTICAL-ACCELERATION: apparent falling and clipping detection"
+            "file": "docs/spec/requirements/runtime/imu/vertical-health.md",
+            "symbol": "# R-VERTICAL-ACCELERATION: apparent falling and clipping detection"
           }
         ],
         "lean": [],
@@ -4846,8 +4854,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-GNSS-VERTICAL-RECOVERY: bounded vertical innovations during IMU faults"
+            "file": "docs/spec/requirements/runtime/gnss/vertical-recovery.md",
+            "symbol": "# R-GNSS-VERTICAL-RECOVERY: bounded vertical innovations during IMU faults"
           }
         ],
         "lean": [
@@ -4972,11 +4980,11 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-GNSS-RESET: checked GNSS position and velocity reset"
+            "file": "docs/spec/requirements/runtime/gnss/reset.md",
+            "symbol": "# R-GNSS-RESET: checked GNSS position and velocity reset"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/gnss/quality.md",
             "symbol": "#### PX4 GNSS integration"
           }
         ],
@@ -5154,19 +5162,19 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-GNSS-FUSION: GNSS fusion lifecycle"
+            "file": "docs/spec/requirements/runtime/gnss/lifecycle.md",
+            "symbol": "# R-GNSS-FUSION: GNSS fusion lifecycle"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/gnss/lifecycle.md",
             "symbol": "#### Replay GNSS lifecycle"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/gnss/lifecycle.md",
             "symbol": "#### Continuous bad vertical acceleration"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/gnss/quality.md",
             "symbol": "#### PX4 GNSS integration"
           }
         ],
@@ -5473,15 +5481,15 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### R-GNSS-QUALITY: GNSS quality checks and health qualification"
+            "file": "docs/spec/requirements/runtime/gnss/quality.md",
+            "symbol": "# R-GNSS-QUALITY: GNSS quality checks and health qualification"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/gnss/quality.md",
             "symbol": "#### Replay GNSS quality"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/runtime/gnss/quality.md",
             "symbol": "#### PX4 GNSS integration"
           }
         ],

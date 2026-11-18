@@ -57,6 +57,7 @@ Check formatting without changing files:
 ## Documentation
 
 - Write project documentation in English, including specifications, requirements, guides and analysis drafts.
+- Use the [specification writing standard and template](docs/spec/TEMPLATE.md) for spec structure, requirement content and acceptance boundaries.
 - Lead with the behavior or decision, then its rationale and assumptions. State required success/failure behavior and link the applicable requirement and evidence boundary.
 - Keep requirements and contracts in `docs/spec/`. Use stable requirement IDs; describe sources, units, frames, configuration scope and exclusions where relevant. Distinguish adopted rules from proposals and existing implementation.
 - Preserve the requirement-to-design/source-to-evidence chain defined by the [review criteria](docs/spec/formal-verification-traceability-and-review-criteria.md#record-ownership). Simplifying prose must not remove stable requirement IDs, acceptance conditions, assumptions or unresolved gaps. When moving a definition, update its traceability references and links; retire a requirement only through an explicit reviewed decision.

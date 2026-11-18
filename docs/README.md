@@ -8,6 +8,10 @@ architecture and verification work stays in [ROADMAP.md](../ROADMAP.md).
 
 ## Specifications
 
+Use the [specification writing standard and template](spec/TEMPLATE.md) when
+authoring or substantially revising a spec. It defines the shared format;
+the subject specifications below own the product and verification requirements.
+
 | Subject | Authoritative definition |
 |---|---|
 | Layer ownership | [Architecture boundaries](spec/eskf-software-architecture-and-verification-boundaries.md) |

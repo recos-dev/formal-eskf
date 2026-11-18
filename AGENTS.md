@@ -12,6 +12,10 @@ changing behavior; read only the affected contracts and their dependencies.
 work; `ROADMAP.md` owns architecture and verification work. Neither development
 logs nor analysis proposals override an adopted specification.
 
+Use the [specification writing standard and template](docs/spec/TEMPLATE.md) for
+new or substantially revised specs. Preserve canonical requirement definitions,
+stable IDs and affected traceability references when changing document structure.
+
 Verify paper symbols and equations against the actual reference before citing or implementing them. Report conflicts between specifications, papers and code instead of silently choosing a different model.
 
 ## Implementation

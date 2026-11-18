@@ -37,6 +37,7 @@ verification scope; an indexed requirement or linked proof is not a passing resu
 | `SO3-EXP` | [Exponential map](requirements/math/so3/exp.md) |
 | `SO3-HAT` | [Hat operator](requirements/math/so3/hat.md) |
 | `SO3-LOG` | [Logarithmic map](requirements/math/so3/log.md) |
+| `F-JR` | [SO(3) right Jacobian](requirements/math/so3/right-jacobian.md) |
 | `SO3-SMALL-ANGLE` | [Small-angle behavior](requirements/math/so3/small-angle.md) |
 
 ## Core requirements
@@ -44,9 +45,26 @@ verification scope; an indexed requirement or linked proof is not a passing resu
 | ID | Required behavior |
 |---|---|
 | `E-PRED-ATTITUDE` | [Attitude prediction](requirements/core/attitude-prediction.md) |
+| `E-BIAS-UPDATE` | [INS bias-update control](requirements/core/bias-update.md) |
+| `E-STEP` | [Atomic composed operations](requirements/core/composed-steps.md) |
+| `E-STEP-CORRECT` | [Complete correction transaction](requirements/core/correction-step.md) |
+| `E-CORRECT` | [Measurement correction and Joseph covariance](requirements/core/correction.md) |
+| `E-PCOV` | [Error covariance prediction](requirements/core/covariance-prediction.md) |
+| `E-RESET` | [Post-injection covariance coordinates](requirements/core/covariance-reset.md) |
+| `E-OBS-ACCEL` | [gravity observation with fixed bias preprocessing](requirements/core/gravity-observation.md) |
+| `E-STEP-INJECT-RESET` | [Combined injection and reset](requirements/core/injection-reset-step.md) |
+| `E-INJECT` | [Nominal error injection](requirements/core/injection.md) |
+| `E-INNOV` | [componentwise innovation gate](requirements/core/innovation.md) |
+| `E-OBS-MAGNETIC` | [Fixed-reference magnetic observation](requirements/core/magnetic-observation.md) |
+| `E-MAG-TILT` | [magnetic tilt protection](requirements/core/magnetic-tilt.md) |
+| `E-OBS` | [Observation conventions and model ownership](requirements/core/observations.md) |
+| `E-OBS-POSITION` | [Navigation-frame position observation](requirements/core/position-observation.md) |
+| `E-STEP-PRED` | [Combined prediction](requirements/core/prediction-step.md) |
 | `E-PRED` | [Nominal prediction](requirements/core/prediction.md) |
+| `E-NOISE` | [Discrete process-noise covariance](requirements/core/process-noise.md) |
 | `E-STATE` | [State, frames and perturbation convention](requirements/core/state.md) |
 | `E-PRED-INS` | [INS translation prediction](requirements/core/translation-prediction.md) |
+| `E-OBS-VELOCITY` | [Navigation-frame velocity observation](requirements/core/velocity-observation.md) |
 
 ## Runtime requirements
 

@@ -10,7 +10,7 @@ Evidence mappings belong to the [traceability map](../../formal/agent-review/tra
 
 | Concern | Requirements |
 |---|---|
-| State, prediction, correction and covariance | [ESKF core](#eskf-core), with detailed [prediction](requirements/core/prediction.md#e-pred-nominal-prediction) and [composition](#e-step-composed-operation-requirements) clauses |
+| State, prediction, correction and covariance | [ESKF core](#eskf-core), with detailed [prediction](requirements/core/prediction.md#e-pred-nominal-prediction) and [composition](requirements/core/composed-steps.md#e-step-atomic-composed-operations) clauses |
 | Magnetic observations, health and recovery | [Magnetic aiding](#magnetic-aiding), including explicitly named replay and PX4 module profiles |
 | GNSS, height, gravity and IMU/bias policies | [Portable runtime](#portable-runtime), including explicitly named deployment profiles |
 | PX4 module target architecture | [Module design clauses](px4-module-architecture.md), covering ownership, execution, timing, lifecycle, output and real-time acceptance; distinct from the currently mapped integration profiles |
@@ -23,15 +23,15 @@ Requirement IDs remain stable when documentation is reorganized. Child clauses r
 
 - `E-STATE` — [State, frames and perturbation convention](requirements/core/state.md).
 - `E-PRED` — Nominal-state propagation from the prior state, with applicable bias compensation and the selected paper-based integration and attitude models.
-- `E-NOISE` — Discretization of sampled IMU measurement noise and bias driving noise in noise-source coordinates, with the specified units and time scaling.
-- `E-PCOV` — Error-state covariance propagation using the selected transition model and injection of process noise into error-state coordinates.
-- `E-INJECT` — Injection of estimated error into the nominal state using additive Euclidean and right-multiplicative attitude updates.
-- `E-RESET` — Reset of the estimated error mean and transformation of the full covariance into post-injection error coordinates, including cross-covariances.
-- `E-CORRECT` — Innovation, Kalman gain, estimated error and Joseph-form covariance update from the same prior estimate, before nominal injection and coordinate reset.
+- `E-NOISE` — [Discrete process-noise covariance](requirements/core/process-noise.md).
+- `E-PCOV` — [Error covariance prediction](requirements/core/covariance-prediction.md).
+- `E-INJECT` — [Nominal error injection](requirements/core/injection.md).
+- `E-RESET` — [Post-injection covariance coordinates](requirements/core/covariance-reset.md).
+- `E-CORRECT` — [Measurement correction and Joseph covariance](requirements/core/correction.md).
 - `E-BIAS-UPDATE` — Explicit per-axis INS bias-update permissions applied consistently to the correction vector and Joseph covariance.
 - `E-MAG-TILT` — Optional magnetic attitude-gain projection onto navigation Down, with consistent correction and Joseph covariance.
 - `E-INNOV` — Componentwise innovation gate and checked, failure-atomic diagnostics, separate from correction.
-- `E-OBS` — Supported sensor observation models, residual conventions and Jacobians with respect to the local error state.
+- `E-OBS` — [Observation conventions and model ownership](requirements/core/observations.md).
 - `E-STEP` — Composition of nominal/covariance prediction and correction/injection/reset, preserving component preconditions and committing all outputs only when the whole operation succeeds.
 
 ### E-PRED: nominal prediction requirements
@@ -40,72 +40,23 @@ See [prediction.md](requirements/core/prediction.md).
 
 ### E-STEP: composed-operation requirements
 
-These clauses refine `E-STEP`; they are not additional requirement families. They concern sequential calls on valid C++ objects, not concurrency, exception recovery or a new predict-plus-correct API. Numerical validity remains owned by the component and numerical requirements.
-
-- **E-STEP-PRED** — `predict` calls nominal prediction first. Only if that succeeds, covariance prediction receives the old covariance and the same IMU, `dt` and parameters. INS covariance also receives the **old** nominal state; AHRS covariance does not consume nominal state. Publish both component results unchanged only after both succeed; otherwise return the first failure and preserve both outputs.
-- **E-STEP-INJECT-RESET** — `inject_and_reset` injects the complete supplied error first. Only if that succeeds, covariance reset receives the original covariance and the error **before zeroing**. Publish the nominal result, reset covariance and zero in every error-mean coordinate only after both succeed. Either failure preserves all three outputs and returns that failure.
-- **E-STEP-FRAME** — Each output may independently alias its respective complete input object; all other input/output storage is disjoint. Cover all four prediction and eight injection/reset arrangements. Distinct inputs, unused output objects, IMU and parameters are unchanged. Do not publish caller outputs before the last required callee succeeds. Initial outputs and scalar fields are arbitrary, including non-finite values. Preservation concerns values, signed zero and NaN classification, not padding or NaN payloads.
-- **E-STEP-CORRECT** — `correct` must propagate solve, covariance-finalization and injection/reset failures without publishing either output. Its complete composition must use the component preconditions and result relations established by `E-CORRECT`, `F-SOLVE`, `E-INJECT` and `E-RESET`. Proving the two earlier combined APIs alone does not discharge this clause.
-
-Compositional caller proofs may abstract a callee's result and status, but must check its arguments and call order and identify matching frame evidence. Use scratch for results followed by another fallible operation; a summary may overwrite that scratch even on failure. The final fallible callee may receive the caller's output only when its unchanged-on-failure and alias contracts are independently proved for the matching instantiation. After its success, only infallible publication may remain. Transaction rollback must not depend on successful or unchanged scratch data. A callee declaration or a proof using an incompatible backend instantiation is not sufficient evidence. INS/AHRS, binary32/binary64 and each applicable prediction/reset mode must be accounted for.
+See [composed-steps.md](requirements/core/composed-steps.md).
 
 ### E-OBS-ACCEL: gravity observation with fixed bias preprocessing
 
-INS and AHRS use the gravity observation only; there is no model-selection macro. INS uses a 3×15 local-error Jacobian and subtracts its prior accelerometer bias from raw input. AHRS uses a 3×3 Jacobian with externally bias-calibrated input.
-
-For INS, use raw body-frame specific force, fixed navigation-frame gravity and the prior bias estimate:
-
-\[
-z=f_m-\hat b_a,\qquad h=-R(q_{nb})^Tg_n,\qquad r=z-h,
-\]
-\[
-H=\begin{bmatrix}0_{3\times3}&0_{3\times3}&[h]_\times&0_{3\times3}&0_{3\times3}\end{bmatrix}.
-\]
-
-The columns are `[delta_p_n, delta_v_n, delta_theta_b, delta_b_a, delta_b_g]`, using the existing right-multiplicative attitude error. Construct this 3×15 Jacobian directly; the nominal 3×16 Jacobian is for manual derivation review only.
-
-- Assume negligible navigation-frame acceleration `dot(v_n)`, not necessarily zero velocity. Keep gravity magnitude and measurement units; do not normalize either vector.
-- Subtract the prior accelerometer bias exactly once. Hold this preprocessing fixed in the linearization: both bias Jacobian blocks are zero. This is an explicit approximation, not the joint derivative of `-R^T*g_n+b_a`. Zero bias columns do not freeze learning through cross-covariance; forward the existing optional bias-update permissions unchanged.
-- Neither accelerometer API takes angular rate. The complete INS state must still be finite for correction/injection. Reject non-finite bias subtraction, prediction or residual arithmetic as `non_finite_result`; retain existing checked-correction statuses, alias support and atomic output publication.
-- Use caller-supplied effective measurement covariance in raw specific-force units. Motion gating, model error and prior/measurement correlation remain caller responsibilities; no gating, differencing or correlated-noise update is introduced here.
+See [gravity-observation.md](requirements/core/gravity-observation.md).
 
 ### E-BIAS-UPDATE: INS bias-update control
 
-INS `correct` accepts an optional trailing `Ins::BiasUpdate` with three body-axis permissions each for accelerometer and gyroscope biases. Every permission defaults to `true`; omitting the argument retains unrestricted correction. AHRS has no bias states and does not accept this control.
-
-INS horizontal/vertical position, horizontal/3D velocity, magnetometer and accelerometer correction APIs accept the same optional trailing permissions and forward them unchanged. Magnetic tilt protection is selected separately by the build-wide `ESKF_MAG_TILT` macro. Their observation models and Jacobians remain unchanged.
-
-- Compute the same innovation covariance and unconstrained gain as `E-CORRECT`. After a successful checked solve, set every entry of each disabled bias gain row to zero. Error-state rows 9..11 are accelerometer bias and 12..14 are gyroscope bias; position, velocity and attitude rows are untouched.
-- Use the resulting `K_eff` for both `delta_x = K_eff r` and the full Joseph update `(I-K_eff H) P (I-K_eff H)^T + K_eff V K_eff^T`, then perform the existing injection/reset. Keep the same prior P and full correlated V; do not alter H or erase covariance rows/columns.
-- A disabled bias receives zero correction, retaining its numerical estimate. Its uncertainty is not set to zero; cross-covariances may change. This is per-call correction control, not a freeze of prediction's bias random walk or a persistent health state.
-- Disabling bias updates does not bypass input checks or solve failures. Preserve the existing validation order, statuses, whole-state/covariance alias support and atomic publication on success; all failures preserve both outputs.
-- All-enabled permissions must agree with unrestricted correction. Test all 64 permission combinations against an independent constrained-gain/Joseph/injection/reset oracle, including nonzero cross-covariance, correlated measurement noise and both reset modes.
-
-The caller owns the learning policy. Runtime policy wiring, IMU fault detection, recovery timing and adaptive process noise are separate work. Lean proves the exact constrained-gain algebra, disabled-axis estimate/prior-variance retention and the existing correction invariants. The `bias` ESBMC suite checks the actual row constraints, controlled INS correction transactions and six sensor wrappers with all six permissions symbolic, both scalar formats and all state/covariance aliases. It reuses the same-backend `E-CORRECT` and injection/reset producer obligations; it does not prove IEEE positive semidefiniteness. Magnetic wrappers in this suite select `ESKF_MAG_TILT=0`; the `magnetic` suite separately covers the projected M1 path with the same six symbolic permissions. Native tests retain the all-64-mask numerical/Joseph regression. See the [verification scope and evidence rules](../guides/verification.md).
+See [bias-update.md](requirements/core/bias-update.md).
 
 ### E-MAG-TILT: magnetic tilt protection
 
-AHRS/INS magnetic correction uses compile-time `ESKF_MAG_TILT=1` by default; `0` selects the original unrestricted full-field update. Both use the same full-vector residual, Jacobian and observation covariance; protection is not a scalar heading-observation model. No runtime mode argument or selection branch is permitted. The setting must be consistent across translation units, with values other than 0/1 rejected at compile time. See [the geometric explanation and API](../guides/magnetic-tilt-protection.md).
-
-- Under the existing unit-prior premise, form `u_b = R(q_nb)^T * [0,0,1]^T` from the prior attitude. After the gain solve, replace only its attitude block by `K_theta' = (u_b * u_b^T) * K_theta`. Use AHRS rows 0..2 and INS rows 6..8. Do not select body X/Y axes or change H.
-- Preserve other INS gain rows, except for disabled bias rows under `E-BIAS-UPDATE`. Use this same final gain in the error correction and full Joseph update, followed by existing right-multiplicative injection and covariance reset.
-- In exact arithmetic, the injected rotation preserves `R(q_nb)^T * [0,0,1]^T`; only the navigation-vertical rotation component changes. A floating-point tilt-error bound is a separate obligation. Other-state updates, later prediction and magnetic observability are not constrained by this identity.
-- When protection is enabled, check the computed vertical axis, projector and projected gain for non-finite results, returning `non_finite_result`. Retain existing input/covariance checks and downstream status propagation. Unit prior and PSD/SPD remain caller premises; no implicit repair is introduced.
-- Publish state and covariance together only on success. Preserve both on any failure and support all four independent whole-state/covariance alias arrangements. `ESKF_MAG_TILT=0` must agree with the original full-field behavior and must not compile the projection path.
-
-Lean establishes the exact unit-axis projector identities and tilt preservation under right-multiplicative injection, including exact normalization of any nonzero parallel-axis increment candidate. This includes the Taylor candidate without claiming its angle equals exact Exp. The `magnetic` ESBMC suite checks actual observation preparation, ordered projector/gain products, M1 AHRS/INS transactions, all four state/covariance aliases and symbolic INS bias masks in binary32/binary64. It composes with the existing same-backend rotation, correction/Joseph and injection/reset producers. E-OBS and the `bias` suite retain M0 coverage; native tests in both modes supplement these source claims. Floating-point tilt-error bounds, external backends and target execution remain separate obligations. See the [verification scope and evidence rules](../guides/verification.md).
+See [magnetic-tilt.md](requirements/core/magnetic-tilt.md).
 
 ### E-INNOV: componentwise innovation gate
 
-This pure operation consumes a fixed-size innovation vector `r`, the diagonal of the innovation covariance `S = H P H^T + V`, and an explicit `gate_sigma > 0`. It does not compute S, validate its positive definiteness, apply correction or manage fusion lifecycle. Measurement-noise variances alone are not a substitute for `diag(S)`.
-
-- Compute `test_ratio[i] = (r[i] * r[i]) / ((gate_sigma * gate_sigma) * S[i,i])`. Reject the whole observation if **any** computed ratio is greater than one; equality is accepted. This is not a joint Mahalanobis gate. No implicit minimum sigma, clamping or gate default is applied.
-- All inputs must be finite; otherwise return `non_finite_input` before arithmetic. Nonpositive sigma or variance returns `domain_error`. Positive variances, the computed squared sigma and each denominator must be at least the scalar format's smallest positive normal value; smaller values return `zero_or_unsafe_divisor`. Isolated failure causes have these statuses; competing domain/safe-range violations have no universal precedence.
-- Non-finite squared sigma, squared innovation, denominator or ratio returns `non_finite_result`. A large denominator must not overflow into a false acceptance. Small innovations or ratios may underflow; decisions use the computed IEEE-754 ratio, not an exact-real boundary guarantee.
-- On success, publish every finite nonnegative ratio and the aggregate rejection flag, even when rejected. `success` reports valid diagnostics, not permission to fuse. The caller must require both success and no rejection before treating the gate as passed.
-- On failure, preserve the entire diagnostic output. Its vector may alias either complete input vector; otherwise inputs are unchanged. Do not exit early on an outlier and miss invalid later axes. No estimator state or covariance is modified.
-
-Lean establishes the exact-real ratio, sign invariance, inclusive boundary and componentwise aggregation. The `innovation` ESBMC suite checks the actual production body for binary32/binary64, dimensions 1/2/3 and all five whole-vector alias partitions, with arbitrary IEEE inputs and old diagnostics. It covers ordered statuses, every computed ratio and atomic publication; no arithmetic summary or success premise is used. Floating-point decisions need not agree with the exact-real boundary. Native tests provide additional regression evidence. `R-MEASUREMENT-FUSION` composes the gate with correction; sensor-specific settings and deployment wiring remain separate obligations. See the [verification scope and evidence rules](../guides/verification.md).
+See [innovation.md](requirements/core/innovation.md).
 
 ## Magnetic aiding
 
@@ -2870,7 +2821,7 @@ anomaly from F-04.
 
 - `F-LINALG` — [Fixed-size linear algebra operations](requirements/math/linalg/operations.md).
 - `F-SOLVE` — [Symmetric positive-definite linear solve](requirements/math/linalg/spd-solve.md).
-- `F-JR` — SO(3) right Jacobian, its zero behavior and selected approximation under the local right-error convention.
+- `F-JR` — [SO(3) right Jacobian](requirements/math/so3/right-jacobian.md).
 - `F-SCALAR` — [Checked scalar operations](requirements/math/scalar/operations.md).
 
 Before claiming a requirement, define its applicable configurations, input domain and success/failure behavior. Exact mathematical properties, bounded C++ checks and numerical guarantees remain separate claims under the [review criteria](formal-verification-traceability-and-review-criteria.md).

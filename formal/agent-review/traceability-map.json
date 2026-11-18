@@ -22,16 +22,28 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "- `E-OBS`"
+            "file": "docs/spec/requirements/core/observations.md",
+            "symbol": "# E-OBS: Observation conventions and model ownership"
           },
           {
             "file": "docs/spec/requirements/core/state.md",
             "symbol": "## Summary"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### E-OBS-ACCEL: gravity observation with fixed bias preprocessing"
+            "file": "docs/spec/requirements/core/gravity-observation.md",
+            "symbol": "# E-OBS-ACCEL: gravity observation with fixed bias preprocessing"
+          },
+          {
+            "file": "docs/spec/requirements/core/position-observation.md",
+            "symbol": "# E-OBS-POSITION: Navigation-frame position observation"
+          },
+          {
+            "file": "docs/spec/requirements/core/velocity-observation.md",
+            "symbol": "# E-OBS-VELOCITY: Navigation-frame velocity observation"
+          },
+          {
+            "file": "docs/spec/requirements/core/magnetic-observation.md",
+            "symbol": "# E-OBS-MAGNETIC: Fixed-reference magnetic observation"
           }
         ],
         "lean": [
@@ -1538,7 +1550,7 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/core/process-noise.md",
             "symbol": "`E-NOISE`"
           }
         ],
@@ -1612,7 +1624,7 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/core/injection.md",
             "symbol": "`E-INJECT`"
           }
         ],
@@ -1718,7 +1730,7 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/math/so3/right-jacobian.md",
             "symbol": "`F-JR`"
           }
         ],
@@ -1800,7 +1812,7 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/core/covariance-prediction.md",
             "symbol": "`E-PCOV`"
           }
         ],
@@ -1974,7 +1986,7 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/core/covariance-reset.md",
             "symbol": "`E-RESET`"
           }
         ],
@@ -2140,8 +2152,20 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### E-STEP: composed-operation requirements"
+            "file": "docs/spec/requirements/core/composed-steps.md",
+            "symbol": "# E-STEP: Atomic composed operations"
+          },
+          {
+            "file": "docs/spec/requirements/core/prediction-step.md",
+            "symbol": "# E-STEP-PRED: Combined prediction"
+          },
+          {
+            "file": "docs/spec/requirements/core/injection-reset-step.md",
+            "symbol": "# E-STEP-INJECT-RESET: Combined injection and reset"
+          },
+          {
+            "file": "docs/spec/requirements/core/correction-step.md",
+            "symbol": "# E-STEP-CORRECT: Complete correction transaction"
           }
         ],
         "lean": [
@@ -2706,12 +2730,12 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
+            "file": "docs/spec/requirements/core/correction.md",
             "symbol": "`E-CORRECT`"
           },
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "**E-STEP-CORRECT**"
+            "file": "docs/spec/requirements/core/composed-steps.md",
+            "symbol": "# E-STEP: Atomic composed operations"
           }
         ],
         "lean": [
@@ -2900,8 +2924,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### E-MAG-TILT: magnetic tilt protection"
+            "file": "docs/spec/requirements/core/magnetic-tilt.md",
+            "symbol": "# E-MAG-TILT: magnetic tilt protection"
           },
           {
             "file": "docs/guides/magnetic-tilt-protection.md",
@@ -3818,8 +3842,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### E-INNOV: componentwise innovation gate"
+            "file": "docs/spec/requirements/core/innovation.md",
+            "symbol": "# E-INNOV: componentwise innovation gate"
           }
         ],
         "lean": [
@@ -3876,8 +3900,8 @@
       "references": {
         "spec": [
           {
-            "file": "docs/spec/verification-requirements.md",
-            "symbol": "### E-BIAS-UPDATE: INS bias-update control"
+            "file": "docs/spec/requirements/core/bias-update.md",
+            "symbol": "# E-BIAS-UPDATE: INS bias-update control"
           }
         ],
         "lean": [

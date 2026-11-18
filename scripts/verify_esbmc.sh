@@ -27,7 +27,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|accelerometer|magnetic-runtime|ring-buffer) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|accelerometer|magnetic-runtime|ring-buffer|codegen) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -37,7 +37,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|accelerometer|magnetic-runtime|ring-buffer] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|accelerometer|magnetic-runtime|ring-buffer|codegen] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -63,6 +63,7 @@ parse_arguments()
                 printf 'navigation-recovery selects actual gate diagnostic contracts, vertical limiter and both public recovery callers with every state/P alias. Same-type correction frames are reused; root accuracy and caller health/permission remain separate.\n'
                 printf 'navigation-reset selects exact-type validation, symmetry-pair arithmetic and all four numerical reset callers with independent state/P aliases. Real PSD is proved separately in Lean; source permission and target backends remain separate.\n'
                 printf 'ring-buffer selects actual fixed-storage operations and inductive history invariants for capacities 1/3/8 and 32/64-bit word models. Caller admission, deployed sample types, other capacities and target timing remain separate.\n'
+                printf 'codegen selects memory/access safety of the pinned generated kernel with actual Matrix and fixed-array storage for binary32/64. No arithmetic accuracy or production integration is claimed.\n'
                 printf 'gnss-lifecycle selects actual integer/Boolean lifecycle transitions and inductive permission/history safety. Estimator repair, external timestamps and actual caller scheduling remain separate.\n'
                 printf 'gnss-quality selects parameter/sample domains, actual motion filters, health timers and composed public-update invariants. Caller metadata, geographic projection and accurate libm remain separate.\n'
                 printf 'imu-prediction selects actual module clipping admission and noise-policy/prediction composition; E-STEP supplies the same-type terminal frame. Full module sequencing and target backend remain separate.\n'
@@ -1214,6 +1215,17 @@ run_navigation_reset_suite()
     done
 }
 
+run_codegen_suite()
+{
+    local BINARY64
+    SOURCE_FILE="${PROOF_DIR}/codegen.cpp"
+    for BINARY64 in 0 1; do
+        PROFILE="codegen-binary$((32 + 32 * BINARY64))-memory"
+        verify verify_codegen_memory --proof-unwind 16 --proof-timeout 90s --proof-memory 3g \
+            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+    done
+}
+
 run_ring_buffer_suite()
 {
     local WORD_BITS CAPACITY KIND TIME_LIMIT
@@ -1598,6 +1610,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == gnss-quality ]]; then
         run_gnss_quality_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == codegen ]]; then
+        run_codegen_suite
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == ring-buffer ]]; then
         run_ring_buffer_suite

@@ -45,3 +45,6 @@ import FormalESKF.MagneticHeading
 import FormalESKF.MagneticReset
 
 import FormalESKF.MagneticFrame
+
+import FormalESKF.codegen.Properties
+import FormalESKF.codegen.ErrorBounds

@@ -2,6 +2,7 @@
 /report.json
 /build/
 /output/
+/codegen/**/__pycache__/
 /.config
 /.config.old
 

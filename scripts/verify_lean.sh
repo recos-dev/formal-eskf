@@ -93,11 +93,18 @@ run_lake()
 
 build_lean()
 {
+    local ROW MODULE
+
     cd -- "${LEAN_DIR}"
     if [[ "${FETCH_CACHE}" == true ]]; then
         # Read upstream caches only, without opting into caches from forks.
         run_lake exe cache get --cache-from=master,legacy
     fi
+    # Avoid compiling the independent, memory-intensive generated rows together.
+    for ROW in FormalESKF/codegen/Row*.lean; do
+        MODULE="${ROW%.lean}"
+        run_lake "${LAKE_ARGUMENTS[@]}" build "${MODULE//\//.}"
+    done
     run_lake "${LAKE_ARGUMENTS[@]}" build FormalESKF
 }
 

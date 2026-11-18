@@ -32,6 +32,11 @@ The current module's functional boundaries are in [the integration guide](../../
 tracked in F-07.1 is not
 converted into a passing landing result by excluding the failed scenario.
 
+The standalone [INS covariance codegen package](../../codegen/README.md) has
+separate exact-algebra, conditional numerical and memory-safety checks. Its native
+evaluation uses an isolated test integration; these checks do not establish that
+the production ESKF selects or safely composes the generated kernel.
+
 ## Running checks
 
 From the repository root, choose checks affected by the change:

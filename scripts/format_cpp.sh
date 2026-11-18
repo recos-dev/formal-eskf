@@ -51,9 +51,9 @@ check_environment()
 
 list_sources()
 {
-    # Include new, non-ignored sources as well as tracked ones. Keep vendor and
-    # generated files outside the formatting boundary.
-    git ls-files -z --cached --others --exclude-standard -- include/ src/ examples/ tests/ formal/cpp/ integrations/px4/module/
+    # Include pinned generated headers and their tests; ignored output/vendor
+    # trees remain outside the formatting boundary.
+    git ls-files -z --cached --others --exclude-standard -- include/ src/ examples/ tests/ codegen/tests/ formal/cpp/ integrations/px4/module/
 }
 
 fix_sources()

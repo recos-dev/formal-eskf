@@ -174,8 +174,18 @@ reusable script, reusing the Clang inventory infrastructure where appropriate.
 
 ### V-05 — Generated/dense equivalence proof
 
-**Status: Design.** Review the equivalence contract before integrating generated
-kernels or replacing the dense implementation.
+**Status: Partial.** The standalone [INS covariance package](../codegen/README.md)
+provides generated C++, Lean certificates, scoped memory checks and isolated
+native evaluation. Production prediction remains dense; other ESKF operations
+and AHRS are not generated. The package documents the evidence boundaries.
+
+Next, make the symbolic model reviewable as named state/error blocks and explicit
+matrix equations, separate from CSE scheduling and C++ emission. Preserve the
+current truncated formulation, numerical schedule and generated artifacts during
+this refactor; keep the equivalence checker independent of the generator model.
+Then review production selection, including upper-triangle mirroring versus
+averaging, asymmetric priors, overflow/status behavior and caller composition.
+Further reset/correction generation remains a separate scope decision.
 
 - Fix dense/generated revisions, derivation/artifacts, project state/frame
   conventions, scalar/backend and compiler modes; require reproducible generation.

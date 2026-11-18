@@ -51,6 +51,11 @@ using formal_eskf::Status;
 constexpr unsigned model = FORMAL_ESKF_PROOF_OBSERVATION;
 constexpr std::size_t state_size = FORMAL_ESKF_PROOF_STATE_SIZE;
 constexpr std::size_t measurement_size = FORMAL_ESKF_PROOF_MEASUREMENT_SIZE;
+constexpr auto correction_model = model == 0U   ? formal_eskf::detail::CorrectionModel::horizontal_position
+                                  : model == 1U ? formal_eskf::detail::CorrectionModel::vertical_position
+                                  : model == 2U ? formal_eskf::detail::CorrectionModel::horizontal_velocity
+                                  : model == 3U ? formal_eskf::detail::CorrectionModel::velocity
+                                                : formal_eskf::detail::CorrectionModel::body_vector;
 constexpr bool configured = model < 8U && state_size == ((model == 4U || model == 6U) ? 3U : 15U) &&
                             measurement_size == (model == 1U ? 1U : (model == 0U || model == 2U ? 2U : 3U)) &&
                             linalg_proof::actual;

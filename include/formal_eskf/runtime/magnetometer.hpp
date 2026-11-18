@@ -341,7 +341,8 @@ template <typename Linalg>
         result.fusion.status = Status::non_finite_result;
         return result;
     }
-    auto const check = check_measurement(state, covariance, r, H, V, minimum_quaternion_norm, gate_sigma);
+    auto const check = check_measurement<Linalg, 3U, formal_eskf::detail::CorrectionModel::body_vector>(
+        state, covariance, r, H, V, minimum_quaternion_norm, gate_sigma);
     result.fusion = FusionResult<Linalg, 3U>{check};
     if (!check.passed())
     {

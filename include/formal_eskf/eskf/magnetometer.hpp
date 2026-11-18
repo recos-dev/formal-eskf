@@ -252,8 +252,8 @@ template <typename Linalg>
         return projection_status;
     }
     linalg::Matrix<Linalg, 15U, 3U> K;
-    Status const gain_status =
-        detail::compute_correction_gain(covariance, observation.r, H, V, minimum_quaternion_norm, K);
+    Status const gain_status = detail::compute_correction_gain<Linalg, 15U, 3U, detail::CorrectionModel::body_vector>(
+        covariance, observation.r, H, V, minimum_quaternion_norm, K);
     if (!succeeded(gain_status))
     {
         return gain_status;
@@ -267,7 +267,8 @@ template <typename Linalg>
     linalg::Vector<Linalg, 15U> delta_x;
     linalg::Matrix<Linalg, 15U, 15U> P_corrected;
     Status const correction_status =
-        detail::apply_correction_gain(covariance, observation.r, H, V, K, delta_x, P_corrected);
+        detail::apply_correction_gain<Linalg, 15U, 3U, detail::CorrectionModel::body_vector>(
+            covariance, observation.r, H, V, K, delta_x, P_corrected);
     if (!succeeded(correction_status))
     {
         return correction_status;
@@ -277,8 +278,8 @@ template <typename Linalg>
     return inject_and_reset(state, P_corrected, error, minimum_quaternion_norm, state_output, covariance_output,
                             reset_error);
 #else
-    return correct(state, covariance, observation.r, H, V, minimum_quaternion_norm, state_output, covariance_output,
-                   bias_update);
+    return correct<Linalg, 3U, detail::CorrectionModel::body_vector>(
+        state, covariance, observation.r, H, V, minimum_quaternion_norm, state_output, covariance_output, bias_update);
 #endif
 }
 

@@ -45,8 +45,9 @@ template <typename Linalg>
         result.status = Status::non_finite_result;
         return result;
     }
-    return fuse_measurement(state, covariance, r, horizontal_position_jacobian<Linalg>(), V, minimum_quaternion_norm,
-                            gate_sigma, state_output, covariance_output, bias_update);
+    return fuse_measurement<Linalg, 2U, formal_eskf::detail::CorrectionModel::horizontal_position>(
+        state, covariance, r, horizontal_position_jacobian<Linalg>(), V, minimum_quaternion_norm, gate_sigma,
+        state_output, covariance_output, bias_update);
 }
 
 /** Gated NED down position, not altitude or range above terrain; one rejection group. */
@@ -74,8 +75,9 @@ fuse_vertical_position(configuration::Ins::NominalState<Linalg> const & state,
         return result;
     }
     auto const V = linalg::Matrix<Linalg, 1U, 1U>::from_row_major({variance});
-    return fuse_measurement(state, covariance, r, vertical_position_jacobian<Linalg>(), V, minimum_quaternion_norm,
-                            gate_sigma, state_output, covariance_output, bias_update);
+    return fuse_measurement<Linalg, 1U, formal_eskf::detail::CorrectionModel::vertical_position>(
+        state, covariance, r, vertical_position_jacobian<Linalg>(), V, minimum_quaternion_norm, gate_sigma,
+        state_output, covariance_output, bias_update);
 }
 
 /**
@@ -105,8 +107,9 @@ fuse_velocity(configuration::Ins::NominalState<Linalg> const & state,
         result.status = Status::non_finite_result;
         return result;
     }
-    return fuse_measurement(state, covariance, r, velocity_jacobian<Linalg>(), V, minimum_quaternion_norm, gate_sigma,
-                            state_output, covariance_output, bias_update);
+    return fuse_measurement<Linalg, 3U, formal_eskf::detail::CorrectionModel::velocity>(
+        state, covariance, r, velocity_jacobian<Linalg>(), V, minimum_quaternion_norm, gate_sigma, state_output,
+        covariance_output, bias_update);
 }
 
 /** Gated horizontal velocity; both axes form one rejection group, with no v_D observation. */
@@ -130,8 +133,9 @@ template <typename Linalg>
         result.status = Status::non_finite_result;
         return result;
     }
-    return fuse_measurement(state, covariance, r, horizontal_velocity_jacobian<Linalg>(), V, minimum_quaternion_norm,
-                            gate_sigma, state_output, covariance_output, bias_update);
+    return fuse_measurement<Linalg, 2U, formal_eskf::detail::CorrectionModel::horizontal_velocity>(
+        state, covariance, r, horizontal_velocity_jacobian<Linalg>(), V, minimum_quaternion_norm, gate_sigma,
+        state_output, covariance_output, bias_update);
 }
 
 template <typename Value> struct GnssVelocityConditions
@@ -196,7 +200,7 @@ void limit_vertical_innovation(NavigationInnovationCheck<Linalg, Size> & check, 
     check.gate.rejected = false;
 }
 
-template <typename Linalg, std::size_t Size>
+template <typename Linalg, std::size_t Size, formal_eskf::detail::CorrectionModel Model>
 [[nodiscard]] NavigationFusionResult<Linalg, Size> correct_navigation_measurement(
     NavigationInnovationCheck<Linalg, Size> const & check, configuration::Ins::NominalState<Linalg> const & state,
     linalg::Matrix<Linalg, 15U, 15U> const & covariance, linalg::Matrix<Linalg, Size, 15U> const & H,
@@ -211,8 +215,8 @@ template <typename Linalg, std::size_t Size>
         return result;
     }
     auto & fusion = result.fusion;
-    fusion.status = correct(state, covariance, check.fusion_innovation, H, V, minimum_quaternion_norm, state_output,
-                            covariance_output, bias_update);
+    fusion.status = correct<Linalg, Size, Model>(state, covariance, check.fusion_innovation, H, V,
+                                                 minimum_quaternion_norm, state_output, covariance_output, bias_update);
     if (succeeded(fusion.status))
     {
         fusion.decision = FusionDecision::fused;
@@ -259,7 +263,8 @@ check_gnss_velocity(configuration::Ins::NominalState<Linalg> const & state,
         return result;
     }
     result = NavigationInnovationCheck<Linalg, 3U>{
-        check_measurement(state, covariance, r, velocity_jacobian<Linalg>(), V, minimum_quaternion_norm, gate_sigma)};
+        check_measurement<Linalg, 3U, formal_eskf::detail::CorrectionModel::velocity>(
+            state, covariance, r, velocity_jacobian<Linalg>(), V, minimum_quaternion_norm, gate_sigma)};
     auto const & ratio = result.gate.test_ratio;
     bool const allowed = conditions.bad_vertical_acceleration &&
                          conditions.speed_accuracy < conditions.maximum_speed_accuracy && ratio(2U) > value_type{1} &&
@@ -280,9 +285,9 @@ template <typename Linalg>
 {
     auto const check =
         check_gnss_velocity(state, covariance, velocity, V, minimum_quaternion_norm, gate_sigma, conditions);
-    return detail::correct_navigation_measurement(check, state, covariance, velocity_jacobian<Linalg>(), V,
-                                                  minimum_quaternion_norm, state_output, covariance_output,
-                                                  bias_update);
+    return detail::correct_navigation_measurement<Linalg, 3U, formal_eskf::detail::CorrectionModel::velocity>(
+        check, state, covariance, velocity_jacobian<Linalg>(), V, minimum_quaternion_norm, state_output,
+        covariance_output, bias_update);
 }
 
 /**
@@ -327,7 +332,8 @@ fuse_height(configuration::Ins::NominalState<Linalg> const & state, linalg::Matr
     auto const V = linalg::Matrix<Linalg, 1U, 1U>::from_row_major({variance});
     auto const H = vertical_position_jacobian<Linalg>();
     NavigationInnovationCheck<Linalg, 1U> check{
-        check_measurement(state, covariance, r, H, V, minimum_quaternion_norm, gate_sigma)};
+        check_measurement<Linalg, 1U, formal_eskf::detail::CorrectionModel::vertical_position>(
+            state, covariance, r, H, V, minimum_quaternion_norm, gate_sigma)};
     detail::limit_vertical_innovation(check, 0U, gate_sigma, bad_vertical_acceleration);
     // PX4 uses predicted-minus-observed Down; our residual has the opposite sign.
     auto & innovation = check.fusion_innovation(0U);
@@ -335,8 +341,8 @@ fuse_height(configuration::Ins::NominalState<Linalg> const & state, linalg::Matr
     {
         innovation = innovation > deadzone ? innovation - deadzone : typename Linalg::value_type{0};
     }
-    return detail::correct_navigation_measurement(check, state, covariance, H, V, minimum_quaternion_norm, state_output,
-                                                  covariance_output, bias_update);
+    return detail::correct_navigation_measurement<Linalg, 1U, formal_eskf::detail::CorrectionModel::vertical_position>(
+        check, state, covariance, H, V, minimum_quaternion_norm, state_output, covariance_output, bias_update);
 }
 
 namespace detail

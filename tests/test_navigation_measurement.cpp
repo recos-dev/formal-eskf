@@ -178,9 +178,9 @@ template <typename Linalg> void test_height_deadzone(Context & test)
             {
                 auto const r = formal_eskf::linalg::Vector<Linalg, 1U>::from_row_major({selected});
                 auto const R = formal_eskf::linalg::Matrix<Linalg, 1U, 1U>::identity();
-                test.expect(formal_eskf::correct(expected, expected_P, r,
-                                                 formal_eskf::vertical_position_jacobian<Linalg>(), R,
-                                                 fixture.minimum_norm, expected, expected_P) == Status::success,
+                test.expect(formal_eskf::correct<Linalg, 1U, formal_eskf::detail::CorrectionModel::vertical_position>(
+                                expected, expected_P, r, formal_eskf::vertical_position_jacobian<Linalg>(), R,
+                                fixture.minimum_norm, expected, expected_P) == Status::success,
                             profile, "independent selected-residual correction");
             }
             test.expect(same_state(expected, output) && same_bits(expected_P, output_P), profile,
@@ -236,18 +236,18 @@ template <typename Linalg> void test_correction_contract(Context & test)
                 Status status{};
                 if (height)
                 {
-                    status =
-                        formal_eskf::correct(fixture.state, fixture.P,
-                                             formal_eskf::linalg::Vector<Linalg, 1U>::from_row_major({expected_r(2U)}),
-                                             formal_eskf::vertical_position_jacobian<Linalg>(),
-                                             formal_eskf::linalg::Matrix<Linalg, 1U, 1U>::identity(),
-                                             fixture.minimum_norm, expected, expected_P, permissions);
+                    status = formal_eskf::correct<Linalg, 1U, formal_eskf::detail::CorrectionModel::vertical_position>(
+                        fixture.state, fixture.P,
+                        formal_eskf::linalg::Vector<Linalg, 1U>::from_row_major({expected_r(2U)}),
+                        formal_eskf::vertical_position_jacobian<Linalg>(),
+                        formal_eskf::linalg::Matrix<Linalg, 1U, 1U>::identity(), fixture.minimum_norm, expected,
+                        expected_P, permissions);
                 }
                 else
                 {
-                    status = formal_eskf::correct(fixture.state, fixture.P, expected_r,
-                                                  formal_eskf::velocity_jacobian<Linalg>(), fixture.V,
-                                                  fixture.minimum_norm, expected, expected_P, permissions);
+                    status = formal_eskf::correct<Linalg, 3U, formal_eskf::detail::CorrectionModel::velocity>(
+                        fixture.state, fixture.P, expected_r, formal_eskf::velocity_jacobian<Linalg>(), fixture.V,
+                        fixture.minimum_norm, expected, expected_P, permissions);
                 }
                 auto output = fixture.state;
                 auto output_P = fixture.P;

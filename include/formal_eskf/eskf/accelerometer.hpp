@@ -147,7 +147,8 @@ template <typename Linalg>
     // Finite r implies finite h; H contains only zeros and signed copies of h.
     linalg::Matrix<Linalg, 3U, 15U> H;
     H.template set_block<0U, 6U>(so3::hat<Linalg>(h));
-    return correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output, bias_update);
+    return correct<Linalg, 3U, detail::CorrectionModel::body_vector>(
+        state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output, bias_update);
 }
 
 } /* end namespace formal_eskf */

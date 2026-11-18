@@ -151,7 +151,10 @@ void Math::record_root(Scalar input, Scalar result, unsigned index)
 namespace formal_eskf
 {
 template <>
-inline Status correction_covariances<recovery_proof::Backend, 15U, recovery_proof::width>(
+inline Status
+correction_covariances<recovery_proof::Backend, 15U, recovery_proof::width,
+                       (recovery_proof::width == 3U ? formal_eskf::detail::CorrectionModel::velocity
+                                                    : formal_eskf::detail::CorrectionModel::vertical_position)>(
     recovery_proof::Covariance const &, recovery_proof::Residual const &, recovery_proof::Jacobian const &,
     recovery_proof::Noise const &, recovery_proof::Scalar, correction_proof::Gain &, recovery_proof::Noise & S)
 {
@@ -183,7 +186,10 @@ inline void limit_vertical_innovation<recovery_proof::Backend, recovery_proof::w
 namespace formal_eskf::runtime
 {
 template <>
-inline recovery_proof::Check check_measurement<recovery_proof::Backend, recovery_proof::width>(
+inline recovery_proof::Check
+check_measurement<recovery_proof::Backend, recovery_proof::width,
+                  (recovery_proof::width == 3U ? formal_eskf::detail::CorrectionModel::velocity
+                                               : formal_eskf::detail::CorrectionModel::vertical_position)>(
     recovery_proof::State const & state, recovery_proof::Covariance const & P, recovery_proof::Residual const & r,
     recovery_proof::Jacobian const & H, recovery_proof::Noise const & V, recovery_proof::Scalar minimum,
     recovery_proof::Scalar sigma)
@@ -200,7 +206,9 @@ inline recovery_proof::Check check_measurement<recovery_proof::Backend, recovery
 namespace formal_eskf
 {
 template <>
-inline Status correct<recovery_proof::Backend, recovery_proof::width>(
+inline Status correct<recovery_proof::Backend, recovery_proof::width,
+                      (recovery_proof::width == 3U ? formal_eskf::detail::CorrectionModel::velocity
+                                                   : formal_eskf::detail::CorrectionModel::vertical_position)>(
     recovery_proof::State const & state, recovery_proof::Covariance const & P, recovery_proof::Residual const & r,
     recovery_proof::Jacobian const & H, recovery_proof::Noise const & V, recovery_proof::Scalar minimum,
     recovery_proof::State & state_output, recovery_proof::Covariance & covariance_output,
@@ -261,7 +269,10 @@ void verify_navigation_diagnostics(State state, Covariance P, Residual r, Jacobi
     Preparation::S = S;
     Preparation::status = preparation_status;
     Preparation::count = 0U;
-    auto const check = formal_eskf::runtime::check_measurement(state, P, r, H, V, minimum, sigma);
+    auto const check = formal_eskf::runtime::check_measurement<
+        recovery_proof::Backend, width,
+        (width == 3U ? formal_eskf::detail::CorrectionModel::velocity
+                     : formal_eskf::detail::CorrectionModel::vertical_position)>(state, P, r, H, V, minimum, sigma);
     __ESBMC_assert(diagnostic_contract(check, sigma), "R-GNSS-VERTICAL-RECOVERY: actual gate producer establishes "
                                                       "finite positive S, sigma and finite raw diagnostics");
     __ESBMC_assert(!check.diagnostics_valid || same_matrix(check.innovation, r),

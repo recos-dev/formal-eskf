@@ -16,6 +16,7 @@
 #include <cstddef>
 
 #include <formal_eskf/eskf/injection.hpp>
+#include <formal_eskf/eskf/correction_products.hpp>
 
 namespace formal_eskf
 {
@@ -119,7 +120,8 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
  * Results describe this prior and linearization only, not a reusable correction
  * permission. Correction remains independently checked when subsequently called.
  */
-template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
+template <typename Linalg, std::size_t Size, std::size_t MeasurementSize,
+          detail::CorrectionModel Model = detail::CorrectionModel::arbitrary_h>
 [[nodiscard]] Status
 correction_covariances(linalg::Matrix<Linalg, Size, Size> const & covariance,
                        linalg::Vector<Linalg, MeasurementSize> const & r,
@@ -135,12 +137,12 @@ correction_covariances(linalg::Matrix<Linalg, Size, Size> const & covariance,
         return input_status;
     }
 
-    auto const PHt = covariance * linalg::transpose(H);
+    auto const PHt = detail::correction_cross<Model>(covariance, H);
     if (!linalg::all_finite(PHt))
     {
         return Status::non_finite_result;
     }
-    auto S = H * PHt + V;
+    auto S = detail::correction_innovation<Model>(PHt, H, V);
     Status const innovation_status = detail::finish_covariance(S, S);
     if (!succeeded(innovation_status))
     {
@@ -155,7 +157,8 @@ namespace detail
 {
 
 /** Checked unconstrained gain; output is disjoint scratch, published only on success. */
-template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
+template <typename Linalg, std::size_t Size, std::size_t MeasurementSize,
+          detail::CorrectionModel Model = detail::CorrectionModel::arbitrary_h>
 [[nodiscard]] Status compute_correction_gain(linalg::Matrix<Linalg, Size, Size> const & covariance,
                                              linalg::Vector<Linalg, MeasurementSize> const & r,
                                              linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
@@ -165,7 +168,8 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
 {
     linalg::Matrix<Linalg, Size, MeasurementSize> PHt;
     linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> S;
-    Status const innovation_status = correction_covariances(covariance, r, H, V, minimum_quaternion_norm, PHt, S);
+    Status const innovation_status = correction_covariances<Linalg, Size, MeasurementSize, Model>(
+        covariance, r, H, V, minimum_quaternion_norm, PHt, S);
     if (!succeeded(innovation_status))
     {
         return innovation_status;
@@ -180,7 +184,8 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
  * Outputs are separate internal scratch objects, disjoint from inputs.
  * Publish both only after every arithmetic check succeeds.
  */
-template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
+template <typename Linalg, std::size_t Size, std::size_t MeasurementSize,
+          detail::CorrectionModel Model = detail::CorrectionModel::arbitrary_h>
 [[nodiscard]] Status apply_correction_gain(linalg::Matrix<Linalg, Size, Size> const & covariance,
                                            linalg::Vector<Linalg, MeasurementSize> const & r,
                                            linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
@@ -199,10 +204,16 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
     }
     // Sola footnote 26: Joseph form, using the same PRIOR P as in the gain.
     // Keep the complete V, including off-diagonal measurement correlations.
-    auto const prior_term = linalg::sandwich(A, covariance);
-    auto const noise_term = linalg::sandwich(K, V);
-    auto P_corrected = prior_term + noise_term;
-    Status const covariance_status = finish_covariance(P_corrected, P_corrected);
+    auto P_corrected = correction_joseph<Model>(covariance, A, K, V);
+    Status covariance_status;
+    if constexpr (ESKF_CODEGEN && Model != CorrectionModel::arbitrary_h)
+    {
+        covariance_status = publish_covariance(P_corrected, P_corrected);
+    }
+    else
+    {
+        covariance_status = finish_covariance(P_corrected, P_corrected);
+    }
     if (!succeeded(covariance_status))
     {
         return covariance_status;
@@ -281,7 +292,8 @@ correct(configuration::Ahrs::NominalState<Linalg> const & state, linalg::Matrix<
  * bias estimates; the same constrained gain is used for the Joseph covariance.
  * This does not freeze prediction's bias random walk or decide IMU health.
  */
-template <typename Linalg, std::size_t MeasurementSize>
+template <typename Linalg, std::size_t MeasurementSize,
+          detail::CorrectionModel Model = detail::CorrectionModel::arbitrary_h>
 [[nodiscard]] Status
 correct(configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
         linalg::Vector<Linalg, MeasurementSize> const & r, linalg::Matrix<Linalg, MeasurementSize, 15U> const & H,
@@ -290,7 +302,8 @@ correct(configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<L
         linalg::Matrix<Linalg, 15U, 15U> & covariance_output, configuration::Ins::BiasUpdate const & bias_update = {})
 {
     linalg::Matrix<Linalg, 15U, MeasurementSize> K;
-    Status const gain_status = detail::compute_correction_gain(covariance, r, H, V, minimum_quaternion_norm, K);
+    Status const gain_status = detail::compute_correction_gain<Linalg, 15U, MeasurementSize, Model>(
+        covariance, r, H, V, minimum_quaternion_norm, K);
     if (!succeeded(gain_status))
     {
         return gain_status;
@@ -299,7 +312,8 @@ correct(configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<L
 
     linalg::Vector<Linalg, 15U> delta_x;
     linalg::Matrix<Linalg, 15U, 15U> P_corrected;
-    Status const correction_status = detail::apply_correction_gain(covariance, r, H, V, K, delta_x, P_corrected);
+    Status const correction_status = detail::apply_correction_gain<Linalg, 15U, MeasurementSize, Model>(
+        covariance, r, H, V, K, delta_x, P_corrected);
     if (!succeeded(correction_status))
     {
         return correction_status;

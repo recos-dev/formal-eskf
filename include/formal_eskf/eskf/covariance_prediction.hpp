@@ -16,6 +16,10 @@
 #include <formal_eskf/eskf/prediction.hpp>
 #include <formal_eskf/eskf/process_noise.hpp>
 #include <formal_eskf/eskf/covariance.hpp>
+#include <formal_eskf/eskf/codegen.hpp>
+#if ESKF_CODEGEN
+#include <formal_eskf/eskf/generated/ins_covariance.hpp>
+#endif
 
 namespace formal_eskf
 {
@@ -195,6 +199,10 @@ template <typename Linalg>
     F_x.template set_block<3U, 9U>(bias_transition);
     F_x.template set_block<6U, 6U>(attitude_transition);
     F_x.template set_block<6U, 12U>(-I_dt);
+#if ESKF_CODEGEN
+    auto candidate = detail::generated::ins_covariance(F_x, covariance, R, Q_i);
+    return detail::publish_covariance(candidate, output);
+#else
     auto candidate = linalg::sandwich(F_x, covariance);
     candidate.template set_block<3U, 3U>(candidate.template block<3U, 3U, 3U, 3U>() +
                                          linalg::sandwich(R, Q_i.template block<0U, 0U, 3U, 3U>()));
@@ -205,6 +213,7 @@ template <typename Linalg>
     candidate.template set_block<12U, 12U>(candidate.template block<12U, 12U, 3U, 3U>() +
                                            Q_i.template block<9U, 9U, 3U, 3U>());
     return detail::finish_covariance(candidate, output);
+#endif
 }
 
 /**

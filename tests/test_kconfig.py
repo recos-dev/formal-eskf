@@ -59,7 +59,8 @@ class KconfigTests(unittest.TestCase):
         for APPROX, TILT, BOOL, BIT, TILT_BIT in (("y", "n", "ON", "1", "0"), ("n", "y", "OFF", "0", "1")):
             PREDICTION = "APPROX" if APPROX == "y" else "EXACT"
             SELF.read_config(f"CONFIG_ESKF_QUAT_{PREDICTION}=y\n"
-                             f"CONFIG_ESKF_RESET_{PREDICTION}=y\nCONFIG_ESKF_MAG_TILT={TILT}\n")
+                             f"CONFIG_ESKF_RESET_{PREDICTION}=y\nCONFIG_ESKF_MAG_TILT={TILT}\n"
+                             f"CONFIG_ESKF_CODEGEN={TILT}\n")
             SELF.run_configure("-DCMAKE_EXPORT_COMPILE_COMMANDS=ON")
             CACHE = SELF.cache(SELF.BUILD_DIR)
             SELF.assertEqual(CACHE["ESKF_QUAT_APPROX:BOOL"], BOOL)
@@ -71,6 +72,7 @@ class KconfigTests(unittest.TestCase):
                 SELF.assertIn(f"-DESKF_QUAT_APPROX={BIT}", COMMAND)
                 SELF.assertIn(f"-DESKF_RESET_APPROX={BIT}", COMMAND)
                 SELF.assertIn(f"-DESKF_MAG_TILT={TILT_BIT}", COMMAND)
+                SELF.assertIn(f"-DESKF_CODEGEN={TILT_BIT}", COMMAND)
 
     def test_invalid_requests_are_rejected(SELF):
         for TEXT in (
@@ -136,7 +138,7 @@ class KconfigTests(unittest.TestCase):
     def test_px4_configured_package(SELF):
         CONFIG = SELF.read_config('CONFIG_PX4_WMM=n\nCONFIG_PX4_GROUND_EFFECT=n\n'
                                  'CONFIG_PX4_MAG_GATE="4.5"\nCONFIG_PX4_MAG_HEALTH_MS=0\n'
-                                 'CONFIG_PX4_GNSS_TIMEOUT_MS=004000\nCONFIG_ESKF_RESET_APPROX=y\n')
+                                 'CONFIG_PX4_GNSS_TIMEOUT_MS=004000\nCONFIG_ESKF_RESET_APPROX=y\nCONFIG_ESKF_CODEGEN=n\n')
         PACKAGE = SELF.ROOT / "package"
         RESULT = subprocess.run([sys.executable, str(REPO_DIR / "integrations/px4/scripts/install.py"),
                                  "--export", str(PACKAGE), "--config", str(SELF.CONFIG_FILE)],
@@ -150,6 +152,7 @@ class KconfigTests(unittest.TestCase):
         SELF.assertIn("#define ESKF_CFG_MAG_GATE 4.5\n", HEADER)
         SELF.assertIn("#define ESKF_CFG_GNSS_TIMEOUT_MS 4000\n", HEADER)
         SELF.assertIn("#define ESKF_CFG_RESET_APPROX 1\n", HEADER)
+        SELF.assertIn("#define ESKF_CFG_CODEGEN 0\n", HEADER)
         SELF.assertEqual((MODULE / "configuration.config").read_bytes(), SELF.CONFIG_FILE.read_bytes())
         MANIFEST = json.loads((PACKAGE / "manifest.json").read_text())
         SELF.assertIn("src/modules/formal_eskf/DeploymentConfig.hpp", MANIFEST["files"])

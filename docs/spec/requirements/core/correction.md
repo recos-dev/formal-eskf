@@ -38,8 +38,8 @@ Check finite P,r,H,V and normalization threshold first. Require threshold in
 violations are `domain_error`. These necessary checks do not establish full
 PSD/PD. Preserve caller matrices rather than silently symmetrizing inputs.
 Non-finite C, S, error, I-K_eff H or covariance arithmetic is
-`non_finite_result`; propagate solve/injection/reset failures. Computed S and P_c
-receive finite checks and symmetry cleanup. Success of this arithmetic is not
+`non_finite_result`; propagate solve/injection/reset failures. Computed S receives finite checks and symmetry cleanup. P_c receives finite
+checks and either dense symmetry cleanup or generated upper-triangle mirroring. Success of this arithmetic is not
 an IEEE PSD guarantee.
 
 `correction_covariances` shall return C and S together, without solving or reading
@@ -53,6 +53,20 @@ correction validation.
 covariance. No caller output may change until the entire operation succeeds.
 Nominal validity is also subject to injection's checks; the unit-prior premise
 is not established by matrix validation.
+
+`ESKF_CODEGEN=1` (default) selects generated INS matrix arithmetic for the
+[built-in kernel scope](../../../../codegen/README.md#generation-scope); `0`
+selects dense products. AHRS remains dense. Preserve the stated input premises,
+checked producer/intermediate boundaries and atomic publication in either mode.
+Generated covariance kernels mirror their upper triangle and receive finite
+checks without a second pairwise average; dense products retain symmetry cleanup.
+Algebraic equivalence under the premises does not require identical rounding,
+overflow or boundary decisions for all IEEE inputs.
+Generic arbitrary-H correction products remain dense. Known INS observations
+select their model explicitly at compile time in both gate preparation and
+correction. Measurement dimension alone shall not select a model; full V and the
+same constrained K_eff remain inputs to Joseph. INS post-injection reset follows
+the configured arithmetic mode, including after generic correction.
 
 ## Acceptance and verification
 

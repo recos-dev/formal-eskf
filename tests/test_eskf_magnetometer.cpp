@@ -275,9 +275,22 @@ void test_magnetometer_delegation(TestContext & test, std::string_view profile, 
          value_type{1}, value_type{0}}));
     typename Fixture::state_type expected_state;
     typename Fixture::covariance_type expected_P;
-    test.expect(formal_eskf::correct(fixture.state, fixture.P, residual, H, fixture.V, Fixture::minimum_norm,
-                                     expected_state, expected_P) == Status::success,
-                profile, "generic full-covariance correction succeeds");
+    // Check bitwise delegation using the selected arithmetic. test_codegen.cpp
+    // separately compares the generated path with dense numerical results.
+    auto const reference_status = [&]()
+    {
+        if constexpr (Fixture::size == 15U)
+        {
+            return formal_eskf::correct<Linalg, 3U, formal_eskf::detail::CorrectionModel::body_vector>(
+                fixture.state, fixture.P, residual, H, fixture.V, Fixture::minimum_norm, expected_state, expected_P);
+        }
+        else
+        {
+            return formal_eskf::correct(fixture.state, fixture.P, residual, H, fixture.V, Fixture::minimum_norm,
+                                        expected_state, expected_P);
+        }
+    }();
+    test.expect(reference_status == Status::success, profile, "selected full-covariance correction succeeds");
     if constexpr (Fixture::size == 15U)
     {
         test.expect(
@@ -296,7 +309,7 @@ void test_magnetometer_delegation(TestContext & test, std::string_view profile, 
                                          state_output, P_output) == Status::success,
                     profile, "all output-alias combinations succeed");
         test.expect(same_state(state_output, expected_state) && same_bits(P_output, expected_P), profile,
-                    "wrapper retains the complete generic correction, including reset");
+                    "wrapper retains the complete selected-model correction, including reset");
         test.expect(((aliases & 1U) != 0U || same_state(input.state, fixture.state)) &&
                         ((aliases & 2U) != 0U || same_bits(input.P, fixture.P)) && same_bits(input.m_b, fixture.m_b) &&
                         same_bits(input.m_n, fixture.m_n) && same_bits(input.V, fixture.V),
@@ -331,9 +344,10 @@ void test_magnetometer_delegation(TestContext & test, std::string_view profile, 
                 bias_update.accelerometer[axis] = (permissions & (1U << axis)) != 0U;
                 bias_update.gyroscope[axis] = (permissions & (1U << (3U + axis))) != 0U;
             }
-            test.expect(formal_eskf::correct(fixture.state, fixture.P, residual, H, fixture.V, Fixture::minimum_norm,
-                                             expected_state, expected_P, bias_update) == Status::success,
-                        profile, "controlled generic correction succeeds");
+            test.expect(formal_eskf::correct<Linalg, 3U, formal_eskf::detail::CorrectionModel::body_vector>(
+                            fixture.state, fixture.P, residual, H, fixture.V, Fixture::minimum_norm, expected_state,
+                            expected_P, bias_update) == Status::success,
+                        profile, "controlled selected-model correction succeeds");
             for (unsigned aliases = 0U; aliases < 4U; ++aliases)
             {
                 auto input = fixture;
@@ -345,7 +359,7 @@ void test_magnetometer_delegation(TestContext & test, std::string_view profile, 
                                                  Fixture::minimum_norm, state_output, P_output,
                                                  bias_update) == Status::success &&
                                 same_state(state_output, expected_state) && same_bits(P_output, expected_P),
-                            profile, "all bias permissions and aliases match controlled generic correction");
+                            profile, "all bias permissions and aliases match controlled selected-model correction");
                 test.expect(((aliases & 1U) != 0U || same_state(input.state, fixture.state)) &&
                                 ((aliases & 2U) != 0U || same_bits(input.P, fixture.P)) &&
                                 same_bits(input.m_b, fixture.m_b) && same_bits(input.m_n, fixture.m_n) &&

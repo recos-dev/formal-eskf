@@ -49,12 +49,14 @@ target_include_directories(
 target_compile_features(formal_eskf_core INTERFACE cxx_std_20)
 target_link_libraries(formal_eskf_core INTERFACE formal_eskf::so3)
 
+option(ESKF_CODEGEN "Use generated INS matrix arithmetic" ON)
 option(ESKF_QUAT_APPROX "Use normalized Euler and first-order attitude error prediction" OFF)
 option(ESKF_RESET_APPROX "Use first-order attitude-error covariance reset instead of the SO(3) right Jacobian" OFF)
 option(ESKF_MAG_TILT "Restrict magnetic attitude correction to rotation about navigation Down" ON)
 target_compile_definitions(
     formal_eskf_core
     INTERFACE
+        ESKF_CODEGEN=$<BOOL:${ESKF_CODEGEN}>
         ESKF_QUAT_APPROX=$<BOOL:${ESKF_QUAT_APPROX}>
         ESKF_RESET_APPROX=$<BOOL:${ESKF_RESET_APPROX}>
         ESKF_MAG_TILT=$<BOOL:${ESKF_MAG_TILT}>
@@ -309,6 +311,7 @@ if(PROJECT_IS_TOP_LEVEL)
         formal_eskf_add_backend_test(test_eskf_covariance test_eskf_covariance formal_eskf.covariance.eigen formal_eskf::core)
         formal_eskf_add_backend_test(test_eskf_injection test_eskf_injection formal_eskf.injection.eigen formal_eskf::core)
         formal_eskf_add_backend_test(test_eskf_correction test_eskf_correction formal_eskf.correction.eigen formal_eskf::core)
+        formal_eskf_add_backend_test(test_codegen test_codegen formal_eskf.codegen.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_eskf_innovation test_eskf_innovation formal_eskf.innovation.eigen formal_eskf::core)
         formal_eskf_add_backend_test(test_gnss_quality test_gnss_quality formal_eskf.gnss_quality.eigen formal_eskf::runtime)
         formal_eskf_add_backend_test(test_gnss_fusion test_gnss_fusion formal_eskf.gnss_fusion.eigen formal_eskf::runtime)

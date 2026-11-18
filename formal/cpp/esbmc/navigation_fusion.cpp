@@ -49,7 +49,8 @@ bool same_result(Result const & a, Result const & b)
 namespace formal_eskf::runtime
 {
 template <>
-inline navigation_proof::Result fuse_measurement<navigation_proof::backend_type, navigation_proof::measurement_size>(
+inline navigation_proof::Result fuse_measurement<navigation_proof::backend_type, navigation_proof::measurement_size,
+                                                 navigation_proof::correction_model>(
     navigation_proof::state_type const & state, navigation_proof::covariance_type const & P,
     navigation_proof::residual_type const & r, navigation_proof::jacobian_type const & H,
     navigation_proof::noise_type const & V, navigation_proof::value_type minimum, navigation_proof::value_type sigma,

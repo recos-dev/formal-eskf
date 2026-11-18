@@ -174,7 +174,8 @@ configure_analysis()
         -DCMAKE_BUILD_TYPE=Debug \
         -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
         -DBUILD_TESTING=ON \
-        -DFORMAL_ESKF_BUILD_EIGEN_BACKEND=ON
+        -DFORMAL_ESKF_BUILD_EIGEN_BACKEND=ON \
+        -DESKF_CODEGEN=ON
 }
 
 analyze_platform()

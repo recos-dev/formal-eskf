@@ -2,6 +2,16 @@ mainmenu "formal-eskf build configuration"
 
 menu "ESKF algorithms"
 
+config ESKF_CODEGEN
+    bool "Use generated INS matrix arithmetic"
+    default y
+    help
+      Use generated covariance prediction/reset and built-in observation
+      products, including Joseph covariance. Disable to use dense products.
+      The formulation is unchanged; floating-point rounding/order can differ.
+      AHRS and arbitrary-H correction products remain dense.
+      Uses checked-in generated C++; Python is not needed to build the library.
+
 choice
     prompt "Attitude prediction"
     default ESKF_QUAT_EXACT

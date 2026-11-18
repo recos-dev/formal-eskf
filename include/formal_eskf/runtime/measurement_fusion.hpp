@@ -72,7 +72,8 @@ template <typename Linalg> bool finite_fusion_state(configuration::Ins::NominalS
 }
 
 /** Shared matrix arithmetic; nominal-state validation belongs to the explicit overloads. */
-template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
+template <typename Linalg, std::size_t Size, std::size_t MeasurementSize,
+          formal_eskf::detail::CorrectionModel Model = formal_eskf::detail::CorrectionModel::arbitrary_h>
 [[nodiscard]] MeasurementCheck<Linalg, MeasurementSize> check_measurement_innovation(
     linalg::Matrix<Linalg, Size, Size> const & covariance, linalg::Vector<Linalg, MeasurementSize> const & r,
     linalg::Matrix<Linalg, MeasurementSize, Size> const & H,
@@ -87,7 +88,8 @@ template <typename Linalg, std::size_t Size, std::size_t MeasurementSize>
     }
     linalg::Matrix<Linalg, Size, MeasurementSize> PHt;
     linalg::Matrix<Linalg, MeasurementSize, MeasurementSize> S;
-    result.status = correction_covariances(covariance, r, H, V, minimum_quaternion_norm, PHt, S);
+    result.status = correction_covariances<Linalg, Size, MeasurementSize, Model>(covariance, r, H, V,
+                                                                                 minimum_quaternion_norm, PHt, S);
     if (!succeeded(result.status))
     {
         return result;
@@ -128,7 +130,8 @@ check_measurement(configuration::Ahrs::NominalState<Linalg> const & state,
 }
 
 /** Check one INS observation group without correction or output publication. */
-template <typename Linalg, std::size_t MeasurementSize>
+template <typename Linalg, std::size_t MeasurementSize,
+          formal_eskf::detail::CorrectionModel Model = formal_eskf::detail::CorrectionModel::arbitrary_h>
 [[nodiscard]] MeasurementCheck<Linalg, MeasurementSize> check_measurement(
     configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
     linalg::Vector<Linalg, MeasurementSize> const & r, linalg::Matrix<Linalg, MeasurementSize, 15U> const & H,
@@ -141,7 +144,8 @@ template <typename Linalg, std::size_t MeasurementSize>
         result.status = Status::non_finite_input;
         return result;
     }
-    return detail::check_measurement_innovation(covariance, r, H, V, minimum_quaternion_norm, gate_sigma);
+    return detail::check_measurement_innovation<Linalg, 15U, MeasurementSize, Model>(
+        covariance, r, H, V, minimum_quaternion_norm, gate_sigma);
 }
 
 /**
@@ -188,7 +192,8 @@ template <typename Linalg, std::size_t MeasurementSize>
 }
 
 /** INS uses the same gate; bias permissions affect correction only, not S. */
-template <typename Linalg, std::size_t MeasurementSize>
+template <typename Linalg, std::size_t MeasurementSize,
+          formal_eskf::detail::CorrectionModel Model = formal_eskf::detail::CorrectionModel::arbitrary_h>
 [[nodiscard]] FusionResult<Linalg, MeasurementSize> fuse_measurement(
     configuration::Ins::NominalState<Linalg> const & state, linalg::Matrix<Linalg, 15U, 15U> const & covariance,
     linalg::Vector<Linalg, MeasurementSize> const & r, linalg::Matrix<Linalg, MeasurementSize, 15U> const & H,
@@ -197,14 +202,15 @@ template <typename Linalg, std::size_t MeasurementSize>
     configuration::Ins::NominalState<Linalg> & state_output, linalg::Matrix<Linalg, 15U, 15U> & covariance_output,
     configuration::Ins::BiasUpdate const & bias_update = {})
 {
-    auto const check = check_measurement(state, covariance, r, H, V, minimum_quaternion_norm, gate_sigma);
+    auto const check = check_measurement<Linalg, MeasurementSize, Model>(state, covariance, r, H, V,
+                                                                         minimum_quaternion_norm, gate_sigma);
     FusionResult<Linalg, MeasurementSize> result{check};
     if (!check.passed())
     {
         return result;
     }
-    result.status =
-        correct(state, covariance, r, H, V, minimum_quaternion_norm, state_output, covariance_output, bias_update);
+    result.status = correct<Linalg, MeasurementSize, Model>(state, covariance, r, H, V, minimum_quaternion_norm,
+                                                            state_output, covariance_output, bias_update);
     if (succeeded(result.status))
     {
         result.decision = FusionDecision::fused;

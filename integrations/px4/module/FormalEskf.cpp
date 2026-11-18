@@ -8,7 +8,7 @@
 
 namespace profile = formal_eskf::px4::profile;
 
-// Dense binary64 operations use a dedicated SITL stack; target budgets are separate.
+// Binary64 estimator operations use a dedicated SITL stack; target budgets are separate.
 static constexpr px4::wq_config_t formal_eskf_queue{"wq:formal_eskf", profile::work_queue_stack_bytes,
                                                     profile::work_queue_relative_priority};
 

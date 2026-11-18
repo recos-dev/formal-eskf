@@ -192,7 +192,10 @@ quantities. Active length is derived, not another independent parameter.
 
 The supported frontend is `make menuconfig`; it keeps CMake independently usable.
 A pinned local Kconfiglib checkout supplies the menu. Exact/approximate prediction
-and reset are exclusive choices; magnetic tilt protection defaults on. PX4 stays
+and reset are exclusive choices; magnetic tilt protection defaults on.
+`ESKF_CODEGEN` defaults on and selects generated INS matrix arithmetic; disable
+it for dense products. AHRS and generic arbitrary-H correction products remain
+dense. This choice also reaches the packaged PX4 module and its fixture. PX4 stays
 INS/binary64/PX4 matrix. Packaged settings and startup parameters are separate;
 neither enables live retuning. Instructions are in the [PX4 guide](../../integrations/px4/README.md#configure-a-px4-profile).
 

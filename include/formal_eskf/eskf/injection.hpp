@@ -19,6 +19,10 @@
 #include <formal_eskf/so3/operations.hpp>
 #include <formal_eskf/so3/rotation_vector.hpp>
 #include <formal_eskf/so3/right_jacobian.hpp>
+#include <formal_eskf/eskf/codegen.hpp>
+#if ESKF_CODEGEN
+#include <formal_eskf/eskf/generated/ins_reset.hpp>
+#endif
 
 // Keep this setting identical in every translation unit of an application.
 // It selects covariance reset only, independently of ESKF_QUAT_APPROX.
@@ -87,10 +91,20 @@ template <std::size_t AttitudeOffset, typename Linalg, std::size_t Size>
         return jacobian_status;
     }
 #endif
-    auto G = linalg::Matrix<Linalg, Size, Size>::identity();
-    G.template set_block<AttitudeOffset, AttitudeOffset>(G_theta);
-    auto candidate = linalg::sandwich(G, covariance);
-    return finish_covariance(candidate, output);
+#if ESKF_CODEGEN
+    if constexpr (Size == 15U && AttitudeOffset == 6U)
+    {
+        auto candidate = generated::ins_reset(covariance, G_theta);
+        return publish_covariance(candidate, output);
+    }
+    else
+#endif
+    {
+        auto G = linalg::Matrix<Linalg, Size, Size>::identity();
+        G.template set_block<AttitudeOffset, AttitudeOffset>(G_theta);
+        auto candidate = linalg::sandwich(G, covariance);
+        return finish_covariance(candidate, output);
+    }
 }
 
 } /* end namespace detail */

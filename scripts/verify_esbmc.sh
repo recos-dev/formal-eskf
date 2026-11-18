@@ -20,6 +20,8 @@ ESBMC_ARGUMENTS=(
     -I "${PROOF_DIR}/include"
     -I "${REPO_DIR}/include"
     --assign-param-nondet
+    # Existing producer/caller summaries cover dense core arithmetic.
+    -D ESKF_CODEGEN=0
     --quiet
 )
 
@@ -38,6 +40,7 @@ parse_arguments()
                 ;;
             --help|-h)
                 printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|accelerometer|magnetic-runtime|ring-buffer|codegen] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Core producer/caller profiles select ESKF_CODEGEN=0; codegen checks generated kernels directly. Production generated composition is a separate obligation.\n'
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'

@@ -84,6 +84,8 @@ template <typename Linalg> struct HorizontalPositionFixture
         }
     }
 
+    static constexpr auto model = formal_eskf::detail::CorrectionModel::horizontal_position;
+
     static jacobian_type jacobian() { return formal_eskf::horizontal_position_jacobian<Linalg>(); }
 
     static constexpr bool observes_axis(std::size_t axis) { return axis < 2U; }
@@ -133,6 +135,8 @@ template <typename Linalg> struct VerticalPositionFixture
             z(axis) = n + n / value_type{32};
         }
     }
+
+    static constexpr auto model = formal_eskf::detail::CorrectionModel::vertical_position;
 
     static jacobian_type jacobian() { return formal_eskf::vertical_position_jacobian<Linalg>(); }
 
@@ -333,9 +337,10 @@ template <typename Fixture> void test_position_delegation(TestContext & test, st
     auto const r = fixture.z - fixture.state.p_n.template segment<Fixture::axis_offset, measurement_size>();
     typename Fixture::state_type expected_state;
     typename Fixture::covariance_type expected_P;
-    test.expect(formal_eskf::correct(fixture.state, fixture.P, r, H, fixture.V, Fixture::minimum_norm, expected_state,
-                                     expected_P) == Status::success,
-                profile, "generic correction reference succeeds");
+    test.expect(formal_eskf::correct<Linalg, measurement_size, Fixture::model>(
+                    fixture.state, fixture.P, r, H, fixture.V, Fixture::minimum_norm, expected_state, expected_P) ==
+                    Status::success,
+                profile, "selected-model correction reference succeeds");
     test.expect(!same_bits(expected_state.q_nb.coefficients(), fixture.state.q_nb.coefficients()), profile,
                 "position-attitude cross covariance produces an attitude correction");
     for (unsigned aliases = 0U; aliases < 4U; ++aliases)
@@ -349,7 +354,7 @@ template <typename Fixture> void test_position_delegation(TestContext & test, st
                                      P_output) == Status::success,
                     profile, "all output-alias combinations succeed");
         test.expect(same_state(state_output, expected_state) && same_bits(P_output, expected_P), profile,
-                    "wrapper preserves full generic correction result, including attitude reset");
+                    "wrapper preserves full selected-model correction result, including attitude reset");
         test.expect(((aliases & 1U) != 0U || same_state(input.state, fixture.state)) &&
                         ((aliases & 2U) != 0U || same_bits(input.P, fixture.P)) && same_bits(input.z, fixture.z) &&
                         same_bits(input.V, fixture.V),
@@ -375,9 +380,10 @@ template <typename Fixture> void test_position_delegation(TestContext & test, st
             bias_update.accelerometer[axis] = (permissions & (1U << axis)) != 0U;
             bias_update.gyroscope[axis] = (permissions & (1U << (3U + axis))) != 0U;
         }
-        test.expect(formal_eskf::correct(fixture.state, fixture.P, r, H, fixture.V, Fixture::minimum_norm,
-                                         expected_state, expected_P, bias_update) == Status::success,
-                    profile, "controlled generic correction reference succeeds");
+        test.expect(formal_eskf::correct<Linalg, measurement_size, Fixture::model>(
+                        fixture.state, fixture.P, r, H, fixture.V, Fixture::minimum_norm, expected_state, expected_P,
+                        bias_update) == Status::success,
+                    profile, "controlled selected-model correction reference succeeds");
         for (unsigned aliases = 0U; aliases < 4U; ++aliases)
         {
             auto input = fixture;

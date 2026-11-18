@@ -77,6 +77,7 @@ configure_build()
         -DCMAKE_CXX_FLAGS_DEBUG:STRING=-g \
         -DBUILD_TESTING=ON \
         -DFORMAL_ESKF_BUILD_EIGEN_BACKEND=ON \
+        -DESKF_CODEGEN=ON \
         -DESKF_QUAT_APPROX=OFF \
         -DESKF_RESET_APPROX=OFF
 }

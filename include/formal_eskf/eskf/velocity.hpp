@@ -86,8 +86,9 @@ template <typename Linalg>
     {
         return Status::non_finite_result;
     }
-    return correct(state, covariance, r, velocity_jacobian<Linalg>(), V, minimum_quaternion_norm, state_output,
-                   covariance_output, bias_update);
+    return correct<Linalg, 3U, detail::CorrectionModel::velocity>(state, covariance, r, velocity_jacobian<Linalg>(), V,
+                                                                  minimum_quaternion_norm, state_output,
+                                                                  covariance_output, bias_update);
 }
 
 /**
@@ -120,8 +121,9 @@ template <typename Linalg>
     {
         return Status::non_finite_result;
     }
-    return correct(state, covariance, r, horizontal_velocity_jacobian<Linalg>(), V, minimum_quaternion_norm,
-                   state_output, covariance_output, bias_update);
+    return correct<Linalg, 2U, detail::CorrectionModel::horizontal_velocity>(
+        state, covariance, r, horizontal_velocity_jacobian<Linalg>(), V, minimum_quaternion_norm, state_output,
+        covariance_output, bias_update);
 }
 
 } /* end namespace formal_eskf */

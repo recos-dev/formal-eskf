@@ -1,9 +1,10 @@
 # INS code generation
 
 This package emits four INS15 arithmetic kernel families from the project's
-right-local error formulation. **Production prediction and correction still use
-the existing dense implementation.** Generated headers are standalone; native
-caller tests patch isolated copies under `output/`, never production source.
+right-local error formulation. `ESKF_CODEGEN=1` (default) selects them in the
+production INS core and known runtime observation paths. Set the option to `0`
+to retain dense arithmetic. AHRS and arbitrary-H correction products remain dense;
+INS covariance reset follows the selected option even after generic correction.
 
 ## Generation scope
 
@@ -24,7 +25,7 @@ Existing requirements own behavior: [E-PCOV](../docs/spec/requirements/core/cova
 [E-OBS](../docs/spec/requirements/core/observations.md),
 [E-CORRECT](../docs/spec/requirements/core/correction.md) and
 [E-RESET](../docs/spec/requirements/core/covariance-reset.md).
-Artifact availability does not approve requirements or establish production integration.
+Artifact availability does not approve requirements or establish target qualification.
 
 ### Observation layouts
 
@@ -60,10 +61,39 @@ validation, overflow, status precedence, failure atomicity and output publicatio
 - SO(3) branches and the exact/approximate J producer; reset generation consumes J.
 - Innovation gates, covariance cleanup, lifecycle, buffers and platform scheduling.
 
-Generic arbitrary-H correction and AHRS remain dense. Select future specializations
-by known model identity, never measurement dimension alone. Runtime admission and
-correction both call generic arithmetic today; production integration must cover
-both paths without reusing results across changed priors or bypassing guards.
+Generic arbitrary-H correction products and AHRS remain dense. Select future
+specializations by known model identity, never measurement dimension alone. Known
+INS wrappers select an internal compile-time `CorrectionModel`; callers of the
+generic API keep its default arbitrary-H model. Runtime admission and
+correction select the same model without reusing results across changed priors.
+There is no mutable selector, dimension-based model inference or runtime fallback.
+
+## Select in an application
+
+Use `make menuconfig` → `ESKF algorithms` → `Use generated INS matrix arithmetic`.
+The option defaults on in Kconfig, direct CMake, header-only use and the packaged
+PX4 profile. Keep it identical across translation units. With direct CMake:
+
+```bash
+cmake -S . -B build/dense -DESKF_CODEGEN=OFF -DBUILD_TESTING=ON
+cmake --build build/dense --parallel 2
+ctest --test-dir build/dense --output-on-failure
+```
+
+The same transition/noise/Jacobian producers, validation, gain constraints,
+solve, injection and atomic publication surround both arithmetic paths. Generated
+covariances mirror the computed upper triangle and are checked for finiteness
+before publication. They skip the dense path's pairwise average, which would add
+unnecessary rounding to an already symmetric result. Prediction/reset retain
+symmetric-PSD input as a caller precondition; no acceptance is claimed for
+asymmetric priors. Correction still checks exact input symmetry and retains full
+correlated V.
+
+This is a numerical implementation choice, not bitwise compatibility: reassociation,
+mirroring and omitted structural zeros can change roundoff, overflow and decisions
+at numerical boundaries. Failures of the selected arithmetic retain checked status
+and unchanged outputs; dense failure equivalence for every IEEE input is not claimed.
+Use the configured scalar/backend/compiler profile for numerical acceptance.
 
 ## Generate and reproduce
 
@@ -112,7 +142,8 @@ python3 codegen/products.py controls
 | [Lean prediction](../formal/lean/FormalESKF/codegen) and [products](../formal/lean/FormalESKF/codegen/products) | Exact scalar identities, matrix assembly, conditional PSD/PD and innovation/Joseph algebraic composition |
 | ESBMC `codegen` | Actual pinned kernels and production Matrix wrapper with fixed-array storage: binary32/64 memory/access safety, without arithmetic range restrictions |
 | Native rational checker | Recorded finite numerical values agree with IEEE RNE simulation and propagated error bounds against independent exact references |
-| Isolated caller tests | Checked statuses, aliases, failure outputs, constrained gains, gate boundaries and dense/generated differences for executed cases |
+| Differential arithmetic fixtures | Checked statuses, aliases, failure outputs, constrained gains, gate boundaries and dense/generated differences for executed cases |
+| Production integration tests | CTest `formal_eskf.codegen.*` checks actual model selection at the backend boundary, generic/AHRS paths and numerical agreement; normal core/runtime suites cover checked behavior |
 | Negative controls | Real Lean and ESBMC must reject deliberately corrupted coefficients and out-of-bounds accesses; timeout is not a pass |
 
 Lean exports parsed expressions, not a proof of Python or the compiler. There is
@@ -160,10 +191,11 @@ python3 codegen/products.py callers --sanitize --optimization O1 --output output
 `native` includes rational certification. `certify RECORDS.log` rechecks existing
 product records; missing corpus entries or altered outputs fail. `callers` keeps
 all existing checks in isolated core copies, with an explicit test-only model
-selector. `conditioning` exercises nonzero gains, rank-one PSD priors and ill-conditioned
-SPD innovations;
+selector for comparing arithmetic within one process. `conditioning` exercises
+nonzero gains, rank-one PSD priors and ill-conditioned SPD innovations;
 `regressions` runs existing injection/correction tests against those copies.
-These paths test prospective integration, not an installed production selector.
+These differential fixtures do not test production dispatch. Run the normal CTest
+suite with `ESKF_CODEGEN=ON` and `OFF` for actual integration coverage.
 
 Host benchmarks alternate paired runs on one pinned CPU. They measure kernels
 and full checked calls, including generated reset versus direct block multiplication.
@@ -180,10 +212,11 @@ Neither measurement is target WCET or a whole-program stack bound.
 - `tests/native/`: native fixtures and isolated caller/resource probes.
 - `formal/cpp/esbmc/codegen*.{cpp,hpp}`: shared proof storage and memory harnesses.
 
-Before selecting these kernels in the core, review symmetry/mirroring versus
-two-triangle averaging, asymmetric priors, overflow/status behavior and every
-actual caller's structural premises. Acceptance also needs a deployment numerical
-budget and target performance/stack evidence. AHRS generation remains deferred.
+The ESBMC runner explicitly selects `ESKF_CODEGEN=0` for existing core
+producer/caller summaries; `codegen` checks emitted kernels directly. Those
+results do not establish complete source-level composition of the generated
+production path. That proof, a deployment numerical budget and target
+performance/stack evidence remain separate obligations. AHRS generation is deferred.
 
 Logs and experiments stay in ignored output. Retain release evidence under the
 [evidence policy](../docs/guides/verification.md#record-ownership-and-reuse), with

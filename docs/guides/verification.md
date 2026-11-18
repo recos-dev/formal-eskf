@@ -32,10 +32,12 @@ The current module's functional boundaries are in [the integration guide](../../
 tracked in F-07.1 is not
 converted into a passing landing result by excluding the failed scenario.
 
-The standalone [INS codegen package](../../codegen/README.md) has
-separate exact-algebra, conditional numerical and memory-safety checks. Its native
-evaluation uses an isolated test integration; these checks do not establish that
-the production ESKF selects or safely composes the generated kernels.
+The [INS codegen package](../../codegen/README.md) is selected by default through
+`ESKF_CODEGEN`. It has separate exact-algebra, conditional numerical and
+memory-safety checks. Production selection is tested by CTest; differential
+fixtures alone do not cover it. Existing ESBMC core producer/caller profiles are
+explicitly dense (`ESKF_CODEGEN=0`); emitted-kernel checks do not close the
+source-composition proof for the generated path. Run native suites in both modes.
 
 ## Running checks
 

@@ -6,7 +6,7 @@ endif()
 # Keep all translation units, including the module fixture, on the packaged profile.
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/DeploymentConfig.hpp" FORMAL_ESKF_CONFIG)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/DeploymentConfig.hpp")
-foreach(OPTION QUAT_APPROX RESET_APPROX MAG_TILT)
+foreach(OPTION CODEGEN QUAT_APPROX RESET_APPROX MAG_TILT)
 	if(NOT FORMAL_ESKF_CONFIG MATCHES "#define ESKF_CFG_${OPTION} ([01])[\r\n]")
 		message(FATAL_ERROR "Missing or invalid ESKF_CFG_${OPTION} in DeploymentConfig.hpp")
 	endif()

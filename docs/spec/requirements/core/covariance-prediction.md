@@ -50,9 +50,18 @@ residual tolerance. Apply the prediction time/normalization-parameter checks and
 finite checks to consumed inputs. INS position, velocity and gravity are not
 consumed. Reject invalid source noise using E-NOISE. Finite-input overflow is
 `non_finite_result`; propagate downstream checked-math failures. Check computed
-covariance finiteness, then restore symmetry by averaging each off-diagonal
-pair as 0.5*a + 0.5*b before publication. Failure preserves output; output may alias the complete prior P.
+covariance finiteness, then restore symmetry in the dense mode by averaging
+each off-diagonal pair as 0.5*a + 0.5*b before publication. Failure preserves output; output may alias the complete prior P.
 Input symmetry/PSD is not established by a runtime decomposition here.
+
+`ESKF_CODEGEN=1` (default) selects generated INS matrix arithmetic for the
+[built-in kernel scope](../../../../codegen/README.md#generation-scope); `0`
+selects dense products. AHRS remains dense. Preserve the stated input premises,
+checked producer/intermediate boundaries and atomic publication in either mode.
+Generated covariance kernels mirror their upper triangle and receive finite
+checks without a second pairwise average; dense products retain symmetry cleanup.
+Algebraic equivalence under the premises does not require identical rounding,
+overflow or boundary decisions for all IEEE inputs.
 
 ## Acceptance and verification
 

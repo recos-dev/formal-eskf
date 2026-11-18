@@ -114,7 +114,10 @@ inline Status magnetic_tilt_projector<magnetic_proof::Backend>(magnetic_proof::M
     return Calls::results->projector_status;
 }
 template <>
-inline Status compute_correction_gain<magnetic_proof::Backend, magnetic_proof::state_size, 3U>(
+inline Status
+compute_correction_gain<magnetic_proof::Backend, magnetic_proof::state_size, 3U,
+                        (magnetic_proof::state_size == 15U ? formal_eskf::detail::CorrectionModel::body_vector
+                                                           : formal_eskf::detail::CorrectionModel::arbitrary_h)>(
     magnetic_proof::Covariance const & P, magnetic_proof::Residual const & r, magnetic_proof::Jacobian const & H,
     magnetic_proof::Noise const & V, magnetic_proof::Scalar minimum, magnetic_proof::Gain & output)
 {
@@ -157,7 +160,10 @@ project_magnetic_gain<magnetic_proof::attitude_offset, magnetic_proof::Backend, 
     return Calls::results->projection_status;
 }
 template <>
-inline Status apply_correction_gain<magnetic_proof::Backend, magnetic_proof::state_size, 3U>(
+inline Status
+apply_correction_gain<magnetic_proof::Backend, magnetic_proof::state_size, 3U,
+                      (magnetic_proof::state_size == 15U ? formal_eskf::detail::CorrectionModel::body_vector
+                                                         : formal_eskf::detail::CorrectionModel::arbitrary_h)>(
     magnetic_proof::Covariance const & P, magnetic_proof::Residual const & r, magnetic_proof::Jacobian const & H,
     magnetic_proof::Noise const & V, magnetic_proof::Gain const & K, magnetic_proof::Correction & delta,
     magnetic_proof::Covariance & output)

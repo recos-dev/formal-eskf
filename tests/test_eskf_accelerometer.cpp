@@ -301,9 +301,23 @@ void test_accelerometer_delegation(TestContext & test, std::string_view profile,
     fixture.V(1U, 0U) = value_type{0.25};
     typename Fixture::state_type expected_state;
     typename Fixture::covariance_type expected_P;
-    test.expect(formal_eskf::correct(fixture.state, fixture.P, r, fixture.jacobian(), fixture.V, Fixture::minimum_norm,
-                                     expected_state, expected_P) == Status::success,
-                profile, "generic correction with effective correlated V succeeds");
+    // Bitwise delegation/alias checks use the same selected arithmetic. Dense
+    // numerical agreement is tested independently in test_codegen.cpp.
+    auto const reference_status = [&]()
+    {
+        if constexpr (Fixture::size == 15U)
+        {
+            return formal_eskf::correct<Linalg, 3U, formal_eskf::detail::CorrectionModel::body_vector>(
+                fixture.state, fixture.P, r, fixture.jacobian(), fixture.V, Fixture::minimum_norm, expected_state,
+                expected_P);
+        }
+        else
+        {
+            return formal_eskf::correct(fixture.state, fixture.P, r, fixture.jacobian(), fixture.V,
+                                        Fixture::minimum_norm, expected_state, expected_P);
+        }
+    }();
+    test.expect(reference_status == Status::success, profile, "selected correction with correlated V succeeds");
     if constexpr (Fixture::size == 15U)
     {
         test.expect(
@@ -343,9 +357,9 @@ void test_accelerometer_delegation(TestContext & test, std::string_view profile,
                 bias_update.accelerometer[axis] = (permissions & (1U << axis)) != 0U;
                 bias_update.gyroscope[axis] = (permissions & (1U << (3U + axis))) != 0U;
             }
-            test.expect(formal_eskf::correct(fixture.state, fixture.P, r, fixture.jacobian(), fixture.V,
-                                             Fixture::minimum_norm, expected_state, expected_P,
-                                             bias_update) == Status::success,
+            test.expect(formal_eskf::correct<Linalg, 3U, formal_eskf::detail::CorrectionModel::body_vector>(
+                            fixture.state, fixture.P, r, fixture.jacobian(), fixture.V, Fixture::minimum_norm,
+                            expected_state, expected_P, bias_update) == Status::success,
                         profile, "controlled generic correction succeeds");
             for (unsigned aliases = 0U; aliases < 4U; ++aliases)
             {

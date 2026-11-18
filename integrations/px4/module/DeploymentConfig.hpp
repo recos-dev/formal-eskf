@@ -2,6 +2,7 @@
 #pragma once
 
 // Generated from Kconfig; configure through make menuconfig.
+#define ESKF_CFG_CODEGEN 1
 #define ESKF_CFG_QUAT_APPROX 0
 #define ESKF_CFG_RESET_APPROX 0
 #define ESKF_CFG_MAG_TILT 1

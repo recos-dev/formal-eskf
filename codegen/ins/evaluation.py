@@ -40,7 +40,7 @@ def run(COMMAND, DIRECTORY, NAME, ENV=None):
 
 
 def prepare(OUTPUT):
-    """Copy current headers and apply the explicit test-only patch with zero fuzz."""
+    """Snapshot actual production headers; compile each supported arithmetic mode."""
     from generate import PINNED_HEADER, build_manifest
     from .prediction_cpp import render
     from .formatting import format_cpp
@@ -56,9 +56,6 @@ def prepare(OUTPUT):
         for VARIANT in ('dense', 'generated'):
             DIRECTORY = SNAPSHOTS / VARIANT
             shutil.copytree(REPO_DIR / 'include', DIRECTORY / 'include')
-        DIRECTORY = SNAPSHOTS / 'generated'
-        run(['patch', '--batch', '--fuzz=0', '-p1', '-i', str(ROOT / 'tests/integration.patch')],
-            DIRECTORY, 'patch')
         write_json(SNAPSHOTS / 'source.json', MANIFEST)
         write_json(SNAPSHOTS / 'headers.json', {
             str(FILE.relative_to(SNAPSHOTS)): digest(FILE)
@@ -87,7 +84,8 @@ def flags(ARGS, SNAPSHOTS, BACKEND, VARIANT, OPT, MODE):
     return [ARGS.cxx, '-std=c++20', '-' + OPT, '-fno-fast-math', '-ffp-contract=off',
             '-fno-exceptions', '-fno-rtti', '-Wall', '-Wextra', '-Werror',
             '-I' + str(SNAPSHOTS / VARIANT / 'include'), '-I' + str(REPO_DIR / 'tests'),
-            '-DGENERATED=' + str(int(VARIANT == 'generated')), '-DESKF_QUAT_APPROX=' + str(MODE),
+            '-DGENERATED=' + str(int(VARIANT == 'generated')),
+            '-DESKF_CODEGEN=' + str(int(VARIANT == 'generated')), '-DESKF_QUAT_APPROX=' + str(MODE),
             '-DESKF_RESET_APPROX=0', '-DESKF_MAG_TILT=1'] + ARGS.cxx_flag + backend_flags(ARGS, BACKEND)
 
 

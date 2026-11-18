@@ -74,7 +74,7 @@ def px4_header(CONFIG, KCONFIGLIB):
     SETTINGS = cmake_settings(CONFIG, KCONFIGLIB)
     LINES = ["// SPDX-License-Identifier: BSD-3-Clause\n#pragma once\n\n",
              "// Generated from Kconfig; configure through make menuconfig.\n"]
-    for NAME in ("ESKF_QUAT_APPROX", "ESKF_RESET_APPROX", "ESKF_MAG_TILT"):
+    for NAME in ("ESKF_CODEGEN", "ESKF_QUAT_APPROX", "ESKF_RESET_APPROX", "ESKF_MAG_TILT"):
         LINES.append(f"#define ESKF_CFG_{NAME[5:]} {int(SETTINGS[NAME][1] == 'ON')}\n")
     VALUES = {}
     ALLOW_ZERO = {"ACCEL_VARIANCE", "GYRO_VARIANCE", "ACCEL_BIAS_DENSITY", "GYRO_BIAS_DENSITY",

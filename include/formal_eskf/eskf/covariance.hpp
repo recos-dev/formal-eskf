@@ -13,6 +13,21 @@
 namespace formal_eskf::detail
 {
 
+/** Publish a kernel's already symmetric covariance without another rounding step.
+ * Symmetry is a caller premise; only finiteness is checked here.
+ */
+template <typename Linalg, std::size_t Size>
+[[nodiscard]] Status publish_covariance(linalg::Matrix<Linalg, Size, Size> const & candidate,
+                                        linalg::Matrix<Linalg, Size, Size> & output)
+{
+    if (!linalg::all_finite(candidate))
+    {
+        return Status::non_finite_result;
+    }
+    output = candidate;
+    return Status::success;
+}
+
 /** Shared finite-result check and symmetry cleanup for covariance transitions. */
 template <typename Linalg, std::size_t Size>
 [[nodiscard]] Status finish_covariance(linalg::Matrix<Linalg, Size, Size> & candidate,

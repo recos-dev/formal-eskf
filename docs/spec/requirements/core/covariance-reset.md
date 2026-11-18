@@ -35,14 +35,24 @@ including attitude cross-covariances. The two approximation macros are independe
 The caller establishes symmetric PSD P. Check P and the consumed attitude error
 for finiteness; unused Euclidean error coordinates shall not affect reset.
 Propagate right-Jacobian failure, or reject non-finite approximate-Jacobian or
-sandwich arithmetic as `non_finite_result`. Check the computed covariance for finiteness, then restore symmetry by
-averaging off-diagonal pairs as 0.5*a + 0.5*b before publishing. Failure preserves output; complete P
-input/output aliasing is supported. Cleanup is not a floating-point PSD proof.
+sandwich arithmetic as `non_finite_result`. Check computed covariance finiteness;
+the dense mode restores symmetry by averaging off-diagonal pairs as
+0.5*a + 0.5*b before publishing. Failure preserves output; complete P input/output
+aliasing is supported. Cleanup is not a floating-point PSD proof.
 
 `reset_covariance` only changes covariance. [E-STEP-INJECT-RESET](injection-reset-step.md)
 owns publication of zero in every estimated error-mean coordinate after successful
 injection and covariance reset. This zero is the filter's new error estimate,
 not a claim of zero physical estimation error or zero uncertainty.
+
+`ESKF_CODEGEN=1` (default) selects generated INS matrix arithmetic for the
+[built-in kernel scope](../../../../codegen/README.md#generation-scope); `0`
+selects dense products. AHRS remains dense. Preserve the stated input premises,
+checked producer/intermediate boundaries and atomic publication in either mode.
+Generated covariance kernels mirror their upper triangle and receive finite
+checks without a second pairwise average; dense products retain symmetry cleanup.
+Algebraic equivalence under the premises does not require identical rounding,
+overflow or boundary decisions for all IEEE inputs.
 
 ## Acceptance and verification
 

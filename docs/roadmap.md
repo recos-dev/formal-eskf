@@ -174,20 +174,21 @@ reusable script, reusing the Clang inventory infrastructure where appropriate.
 
 ### V-05 — Generated/dense equivalence proof
 
-**Status: Partial.** The standalone [INS codegen package](../codegen/README.md)
+**Status: Partial.** The [INS codegen package](../codegen/README.md)
 contains prediction covariance, reset covariance, innovation products and Joseph
 covariance, with exact-algebra certificates, scoped memory checks and isolated
 native evaluation. The physical model is separated from CSE/emission and the
-checker constructs its reference independently. Production core paths remain
-dense; AHRS generation is deferred.
+checker constructs its reference independently. `ESKF_CODEGEN` selects generated
+INS arithmetic by default, with dense arithmetic selectable at build time. Native tests
+cover actual core/runtime dispatch. AHRS generation is deferred.
 
 The [generation scope](../codegen/README.md#generation-scope) keeps nominal/SO(3)
 operations, transition/noise producers, short observation formulas, the solve and
-control flow in ordinary C++. Next review production selection, including
-symmetry/asymmetric priors, overflow/status behavior, model-specific dispatch and
-both runtime admission and correction paths. Qualify the selected deployment's
-numerical budget, performance and stack; standalone evidence does not discharge
-these integration obligations. Accepted kernels may be selected independently.
+control flow in ordinary C++. Remaining work is source-level composition of the
+generated production path and qualification of the selected deployment's numerical
+budget, performance and stack. Dense core ESBMC profiles and standalone kernel
+certificates do not discharge those obligations. Preserve symmetry premises and
+selected-path overflow/status behavior; do not require universal bitwise agreement.
 
 - Fix dense/generated revisions, derivation/artifacts, project state/frame
   conventions, scalar/backend and compiler modes; require reproducible generation.

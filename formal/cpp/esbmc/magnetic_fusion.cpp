@@ -163,10 +163,16 @@ inline magnetic_fusion_proof::Result check_magnetic_observation<magnetic_fusion_
 namespace formal_eskf::runtime
 {
 template <>
-inline magnetic_fusion_proof::Check check_measurement<magnetic_fusion_proof::Backend, 3U>(
-    magnetic_fusion_proof::State const & state, magnetic_fusion_proof::Covariance const & P,
-    magnetic_fusion_proof::Vector const & r, magnetic_fusion_proof::Jacobian const & H,
-    magnetic_fusion_proof::Noise const & V, magnetic_fusion_proof::Scalar minimum, magnetic_fusion_proof::Scalar sigma)
+inline magnetic_fusion_proof::Check
+check_measurement<magnetic_fusion_proof::Backend, 3U
+#if FORMAL_ESKF_PROOF_STATE_SIZE == 15
+                  ,
+                  formal_eskf::detail::CorrectionModel::body_vector
+#endif
+                  >(magnetic_fusion_proof::State const & state, magnetic_fusion_proof::Covariance const & P,
+                    magnetic_fusion_proof::Vector const & r, magnetic_fusion_proof::Jacobian const & H,
+                    magnetic_fusion_proof::Noise const & V, magnetic_fusion_proof::Scalar minimum,
+                    magnetic_fusion_proof::Scalar sigma)
 {
     using namespace magnetic_fusion_proof;
     __ESBMC_assert(Calls::observations == 1U && Calls::gates++ == 0U && Calls::corrections == 0U &&

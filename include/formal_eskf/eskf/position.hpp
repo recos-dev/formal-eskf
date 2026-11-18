@@ -81,8 +81,9 @@ template <typename Linalg>
     {
         return Status::non_finite_result;
     }
-    return correct(state, covariance, r, horizontal_position_jacobian<Linalg>(), V, minimum_quaternion_norm,
-                   state_output, covariance_output, bias_update);
+    return correct<Linalg, 2U, detail::CorrectionModel::horizontal_position>(
+        state, covariance, r, horizontal_position_jacobian<Linalg>(), V, minimum_quaternion_norm, state_output,
+        covariance_output, bias_update);
 }
 
 /**
@@ -123,8 +124,9 @@ template <typename Linalg>
         return Status::non_finite_result;
     }
     auto const V = linalg::Matrix<Linalg, 1U, 1U>::from_row_major({variance});
-    return correct(state, covariance, r, vertical_position_jacobian<Linalg>(), V, minimum_quaternion_norm, state_output,
-                   covariance_output, bias_update);
+    return correct<Linalg, 1U, detail::CorrectionModel::vertical_position>(
+        state, covariance, r, vertical_position_jacobian<Linalg>(), V, minimum_quaternion_norm, state_output,
+        covariance_output, bias_update);
 }
 
 } /* end namespace formal_eskf */

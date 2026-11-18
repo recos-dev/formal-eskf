@@ -45,14 +45,19 @@ namespace formal_eskf
 // F-SOLVE and E-STEP-CORRECT. Only public success publication, failure atomicity
 // and distinct-input purity are used here; no numerical result is assumed.
 template <>
-inline Status correct<observation_proof::backend_type, observation_proof::measurement_size>(
-    observation_proof::state_type const & state, observation_proof::covariance_type const & covariance,
-    observation_proof::residual_type const & r, observation_proof::jacobian_type const & H,
-    observation_proof::noise_type const & V, observation_proof::value_type minimum,
-    observation_proof::state_type & state_output, observation_proof::covariance_type & covariance_output
+inline Status
+correct<observation_proof::backend_type, observation_proof::measurement_size
 #if FORMAL_ESKF_PROOF_STATE_SIZE == 15
-    ,
-    configuration::Ins::BiasUpdate const & bias_update
+        ,
+        observation_proof::correction_model
+#endif
+        >(observation_proof::state_type const & state, observation_proof::covariance_type const & covariance,
+          observation_proof::residual_type const & r, observation_proof::jacobian_type const & H,
+          observation_proof::noise_type const & V, observation_proof::value_type minimum,
+          observation_proof::state_type & state_output, observation_proof::covariance_type & covariance_output
+#if FORMAL_ESKF_PROOF_STATE_SIZE == 15
+          ,
+          configuration::Ins::BiasUpdate const & bias_update
 #endif
 )
 {

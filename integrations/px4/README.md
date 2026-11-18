@@ -90,8 +90,8 @@ make -C "$PX4_ROOT" px4_sitl_formal_eskf -j2
 python3 integrations/px4/scripts/install.py --px4 "$PX4_ROOT" --config .config --check
 ```
 
-The menu includes exact/approximate prediction and reset, magnetic tilt
-protection, plus 64 module settings: WMM, ground-effect/gravity/bias enablement,
+The menu includes generated INS arithmetic (enabled by default), exact/approximate
+prediction and reset, magnetic tilt protection, plus 64 module settings: WMM, ground-effect/gravity/bias enablement,
 GNSS and magnetic checks, lifecycle timeouts, noise, gates, bias limits and output
 tracking time constants. Decimal values are validated before packaging. See
 [configuration ownership](../../docs/guides/configuration.md#px4-deployment-menu)

@@ -35,6 +35,7 @@ subnormal/flush-to-zero behavior
 FMA contraction behavior
 compiler and target
 compile flags
+ESKF_CODEGEN, ESKF_QUAT_APPROX, ESKF_RESET_APPROX and ESKF_MAG_TILT selections
 math-library implementation
 ~~~
 

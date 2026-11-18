@@ -109,25 +109,40 @@ def replace(FILE, OLD, NEW):
 def prepare(DEST):
     shutil.copytree(ROOT / 'include', DEST, dirs_exist_ok=True)
     (DEST / 'codegen_fixture.hpp').write_text(fixture())
+    # This differential arithmetic fixture is separate from production dispatch tests.
+    replace(DEST / 'formal_eskf/eskf/codegen.hpp', '#define ESKF_CODEGEN 1', '#define ESKF_CODEGEN 0')
     INJECTION = DEST / 'formal_eskf/eskf/injection.hpp'
     replace(INJECTION, '#pragma once', '#pragma once\n#include <codegen_fixture.hpp>')
     replace(
         INJECTION,
         'auto candidate = linalg::sandwich(G, covariance);',
-        'auto candidate = codegen_fixture::reset(covariance, G);',
+        '''auto candidate = codegen_fixture::reset(covariance, G);
+        if constexpr (Size == 15U) {
+            if (codegen_fixture::generated) {
+                return publish_covariance(candidate, output);
+            }
+        }''',
     )
     CORRECTION = DEST / 'formal_eskf/eskf/correction.hpp'
     replace(
         CORRECTION,
-        'auto const PHt = covariance * linalg::transpose(H);',
+        'auto const PHt = detail::correction_cross<Model>(covariance, H);',
         'auto const PHt = codegen_fixture::cross(covariance, H);',
     )
-    replace(CORRECTION, 'auto S = H * PHt + V;', 'auto S = codegen_fixture::innovation(PHt, H, V);')
     replace(
         CORRECTION,
-        '''auto const prior_term = linalg::sandwich(A, covariance);
-    auto const noise_term = linalg::sandwich(K, V);
-    auto P_corrected = prior_term + noise_term;''',
+        'auto S = detail::correction_innovation<Model>(PHt, H, V);',
+        'auto S = codegen_fixture::innovation(PHt, H, V);',
+    )
+    replace(
+        CORRECTION,
+        'auto P_corrected = correction_joseph<Model>(covariance, A, K, V);',
         'auto P_corrected = codegen_fixture::joseph(covariance, A, H, K, V);',
+    )
+    replace(
+        CORRECTION,
+        'if constexpr (ESKF_CODEGEN && Model != CorrectionModel::arbitrary_h)',
+        """if (Size == 15U && codegen_fixture::generated &&
+            codegen_fixture::selected != codegen_fixture::Model::generic)""",
     )
     print('Isolated checked callers:', DEST)

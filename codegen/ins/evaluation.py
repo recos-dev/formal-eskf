@@ -42,7 +42,7 @@ def run(COMMAND, DIRECTORY, NAME, ENV=None):
 def prepare(OUTPUT):
     """Copy current headers and apply the explicit test-only patch with zero fuzz."""
     from generate import PINNED_HEADER, build_manifest
-    from .covariance import render
+    from .prediction_cpp import render
     from .formatting import format_cpp
     from .verify.algebra import verify_identities
 

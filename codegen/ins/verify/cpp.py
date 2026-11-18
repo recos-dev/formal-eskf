@@ -8,6 +8,7 @@ Expression tuples contain a reference, integer, negation or binary operation.
 References identify a scalar name or a matrix entry such as ('F', 0, 3).
 """
 
+from collections import Counter
 import ast
 import re
 
@@ -180,3 +181,18 @@ def parse(TEXT):
         'incomplete output matrix',
     )
     return PROGRAM
+
+
+def operation_counts(PROGRAM):
+    """Count scalar arithmetic in the parsed DAG before compiler optimization."""
+    COUNTS = Counter()
+
+    def visit(NODE):
+        if NODE[0] not in ('ref', 'int'):
+            COUNTS[NODE[0]] += 1
+            for CHILD in NODE[1:]:
+                visit(CHILD)
+
+    for _, NODE in PROGRAM:
+        visit(NODE)
+    return dict(COUNTS)

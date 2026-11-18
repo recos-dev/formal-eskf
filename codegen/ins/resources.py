@@ -14,7 +14,7 @@ import json
 from .evaluation import NATIVE_DIR, dependencies, digest, flags, prepare, run, write_json
 from .verify import require
 
-def graph(PATH):
+def graph(PATH, ENTRIES=('call_kernel', 'call_predict')):
     NODES = {}
     EDGES = {}
     for LINE in PATH.read_text().splitlines():
@@ -61,7 +61,7 @@ def graph(PATH):
                 UNKNOWN.union(*(CHILD[2] for CHILD in CHILDREN)))
 
     RESULT = {}
-    for ENTRY in ('call_kernel', 'call_predict'):
+    for ENTRY in ENTRIES:
         SIZE, FRAMES, UNKNOWN = walk(ENTRY, set())
         RESULT[ENTRY] = {'known_frame_path_bytes': SIZE, 'maximum_known_path': FRAMES,
                          'external_or_dynamic_stack_unknown': sorted(UNKNOWN)}

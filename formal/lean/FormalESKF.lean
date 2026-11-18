@@ -48,3 +48,5 @@ import FormalESKF.MagneticFrame
 
 import FormalESKF.codegen.Properties
 import FormalESKF.codegen.ErrorBounds
+
+import FormalESKF.codegen.products.Composition

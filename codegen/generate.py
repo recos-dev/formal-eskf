@@ -2,7 +2,6 @@
 """Generate or check the standalone INS covariance kernel and its provenance."""
 
 import argparse
-from collections import Counter
 import hashlib
 import json
 from pathlib import Path
@@ -11,11 +10,11 @@ import sys
 
 import sympy
 
-from ins.covariance import render
+from ins.prediction_cpp import render
 from ins.formatting import fingerprint, format_cpp
 from ins.verify import require
 from ins.verify.algebra import verify_identities
-from ins.verify.cpp import parse
+from ins.verify.cpp import operation_counts, parse
 from ins.verify.lean import export
 
 ROOT = Path(__file__).resolve().parent
@@ -53,16 +52,6 @@ def tool_fingerprints():
 
 
 def build_manifest(CORE, TEXT):
-    OPERATIONS = Counter()
-
-    def count(NODE):
-        if NODE[0] not in ('ref', 'int'):
-            OPERATIONS[NODE[0]] += 1
-            for CHILD in NODE[1:]:
-                count(CHILD)
-
-    for _, NODE in parse(TEXT):
-        count(NODE)
     return {
         'schema_version': 3,
         'model': MODEL_ID,
@@ -72,7 +61,7 @@ def build_manifest(CORE, TEXT):
         'formatter': fingerprint(),
         'core_and_specs': source_fingerprints(CORE),
         'header_sha256': hashlib.sha256(TEXT.encode('utf-8')).hexdigest(),
-        'scalar_operations_before_compilation': dict(OPERATIONS),
+        'scalar_operations_before_compilation': operation_counts(parse(TEXT)),
         'shape': {
             'nominal': 16,
             'error': 15,

@@ -105,6 +105,11 @@ build_lean()
         MODULE="${ROW%.lean}"
         run_lake "${LAKE_ARGUMENTS[@]}" build "${MODULE//\//.}"
     done
+    # Build generated row certificates sequentially to bound peak memory.
+    for ROW in FormalESKF/codegen/products/*Row*.lean FormalESKF/codegen/products/*Entries.lean; do
+        MODULE="${ROW%.lean}"
+        run_lake "${LAKE_ARGUMENTS[@]}" build "${MODULE//\//.}"
+    done
     run_lake "${LAKE_ARGUMENTS[@]}" build FormalESKF
 }
 

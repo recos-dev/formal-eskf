@@ -18,8 +18,9 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 2198 '^PLAN'
+    check_count 2230 '^PLAN'
     check_count 2 'codegen-binary(32|64)-memory'
+    check_count 32 'codegen-ins_.*-binary(32|64)-memory'
     check_count 160 'magnetic-runtime-'
     check_count 32 'height-'
     check_count 36 'accelerometer-binary'
@@ -50,7 +51,7 @@ check_plan()
     check_count 6 'bias-binary.*-gain15x'
     check_count 24 'bias-binary.*-step15x'
     check_count 48 'bias-binary.*-observation'
-    check_count 30 'innovation-binary'
+    check_count 30 '[[:space:]]innovation-binary'
     check_count 2 'observations-.*-rotation-producer'
     check_count 16 'observations-.*-jacobian'
     check_count 64 'observations-.*-caller-alias'
@@ -245,8 +246,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 248 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2198 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 249 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2230 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -261,7 +262,7 @@ check_plan()
     [[ "$("${RUNNER}" jacobian --list | wc -l)" == 10 ]] || fail 'Jacobian flow/entries/dependency coverage changed'
     [[ "$("${RUNNER}" reset --list | wc -l)" == 46 ]] || fail 'reset configuration/mode/alias/dependency coverage changed'
     [[ "$("${RUNNER}" pcov --list | wc -l)" == 30 ]] || fail 'covariance prediction configuration/mode/alias/dependency coverage changed'
-    [[ "$("${RUNNER}" codegen --list | wc -l)" == 2 ]] || fail 'generated kernel scalar coverage changed'
+    [[ "$("${RUNNER}" codegen --list | wc -l)" == 34 ]] || fail 'generated kernel scalar coverage changed'
     [[ "$("${RUNNER}" step --list | wc -l)" == 188 ]] || fail 'step configuration/mode/frame coverage changed'
     [[ "$("${RUNNER}" step-correction --list | wc -l)" == 84 ]] || fail 'correction transaction/frame coverage changed'
     [[ "$("${RUNNER}" solve --list | wc -l)" == 364 ]] || fail 'solve scalar/column/alias coverage changed'
@@ -286,15 +287,21 @@ check_codegen_arguments()
     local COUNT=0
     verify()
     {
-        local ENTRY="$1"
+        local ENTRY="$1" EXPECTED
         shift
-        [[ "${SOURCE_FILE}" == "${PROOF_DIR}/codegen.cpp" && "${ENTRY}" == verify_codegen_memory ]] || fail 'wrong codegen source/entry'
-        [[ "${PROFILE}" == "codegen-binary$((32 + 32 * BINARY64))-memory" ]] || fail 'wrong codegen profile'
-        [[ "$*" == "--proof-unwind 16 --proof-timeout 90s --proof-memory 3g -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" ]] || fail 'wrong codegen arguments'
+        EXPECTED="--proof-unwind 16 --proof-timeout 90s --proof-memory 3g -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        if [[ "${SOURCE_FILE}" == "${PROOF_DIR}/codegen.cpp" ]]; then
+            [[ "${ENTRY}" == verify_codegen_memory && "${PROFILE}" == "codegen-binary$((32 + 32 * BINARY64))-memory" ]] || fail 'wrong covariance profile'
+        else
+            [[ "${SOURCE_FILE}" == "${PROOF_DIR}/codegen_products.cpp" && "${ENTRY}" == verify_product_memory ]] || fail 'wrong product source/entry'
+            [[ "${PROFILE}" == "codegen-${KERNEL}-binary$((32 + 32 * BINARY64))-memory" ]] || fail 'wrong product profile'
+            EXPECTED+=" -D PROVE_${KERNEL^^}"
+        fi
+        [[ "$*" == "${EXPECTED}" ]] || fail 'wrong codegen arguments'
         COUNT=$((COUNT + 1))
     }
     run_codegen_suite
-    [[ "${COUNT}" == 2 ]] || fail 'incomplete codegen profiles'
+    [[ "${COUNT}" == 34 ]] || fail 'incomplete codegen profiles'
 )
 
 check_ring_buffer_arguments()
@@ -2139,7 +2146,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (2198 profiles; 248 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (2230 profiles; 249 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_ring_buffer_regressions
     check_mode_constants

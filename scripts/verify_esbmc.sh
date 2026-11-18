@@ -63,7 +63,7 @@ parse_arguments()
                 printf 'navigation-recovery selects actual gate diagnostic contracts, vertical limiter and both public recovery callers with every state/P alias. Same-type correction frames are reused; root accuracy and caller health/permission remain separate.\n'
                 printf 'navigation-reset selects exact-type validation, symmetry-pair arithmetic and all four numerical reset callers with independent state/P aliases. Real PSD is proved separately in Lean; source permission and target backends remain separate.\n'
                 printf 'ring-buffer selects actual fixed-storage operations and inductive history invariants for capacities 1/3/8 and 32/64-bit word models. Caller admission, deployed sample types, other capacities and target timing remain separate.\n'
-                printf 'codegen selects memory/access safety of the pinned generated kernel with actual Matrix and fixed-array storage for binary32/64. No arithmetic accuracy or production integration is claimed.\n'
+                printf 'codegen selects memory/access safety of pinned INS prediction/reset/innovation/Joseph kernels with actual Matrix and fixed-array storage for binary32/64. No arithmetic accuracy or production integration is claimed.\n'
                 printf 'gnss-lifecycle selects actual integer/Boolean lifecycle transitions and inductive permission/history safety. Estimator repair, external timestamps and actual caller scheduling remain separate.\n'
                 printf 'gnss-quality selects parameter/sample domains, actual motion filters, health timers and composed public-update invariants. Caller metadata, geographic projection and accurate libm remain separate.\n'
                 printf 'imu-prediction selects actual module clipping admission and noise-policy/prediction composition; E-STEP supplies the same-type terminal frame. Full module sequencing and target backend remain separate.\n'
@@ -1217,12 +1217,26 @@ run_navigation_reset_suite()
 
 run_codegen_suite()
 {
-    local BINARY64
+    local BINARY64 KERNEL MODEL KIND
     SOURCE_FILE="${PROOF_DIR}/codegen.cpp"
     for BINARY64 in 0 1; do
         PROFILE="codegen-binary$((32 + 32 * BINARY64))-memory"
         verify verify_codegen_memory --proof-unwind 16 --proof-timeout 90s --proof-memory 3g \
             -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+    done
+    local KERNELS=(ins_reset)
+    for MODEL in horizontal_position vertical_position horizontal_velocity velocity body_vector; do
+        for KIND in cross innovation joseph; do
+            KERNELS+=("ins_${MODEL}_${KIND}")
+        done
+    done
+    SOURCE_FILE="${PROOF_DIR}/codegen_products.cpp"
+    for KERNEL in "${KERNELS[@]}"; do
+        for BINARY64 in 0 1; do
+            PROFILE="codegen-${KERNEL}-binary$((32 + 32 * BINARY64))-memory"
+            verify verify_product_memory --proof-unwind 16 --proof-timeout 90s --proof-memory 3g \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "PROVE_${KERNEL^^}"
+        done
     done
 }
 

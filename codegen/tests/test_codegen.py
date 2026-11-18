@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from generate import SPEC_FILES, build_manifest, main, read_verified_header, tool_fingerprints
-from ins.covariance import render
+from ins.prediction_cpp import render
 from ins.formatting import format_cpp
 from ins.verify.algebra import verify_identities
 from ins.verify.cpp import parse
@@ -81,7 +81,7 @@ class SourceTests(unittest.TestCase):
 
     def test_optimized_python_keeps_checks(self):
         CODE = (
-            "from ins.verify.cpp import parse; from ins.covariance import render; "
+            "from ins.verify.cpp import parse; from ins.prediction_cpp import render; "
             "parse(render().replace('return result;', 'return P;'))"
         )
         RESULT = subprocess.run([sys.executable, '-O', '-c', CODE], cwd=ROOT, capture_output=True)

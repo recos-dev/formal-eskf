@@ -133,6 +133,28 @@ issue/analysis. Missing execution, timeout, OOM or incomplete unwinding stays a
 gap. Printed ESBMC programs lose information and are not an equivalence oracle;
 do not revive the withdrawn text-based deduplication optimization.
 
+## Runtime producer boundaries
+
+The `height` suite includes per-producer history-domain preservation, complete
+innovation-reporting frames and the actual double-precision reporting filter.
+The bias producer also admits non-finite scratch variance; it proves the stated
+finite-result bounds without assuming successful owner publication. These
+properties do not close the `HeightAiding::update` transaction.
+
+`delayed-input` checks the implemented 250 Hz signed timing configuration,
+capacity/arrival budget, unchanged output on rejection, and binary32/binary64
+input admission using the actual mean-rate and clipping operations. Its scoped
+three-value unsigned maximum model has a separate relational check. It does not
+prove the history's seed/push/completion or retained payloads. INS in-place nominal
+failure frames are checked in `step`; the matching quaternion producer chain is
+still required before using that contract in an output-owner proof.
+
+Delayed owner reference identity and large aggregate transactions remain open
+under ESBMC 8.4.0. Reference-forwarding counterexamples require frontend/model
+qualification; native witnesses do not discharge them. OOM, timeout and partial
+property results must remain gaps. Do not rewrite production bodies or use a
+smaller history capacity to relabel those obligations as proved.
+
 ## Proof execution resources
 
 Run heavy profiles sequentially, without simultaneous builds or full suites.

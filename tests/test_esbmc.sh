@@ -18,7 +18,7 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 2450 '^PLAN'
+    check_count 2459 '^PLAN'
     check_count 14 'pcov-generated-binary(32|64)-'
     check_count 10 'reset-generated-binary(32|64)-'
     check_count 94 'correction-generated-binary(32|64)-'
@@ -26,7 +26,9 @@ check_plan()
     check_count 2 'codegen-binary(32|64)-memory'
     check_count 32 'codegen-ins_.*-binary(32|64)-memory'
     check_count 160 'magnetic-runtime-'
-    check_count 32 'height-'
+    check_count 33 'height-'
+    check_count 4 'delayed-input-'
+    check_count 4 'step-binary(32|64)-ins-quat[01]-nominal-transaction'
     check_count 36 'accelerometer-binary'
     check_count 1 'accelerometer-double-sample_round'
     check_count 28 'navigation-recovery-'
@@ -93,8 +95,8 @@ check_plan()
     check_count 23 '[[:space:]]reset-binary64'
     check_count 15 'pcov-binary32'
     check_count 15 'pcov-binary64'
-    check_count 52 'step-binary32'
-    check_count 52 'step-binary64'
+    check_count 54 'step-binary32'
+    check_count 54 'step-binary64'
     check_count 182 '[[:space:]]solve-binary32'
     check_count 182 '[[:space:]]solve-binary64'
     check_count 106 '[[:space:]]correction-binary32'
@@ -250,8 +252,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 259 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2450 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 264 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2459 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -268,7 +270,7 @@ check_plan()
     [[ "$("${RUNNER}" pcov --list | wc -l)" == 30 ]] || fail 'covariance prediction configuration/mode/alias/dependency coverage changed'
     [[ "$("${RUNNER}" pcov-generated --list | wc -l)" == 14 ]] || fail 'generated covariance composition coverage changed'
     [[ "$("${RUNNER}" codegen --list | wc -l)" == 34 ]] || fail 'generated kernel scalar coverage changed'
-    [[ "$("${RUNNER}" step --list | wc -l)" == 188 ]] || fail 'step configuration/mode/frame coverage changed'
+    [[ "$("${RUNNER}" step --list | wc -l)" == 192 ]] || fail 'step configuration/mode/frame coverage changed'
     [[ "$("${RUNNER}" step-correction --list | wc -l)" == 84 ]] || fail 'correction transaction/frame coverage changed'
     [[ "$("${RUNNER}" solve --list | wc -l)" == 364 ]] || fail 'solve scalar/column/alias coverage changed'
     [[ "$("${RUNNER}" correction --list | wc -l)" == 212 ]] || fail 'correction caller/producer coverage changed'
@@ -499,6 +501,28 @@ check_accelerometer_arguments()
     [[ "${COUNT}" == 37 ]] || fail 'accelerometer matrix incomplete'
 )
 
+check_delayed_input_arguments()
+(
+    local COUNT=0
+    verify()
+    {
+        local ENTRY="$1"
+        shift
+        case "${PROFILE}" in
+            delayed-input-library-max)
+                [[ "${SOURCE_FILE}" == "${PROOF_DIR}/delayed_library.cpp" && "${ENTRY}" == verify_delayed_max && "$*" == '--proof-unwind 16 --cvc5' ]] || fail 'wrong delayed maximum producer' ;;
+            delayed-input-timing)
+                [[ "${SOURCE_FILE}" == "${PROOF_DIR}/delayed_input.cpp" && "${ENTRY}" == verify_timing_configuration && "$*" == '--proof-unwind 16 --cvc5' ]] || fail 'wrong timing producer' ;;
+            delayed-input-binary*-admission)
+                [[ "${SOURCE_FILE}" == "${PROOF_DIR}/delayed_input.cpp" && "${ENTRY}" == verify_imu_input && "$*" == "--proof-unwind 5 --cvc5 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" ]] || fail 'wrong delayed input producer' ;;
+            *) fail 'unknown delayed input profile' ;;
+        esac
+        COUNT=$((COUNT + 1))
+    }
+    run_delayed_input_suite
+    [[ "${COUNT}" == 4 ]] || fail 'delayed input matrix incomplete'
+)
+
 check_height_arguments()
 (
     local COUNT=0
@@ -507,6 +531,8 @@ check_height_arguments()
         local ENTRY="$1"
         shift
         case "${PROFILE}" in
+            height-double-reporting)
+                [[ "${SOURCE_FILE}" == "${PROOF_DIR}/innovation_reporting.cpp" && "${ENTRY}" == verify_innovation_reporting && "$*" == '--cvc5' ]] || fail 'wrong innovation reporting arguments' ;;
             height-library-*-storage)
                 [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_session_storage.cpp" && "${ENTRY}" == verify_height_session_storage && "$*" == "--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=1 -D FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}" ]] || fail 'wrong session storage control' ;;
             height-library-*)
@@ -522,13 +548,14 @@ check_height_arguments()
                     height-bias-*) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_bias.cpp" && "${ENTRY}" == "verify_height_bias_${KIND}" && "$*" == "${BASE}" ]] || fail 'wrong bias producer arguments' ;;
                     *-filter|*-filter_range) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_filter.cpp" && "${ENTRY}" == "verify_height_${KIND}" && "$*" == "${BASE} --cvc5" ]] || fail 'wrong height filter arguments' ;;
                     *-initialization) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_admission.cpp" && "${ENTRY}" == verify_height_initialization && "$*" == "${BASE}" ]] || fail 'wrong height initialization arguments' ;;
+                    *-admission) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_admission.cpp" && "${ENTRY}" == verify_height_admission && "$*" == "${BASE} -D FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE} --cvc5" ]] || fail 'wrong height admission arguments' ;;
                     *) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_admission.cpp" && "${ENTRY}" == "verify_height_${KIND}" && "$*" == "${BASE} -D FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}" ]] || fail 'wrong height source partition arguments' ;;
                 esac ;;
         esac
         COUNT=$((COUNT + 1))
     }
     run_height_suite
-    [[ "${COUNT}" == 32 ]] || fail 'height producer matrix incomplete'
+    [[ "${COUNT}" == 33 ]] || fail 'height producer matrix incomplete'
 )
 
 check_navigation_recovery_arguments()
@@ -1144,8 +1171,9 @@ check_step_arguments()
         if [[ "${PROFILE}" == *-ins-* ]]; then INS=1; UNWIND=226; fi
         EXPECTED=(--proof-unwind "${UNWIND}" -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}" -D "FORMAL_ESKF_PROOF_INS=${INS}")
         case "${PROFILE}" in
-            *-quat[01]-nominal-frame)
+            *-quat[01]-nominal-frame|*-ins-quat[01]-nominal-transaction)
                 EXPECTED_FUNCTION=verify_nominal_prediction_frame
+                [[ "${PROFILE}" != *-transaction ]] || EXPECTED_FUNCTION=verify_nominal_prediction_transaction
                 APPROX="${PROFILE#*-quat}"
                 EXPECTED+=(-D "ESKF_QUAT_APPROX=${APPROX%%-*}" -D FORMAL_ESKF_PROOF_STEP_FRAME=1)
                 ;;
@@ -1660,6 +1688,94 @@ verify_reset_storage|-D FORMAL_ESKF_PROOF_INS=0|Runner error: reset storage prod
 verify_reset_storage|-D FORMAL_ESKF_PROOF_INS=1 -D FORMAL_ESKF_PROOF_ACCESS_CONTRACT=1|Runner error: reset storage producer requires actual INS storage
 CASES
     printf 'ESBMC reset guard tests: pass (%d incompatible boundaries rejected)\n' "${RESULT_COUNT}"
+)
+
+check_runtime_input_regressions()
+(
+    local TEST_WORK_DIR CASE RESULT ENTRY LABEL SOURCE
+    local -a ARGUMENTS
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-runtime-input.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    python3 - "${REPO_DIR}" "${TEST_WORK_DIR}" <<'PY_MUTATIONS'
+import pathlib
+import shutil
+import sys
+ROOT, OUTPUT = map(pathlib.Path, sys.argv[1:])
+CASES = {
+    'timing': ('ImuHistory.hpp', 'static_cast<std::size_t>(intervals) + 1', 'static_cast<std::size_t>(intervals) + 2'),
+    'period': ('ImuHistory.hpp', 'sample.angular_period_us < profile::history::minimum_period_us',
+               'sample.angular_period_us <= profile::history::minimum_period_us'),
+    'reporting': ('InnovationRatio.hpp', 'innovation > 0. ? ratio', 'innovation > 0. ? -ratio'),
+}
+for CASE, (HEADER, OLD, NEW) in CASES.items():
+    DEST = OUTPUT / CASE
+    for NAME in ('ImuHistory.hpp', 'ImuPrediction.hpp', 'DeploymentProfile.hpp', 'InnovationRatio.hpp'):
+        RELATIVE = pathlib.Path('integrations/px4/module', NAME)
+        TARGET = DEST / RELATIVE
+        TARGET.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / RELATIVE, TARGET)
+    TARGET = DEST / 'integrations/px4/module' / HEADER
+    TEXT = TARGET.read_text()
+    assert TEXT.count(OLD) == 1
+    TARGET.write_text(TEXT.replace(OLD, NEW, 1))
+    HARNESS = 'innovation_reporting.cpp' if CASE == 'reporting' else 'delayed_input.cpp'
+    TARGET = DEST / 'formal/cpp/esbmc' / HARNESS
+    TARGET.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ROOT / 'formal/cpp/esbmc' / HARNESS, TARGET)
+    if CASE == 'reporting':
+        # Concrete fault witness only; the successful producer profile remains
+        # fully symbolic. Avoid asking the solver to search double arithmetic.
+        with TARGET.open('a') as FILE:
+            FILE.write('\nvoid verify_reporting_mutation() { verify_innovation_reporting({1U, 0.1}, 2001U, 2.0, 0.2); }\n')
+DEST = OUTPUT / 'nominal'
+TARGET = DEST / 'include/formal_eskf/eskf/prediction.hpp'
+TARGET.parent.mkdir(parents=True, exist_ok=True)
+TEXT = (ROOT / 'include/formal_eskf/eskf/prediction.hpp').read_text()
+START = TEXT.index('[[nodiscard]] Status predict_nominal(configuration::Ins::NominalState')
+OLD = '    using value_type = typename Linalg::value_type;'
+TAIL = TEXT[START:]
+assert OLD in TAIL
+TARGET.write_text(TEXT[:START] + TAIL.replace(OLD, OLD + '\n    output.p_n(0U) = value_type{0};', 1))
+TARGET = DEST / 'formal/cpp/esbmc/step.cpp'
+TARGET.parent.mkdir(parents=True, exist_ok=True)
+shutil.copy2(ROOT / 'formal/cpp/esbmc/step.cpp', TARGET)
+with TARGET.open('a') as FILE:
+    FILE.write('''
+void verify_nominal_mutation()
+{
+    State state;
+    state.p_n(0U) = Scalar{1};
+    verify_nominal_prediction_transaction(state, Imu{}, Scalar{0}, Parameters{}, LeafResults{});
+}
+''')
+PY_MUTATIONS
+    for CASE in timing period reporting nominal; do
+        SOURCE=delayed_input.cpp
+        ARGUMENTS=()
+        case "${CASE}" in
+            timing) ENTRY=verify_timing_configuration; LABEL='Delayed timing: complete widened configuration' ;;
+            period) ENTRY=verify_imu_input; LABEL='IMU history: exact timestamp, period, clipping' ;;
+            reporting) SOURCE=innovation_reporting.cpp; ENTRY=verify_reporting_mutation; LABEL='Innovation reporting: exact double-precision' ;;
+            nominal)
+                SOURCE=step.cpp; ENTRY=verify_nominal_mutation
+                LABEL='Output prediction dependency: same-type in-place nominal failure'
+                ARGUMENTS=(-D FORMAL_ESKF_PROOF_INS=1 -D FORMAL_ESKF_PROOF_STEP_FRAME=1)
+                ;;
+        esac
+        RESULT=0
+        "${ESBMC_COMMAND}" "${TEST_WORK_DIR}/${CASE}/formal/cpp/esbmc/${SOURCE}" -I "${TEST_WORK_DIR}/${CASE}/include" "${ESBMC_ARGUMENTS[@]}" \
+            -I "${PROOF_DIR}" -I "${REPO_DIR}/integrations/px4/module" \
+            --function "${ENTRY}" --unwind 226 --timeout 120s --memlimit 4g --cvc5 "${ARGUMENTS[@]}" \
+            >"${TEST_WORK_DIR}/${CASE}.log" 2>&1 || RESULT=$?
+        if [[ "${RESULT}" != 1 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${CASE}.log" ||
+            ! grep -A4 'Violated property:' "${TEST_WORK_DIR}/${CASE}.log" | grep -Fq "${LABEL}"; then
+            tail -n 35 "${TEST_WORK_DIR}/${CASE}.log" >&2
+            fail "runtime input mutation was not detected: ${CASE}"
+        fi
+    done
+    printf 'ESBMC runtime input regressions: pass (timing capacity, inclusive period boundary, reporting sign, nominal rollback)\n'
 )
 
 check_ring_buffer_regressions()
@@ -2341,6 +2457,7 @@ check_ring_buffer_arguments
 check_magnetic_runtime_arguments
 check_accelerometer_arguments
 check_height_arguments
+check_delayed_input_arguments
 check_navigation_recovery_arguments
 check_navigation_reset_arguments
 check_gnss_lifecycle_arguments
@@ -2367,8 +2484,9 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (2450 profiles; 259 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (2459 profiles; 264 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
+    check_runtime_input_regressions
     check_ring_buffer_regressions
     check_mode_constants
     check_rotation_contract_guards

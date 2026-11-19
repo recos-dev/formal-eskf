@@ -467,4 +467,34 @@ void verify_nominal_prediction_frame(State state, Imu imu, Scalar dt, Parameters
 #endif
 }
 
+// The output predictor calls nominal prediction in place. Its summary requires
+// failure atomicity in addition to the disjoint-input frame checked above.
+void verify_nominal_prediction_transaction(State state, Imu imu, Scalar dt, Parameters parameters,
+                                           LeafResults leaf_results)
+{
+    constexpr bool configured = FORMAL_ESKF_PROOF_STEP_FRAME && !FORMAL_ESKF_PROOF_STEP_CONTRACT && boundaries_clear;
+    __ESBMC_assert(configured, "Runner error: nominal transaction requires only quaternion leaf summaries");
+    if constexpr (!configured)
+    {
+        return;
+    }
+#if FORMAL_ESKF_PROOF_STEP_FRAME
+    auto const old_state = state;
+    auto const old_imu = imu;
+    auto const old_parameters = parameters;
+    leaves = &leaf_results;
+    auto const status = formal_eskf::predict_nominal(state, imu, dt, parameters, state);
+    __ESBMC_assert(status == Status::success || same_state(state, old_state),
+                   "Output prediction dependency: same-type in-place nominal failure preserves the complete state");
+    __ESBMC_assert(same_imu(imu, old_imu) && same_parameters(parameters, old_parameters),
+                   "Output prediction dependency: same-type nominal prediction preserves IMU and parameters");
+#else
+    (void)state;
+    (void)imu;
+    (void)dt;
+    (void)parameters;
+    (void)leaf_results;
+#endif
+}
+
 int main() { return 0; }

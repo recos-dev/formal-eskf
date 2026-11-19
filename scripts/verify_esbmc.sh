@@ -29,7 +29,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|accelerometer|magnetic-runtime|ring-buffer|codegen) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|accelerometer|magnetic-runtime|ring-buffer|codegen) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -39,7 +39,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|accelerometer|magnetic-runtime|ring-buffer|codegen] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|accelerometer|magnetic-runtime|ring-buffer|codegen] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Core producer/caller profiles select ESKF_CODEGEN=0 except the *-generated suites (ESKF_CODEGEN=1); codegen checks emitted kernels directly.\n'
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
@@ -737,6 +737,11 @@ run_step_suite()
                 PROFILE="${BASE_PROFILE}-quat${APPROX}-nominal-frame"
                 verify verify_nominal_prediction_frame --proof-unwind "${UNWIND}" "${PROFILE_ARGUMENTS[@]}" \
                     -D "ESKF_QUAT_APPROX=${APPROX}" -D FORMAL_ESKF_PROOF_STEP_FRAME=1 --multi-property
+                if ((INS)); then
+                    PROFILE="${BASE_PROFILE}-quat${APPROX}-nominal-transaction"
+                    verify verify_nominal_prediction_transaction --proof-unwind "${UNWIND}" "${PROFILE_ARGUMENTS[@]}" \
+                        -D "ESKF_QUAT_APPROX=${APPROX}" -D FORMAL_ESKF_PROOF_STEP_FRAME=1 --multi-property
+                fi
                 # Partition alias arrangements, not coefficients or numeric
                 # domains. Dynamic aggregate references mis-model/expand badly
                 # in ESBMC 8.4; every legal arrangement is still mandatory.
@@ -1267,10 +1272,28 @@ run_accelerometer_suite()
     done
 }
 
+run_delayed_input_suite()
+{
+    local BINARY64
+    SOURCE_FILE="${PROOF_DIR}/delayed_library.cpp"
+    PROFILE=delayed-input-library-max
+    verify verify_delayed_max --proof-unwind 16 --cvc5
+    SOURCE_FILE="${PROOF_DIR}/delayed_input.cpp"
+    PROFILE=delayed-input-timing
+    verify verify_timing_configuration --proof-unwind 16 --cvc5
+    for BINARY64 in 0 1; do
+        PROFILE="delayed-input-binary$((32 + 32 * BINARY64))-admission"
+        verify verify_imu_input --proof-unwind 5 --cvc5 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+    done
+}
+
 run_height_suite()
 {
     local BINARY64 SOURCE KIND
     local -a ARGUMENTS
+    SOURCE_FILE="${PROOF_DIR}/innovation_reporting.cpp"
+    PROFILE=height-double-reporting
+    verify verify_innovation_reporting --cvc5
     SOURCE_FILE="${PROOF_DIR}/height_library.cpp"
     PROFILE=height-library-unsigned-min
     verify verify_height_min_unsigned
@@ -1302,7 +1325,11 @@ run_height_suite()
             SOURCE_FILE="${PROOF_DIR}/height_admission.cpp"
             for KIND in stop admission queries; do
                 PROFILE="height-binary$((32 + 32 * BINARY64))-source${SOURCE}-${KIND}"
-                verify "verify_height_${KIND}" "${ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}"
+                if [[ "${KIND}" == admission ]]; then
+                    verify verify_height_admission "${ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}" --cvc5
+                else
+                    verify "verify_height_${KIND}" "${ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}"
+                fi
             done
         done
     done
@@ -1815,6 +1842,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == height ]]; then
         run_height_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == delayed-input ]]; then
+        run_delayed_input_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

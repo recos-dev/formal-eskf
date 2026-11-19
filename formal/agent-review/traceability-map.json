@@ -2380,6 +2380,10 @@
           {
             "file": "formal/cpp/esbmc/correction_generated.cpp",
             "symbol": "void verify_generated_reset_frame("
+          },
+          {
+            "file": "formal/cpp/esbmc/step.cpp",
+            "symbol": "void verify_nominal_prediction_transaction("
           }
         ]
       }
@@ -5837,6 +5841,10 @@
           {
             "file": "integrations/px4/module/FormalEskfNavigation.cpp",
             "symbol": "void FormalEskf::update_ground_effect("
+          },
+          {
+            "file": "integrations/px4/module/InnovationRatio.hpp",
+            "symbol": "struct InnovationRatio"
           }
         ],
         "esbmc": [
@@ -5903,6 +5911,10 @@
           {
             "file": "formal/cpp/esbmc/imu_inhibition.cpp",
             "symbol": "void verify_imu_max_model("
+          },
+          {
+            "file": "formal/cpp/esbmc/innovation_reporting.cpp",
+            "symbol": "void verify_innovation_reporting("
           }
         ]
       }
@@ -6002,7 +6014,7 @@
     },
     {
       "id": "R-PX4-IMU-HISTORY",
-      "title": "Delayed IMU timeline: native-tested timing owner; formal proof remains open; live binding tracked separately",
+      "title": "Delayed IMU timing and input-admission producers; retained history/completion and live binding remain open",
       "references": {
         "spec": [
           {
@@ -6047,9 +6059,26 @@
           {
             "file": "integrations/px4/module/ImuHistory.hpp",
             "symbol": "ImuHistory<Linalg>::latest()"
+          },
+          {
+            "file": "integrations/px4/module/ImuHistory.hpp",
+            "symbol": "ImuHistory<Linalg>::valid_input("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/delayed_library.cpp",
+            "symbol": "void verify_delayed_max("
+          },
+          {
+            "file": "formal/cpp/esbmc/delayed_input.cpp",
+            "symbol": "void verify_timing_configuration("
+          },
+          {
+            "file": "formal/cpp/esbmc/delayed_input.cpp",
+            "symbol": "void verify_imu_input("
+          }
+        ]
       }
     },
     {

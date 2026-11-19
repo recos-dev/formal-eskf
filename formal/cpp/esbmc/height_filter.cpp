@@ -24,6 +24,8 @@ void verify_height_filter(height_proof::Manager manager, height_proof::Sample sa
 {
     using namespace height_proof;
     __ESBMC_assume(manager.m_barometer_samples <= setting::barometer_warmup_samples + 1U);
+    auto const epoch = manager.m_tick > manager.m_started ? manager.m_tick : manager.m_started;
+    bool const domain = history_domain(manager, epoch);
     auto const old_sample = sample;
     auto expected = manager;
     auto expected_result = result;
@@ -48,6 +50,8 @@ void verify_height_filter(height_proof::Manager manager, height_proof::Sample sa
         ready = true;
     }
     bool const actual = manager.prepare_barometer(sample, altitude, result);
+    __ESBMC_assert(!domain || history_domain(manager, epoch),
+                   "R-HEIGHT-FUSION: warmup/filter preserves the complete owner induction domain");
     __ESBMC_assert(actual == ready && same_manager(manager, expected) && same_result(result, expected_result),
                    "R-HEIGHT-FUSION: actual LPF, twenty-sample warmup, saturation, fault rejection and full frame");
     __ESBMC_assert(manager.m_barometer_samples >= 1U && manager.m_barometer_samples <= 21U,

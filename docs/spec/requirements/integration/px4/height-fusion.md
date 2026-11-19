@@ -110,10 +110,13 @@ producer preserves its full field frame and saturates the counter at 21; a
 separate IEEE lemma proves the admitted LPF remains within ±131072 m from a
 prior within that bound. This bound is a verification invariant, not a new
 operational altitude limit. Source branches and both scalar formats
-are covered separately. Prediction's internal finite/nonnegative variance,
-ceiling and interval premises, and admission's ordered watermark premises must
-still be established by the complete public transition. These private producer
-checks alone are not an inductive proof of `HeightAiding::update`.
+are covered separately. The producer checks include reporting-field frames,
+report reset on source changes, and conditional preservation of the owner time
+and bias domains. The reporting helper has an independent IEEE double oracle.
+Bias prediction admits finite nonnegative variance and non-finite scratch;
+finite-result variance bounds retain the finite ceiling and interval premises.
+The complete public transition must still establish these producer premises.
+These private checks alone are not an inductive proof of `HeightAiding::update`.
 
 The scoped standard-library models preserve min/max reference selection,
 bounded `any_of`, and the two sessions' value construction/copy/index/iteration

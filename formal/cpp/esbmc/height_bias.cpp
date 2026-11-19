@@ -57,7 +57,8 @@ void verify_height_bias_prediction(Bias bias, Scalar dt)
 {
     // Internal producer domain: committed variance/ceiling and tick interval.
     // HeightAiding's initialization/transition must establish these separately.
-    __ESBMC_assume(std::isfinite(bias.variance) && bias.variance >= Scalar{0} && std::isfinite(bias.maximum_variance) &&
+    bool const finite_prior = std::isfinite(bias.variance);
+    __ESBMC_assume((!finite_prior || bias.variance >= Scalar{0}) && std::isfinite(bias.maximum_variance) &&
                    bias.maximum_variance >= static_cast<Scalar>(settings::minimum_variance) && std::isfinite(dt) &&
                    dt >= Scalar{0});
     auto expected = bias;
@@ -72,14 +73,18 @@ void verify_height_bias_prediction(Bias bias, Scalar dt)
     bias.predict(dt);
     __ESBMC_assert(same_bias(bias, expected),
                    "R-HEIGHT-FUSION: exact offset-triggered variance prediction and untouched bias fields");
-    __ESBMC_assert(std::isfinite(bias.variance) && bias.variance >= static_cast<Scalar>(settings::minimum_variance) &&
-                       bias.variance <= bias.maximum_variance,
+    __ESBMC_assert(!finite_prior || (std::isfinite(bias.variance) &&
+                                     bias.variance >= static_cast<Scalar>(settings::minimum_variance) &&
+                                     bias.variance <= bias.maximum_variance),
                    "R-HEIGHT-FUSION: prediction contains finite variance within its configured interval");
+    __ESBMC_assert(!std::isfinite(bias.variance) || (bias.variance >= static_cast<Scalar>(settings::minimum_variance) &&
+                                                     bias.variance <= bias.maximum_variance),
+                   "R-HEIGHT-FUSION: arbitrary nonfinite scratch preserves the finite variance domain");
 }
 void verify_height_bias_update(Bias bias, Scalar measurement, Scalar measurement_variance, Scalar sensor_variance)
 {
     __ESBMC_assume(std::isfinite(sensor_variance) && sensor_variance > Scalar{0});
-    bool const nonnegative_prior = std::isfinite(bias.variance) && bias.variance >= Scalar{0};
+    bool const nonnegative_prior = !std::isfinite(bias.variance) || bias.variance >= Scalar{0};
     auto expected = bias;
     Scalar const floor = static_cast<Scalar>(settings::measurement_variance_floor);
     expected.maximum_variance = sensor_variance < floor ? floor : sensor_variance;

@@ -40,6 +40,9 @@ It does not own the numerical state, output predictor, observations or a clock.
   storage/work is bounded, with no dynamic allocation or platform effects.
 
 The current evidence is native binary64 testing on Eigen and PX4 matrix, including
-default/full active lengths, wrap, faults and timestamp limits. Formal source
-proof remains open. `R-RING-BUFFER` does not extend its proof to this owner's
-payload/capacity, time arithmetic, acknowledgment protocol, adapter or WCET.
+default/full active lengths, wrap, faults and timestamp limits. The
+`delayed-input` ESBMC suite checks signed timing configuration, lag/capacity
+arithmetic and input admission in binary32/binary64 through the fixed-array
+proof backend. History mutation, payload retention, views and completion remain
+open. `R-RING-BUFFER` does not extend its proof to this owner's payload/capacity,
+acknowledgment protocol, adapter or WCET.

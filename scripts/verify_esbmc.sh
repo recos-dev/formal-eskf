@@ -110,6 +110,17 @@ check_esbmc_version()
     fi
 }
 
+check_reference_support()
+{
+    local DETAILS
+    if ! DETAILS="$("${ESBMC_COMMAND}" "${REPO_DIR}/tests/esbmc/reference_checks.cpp" \
+        --std c++20 --64 --assign-param-nondet --quiet --unwind 70 --timeout 15s --memlimit 1g \
+        --function verify_reference_identity --z3 2>&1)"; then
+        printf '%s\n' "${DETAILS}" >&2
+        fail 'reference-address tool preflight failed; see docs/guides/verification.md before running delayed-views or all'
+    fi
+}
+
 check_solver_arguments()
 {
     local ARGUMENT MULTI=0 INCREMENTAL=0
@@ -1745,6 +1756,9 @@ main()
     if ((!LIST_ONLY)); then
         select_esbmc
         check_esbmc_version
+        if [[ "${SUITE}" == all || "${SUITE}" == delayed-views ]]; then
+            check_reference_support
+        fi
         printf 'SELECTION\t%s\tshard %d/%d\n' "${SUITE}" "${SHARD_INDEX}" "${SHARD_COUNT}"
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == quaternion ]]; then

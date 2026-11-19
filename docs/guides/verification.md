@@ -201,11 +201,15 @@ The reference checks require five positive properties and three intentional
 failures at their named assertions. They cover live-object alias identity,
 write-through behavior, single evaluation, and pointer/array/function references;
 they do not qualify all C++ lifetime rules or the entire modified verifier.
+Conditional object-reference binding and large aggregate copying in transaction
+harnesses require separate qualification; this patch does not close those gaps.
 Rerun affected source proofs with this exact tool identity. Existing results
 from another binary are not automatically transferred.
-The full runner includes `delayed-views`; an unpatched released binary cannot
-complete that suite. Keep its tool failure visible rather than omitting the
-profiles from the inventory or transferring a different binary's result.
+The full runner includes `delayed-views`; both selections run a reference-identity
+preflight before starting any profiles, so an unpatched binary fails immediately.
+The preflight does not replace the positive/negative qualification above. Keep
+tool failures visible rather than omitting profiles from the inventory or
+transferring a different binary's result.
 
 ## Proof execution resources
 

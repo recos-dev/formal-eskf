@@ -2458,6 +2458,22 @@ check_scalar_contract_guards()
     printf 'ESBMC scalar guards: pass (%d incompatible models/aliases rejected)\n' "${COUNT}"
 )
 
+check_reference_preflight()
+{
+    local PROBE_RESULT=0 ESBMC_COMMAND=reference_probe
+    reference_probe()
+    {
+        [[ "$*" == "${REPO_DIR}/tests/esbmc/reference_checks.cpp --std c++20 --64 --assign-param-nondet --quiet --unwind 70 --timeout 15s --memlimit 1g --function verify_reference_identity --z3" ]] || return 2
+        return "${PROBE_RESULT}"
+    }
+    check_reference_support
+    PROBE_RESULT=1
+    if (check_reference_support) >/dev/null 2>&1; then
+        fail 'unsupported reference semantics passed the preflight'
+    fi
+    unset -f reference_probe
+}
+
 check_reference_regressions()
 (
     select_esbmc
@@ -2535,6 +2551,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
+check_reference_preflight
 printf 'ESBMC inventory tests: pass (2463 profiles; 266 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_runtime_input_regressions

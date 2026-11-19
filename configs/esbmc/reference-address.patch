@@ -1,0 +1,22 @@
+diff --git a/src/clang-c-frontend/clang_c_adjust_expr.cpp b/src/clang-c-frontend/clang_c_adjust_expr.cpp
+index 071d00b1..aa0d3da8 100644
+--- a/src/clang-c-frontend/clang_c_adjust_expr.cpp
++++ b/src/clang-c-frontend/clang_c_adjust_expr.cpp
+@@ -588,4 +588,17 @@ void clang_c_adjust::adjust_address_of(exprt &expr)
+   exprt &op = expr.op0();
+
++  // C++ references are represented as pointers. The address of the referred
++  // object is that pointer, not the address of a temporary holding the return
++  // value of a reference-returning call. Preserve exactly one evaluation and
++  // erase only the reference annotation from the resulting pointer type.
++  if (is_lvalue_or_rvalue_reference(op.type()))
++  {
++    const locationt location = expr.location();
++    exprt pointer = typecast_exprt(op, pointer_typet(op.type().subtype()));
++    expr.swap(pointer);
++    expr.location() = location;
++    return;
++  }
++
+   // special case: address of function designator
+   // ANSI-C 99 section 6.3.2.1 paragraph 4

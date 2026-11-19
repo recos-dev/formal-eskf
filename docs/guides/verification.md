@@ -149,11 +149,48 @@ prove the history's seed/push/completion or retained payloads. INS in-place nomi
 failure frames are checked in `step`; the matching quaternion producer chain is
 still required before using that contract in an output-owner proof.
 
-Delayed owner reference identity and large aggregate transactions remain open
-under ESBMC 8.4.0. Reference-forwarding counterexamples require frontend/model
-qualification; native witnesses do not discharge them. OOM, timeout and partial
-property results must remain gaps. Do not rewrite production bodies or use a
-smaller history capacity to relabel those obligations as proved.
+Large aggregate owner transactions remain open under ESBMC 8.4.0. Its released
+build miscompiles address-of calls that return C++ references. Such a
+counterexample is a tool limitation, not evidence of an estimator defect.
+Reference-dependent claims require the qualification below. OOM, timeout and
+partial property results remain gaps; do not rewrite production bodies or use
+a smaller history capacity to relabel those obligations as proved.
+
+### Reference-address tool qualification
+
+[reference-address.patch](../../configs/esbmc/reference-address.patch) applies to
+ESBMC commit `61172c6f9afe6faee097b117edd0347cfbb6f28d` (v8.4). It preserves the
+pointer representing a reference when translating `&reference_returning_call()`;
+the unpatched frontend takes the address of the temporary pointer instead.
+It changes the verifier, not the estimator or a proof summary.
+
+Build this optional tool separately, using Clang/LLVM 18 development files and
+C++23 standard-library headers. The following enables the pinned Z3 and CVC5
+dependencies; suites requiring Bitwuzla need that backend built separately.
+
+```bash
+git clone https://github.com/esbmc/esbmc.git tools/bootstrap/esbmc-reference
+git -C tools/bootstrap/esbmc-reference checkout 61172c6f9afe6faee097b117edd0347cfbb6f28d
+git -C tools/bootstrap/esbmc-reference apply "$PWD/configs/esbmc/reference-address.patch"
+cmake -S tools/bootstrap/esbmc-reference -B tools/bootstrap/esbmc-reference/build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 \
+    -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm -DClang_DIR=/usr/lib/llvm-18/lib/cmake/clang \
+    -DDOWNLOAD_DEPENDENCIES=ON -DENABLE_Z3=ON -DENABLE_CVC5=ON -DBUILD_TESTING=OFF \
+    -DENABLE_BUNDLE_LIBC_32BIT=OFF
+cmake --build tools/bootstrap/esbmc-reference/build --target esbmc --parallel 2
+FORMAL_ESKF_ESBMC="$PWD/tools/bootstrap/esbmc-reference/build/src/esbmc/esbmc" \
+    ./tests/test_esbmc.sh --references
+```
+
+This build provides 64-bit target models. Apply the execution limits below to
+builds and solver runs. Record the upstream commit, patch and binary hashes,
+compiler/LLVM/solver versions and test logs.
+The reference checks require five positive properties and three intentional
+failures at their named assertions. They cover live-object alias identity,
+write-through behavior, single evaluation, and pointer/array/function references;
+they do not qualify all C++ lifetime rules or the entire modified verifier.
+Rerun affected source proofs with this exact tool identity. Existing results
+from another binary are not automatically transferred.
 
 ## Proof execution resources
 

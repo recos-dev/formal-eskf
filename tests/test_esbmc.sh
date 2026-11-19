@@ -2439,13 +2439,44 @@ check_scalar_contract_guards()
     printf 'ESBMC scalar guards: pass (%d incompatible models/aliases rejected)\n' "${COUNT}"
 )
 
+check_reference_regressions()
+(
+    select_esbmc
+    check_esbmc_version
+    local ENTRY RESULT LOG
+    LOG="$(mktemp)"
+    trap 'rm -f -- "${LOG}"' EXIT
+    SOURCE_FILE="${TEST_DIR}/esbmc/reference_checks.cpp"
+    for ENTRY in identity write pointer array function; do
+        PROFILE="reference-${ENTRY}"
+        verify "verify_reference_${ENTRY}" --proof-unwind 70 --proof-timeout 30s --proof-memory 1g --z3
+    done
+    ((FAILED_CHECKS == 0)) || fail 'reference semantics are unsupported; see the verification guide tool patch'
+    for ENTRY in identity write calls; do
+        RESULT=0
+        "${ESBMC_COMMAND}" "${SOURCE_FILE}" "${ESBMC_ARGUMENTS[@]}" --unwind 70 --timeout 30s --memlimit 1g \
+            --function "verify_negative_${ENTRY}" --z3 >"${LOG}" 2>&1 || RESULT=$?
+        if ((RESULT != 1)) || ! grep -q 'Violated property:' "${LOG}" || ! grep -q "negative ${ENTRY}" "${LOG}"; then
+            cat "${LOG}"
+            fail "reference negative control ${ENTRY} did not fail at its intended assertion"
+        fi
+    done
+    printf 'ESBMC reference checks: pass (5 positive; 3 negative controls)\n'
+)
+
 RUN_SOLVER=0
 case "${1:-}" in
     '') ;;
     --solver) RUN_SOLVER=1 ; shift ;;
+    --references)
+        (($# == 1)) || fail '--references takes no other arguments'
+        check_reference_regressions
+        exit 0
+        ;;
     --help|-h)
-        printf 'Usage: %s [--solver]\n' "${0##*/}"
+        printf 'Usage: %s [--solver|--references]\n' "${0##*/}"
         printf 'Check the profile inventory; --solver also runs a real ESBMC negative regression.\n'
+        printf '--references runs only the reference-address tool qualification cases.\n'
         exit 0
         ;;
     *) fail "unknown argument: $1" ;;

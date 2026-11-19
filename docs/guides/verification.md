@@ -16,8 +16,9 @@ it is neither a proof nor a mandatory review of every function.
 ## Open boundaries
 
 - Full `HeightAiding` transactions remain outside the completed producer checks.
-- Delayed IMU/observation/output owners and complete PX4/replay sequencing need
-  their own source-composition evidence. Native owner/module tests are not that proof.
+- Delayed observation/output owners and live IMU/PX4/replay calling sequences
+  need source-composition evidence. The IMU owner's scoped contracts and induction
+  are described below; native owner/module tests do not prove the live sequence.
 - Deployed matrix/libm accuracy, numerical error budgets and repeated-step
   invariants are not implied by finite outputs or exact-real theorems.
 - Work-queue/consumer behavior, dependency allocation/locking, forced shutdown,
@@ -169,8 +170,8 @@ values, signed zero and NaN classification; they do not claim NaN-payload identi
 The admission summary may return either result and supplies no successful-input
 assumption. Acceptance requires the matching actual `delayed-input` producer
 profiles; the summary alone does not establish the admitted input domain.
-Push, completion, reset, history induction and live caller sequencing remain
-separate. Flat homogeneous snapshots avoid the verifier's conditional-reference
+Push, completion, reset and history induction require the `delayed-history`
+contracts below; live caller sequencing remains separate. Flat homogeneous snapshots avoid the verifier's conditional-reference
 and nested array/tuple encoding limitations without narrowing the checked domain.
 
 `delayed-storage` checks the actual `RingBuffer<ImuHistory::Interval, 64>::push`
@@ -185,14 +186,71 @@ All write-position partitions in both scalar formats are mandatory: each retains
 the full 64-slot object, and their union covers every valid destination. This
 partition avoids the verifier's dynamic aggregate-address expansion; passing a
 subset does not discharge the storage contract. IMU owner admission, interval
-construction, chronological induction, completion and reset remain separate.
+construction, chronological induction, completion and reset require the
+`delayed-history` contracts below.
 
-Large aggregate owner transactions remain open under ESBMC 8.4.0. Its released
-build miscompiles address-of calls that return C++ references. Such a
-counterexample is a tool limitation, not evidence of an estimator defect.
-Reference-dependent claims require the qualification below. OOM, timeout and
-partial property results remain gaps; do not rewrite production bodies or use
-a smaller history capacity to relabel those obligations as proved.
+`delayed-history` checks actual IMU configure/push/complete/reset contracts and
+chronological induction separately. It requires the same qualified tool,
+64-slot payload, 64-bit word model and both scalar formats for source contracts.
+The actual mean-rate producer covers every coefficient and the full input frame.
+Typed reset checks all storage values and enclosing-owner frames as separate
+obligations over the same unrestricted metadata domain: allocation changes length
+before reset, so old indices need not fit the new length.
+
+Push and configuration execute their actual bodies with proved typed-storage or
+reset boundaries summarized. Behavior profiles check exact eligibility, first
+fault, producer arguments/order, publication and metadata. Frame profiles check
+every physical slot before the producer and after return, including inactive
+storage. The summary havocs the complete owner, restores every non-buffer field
+and supplies exact metadata; caller frames preserve its arbitrary payloads.
+Actual typed-producer evidence supplies the missing value equations. Every
+partition in both formats is mandatory. Completion and owner reset execute
+without these summaries and check their complete frames.
+
+Borrowed-input profiles execute push using each physical stored input, assuming
+its timestamp does not exceed the previous endpoint. Rejection preserves every
+stored field. Temporal induction and the actual view contracts discharge this
+premise for fresh latest/delayed views; expired views are outside the contract.
+
+The integer-only temporal proof is a relation derived from source contracts,
+not another execution of the owner. It retains original integer widths and
+unsigned arithmetic. Fault, source, rate and clock decisions are overapproximated
+by permitting additional success/rejection transitions. Rejection closes by the
+proved temporal frame; no success or chronology is assumed for failed calls.
+
+| Temporal relation | Mandatory source bridge |
+|---|---|
+| Initialization | Complete constructor initialization in `delayed-seed`. |
+| Configure | Exact behavior and every frame, typed reset, timing producer and its maximum model. |
+| Seed | Complete publication/frame and actual admission's time/period consequences. |
+| Push | Necessary success guards, interval/previous-input forwarding, exact metadata, every caller frame and typed-storage partition. |
+| Complete | Exact oldest-interval eligibility, cursor update and complete frame. |
+| Reset | Full owner reset, retained configuration and cleared previous input/storage. |
+
+Configure, seed and reset establish empty-history metadata; an independent lemma
+checks that every slot clause follows regardless of stored values. Successful
+push and completion use arbitrary observed, oldest and newest cells, plus the
+retained endpoint. Equal physical indices must yield equal reads, including
+predecessor endpoints. Every concrete 64-slot array satisfies these consistency
+premises; unrelated cells remain arbitrary. This projection avoids symbolic
+array-selection cost without reducing capacity or timestamp ranges.
+
+Common metadata and each chronological slot establish positive ordered durations,
+adjacency, newest/previous equality, oldest/completion continuity and full-history
+lag. The full pre-invariant entails the observed/oldest/newest premises; a universal
+observer checks each post-slot. Assert-then-assume metadata cuts retain their
+assertion obligation. Source-to-contract inclusion is an explicitly reviewed
+compositional boundary, not an automated whole-owner or Lean/C++ refinement
+certificate. All source and temporal dependencies need current successful evidence.
+These claims do not establish numerical prediction success, output tracking,
+module calling order or WCET.
+
+Large aggregate/reference transactions require scoped tool qualification under
+ESBMC 8.4.0. Its released build miscompiles address-of reference-returning calls;
+such a counterexample is a tool limitation, not an estimator defect. The IMU
+contracts use the qualification below. OOM, timeout and partial property results
+remain gaps; do not rewrite production bodies or reduce history capacity to
+relabel an obligation as proved.
 
 ### Reference-address tool qualification
 
@@ -233,7 +291,8 @@ Conditional object-reference binding and large aggregate copying in transaction
 harnesses require separate qualification; this patch does not close those gaps.
 Rerun affected source proofs with this exact tool identity. Existing results
 from another binary are not automatically transferred.
-The full runner includes `delayed-views`, `delayed-seed` and `delayed-storage`;
+The full runner includes `delayed-views`, `delayed-seed`, `delayed-storage` and
+`delayed-history`;
 these selections run a reference-identity preflight before starting any
 profiles, so an unpatched binary fails immediately.
 The preflight does not replace the positive/negative qualification above. Keep

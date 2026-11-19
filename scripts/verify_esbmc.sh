@@ -29,7 +29,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|accelerometer|magnetic-runtime|ring-buffer|codegen) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|delayed-history|accelerometer|magnetic-runtime|ring-buffer|codegen) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -39,8 +39,8 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|accelerometer|magnetic-runtime|ring-buffer|codegen] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
-                printf 'Core producer/caller profiles select ESKF_CODEGEN=0 except the *-generated, delayed-views, delayed-seed and delayed-storage suites (ESKF_CODEGEN=1); codegen checks emitted kernels directly.\n'
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|delayed-history|accelerometer|magnetic-runtime|ring-buffer|codegen] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Core producer/caller profiles select ESKF_CODEGEN=0 except the *-generated, delayed-views, delayed-seed, delayed-storage and delayed-history suites (ESKF_CODEGEN=1); codegen checks emitted kernels directly.\n'
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -119,7 +119,7 @@ check_reference_support()
         --std c++20 --64 --assign-param-nondet --quiet --unwind 70 --timeout 15s --memlimit 1g \
         --function verify_reference_identity --z3 2>&1)"; then
         printf '%s\n' "${DETAILS}" >&2
-        fail 'reference-address tool preflight failed; see docs/guides/verification.md before running delayed-views, delayed-seed, delayed-storage or all'
+        fail 'reference-address tool preflight failed; see docs/guides/verification.md before running delayed-views, delayed-seed, delayed-storage, delayed-history or all'
     fi
 }
 
@@ -1348,6 +1348,89 @@ run_delayed_storage_suite()
     done
 }
 
+run_delayed_history_suite()
+{
+    local BINARY64 SLOT KIND COMPLETION
+    local -a ESBMC_ARGUMENTS=("${ESBMC_ARGUMENTS[@]/ESKF_CODEGEN=0/ESKF_CODEGEN=1}")
+    SOURCE_FILE="${PROOF_DIR}/imu_producers.cpp"
+    PROFILE=delayed-history-timing-frame
+    verify verify_imu_timing_input_frame --proof-unwind 70 --proof-timeout 120s --proof-memory 4g \
+        --64 --cvc5 -D FORMAL_ESKF_PROOF_BINARY64=0
+    for BINARY64 in 0 1; do
+        SOURCE_FILE="${PROOF_DIR}/imu_producers.cpp"
+        for KIND in mean_rates owner_equality; do
+            PROFILE="delayed-history-binary$((32 + 32 * BINARY64))-${KIND}"
+            verify "verify_imu_${KIND}" --proof-unwind 70 --proof-timeout 120s --proof-memory 4g \
+                --64 --cvc5 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        done
+        SOURCE_FILE="${PROOF_DIR}/imu_push.cpp"
+        PROFILE="delayed-history-binary$((32 + 32 * BINARY64))-push"
+        verify verify_imu_push_contract --proof-unwind 70 --proof-timeout 120s --proof-memory 4g \
+            --64 --z3 --array-flattener --tuple-sym-flattener \
+            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_FRAME=0
+        # Every physical slot is required; behavior is proved once per format.
+        for ((SLOT = 0; SLOT < 64; ++SLOT)); do
+            PROFILE="delayed-history-binary$((32 + 32 * BINARY64))-frame${SLOT}"
+            verify verify_imu_push_frame --proof-unwind 70 --proof-timeout 120s --proof-memory 4g \
+                --64 --z3 --array-flattener --tuple-sym-flattener \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_FRAME=1 \
+                -D "FORMAL_ESKF_PROOF_SLOT=${SLOT}"
+        done
+    done
+    for BINARY64 in 0 1; do
+        SOURCE_FILE="${PROOF_DIR}/imu_configuration.cpp"
+        PROFILE="delayed-history-binary$((32 + 32 * BINARY64))-configuration"
+        verify verify_imu_configuration_contract --proof-unwind 70 --proof-timeout 120s --proof-memory 4g \
+            --64 --z3 --array-flattener --tuple-sym-flattener \
+            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_FRAME=0
+        for ((SLOT = 0; SLOT < 64; ++SLOT)); do
+            PROFILE="delayed-history-binary$((32 + 32 * BINARY64))-configuration-frame${SLOT}"
+            verify verify_imu_configuration_frame --proof-unwind 70 --proof-timeout 120s --proof-memory 4g \
+                --64 --z3 --array-flattener --tuple-sym-flattener \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_FRAME=1 \
+                -D "FORMAL_ESKF_PROOF_SLOT=${SLOT}"
+        done
+        SOURCE_FILE="${PROOF_DIR}/imu_reset.cpp"
+        for KIND in storage_reset storage_reset_owner_frame; do
+            PROFILE="delayed-history-binary$((32 + 32 * BINARY64))-${KIND}"
+            verify "verify_imu_${KIND}" --proof-unwind 70 --proof-timeout 240s --proof-memory 4g \
+                --64 --cvc5 --array-flattener --tuple-sym-flattener -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        done
+        SOURCE_FILE="${PROOF_DIR}/imu_lifecycle.cpp"
+        for KIND in completion reset; do
+            PROFILE="delayed-history-binary$((32 + 32 * BINARY64))-${KIND}"
+            if [[ "${KIND}" == reset ]]; then
+                verify verify_imu_reset --proof-unwind 70 --proof-timeout 240s --proof-memory 4g \
+                    --64 --cvc5 --array-flattener --tuple-sym-flattener -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+            else
+                verify verify_imu_completion --proof-unwind 70 --proof-timeout 120s --proof-memory 4g \
+                    --64 --z3 --array-flattener --tuple-sym-flattener -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+            fi
+        done
+        SOURCE_FILE="${PROOF_DIR}/imu_borrowed.cpp"
+        for ((SLOT = 0; SLOT < 64; ++SLOT)); do
+            PROFILE="delayed-history-binary$((32 + 32 * BINARY64))-borrowed${SLOT}"
+            verify verify_imu_borrowed_input --proof-unwind 70 --proof-timeout 120s --proof-memory 4g \
+                --64 --z3 --array-flattener --tuple-sym-flattener \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_SLOT=${SLOT}"
+        done
+    done
+    # Integer-only induction depends on every source contract above and the
+    # delayed-input/seed/storage/views suites; neither replaces the other.
+    SOURCE_FILE="${PROOF_DIR}/imu_timeline.cpp"
+    for KIND in initialization configure seed reset empty views; do
+        PROFILE="delayed-history-temporal-${KIND}"
+        verify "verify_imu_temporal_${KIND}" --proof-unwind 70 --proof-timeout 120s --proof-memory 4g \
+            --64 --z3 --array-flattener --tuple-sym-flattener -D FORMAL_ESKF_PROOF_COMPLETION=0
+    done
+    for COMPLETION in 0 1; do
+        if ((COMPLETION)); then KIND=completion; else KIND=push; fi
+        PROFILE="delayed-history-temporal-${KIND}"
+        verify verify_imu_temporal_step --proof-unwind 70 --proof-timeout 120s --proof-memory 4g \
+            --64 --z3 --array-flattener --tuple-sym-flattener -D "FORMAL_ESKF_PROOF_COMPLETION=${COMPLETION}"
+    done
+}
+
 run_height_suite()
 {
     local BINARY64 SOURCE KIND
@@ -1791,7 +1874,7 @@ main()
     if ((!LIST_ONLY)); then
         select_esbmc
         check_esbmc_version
-        if [[ "${SUITE}" == all || "${SUITE}" == delayed-views || "${SUITE}" == delayed-seed || "${SUITE}" == delayed-storage ]]; then
+        if [[ "${SUITE}" == all || "${SUITE}" == delayed-views || "${SUITE}" == delayed-seed || "${SUITE}" == delayed-storage || "${SUITE}" == delayed-history ]]; then
             check_reference_support
         fi
         printf 'SELECTION\t%s\tshard %d/%d\n' "${SUITE}" "${SHARD_INDEX}" "${SHARD_COUNT}"
@@ -1918,6 +2001,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == delayed-storage ]]; then
         run_delayed_storage_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == delayed-history ]]; then
+        run_delayed_history_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

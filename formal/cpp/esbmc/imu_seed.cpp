@@ -62,11 +62,14 @@ enum VectorOffset : std::size_t
     coefficients = 12
 };
 
+bool same_input(Imu::input_type const & a, Imu::input_type const & b);
+
 namespace
 {
 bool admission_result;
 unsigned admission_calls;
 Imu::input_type const * expected_input;
+Imu::input_type const * original_input;
 std::uint64_t expected_now;
 } // namespace
 
@@ -74,7 +77,7 @@ std::uint64_t expected_now;
 // contract is separately checked by delayed-input for the same scalar format.
 template <> bool formal_eskf::px4::ImuHistory<Backend>::valid_input(input_type const & sample, std::uint64_t now)
 {
-    __ESBMC_assert(&sample == expected_input && now == expected_now,
+    __ESBMC_assert(&sample == expected_input && same_input(sample, *original_input) && now == expected_now,
                    "seed forwards complete input and time to admission producer");
     ++admission_calls;
     return admission_result;
@@ -137,6 +140,7 @@ void verify_imu_seed(Imu owner, Imu::input_type sample, std::uint64_t now, bool 
     admission_calls = 0;
     admission_result = admitted;
     expected_input = &sample;
+    original_input = &input;
     expected_now = now;
     bool const calls = length != 0 && previous.time_us == 0 && fault == Imu::Fault::none;
     bool const result = owner.seed(sample, now);

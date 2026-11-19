@@ -6014,7 +6014,7 @@
     },
     {
       "id": "R-PX4-IMU-HISTORY",
-      "title": "Delayed IMU timing, admission, initialization, seed, typed storage and views; owner push/completion/reset induction and live binding remain open",
+      "title": "Delayed IMU source transactions, complete storage frames and contract-derived temporal induction; live binding remains separate",
       "references": {
         "spec": [
           {
@@ -6097,6 +6097,82 @@
           {
             "file": "formal/cpp/esbmc/imu_storage.cpp",
             "symbol": "void verify_imu_frame_equality("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_producers.cpp",
+            "symbol": "void verify_imu_mean_rates("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_producers.cpp",
+            "symbol": "void verify_imu_owner_equality("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_producers.cpp",
+            "symbol": "void verify_imu_timing_input_frame("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_push.cpp",
+            "symbol": "void verify_imu_push_frame("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_push.cpp",
+            "symbol": "void verify_imu_push_contract("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_configuration.cpp",
+            "symbol": "void verify_imu_configuration_frame("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_configuration.cpp",
+            "symbol": "void verify_imu_configuration_contract("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_reset.cpp",
+            "symbol": "void verify_imu_storage_reset_owner_frame("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_reset.cpp",
+            "symbol": "void verify_imu_storage_reset("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_lifecycle.cpp",
+            "symbol": "void verify_imu_completion("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_lifecycle.cpp",
+            "symbol": "void verify_imu_reset("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_borrowed.cpp",
+            "symbol": "void verify_imu_borrowed_input("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_timeline.cpp",
+            "symbol": "void verify_imu_temporal_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_timeline.cpp",
+            "symbol": "void verify_imu_temporal_step("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_timeline.cpp",
+            "symbol": "void verify_imu_temporal_views("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_timeline.cpp",
+            "symbol": "void verify_imu_temporal_configure("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_timeline.cpp",
+            "symbol": "void verify_imu_temporal_empty("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_timeline.cpp",
+            "symbol": "void verify_imu_temporal_seed("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_timeline.cpp",
+            "symbol": "void verify_imu_temporal_reset("
           }
         ]
       }
@@ -6603,6 +6679,14 @@
           {
             "file": "formal/cpp/esbmc/imu_storage.cpp",
             "symbol": "void verify_imu_frame_equality("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_reset.cpp",
+            "symbol": "void verify_imu_storage_reset("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_reset.cpp",
+            "symbol": "void verify_imu_storage_reset_owner_frame("
           }
         ]
       }

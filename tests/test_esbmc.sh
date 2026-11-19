@@ -18,7 +18,7 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 2597 '^PLAN'
+    check_count 3006 '^PLAN'
     check_count 14 'pcov-generated-binary(32|64)-'
     check_count 10 'reset-generated-binary(32|64)-'
     check_count 94 'correction-generated-binary(32|64)-'
@@ -31,6 +31,7 @@ check_plan()
     check_count 4 'delayed-views-'
     check_count 4 'delayed-seed-'
     check_count 130 'delayed-storage-'
+    check_count 409 'delayed-history-'
     check_count 4 'step-binary(32|64)-ins-quat[01]-nominal-transaction'
     check_count 36 'accelerometer-binary'
     check_count 1 'accelerometer-double-sample_round'
@@ -255,8 +256,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 270 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2597 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 289 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 3006 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -587,6 +588,84 @@ check_delayed_storage_arguments()
     for FORMAT in 0 1; do
         for ((SLOT = 0; SLOT < 64; ++SLOT)); do
             [[ "${VISITED[${FORMAT}:${SLOT}]:-}" == 1 ]] || fail 'missing IMU storage destination partition'
+        done
+    done
+)
+
+check_delayed_history_arguments()
+(
+    local COUNT=0 FORMAT INDEX FAMILY SLOT=0
+    local -A VISITED=()
+    verify()
+    {
+        local ENTRY="$1" EXPECTED
+        shift
+        [[ " ${ESBMC_ARGUMENTS[*]} " == *' ESKF_CODEGEN=1 '* ]] || fail 'IMU history codegen selection changed'
+        if [[ "${SOURCE_FILE}" == "${PROOF_DIR}/imu_timeline.cpp" ]]; then
+            [[ "${PROFILE}" == "delayed-history-temporal-${KIND}" ]] || fail 'wrong temporal profile'
+            if [[ "${KIND}" == push || "${KIND}" == completion ]]; then
+                [[ "${ENTRY}" == verify_imu_temporal_step ]] || fail 'wrong temporal transition entry'
+                EXPECTED="--proof-unwind 70 --proof-timeout 120s --proof-memory 4g --64 --z3 --array-flattener --tuple-sym-flattener -D FORMAL_ESKF_PROOF_COMPLETION=${COMPLETION}"
+            else
+                [[ "${ENTRY}" == "verify_imu_temporal_${KIND}" ]] || fail 'wrong temporal lemma entry'
+                [[ "${KIND}" == initialization || "${KIND}" == configure || "${KIND}" == seed || "${KIND}" == reset || "${KIND}" == empty || "${KIND}" == views ]] || fail 'unknown temporal lemma'
+                EXPECTED='--proof-unwind 70 --proof-timeout 120s --proof-memory 4g --64 --z3 --array-flattener --tuple-sym-flattener -D FORMAL_ESKF_PROOF_COMPLETION=0'
+            fi
+        elif [[ "${ENTRY}" == verify_imu_timing_input_frame ]]; then
+            [[ "${SOURCE_FILE}" == "${PROOF_DIR}/imu_producers.cpp" && "${PROFILE}" == delayed-history-timing-frame ]] || fail 'wrong timing frame source/profile'
+            EXPECTED='--proof-unwind 70 --proof-timeout 120s --proof-memory 4g --64 --cvc5 -D FORMAL_ESKF_PROOF_BINARY64=0'
+        elif [[ "${SOURCE_FILE}" == "${PROOF_DIR}/imu_producers.cpp" ]]; then
+            [[ "${ENTRY}" == "verify_imu_${KIND}" && "${PROFILE}" == "delayed-history-binary$((32 + 32 * BINARY64))-${KIND}" ]] || fail 'wrong history producer profile'
+            [[ "${KIND}" == mean_rates || "${KIND}" == owner_equality ]] || fail 'unknown history producer'
+            EXPECTED="--proof-unwind 70 --proof-timeout 120s --proof-memory 4g --64 --cvc5 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        elif [[ "${SOURCE_FILE}" == "${PROOF_DIR}/imu_configuration.cpp" ]]; then
+            EXPECTED="--proof-unwind 70 --proof-timeout 120s --proof-memory 4g --64 --z3 --array-flattener --tuple-sym-flattener -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+            if [[ "${ENTRY}" == verify_imu_configuration_contract ]]; then
+                [[ "${PROFILE}" == "delayed-history-binary$((32 + 32 * BINARY64))-configuration" ]] || fail 'wrong configuration behavior profile'
+                EXPECTED+=' -D FORMAL_ESKF_PROOF_FRAME=0'
+            else
+                [[ "${ENTRY}" == verify_imu_configuration_frame && "${PROFILE}" == "delayed-history-binary$((32 + 32 * BINARY64))-configuration-frame${SLOT}" ]] || fail 'wrong configuration frame profile'
+                EXPECTED+=" -D FORMAL_ESKF_PROOF_FRAME=1 -D FORMAL_ESKF_PROOF_SLOT=${SLOT}"
+                VISITED["configuration:${BINARY64}:${SLOT}"]=1
+            fi
+        elif [[ "${SOURCE_FILE}" == "${PROOF_DIR}/imu_reset.cpp" || "${SOURCE_FILE}" == "${PROOF_DIR}/imu_lifecycle.cpp" ]]; then
+            [[ "${ENTRY}" == "verify_imu_${KIND}" && "${PROFILE}" == "delayed-history-binary$((32 + 32 * BINARY64))-${KIND}" ]] || fail 'wrong IMU lifecycle profile'
+            if [[ "${SOURCE_FILE}" == "${PROOF_DIR}/imu_reset.cpp" ]]; then
+                [[ "${KIND}" == storage_reset || "${KIND}" == storage_reset_owner_frame ]] || fail 'unknown typed-reset obligation'
+            else
+                [[ "${KIND}" == completion || "${KIND}" == reset ]] || fail 'unknown owner lifecycle obligation'
+            fi
+            if [[ "${KIND}" == completion ]]; then
+                EXPECTED="--proof-unwind 70 --proof-timeout 120s --proof-memory 4g --64 --z3 --array-flattener --tuple-sym-flattener -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+            else
+                EXPECTED="--proof-unwind 70 --proof-timeout 240s --proof-memory 4g --64 --cvc5 --array-flattener --tuple-sym-flattener -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+            fi
+        elif [[ "${SOURCE_FILE}" == "${PROOF_DIR}/imu_borrowed.cpp" ]]; then
+            [[ "${ENTRY}" == verify_imu_borrowed_input && "${PROFILE}" == "delayed-history-binary$((32 + 32 * BINARY64))-borrowed${SLOT}" ]] || fail 'wrong borrowed-input profile'
+            EXPECTED="--proof-unwind 70 --proof-timeout 120s --proof-memory 4g --64 --z3 --array-flattener --tuple-sym-flattener -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_SLOT=${SLOT}"
+            VISITED["borrowed:${BINARY64}:${SLOT}"]=1
+        else
+            [[ "${SOURCE_FILE}" == "${PROOF_DIR}/imu_push.cpp" ]] || fail 'wrong IMU push source'
+            EXPECTED="--proof-unwind 70 --proof-timeout 120s --proof-memory 4g --64 --z3 --array-flattener --tuple-sym-flattener -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+            if [[ "${ENTRY}" == verify_imu_push_contract ]]; then
+                [[ "${PROFILE}" == "delayed-history-binary$((32 + 32 * BINARY64))-push" ]] || fail 'wrong IMU push behavior profile'
+                EXPECTED+=' -D FORMAL_ESKF_PROOF_FRAME=0'
+            else
+                [[ "${ENTRY}" == verify_imu_push_frame && "${PROFILE}" == "delayed-history-binary$((32 + 32 * BINARY64))-frame${SLOT}" ]] || fail 'wrong IMU push frame profile'
+                EXPECTED+=" -D FORMAL_ESKF_PROOF_FRAME=1 -D FORMAL_ESKF_PROOF_SLOT=${SLOT}"
+                VISITED["push:${BINARY64}:${SLOT}"]=1
+            fi
+        fi
+        [[ "$*" == "${EXPECTED}" ]] || fail 'wrong IMU history arguments'
+        COUNT=$((COUNT + 1))
+    }
+    run_delayed_history_suite
+    [[ "${COUNT}" == 409 && "${#VISITED[@]}" == 384 ]] || fail 'IMU history proof matrix incomplete'
+    for FORMAT in 0 1; do
+        for ((INDEX = 0; INDEX < 64; ++INDEX)); do
+            for FAMILY in push configuration borrowed; do
+                [[ "${VISITED[${FAMILY}:${FORMAT}:${INDEX}]:-}" == 1 ]] || fail 'missing IMU history position partition'
+            done
         done
     done
 )
@@ -2576,6 +2655,7 @@ check_delayed_input_arguments
 check_delayed_views_arguments
 check_delayed_seed_arguments
 check_delayed_storage_arguments
+check_delayed_history_arguments
 check_navigation_recovery_arguments
 check_navigation_reset_arguments
 check_gnss_lifecycle_arguments
@@ -2603,7 +2683,7 @@ check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
 check_reference_preflight
-printf 'ESBMC inventory tests: pass (2597 profiles; 270 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (3006 profiles; 289 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_runtime_input_regressions
     check_ring_buffer_regressions

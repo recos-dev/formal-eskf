@@ -123,6 +123,19 @@ check_reference_support()
     fi
 }
 
+check_frame_support()
+{
+    local DETAILS BINARY64
+    for BINARY64 in 0 1; do
+        if ! DETAILS="$("${ESBMC_COMMAND}" "${REPO_DIR}/tests/esbmc/frame_checks.cpp" \
+            --std c++20 --64 --assign-param-nondet --quiet --unwind 10 --timeout 15s --memlimit 1g \
+            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" --function verify_literals --z3 2>&1)"; then
+            printf '%s\n' "${DETAILS}" >&2
+            fail 'IEEE frame tool preflight failed; see docs/guides/verification.md'
+        fi
+    done
+}
+
 check_solver_arguments()
 {
     local ARGUMENT MULTI=0 INCREMENTAL=0
@@ -1876,6 +1889,7 @@ main()
         check_esbmc_version
         if [[ "${SUITE}" == all || "${SUITE}" == delayed-views || "${SUITE}" == delayed-seed || "${SUITE}" == delayed-storage || "${SUITE}" == delayed-history ]]; then
             check_reference_support
+            check_frame_support
         fi
         printf 'SELECTION\t%s\tshard %d/%d\n' "${SUITE}" "${SHARD_INDEX}" "${SHARD_COUNT}"
     fi

@@ -268,6 +268,7 @@ dependencies; suites requiring Bitwuzla need that backend built separately.
 git clone https://github.com/esbmc/esbmc.git tools/bootstrap/esbmc-reference
 git -C tools/bootstrap/esbmc-reference checkout 61172c6f9afe6faee097b117edd0347cfbb6f28d
 git -C tools/bootstrap/esbmc-reference apply "$PWD/configs/esbmc/reference-address.patch"
+git -C tools/bootstrap/esbmc-reference apply "$PWD/configs/esbmc/ieee-frame.patch"
 cmake -S tools/bootstrap/esbmc-reference -B tools/bootstrap/esbmc-reference/build -G Ninja \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 \
     -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm -DClang_DIR=/usr/lib/llvm-18/lib/cmake/clang \
@@ -276,6 +277,8 @@ cmake -S tools/bootstrap/esbmc-reference -B tools/bootstrap/esbmc-reference/buil
 cmake --build tools/bootstrap/esbmc-reference/build --target esbmc --parallel 2
 FORMAL_ESKF_ESBMC="$PWD/tools/bootstrap/esbmc-reference/build/src/esbmc/esbmc" \
     ./tests/test_esbmc.sh --references
+FORMAL_ESKF_ESBMC="$PWD/tools/bootstrap/esbmc-reference/build/src/esbmc/esbmc" \
+    ./tests/test_esbmc.sh --frames
 FORMAL_ESKF_ESBMC="$PWD/tools/bootstrap/esbmc-reference/build/src/esbmc/esbmc" \
     ./scripts/verify_esbmc.sh delayed-views
 ```
@@ -298,6 +301,32 @@ profiles, so an unpatched binary fails immediately.
 The preflight does not replace the positive/negative qualification above. Keep
 tool failures visible rather than omitting profiles from the inventory or
 transferring a different binary's result.
+
+### IEEE frame tool qualification
+
+[ieee-frame.patch](../../configs/esbmc/ieee-frame.patch) applies after the
+reference-address patch to the same pinned ESBMC source. It corrects two verifier
+operations: a bit-cast must load a materialized temporary or reference operand
+before its reference annotation is erased; internal floating-point expression
+identity must compare representations, consistent with the existing expression
+hash. Numeric IEEE equality remains distinct from expression identity: positive
+and negative zero compare numerically equal, and NaN compares unequal to itself.
+
+`./tests/test_esbmc.sh --frames` checks both scalar formats, with fourteen positive
+properties and six intentional failures at named assertions. The properties cover
+arbitrary IEEE field equality, signed-zero literals, non-NaN representation round
+trips, reference/value operands with single evaluation, non-NaN sign inversion
+and NaN classification. They do not promise NaN-payload preservation or qualify
+all bit-cast types and the entire verifier. Keep these tool cases separate from
+estimator requirement coverage.
+
+The delayed-owner selections and `all` also run the signed-zero/temporary preflight
+in both formats. A failed preflight stops execution; it is not a substitute for
+the full positive/negative qualification. A tool change requires new binary and
+patch identities and reruns of affected source evidence, including IEEE storage
+frames. Earlier evidence is not transferred to the patched binary. Reviewed
+source, qualification and affected reruns are required together; passing this
+small qualification alone does not establish that all prior proofs remain valid.
 
 ## Proof execution resources
 

@@ -1,0 +1,44 @@
+diff --git a/src/clang-c-frontend/clang_c_adjust_expr.cpp b/src/clang-c-frontend/clang_c_adjust_expr.cpp
+index 071d00b1..d8064400 100644
+--- a/src/clang-c-frontend/clang_c_adjust_expr.cpp
++++ b/src/clang-c-frontend/clang_c_adjust_expr.cpp
+@@ -94,6 +94,14 @@ void clang_c_adjust::adjust_expr(exprt &expr)
+   {
+     adjust_expr_binary_boolean(expr);
+   }
++  else if (expr.id() == "bitcast")
++  {
++    // C++ materialized temporaries and reference-returning operands denote
++    // objects. Load the referred value before operand adjustment erases the
++    // reference annotation on a materialized temporary's address.
++    adjust_reference(expr);
++    adjust_operands(expr);
++  }
+   else if (expr.is_address_of())
+   {
+     adjust_address_of(expr);
+diff --git a/src/irep2/irep2_dispatch.h b/src/irep2/irep2_dispatch.h
+index 3a0ec059..10513614 100644
+--- a/src/irep2/irep2_dispatch.h
++++ b/src/irep2/irep2_dispatch.h
+@@ -68,6 +68,20 @@ inline int do_type_lt(const T &side1, const T &side2)
+
+ // Explicit overloads for the field types whose semantics differ.
+
++// Expression identity is representation identity, not IEEE numeric equality.
++// In particular, +0 and -0 are distinct constants, and a NaN constant is
++// identical to itself. The enclosing node compares its type first; packed
++// bits also match the existing constant-float hash.
++inline bool do_type_cmp(const ieee_floatt &side1, const ieee_floatt &side2)
++{
++  return side1.pack() == side2.pack();
++}
++
++inline int do_type_lt(const ieee_floatt &side1, const ieee_floatt &side2)
++{
++  return side1.pack().compare(side2.pack());
++}
++
+ int do_type_lt(const BigInt &side1, const BigInt &side2);
+ int do_type_lt(
+   const std::vector<expr2tc> &side1,

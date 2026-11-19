@@ -2602,6 +2602,67 @@ check_reference_preflight()
     unset -f reference_probe
 }
 
+check_frame_preflight()
+{
+    local PROBE_RESULT=0 ESBMC_COMMAND=frame_probe
+    frame_probe()
+    {
+        [[ "$1" == "${REPO_DIR}/tests/esbmc/frame_checks.cpp" && "$*" == *"--function verify_literals --z3" ]] || return 2
+        return "${PROBE_RESULT}"
+    }
+    check_frame_support
+    PROBE_RESULT=1
+    if (check_frame_support) >/dev/null 2>&1; then
+        fail 'unsupported IEEE frame semantics passed the preflight'
+    fi
+    unset -f frame_probe
+}
+
+check_frame_regressions()
+(
+    select_esbmc
+    check_esbmc_version
+    local ENTRY RESULT LOG BINARY64 EXPECTED
+    LOG="$(mktemp)"
+    trap 'rm -f -- "${LOG}"' EXIT
+    SOURCE_FILE="${TEST_DIR}/esbmc/frame_checks.cpp"
+    for BINARY64 in 0 1; do
+        for ENTRY in relation literals round_trip reference value negation nan; do
+            PROFILE="frame-binary$((32 + 32 * BINARY64))-${ENTRY}"
+            verify "verify_${ENTRY}" --proof-unwind 10 --proof-timeout 30s --proof-memory 1g \
+                --64 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" --z3
+        done
+        for ENTRY in zero_collapse overwrite nan_rejection; do
+            case "${ENTRY}" in
+                zero_collapse) EXPECTED='negative control: zero collapse' ;;
+                overwrite) EXPECTED='negative control: changed value' ;;
+                nan_rejection) EXPECTED='negative control: rejected NaN classification' ;;
+            esac
+            RESULT=0
+            "${ESBMC_COMMAND}" "${SOURCE_FILE}" "${ESBMC_ARGUMENTS[@]}" --64 \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" --unwind 10 --timeout 30s --memlimit 1g \
+                --function "reject_${ENTRY}" --z3 >"${LOG}" 2>&1 || RESULT=$?
+            if ! python3 - "${LOG}" "${EXPECTED}" "${RESULT}" <<'CHECK'
+from pathlib import Path
+import re
+import sys
+
+TEXT = Path(sys.argv[1]).read_text()
+PROPERTIES = re.findall(r"Violated property:\s*\n(.*?)(?:\n\s*\n|\Z)", TEXT, re.S)
+VALID = (sys.argv[3] == "1" and "VERIFICATION FAILED" in TEXT
+         and any(sys.argv[2] in PROPERTY for PROPERTY in PROPERTIES))
+raise SystemExit(0 if VALID else 1)
+CHECK
+            then
+                cat "${LOG}"
+                fail "IEEE frame negative control ${ENTRY} did not fail at its intended assertion"
+            fi
+        done
+    done
+    ((FAILED_CHECKS == 0)) || fail 'IEEE frame semantics are unsupported; see the verification guide tool patch'
+    printf 'ESBMC IEEE frame checks: pass (14 positive; 6 negative controls)\n'
+)
+
 check_reference_regressions()
 (
     select_esbmc
@@ -2631,15 +2692,21 @@ RUN_SOLVER=0
 case "${1:-}" in
     '') ;;
     --solver) RUN_SOLVER=1 ; shift ;;
+    --frames)
+        (($# == 1)) || fail '--frames takes no other arguments'
+        check_frame_regressions
+        exit 0
+        ;;
     --references)
         (($# == 1)) || fail '--references takes no other arguments'
         check_reference_regressions
         exit 0
         ;;
     --help|-h)
-        printf 'Usage: %s [--solver|--references]\n' "${0##*/}"
+        printf 'Usage: %s [--solver|--references|--frames]\n' "${0##*/}"
         printf 'Check the profile inventory; --solver also runs a real ESBMC negative regression.\n'
-        printf '--references runs only the reference-address tool qualification cases.\n'
+        printf '%s\n' '--frames runs only IEEE representation and bit-cast tool qualification cases.'
+        printf '%s\n' '--references runs only the reference-address tool qualification cases.'
         exit 0
         ;;
     *) fail "unknown argument: $1" ;;
@@ -2683,6 +2750,7 @@ check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
 check_reference_preflight
+check_frame_preflight
 printf 'ESBMC inventory tests: pass (3006 profiles; 289 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_runtime_input_regressions

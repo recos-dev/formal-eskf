@@ -39,10 +39,8 @@ It does not own the numerical state, output predictor, observations or a clock.
 - Reset clears stored inputs, cursors and fault, retaining configuration. All
   storage/work is bounded, with no dynamic allocation or platform effects.
 
-The current evidence is native binary64 testing on Eigen and PX4 matrix, including
-default/full active lengths, wrap, faults and timestamp limits. The
-`delayed-input` ESBMC suite checks signed timing configuration, lag/capacity
-arithmetic and input admission in binary32/binary64 through the fixed-array
-proof backend. History mutation, payload retention, views and completion remain
-open. `R-RING-BUFFER` does not extend its proof to this owner's payload/capacity,
-acknowledgment protocol, adapter or WCET.
+Evidence scope and producer dependencies are recorded in the
+[verification guide](../../../../guides/verification.md#runtime-producer-boundaries).
+Using `R-RING-BUFFER` evidence requires matching this owner's actual payload and
+capacity; it does not by itself establish the owner's admission, acknowledgment
+protocol, adapter sequencing or WCET.

@@ -18,7 +18,7 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 2463 '^PLAN'
+    check_count 2597 '^PLAN'
     check_count 14 'pcov-generated-binary(32|64)-'
     check_count 10 'reset-generated-binary(32|64)-'
     check_count 94 'correction-generated-binary(32|64)-'
@@ -29,6 +29,8 @@ check_plan()
     check_count 33 'height-'
     check_count 4 'delayed-input-'
     check_count 4 'delayed-views-'
+    check_count 4 'delayed-seed-'
+    check_count 130 'delayed-storage-'
     check_count 4 'step-binary(32|64)-ins-quat[01]-nominal-transaction'
     check_count 36 'accelerometer-binary'
     check_count 1 'accelerometer-double-sample_round'
@@ -253,8 +255,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 266 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2463 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 270 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2597 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -540,6 +542,53 @@ check_delayed_views_arguments()
     }
     run_delayed_views_suite
     [[ "${COUNT}" == 4 ]] || fail 'delayed view matrix incomplete'
+)
+
+check_delayed_seed_arguments()
+(
+    local COUNT=0
+    verify()
+    {
+        local ENTRY="$1"
+        shift
+        [[ "${SOURCE_FILE}" == "${PROOF_DIR}/imu_seed.cpp" && "${ENTRY}" == "verify_imu_${KIND}" &&
+           "${PROFILE}" == "delayed-seed-binary$((32 + 32 * BINARY64))-${KIND}" ]] || fail 'wrong IMU seed source/profile'
+        [[ "$*" == "--proof-unwind 70 --proof-timeout 120s --proof-memory 4g --64 --z3 --array-flattener --tuple-sym-flattener -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" ]] || fail 'wrong IMU seed arguments'
+        [[ " ${ESBMC_ARGUMENTS[*]} " == *' ESKF_CODEGEN=1 '* ]] || fail 'IMU seed must retain deployment codegen selection'
+        COUNT=$((COUNT + 1))
+    }
+    run_delayed_seed_suite
+    [[ "${COUNT}" == 4 ]] || fail 'IMU seed matrix incomplete'
+)
+
+check_delayed_storage_arguments()
+(
+    local COUNT=0 FORMAT SLOT
+    local -A VISITED=()
+    verify()
+    {
+        local ENTRY="$1" EXPECTED
+        shift
+        [[ "${SOURCE_FILE}" == "${PROOF_DIR}/imu_storage.cpp" ]] || fail 'wrong IMU storage source'
+        [[ " ${ESBMC_ARGUMENTS[*]} " == *' ESKF_CODEGEN=1 '* ]] || fail 'IMU storage codegen selection changed'
+        if [[ "${ENTRY}" == verify_imu_frame_equality ]]; then
+            EXPECTED="--proof-unwind 5 --proof-timeout 30s --proof-memory 1g --64 --z3 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_WRITE=0"
+            [[ "${PROFILE}" == "delayed-storage-binary$((32 + 32 * BINARY64))-equality" ]] || fail 'wrong frame equality profile'
+        else
+            [[ "${ENTRY}" == verify_imu_storage && "${PROFILE}" == "delayed-storage-binary$((32 + 32 * BINARY64))-write${WRITE}" ]] || fail 'wrong IMU storage entry/profile'
+            EXPECTED="--proof-unwind 70 --proof-timeout 120s --proof-memory 4g --64 --z3 --array-flattener --tuple-sym-flattener -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_WRITE=${WRITE}"
+            VISITED["${BINARY64}:${WRITE}"]=1
+        fi
+        [[ "$*" == "${EXPECTED}" ]] || fail 'wrong IMU storage arguments'
+        COUNT=$((COUNT + 1))
+    }
+    run_delayed_storage_suite
+    [[ "${COUNT}" == 130 && "${#VISITED[@]}" == 128 ]] || fail 'IMU storage partition matrix incomplete'
+    for FORMAT in 0 1; do
+        for ((SLOT = 0; SLOT < 64; ++SLOT)); do
+            [[ "${VISITED[${FORMAT}:${SLOT}]:-}" == 1 ]] || fail 'missing IMU storage destination partition'
+        done
+    done
 )
 
 check_height_arguments()
@@ -2525,6 +2574,8 @@ check_accelerometer_arguments
 check_height_arguments
 check_delayed_input_arguments
 check_delayed_views_arguments
+check_delayed_seed_arguments
+check_delayed_storage_arguments
 check_navigation_recovery_arguments
 check_navigation_reset_arguments
 check_gnss_lifecycle_arguments
@@ -2552,7 +2603,7 @@ check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
 check_reference_preflight
-printf 'ESBMC inventory tests: pass (2463 profiles; 266 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (2597 profiles; 270 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_runtime_input_regressions
     check_ring_buffer_regressions

@@ -6014,7 +6014,7 @@
     },
     {
       "id": "R-PX4-IMU-HISTORY",
-      "title": "Delayed IMU timing, input-admission and borrowed-view contracts; retained history/completion and live binding remain open",
+      "title": "Delayed IMU timing, admission, initialization, seed, typed storage and views; owner push/completion/reset induction and live binding remain open",
       "references": {
         "spec": [
           {
@@ -6081,6 +6081,22 @@
           {
             "file": "formal/cpp/esbmc/delayed_views.cpp",
             "symbol": "void verify_imu_views("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_seed.cpp",
+            "symbol": "void verify_imu_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_seed.cpp",
+            "symbol": "void verify_imu_seed("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_storage.cpp",
+            "symbol": "void verify_imu_storage("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_storage.cpp",
+            "symbol": "void verify_imu_frame_equality("
           }
         ]
       }
@@ -6579,6 +6595,14 @@
           {
             "file": "formal/cpp/esbmc/ring_buffer.cpp",
             "symbol": "void verify_buffer_default_window("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_storage.cpp",
+            "symbol": "void verify_imu_storage("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_storage.cpp",
+            "symbol": "void verify_imu_frame_equality("
           }
         ]
       }

@@ -29,7 +29,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|accelerometer|magnetic-runtime|ring-buffer|codegen) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|accelerometer|magnetic-runtime|ring-buffer|codegen) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -39,8 +39,8 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|accelerometer|magnetic-runtime|ring-buffer|codegen] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
-                printf 'Core producer/caller profiles select ESKF_CODEGEN=0 except the *-generated and delayed-views suites (ESKF_CODEGEN=1); codegen checks emitted kernels directly.\n'
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|accelerometer|magnetic-runtime|ring-buffer|codegen] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Core producer/caller profiles select ESKF_CODEGEN=0 except the *-generated, delayed-views, delayed-seed and delayed-storage suites (ESKF_CODEGEN=1); codegen checks emitted kernels directly.\n'
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -67,6 +67,8 @@ parse_arguments()
                 printf 'accelerometer selects actual magnitude history, tilt alignment, fusion conditions and AHRS/INS fusion callers with all state/P aliases; 10 ms adaptive sample history and timing compose same-type numerical contracts; module/replay wiring remains separate.\n'
                 printf 'magnetic-runtime selects actual magnetic filtering, reference adoption and their inductive histories; instantaneous field plausibility and conditional bounded heading history are included; magnetic lifecycle authority is included; adapter wiring remains separate.\n'
                 printf 'delayed-views selects actual 64-slot IMU/output borrowed views and scalar metadata for binary32/64 with 64-bit words. Requires reference-address tool qualification; history mutation/induction and numerical tracking remain separate.\n'
+                printf 'delayed-seed checks actual 64-slot IMU construction and complete seed publication/failure/storage frames in binary32/64. Requires matching delayed-input producers; push/completion/reset remain separate.\n'
+                printf 'delayed-storage checks actual 64-slot IMU ring insertion, source preservation and complete backing frames in binary32/64. Every destination partition and equality profile is required; owner admission/completion/reset remain separate.\n'
                 printf 'height selects scalar offset equations, defaults and private source admission/read-only contracts for both sources and formats; full height transaction induction and platform publication remain separate.\n'
                 printf 'navigation-recovery selects actual gate diagnostic contracts, vertical limiter and both public recovery callers with every state/P alias. Same-type correction frames are reused; root accuracy and caller health/permission remain separate.\n'
                 printf 'navigation-reset selects exact-type validation, symmetry-pair arithmetic and all four numerical reset callers with independent state/P aliases. Real PSD is proved separately in Lean; source permission and target backends remain separate.\n'
@@ -117,7 +119,7 @@ check_reference_support()
         --std c++20 --64 --assign-param-nondet --quiet --unwind 70 --timeout 15s --memlimit 1g \
         --function verify_reference_identity --z3 2>&1)"; then
         printf '%s\n' "${DETAILS}" >&2
-        fail 'reference-address tool preflight failed; see docs/guides/verification.md before running delayed-views or all'
+        fail 'reference-address tool preflight failed; see docs/guides/verification.md before running delayed-views, delayed-seed, delayed-storage or all'
     fi
 }
 
@@ -1313,6 +1315,39 @@ run_delayed_views_suite()
     done
 }
 
+run_delayed_seed_suite()
+{
+    local BINARY64 KIND
+    local -a ESBMC_ARGUMENTS=("${ESBMC_ARGUMENTS[@]/ESKF_CODEGEN=0/ESKF_CODEGEN=1}")
+    SOURCE_FILE="${PROOF_DIR}/imu_seed.cpp"
+    for BINARY64 in 0 1; do
+        for KIND in initialization seed; do
+            PROFILE="delayed-seed-binary$((32 + 32 * BINARY64))-${KIND}"
+            verify "verify_imu_${KIND}" --proof-unwind 70 --proof-timeout 120s --proof-memory 4g \
+                --64 --z3 --array-flattener --tuple-sym-flattener -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        done
+    done
+}
+
+run_delayed_storage_suite()
+{
+    local BINARY64 WRITE
+    local -a ESBMC_ARGUMENTS=("${ESBMC_ARGUMENTS[@]/ESKF_CODEGEN=0/ESKF_CODEGEN=1}")
+    SOURCE_FILE="${PROOF_DIR}/imu_storage.cpp"
+    for BINARY64 in 0 1; do
+        PROFILE="delayed-storage-binary$((32 + 32 * BINARY64))-equality"
+        verify verify_imu_frame_equality --proof-unwind 5 --proof-timeout 30s --proof-memory 1g \
+            --64 --z3 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_WRITE=0
+        # These disjoint destination partitions exhaust the actual capacity.
+        for ((WRITE = 0; WRITE < 64; ++WRITE)); do
+            PROFILE="delayed-storage-binary$((32 + 32 * BINARY64))-write${WRITE}"
+            verify verify_imu_storage --proof-unwind 70 --proof-timeout 120s --proof-memory 4g \
+                --64 --z3 --array-flattener --tuple-sym-flattener \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_WRITE=${WRITE}"
+        done
+    done
+}
+
 run_height_suite()
 {
     local BINARY64 SOURCE KIND
@@ -1756,7 +1791,7 @@ main()
     if ((!LIST_ONLY)); then
         select_esbmc
         check_esbmc_version
-        if [[ "${SUITE}" == all || "${SUITE}" == delayed-views ]]; then
+        if [[ "${SUITE}" == all || "${SUITE}" == delayed-views || "${SUITE}" == delayed-seed || "${SUITE}" == delayed-storage ]]; then
             check_reference_support
         fi
         printf 'SELECTION\t%s\tshard %d/%d\n' "${SUITE}" "${SHARD_INDEX}" "${SHARD_COUNT}"
@@ -1877,6 +1912,12 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == delayed-views ]]; then
         run_delayed_views_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == delayed-seed ]]; then
+        run_delayed_seed_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == delayed-storage ]]; then
+        run_delayed_storage_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

@@ -159,6 +159,34 @@ No producer body is summarized by these checks; the startup maximum model is
 not executed. Full payload mutation frames, history induction, numerical output
 tracking and module sequencing remain separate obligations.
 
+`delayed-seed` checks actual IMU construction and seed in binary32/binary64 with
+64-bit words and the actual 64-slot storage. Construction initializes every
+field. Seed checks startup guards, exact admission arguments/call order, complete
+external-input publication, failure rollback and unchanged configuration, fault and ring
+metadata. Fieldwise snapshots check every backing slot, including inactive
+payloads, without a chronological or finite-value premise. Float frames retain
+values, signed zero and NaN classification; they do not claim NaN-payload identity.
+The admission summary may return either result and supplies no successful-input
+assumption. Acceptance requires the matching actual `delayed-input` producer
+profiles; the summary alone does not establish the admitted input domain.
+Push, completion, reset, history induction and live caller sequencing remain
+separate. Flat homogeneous snapshots avoid the verifier's conditional-reference
+and nested array/tuple encoding limitations without narrowing the checked domain.
+
+`delayed-storage` checks the actual `RingBuffer<ImuHistory::Interval, 64>::push`
+on the same proof backend and word model. It checks every field of the inserted
+interval, unchanged external input, exact index/count updates and preservation
+of every other backing slot, including inactive storage. Valid allocated ring
+metadata (active length greater than zero) and a non-aliasing external input are
+its premises; payloads and
+timestamps remain arbitrary. The frame predicate preserves signed zero and NaN
+classification and is separately checked against the existing scalar equality.
+All write-position partitions in both scalar formats are mandatory: each retains
+the full 64-slot object, and their union covers every valid destination. This
+partition avoids the verifier's dynamic aggregate-address expansion; passing a
+subset does not discharge the storage contract. IMU owner admission, interval
+construction, chronological induction, completion and reset remain separate.
+
 Large aggregate owner transactions remain open under ESBMC 8.4.0. Its released
 build miscompiles address-of calls that return C++ references. Such a
 counterexample is a tool limitation, not evidence of an estimator defect.
@@ -205,8 +233,9 @@ Conditional object-reference binding and large aggregate copying in transaction
 harnesses require separate qualification; this patch does not close those gaps.
 Rerun affected source proofs with this exact tool identity. Existing results
 from another binary are not automatically transferred.
-The full runner includes `delayed-views`; both selections run a reference-identity
-preflight before starting any profiles, so an unpatched binary fails immediately.
+The full runner includes `delayed-views`, `delayed-seed` and `delayed-storage`;
+these selections run a reference-identity preflight before starting any
+profiles, so an unpatched binary fails immediately.
 The preflight does not replace the positive/negative qualification above. Keep
 tool failures visible rather than omitting profiles from the inventory or
 transferring a different binary's result.

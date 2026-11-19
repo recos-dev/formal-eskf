@@ -149,6 +149,16 @@ prove the history's seed/push/completion or retained payloads. INS in-place nomi
 failure frames are checked in `step`; the matching quaternion producer chain is
 still required before using that contract in an output-owner proof.
 
+`delayed-views` checks IMU latest/delayed views, output delayed/current/feedback
+views, readiness and scalar metadata with the actual 64-slot payload types on
+the fixed-array proof backend, binary32/binary64 and the 64-bit word model.
+Every valid ring-metadata tuple is
+admitted; payloads and timestamps remain arbitrary. This establishes the view
+contract under that premise, not that every history mutation preserves it.
+No producer body is summarized by these checks; the startup maximum model is
+not executed. Full payload mutation frames, history induction, numerical output
+tracking and module sequencing remain separate obligations.
+
 Large aggregate owner transactions remain open under ESBMC 8.4.0. Its released
 build miscompiles address-of calls that return C++ references. Such a
 counterexample is a tool limitation, not evidence of an estimator defect.
@@ -180,6 +190,8 @@ cmake -S tools/bootstrap/esbmc-reference -B tools/bootstrap/esbmc-reference/buil
 cmake --build tools/bootstrap/esbmc-reference/build --target esbmc --parallel 2
 FORMAL_ESKF_ESBMC="$PWD/tools/bootstrap/esbmc-reference/build/src/esbmc/esbmc" \
     ./tests/test_esbmc.sh --references
+FORMAL_ESKF_ESBMC="$PWD/tools/bootstrap/esbmc-reference/build/src/esbmc/esbmc" \
+    ./scripts/verify_esbmc.sh delayed-views
 ```
 
 This build provides 64-bit target models. Apply the execution limits below to
@@ -191,6 +203,9 @@ write-through behavior, single evaluation, and pointer/array/function references
 they do not qualify all C++ lifetime rules or the entire modified verifier.
 Rerun affected source proofs with this exact tool identity. Existing results
 from another binary are not automatically transferred.
+The full runner includes `delayed-views`; an unpatched released binary cannot
+complete that suite. Keep its tool failure visible rather than omitting the
+profiles from the inventory or transferring a different binary's result.
 
 ## Proof execution resources
 

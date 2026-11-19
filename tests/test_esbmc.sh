@@ -18,7 +18,7 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 2459 '^PLAN'
+    check_count 2463 '^PLAN'
     check_count 14 'pcov-generated-binary(32|64)-'
     check_count 10 'reset-generated-binary(32|64)-'
     check_count 94 'correction-generated-binary(32|64)-'
@@ -28,6 +28,7 @@ check_plan()
     check_count 160 'magnetic-runtime-'
     check_count 33 'height-'
     check_count 4 'delayed-input-'
+    check_count 4 'delayed-views-'
     check_count 4 'step-binary(32|64)-ins-quat[01]-nominal-transaction'
     check_count 36 'accelerometer-binary'
     check_count 1 'accelerometer-double-sample_round'
@@ -252,8 +253,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 264 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2459 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 266 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2463 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -284,6 +285,7 @@ check_plan()
     [[ "$("${RUNNER}" fusion --list | wc -l)" == 92 ]] || fail 'fusion selection changed'
     [[ "$("${RUNNER}" imu-policies --list | wc -l)" == 10 ]] || fail 'IMU policies selection changed'
     [[ "$("${RUNNER}" ring-buffer --list | wc -l)" == 42 ]] || fail 'ring buffer selection changed'
+    [[ "$("${RUNNER}" delayed-views --list | wc -l)" == 4 ]] || fail 'delayed view selection changed'
     # The standalone scalar selection reuses, rather than duplicates, old proofs.
     [[ -z "$(comm -23 <("${RUNNER}" scalar --list | sort) <(printf '%s\n' "${PLAN}" | sort))" ]] ||
         fail 'scalar dependency profile is not in the full inventory'
@@ -521,6 +523,23 @@ check_delayed_input_arguments()
     }
     run_delayed_input_suite
     [[ "${COUNT}" == 4 ]] || fail 'delayed input matrix incomplete'
+)
+
+check_delayed_views_arguments()
+(
+    local COUNT=0
+    verify()
+    {
+        local ENTRY="$1"
+        shift
+        [[ "${SOURCE_FILE}" == "${PROOF_DIR}/delayed_views.cpp" && "${ENTRY}" == "verify_${KIND}_views" &&
+           "${PROFILE}" == "delayed-views-binary$((32 + 32 * BINARY64))-${KIND}" ]] || fail 'wrong delayed view source/profile'
+        [[ "$*" == "--proof-unwind 70 --proof-timeout 120s --proof-memory 4g --64 --z3 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" ]] || fail 'wrong delayed view arguments'
+        [[ " ${ESBMC_ARGUMENTS[*]} " == *' ESKF_CODEGEN=1 '* ]] || fail 'delayed views must retain deployment codegen selection'
+        COUNT=$((COUNT + 1))
+    }
+    run_delayed_views_suite
+    [[ "${COUNT}" == 4 ]] || fail 'delayed view matrix incomplete'
 )
 
 check_height_arguments()
@@ -2489,6 +2508,7 @@ check_magnetic_runtime_arguments
 check_accelerometer_arguments
 check_height_arguments
 check_delayed_input_arguments
+check_delayed_views_arguments
 check_navigation_recovery_arguments
 check_navigation_reset_arguments
 check_gnss_lifecycle_arguments
@@ -2515,7 +2535,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (2459 profiles; 264 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (2463 profiles; 266 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_runtime_input_regressions
     check_ring_buffer_regressions

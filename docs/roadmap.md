@@ -157,8 +157,10 @@ review; no adopted analysis baseline, inventory checker or release gate exists.
 
 ### DC-09 — Reusable call-graph review script
 
-**Status: Planned.** Turn the prior defensive-check/computation audit into a
-reusable script, reusing the Clang inventory infrastructure where appropriate.
+**Status: Completed.** The [call-graph extractor](../scripts/call_graph.py)
+reuses the Clang inventory and produces a manual review queue with change-impact
+checks. Follow the [review guide](guides/call-graph.md) to inspect one call chain
+at a time. This completes the reusable tooling, not the semantic review or V-03.
 
 - Generate caller/callee edges, call-site locations, per-function incoming/outgoing
   lists, readable group diagrams and a numbered review inventory. Declare entry

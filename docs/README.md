@@ -28,6 +28,7 @@ experiment does not silently override them.
 - [Configuration](guides/configuration.md): core/runtime options, menu ownership and packaged PX4 settings.
 - [PX4 operation](../integrations/px4/README.md): installation, module tests and SITL commands.
 - [Verification and evidence](guides/verification.md): tool responsibilities, remaining proof boundaries and evidence retention.
+- [Call-graph review](guides/call-graph.md): caller/callee groups, stable function identities and change-impact checks for manual review.
 - [Magnetic tilt projection](guides/magnetic-tilt-protection.md): derivation and coordinate interpretation.
 - [Validation data](guides/validation-data.md): replay/oracle distinctions and acceptance inputs.
 

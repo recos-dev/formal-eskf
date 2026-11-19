@@ -6,6 +6,12 @@ This specification defines a source-derived inventory of project C++ functions a
 
 [inventory_cpp.py](../../../scripts/inventory_cpp.py) already extracts declarations using Clang AST, the configured source roots and supplied compilation databases. It records input hashes and supports snapshot freshness checks. Its output is an inventory of declarations within that scope, not a proof of functions or all template executions.
 
+[call_graph.py](../../../scripts/call_graph.py) reuses that extraction for a
+[manual call-chain review queue](../../guides/call-graph.md). Direct edges,
+dependent candidates and unresolved calls remain distinguishable; snapshot
+comparison marks affected functions and known callers for recheck. This does not
+establish semantic redundancy, reviewed requirement mappings or proof coverage.
+
 A reviewed symbol-to-requirement baseline and mandatory per-function review completeness are still planned. The current [agent-review runner](../../../scripts/run_agent_review.sh) audits registered requirements; it does not enforce the complete AST pipeline below. Track that integration in [V-03](../../roadmap.md#v-03--ast-mapping-and-review-completeness), without treating this design as completed coverage.
 
 ## Methodology

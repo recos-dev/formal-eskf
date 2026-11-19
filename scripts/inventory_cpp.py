@@ -154,10 +154,22 @@ def qualified_name(CURSOR):
     return "::".join(reversed(PARTS))
 
 
-def extract_functions(TU, ROOT, DIRECTORY, SOURCES, PROFILE, FUNCTIONS):
-    FUNCTION_KINDS = {"FUNCTION_DECL", "FUNCTION_TEMPLATE", "CXX_METHOD",
-                      "CONSTRUCTOR", "DESTRUCTOR", "CONVERSION_FUNCTION"}
+FUNCTION_KINDS = {"FUNCTION_DECL", "FUNCTION_TEMPLATE", "CXX_METHOD",
+                  "CONSTRUCTOR", "DESTRUCTOR", "CONVERSION_FUNCTION"}
 
+
+def function_identity(CURSOR, ROOT, DIRECTORY):
+    FILE = (DIRECTORY / CURSOR.location.file.name).resolve() if CURSOR.location.file else None
+    USR = CURSOR.get_usr().replace(str(ROOT) + "/", "")
+    if not USR:
+        raise ValueError(f"function without Clang identity: {CURSOR.location}")
+    FILE_LOCAL = (CURSOR.linkage.name in ("INTERNAL", "NO_LINKAGE", "UNIQUE_EXTERNAL") or
+                  (FILE is not None and USR.startswith(f"c:{FILE.name}@")))
+    ID = f"{display_path(ROOT, FILE)}::{USR}" if FILE and FILE_LOCAL else USR
+    return ID, USR
+
+
+def extract_functions(TU, ROOT, DIRECTORY, SOURCES, PROFILE, FUNCTIONS):
     def visit(CURSOR):
         FILE = (DIRECTORY / CURSOR.location.file.name).resolve() if CURSOR.location.file else None
         if FILE is not None and FILE not in SOURCES:
@@ -170,13 +182,9 @@ def extract_functions(TU, ROOT, DIRECTORY, SOURCES, PROFILE, FUNCTIONS):
                     visit(METHOD)
             return
         if FILE in SOURCES and KIND in FUNCTION_KINDS:
-            USR = CURSOR.get_usr().replace(str(ROOT) + "/", "")
-            if not USR:
-                raise ValueError(f"function without Clang identity: {CURSOR.location}")
             # File-local USRs can contain only the basename. Two distinct
             # headers named api.hpp must not merge their internal helpers.
-            FILE_LOCAL = CURSOR.linkage.name in ("INTERNAL", "NO_LINKAGE", "UNIQUE_EXTERNAL") or USR.startswith(f"c:{FILE.name}@")
-            ID = f"{display_path(ROOT, FILE)}::{USR}" if FILE_LOCAL else USR
+            ID, USR = function_identity(CURSOR, ROOT, DIRECTORY)
             FUNCTION = FUNCTIONS.setdefault(ID, {
                 "id": ID, "usr": USR, "name": CURSOR.spelling, "qualified_name": qualified_name(CURSOR),
                 "kind": KIND, "declarations": [],
@@ -201,7 +209,7 @@ def extract_functions(TU, ROOT, DIRECTORY, SOURCES, PROFILE, FUNCTIONS):
     visit(TU.cursor)
 
 
-def inventory(ROOT, CONFIG_PATH, DATABASES):
+def inventory(ROOT, CONFIG_PATH, DATABASES, VISITOR=None):
     try:
         from clang import cindex
     except ImportError as ERROR:
@@ -266,6 +274,8 @@ def inventory(ROOT, CONFIG_PATH, DATABASES):
                               "dependencies": sorted(display_path(ROOT, F) for F in FILES),
                               "diagnostics": [str(D) for D in TU.diagnostics]}
             extract_functions(TU, ROOT, DIRECTORY, SOURCES, PROFILE, FUNCTIONS)
+            if VISITOR is not None:
+                VISITOR(TU, ROOT, DIRECTORY, SOURCES, PROFILE)
     if not FUNCTIONS:
         raise ValueError("no project functions discovered; check database/source scope")
     for FUNCTION in FUNCTIONS.values():

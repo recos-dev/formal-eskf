@@ -184,11 +184,15 @@ cover actual core/runtime dispatch. AHRS generation is deferred.
 
 The [generation scope](../codegen/README.md#generation-scope) keeps nominal/SO(3)
 operations, transition/noise producers, short observation formulas, the solve and
-control flow in ordinary C++. Remaining work is source-level composition of the
-generated production path and qualification of the selected deployment's numerical
-budget, performance and stack. Dense core ESBMC profiles and standalone kernel
-certificates do not discharge those obligations. Preserve symmetry premises and
-selected-path overflow/status behavior; do not require universal bitwise agreement.
+control flow in ordinary C++. Generated `E-PCOV`, `E-RESET`, innovation/Joseph
+correction and combined `E-STEP` have explicit caller, actual-kernel
+frame/mirroring and publication
+profiles, with [shared producer dependencies](guides/verification.md#generated-covariance-prediction).
+Source acceptance requires complete matching execution evidence. Qualification
+of the selected deployment's numerical budget, performance and stack remains
+open. Dense core ESBMC profiles and standalone kernel certificates do not discharge
+those obligations. Preserve symmetry premises and selected-path overflow/status
+behavior; do not require universal bitwise agreement.
 
 - Fix dense/generated revisions, derivation/artifacts, project state/frame
   conventions, scalar/backend and compiler modes; require reproducible generation.

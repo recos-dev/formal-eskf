@@ -18,7 +18,11 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 2230 '^PLAN'
+    check_count 2450 '^PLAN'
+    check_count 14 'pcov-generated-binary(32|64)-'
+    check_count 10 'reset-generated-binary(32|64)-'
+    check_count 94 'correction-generated-binary(32|64)-'
+    check_count 102 'step-generated-binary(32|64)-'
     check_count 2 'codegen-binary(32|64)-memory'
     check_count 32 'codegen-ins_.*-binary(32|64)-memory'
     check_count 160 'magnetic-runtime-'
@@ -246,8 +250,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 249 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2230 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 259 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 2450 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -262,6 +266,7 @@ check_plan()
     [[ "$("${RUNNER}" jacobian --list | wc -l)" == 10 ]] || fail 'Jacobian flow/entries/dependency coverage changed'
     [[ "$("${RUNNER}" reset --list | wc -l)" == 46 ]] || fail 'reset configuration/mode/alias/dependency coverage changed'
     [[ "$("${RUNNER}" pcov --list | wc -l)" == 30 ]] || fail 'covariance prediction configuration/mode/alias/dependency coverage changed'
+    [[ "$("${RUNNER}" pcov-generated --list | wc -l)" == 14 ]] || fail 'generated covariance composition coverage changed'
     [[ "$("${RUNNER}" codegen --list | wc -l)" == 34 ]] || fail 'generated kernel scalar coverage changed'
     [[ "$("${RUNNER}" step --list | wc -l)" == 188 ]] || fail 'step configuration/mode/frame coverage changed'
     [[ "$("${RUNNER}" step-correction --list | wc -l)" == 84 ]] || fail 'correction transaction/frame coverage changed'
@@ -1216,6 +1221,98 @@ check_pcov_arguments()
     run_pcov_suite
 )
 
+check_pcov_generated_arguments()
+(
+    local BEFORE="${ESBMC_ARGUMENTS[*]}" COUNT=0
+    verify()
+    {
+        local ENTRY="$1" BITS=0 EXPECTED_ENTRY EXPECTED_SOURCE APPROX
+        local -a EXPECTED
+        shift
+        [[ " ${ESBMC_ARGUMENTS[*]} " == *' -D ESKF_CODEGEN=1 '* &&
+           " ${ESBMC_ARGUMENTS[*]} " != *'ESKF_CODEGEN=0'* ]] || fail 'generated caller must select production codegen'
+        [[ "${PROFILE}" != *-binary64-* ]] || BITS=1
+        EXPECTED=(--proof-unwind 226 --proof-timeout 300s -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}")
+        EXPECTED_SOURCE="${PROOF_DIR}/covariance_generated.cpp"
+        case "${PROFILE}" in
+            *-actual-kernel) EXPECTED_ENTRY=verify_generated_covariance ;;
+            *-actual-publisher-alias[01])
+                EXPECTED_ENTRY=verify_publish_covariance
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_ALIAS=${PROFILE##*alias}")
+                ;;
+            *-approx[01]-caller-alias[01])
+                EXPECTED_SOURCE="${PROOF_DIR}/covariance_prediction.cpp"
+                EXPECTED_ENTRY=verify_predict_covariance
+                APPROX="${PROFILE#*-approx}"
+                EXPECTED+=(-D FORMAL_ESKF_PROOF_INS=1 -D "ESKF_QUAT_APPROX=${APPROX%%-*}"
+                    -D "FORMAL_ESKF_PROOF_ALIAS=${PROFILE##*alias}" -D FORMAL_ESKF_PROOF_PCOV_CONTRACT=1)
+                ;;
+            *) fail "unexpected generated covariance profile: ${PROFILE}" ;;
+        esac
+        [[ "${PROFILE}" == *-actual-kernel ]] || EXPECTED+=(--multi-property)
+        [[ "${SOURCE_FILE}" == "${EXPECTED_SOURCE}" && "${ENTRY}" == "${EXPECTED_ENTRY}" && "$*" == "${EXPECTED[*]}" ]] ||
+            fail "wrong generated covariance source, domain, alias or solver arguments: ${PROFILE}"
+        COUNT=$((COUNT + 1))
+    }
+    run_pcov_generated_suite
+    [[ "${COUNT}" == 14 && "${ESBMC_ARGUMENTS[*]}" == "${BEFORE}" ]] || fail 'generated inventory or dense scope changed'
+)
+
+check_generated_arguments()
+(
+    local BEFORE="${ESBMC_ARGUMENTS[*]}" COUNT=0
+    verify()
+    {
+        local ENTRY="$1" ARGS=" $* " BINARY64=0 APPROX ALIAS MODEL SIZE BOUNDARY
+        [[ "${PROFILE}" != *-binary64-* ]] || BINARY64=1
+        if [[ "${PROFILE}" =~ -model([0-5]) ]]; then
+            MODEL="${BASH_REMATCH[1]}"
+            case "${MODEL}" in 1|3) SIZE=2 ;; 2) SIZE=1 ;; 0|4|5) SIZE=3 ;; esac
+        fi
+        if [[ "${PROFILE}" =~ -approx([01])-caller-alias([01]) ]]; then
+            APPROX="${BASH_REMATCH[1]}"
+            ALIAS="${BASH_REMATCH[2]}"
+        fi
+        if [[ "${PROFILE}" =~ -alias([0-7])$ ]]; then ALIAS="${BASH_REMATCH[1]}"; fi
+        if [[ "${PROFILE}" =~ -boundary([01])$ ]]; then BOUNDARY="${BASH_REMATCH[1]}"; fi
+        [[ " ${ESBMC_ARGUMENTS[*]} " == *' -D ESKF_CODEGEN=1 '* &&
+           " ${ESBMC_ARGUMENTS[*]} " != *ESKF_CODEGEN=0* ]] || fail 'generated source path disabled'
+        [[ "${ARGS}" == *' --proof-unwind 226 --proof-timeout 300s '* &&
+           "${ARGS}" == *" -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"* ]] || fail 'generated domain/timeout mismatch'
+        if [[ "${PROFILE}" == reset-generated-*-caller-* ]]; then
+            [[ "${SOURCE_FILE}" == "${PROOF_DIR}/reset.cpp" && "${ENTRY}" == verify_reset &&
+               "${ARGS}" == *" -D ESKF_RESET_APPROX=${APPROX} "* &&
+               "${ARGS}" == *" -D FORMAL_ESKF_PROOF_ALIAS=${ALIAS} "* &&
+               "${ARGS}" == *' -D FORMAL_ESKF_PROOF_RESET_CONTRACT=1 '* &&
+               "${ARGS}" == *' -D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1 '* ]] || fail 'reset boundary mismatch'
+        elif [[ "${PROFILE}" == correction-generated-*-model* ]]; then
+            [[ "${ARGS}" == *' -D FORMAL_ESKF_PROOF_STATE_SIZE=15 '* &&
+               "${ARGS}" == *" -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${SIZE} "* &&
+               "${ARGS}" == *" -D FORMAL_ESKF_PROOF_CORRECTION_MODEL=${MODEL}"* ]] || fail 'correction model mismatch'
+            case "${MODEL}:${SIZE}" in 1:2|2:1|3:2|4:3|5:3) ;; *) fail 'wrong model dimension' ;; esac
+            if [[ "${PROFILE}" == *-boundary* ]]; then
+                [[ "${SOURCE_FILE}" == "${PROOF_DIR}/correction_generated.cpp" &&
+                   "${ARGS}" == *" -D FORMAL_ESKF_PROOF_GENERATED_BOUNDARY=${BOUNDARY} "* ]] || fail 'kernel/dispatch boundary mismatch'
+            else
+                [[ "${SOURCE_FILE}" == "${PROOF_DIR}/correction.cpp" &&
+                   "${ARGS}" == *' -D FORMAL_ESKF_PROOF_CORRECTION_CONTRACT=1 '* ]] || fail 'caller boundary mismatch'
+            fi
+        elif [[ "${PROFILE}" == step-generated-*-correction-* ]]; then
+            [[ "${SOURCE_FILE}" == "${PROOF_DIR}/step_correction.cpp" && "${ENTRY}" == verify_correction_step &&
+               "${ARGS}" == *" -D FORMAL_ESKF_PROOF_CORRECTION_MODEL=${MODEL} "* &&
+               "${ARGS}" == *' -D FORMAL_ESKF_PROOF_BIAS_CONTROL=1 '* &&
+               "${ARGS}" == *" -D FORMAL_ESKF_PROOF_STEP_ALIAS=${ALIAS} "* ]] || fail 'generated correction step mismatch'
+        fi
+        COUNT=$((COUNT + 1))
+    }
+    run_reset_generated_suite
+    [[ "${COUNT}" == 10 ]] || fail 'generated reset inventory incomplete'
+    run_correction_generated_suite
+    [[ "${COUNT}" == 104 ]] || fail 'generated correction inventory incomplete'
+    run_step_generated_suite
+    [[ "${COUNT}" == 206 && "${ESBMC_ARGUMENTS[*]}" == "${BEFORE}" ]] || fail 'generated steps or dense scope changed'
+)
+
 check_reset_arguments()
 (
     verify()
@@ -1699,6 +1796,128 @@ CASES
     printf 'ESBMC covariance prediction guards: pass (%d incompatible boundaries rejected)\n' "${RESULT_COUNT}"
 )
 
+check_pcov_generated_regressions()
+(
+    local TEST_WORK_DIR CASE ENTRY LABEL RESULT SOURCE
+    local -a ARGUMENTS SOLVER_ARGUMENTS GENERATED_ARGUMENTS=("${ESBMC_ARGUMENTS[@]/ESKF_CODEGEN=0/ESKF_CODEGEN=1}")
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-pcov-generated.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    # Corrupt isolated copies only; each counterexample must name the intended
+    # semantic assertion. Parse errors, timeouts and solver failures do not pass.
+    python3 - "${REPO_DIR}" "${TEST_WORK_DIR}" <<'PY_MUTATIONS'
+import pathlib
+import sys
+ROOT, OUTPUT = map(pathlib.Path, sys.argv[1:])
+MUTATIONS = {
+    'noise': ('covariance_prediction.hpp', 'ins_covariance(F_x, covariance, R, Q_i)',
+              'ins_covariance(F_x, covariance, R, decltype(Q_i){})'),
+    'mirror': ('generated/ins_covariance.hpp', 'result(14U, 13U) = result(13U, 14U);',
+               'result(14U, 13U) = value_type{0};'),
+    'finite': ('covariance.hpp', 'if (!linalg::all_finite(candidate))', 'if (false)'),
+    'average': ('covariance.hpp', 'output = candidate;',
+                'output = candidate; output(0U, 1U) = typename Linalg::value_type{0.5} * candidate(0U, 1U) + '
+                'typename Linalg::value_type{0.5} * candidate(0U, 1U);'),
+}
+for CASE, (FILE, OLD, NEW) in MUTATIONS.items():
+    RELATIVE = pathlib.Path('formal_eskf/eskf', FILE)
+    SOURCE = (ROOT / 'include' / RELATIVE).read_text()
+    assert OLD in SOURCE
+    TARGET = OUTPUT / CASE / RELATIVE
+    TARGET.parent.mkdir(parents=True, exist_ok=True)
+    TARGET.write_text(SOURCE.replace(OLD, NEW, 1))
+PY_MUTATIONS
+    for CASE in noise mirror finite average; do
+        SOURCE="${PROOF_DIR}/covariance_generated.cpp"
+        ARGUMENTS=()
+        SOLVER_ARGUMENTS=(--multi-property)
+        case "${CASE}" in
+            noise)
+                SOURCE="${PROOF_DIR}/covariance_prediction.cpp"
+                ENTRY=verify_predict_covariance
+                LABEL='E-PCOV generated: complete discretized noise reaches kernel'
+                ARGUMENTS=(-D FORMAL_ESKF_PROOF_INS=1 -D FORMAL_ESKF_PROOF_PCOV_CONTRACT=1)
+                ;;
+            mirror) SOLVER_ARGUMENTS=(); ENTRY=verify_generated_covariance; LABEL='Generated covariance: every off-diagonal pair is mirrored' ;;
+            finite) ENTRY=verify_publish_covariance; LABEL='E-PCOV publisher: reject exactly non-finite candidates' ;;
+            average) ENTRY=verify_publish_covariance; LABEL='E-PCOV publisher: exact copy without averaging on success' ;;
+        esac
+        RESULT=0
+        "${ESBMC_COMMAND}" "${SOURCE}" -I "${TEST_WORK_DIR}/${CASE}" "${GENERATED_ARGUMENTS[@]}" \
+            --function "${ENTRY}" --unwind 226 --timeout 300s --memlimit 4g "${SOLVER_ARGUMENTS[@]}" \
+            "${ARGUMENTS[@]}" >"${TEST_WORK_DIR}/${CASE}.log" 2>&1 || RESULT=$?
+        if [[ "${RESULT}" != 1 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${CASE}.log" ||
+            ! grep -A4 'Violated property:' "${TEST_WORK_DIR}/${CASE}.log" | grep -Fq "${LABEL}"; then
+            tail -n 35 "${TEST_WORK_DIR}/${CASE}.log" >&2
+            fail "generated covariance mutation was not detected: ${CASE}"
+        fi
+    done
+    printf 'ESBMC generated covariance regressions: pass (noise wiring, mirroring, finite rejection, extra averaging)\n'
+)
+
+check_generated_routing_regressions()
+(
+    local TEST_WORK_DIR CASE RESULT ENTRY LABEL SOURCE
+    local -a ARGUMENTS GENERATED_ARGUMENTS=("${ESBMC_ARGUMENTS[@]/ESKF_CODEGEN=0/ESKF_CODEGEN=1}")
+    TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-generated-routing.XXXXXX")"
+    trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
+    select_esbmc
+    check_esbmc_version
+    python3 - "${REPO_DIR}" "${TEST_WORK_DIR}" <<'PY_MUTATIONS'
+import pathlib
+import sys
+ROOT, OUTPUT = map(pathlib.Path, sys.argv[1:])
+MUTATIONS = {
+    'jacobian': ('injection.hpp', 'generated::ins_reset(covariance, G_theta)',
+                 'generated::ins_reset(covariance, linalg::Matrix<Linalg, 3U, 3U>{})'),
+    'body-vector': ('correction_products.hpp', '{H(2U, 7U), H(0U, 8U), H(1U, 6U)}',
+                    '{H(2U, 8U), H(0U, 8U), H(1U, 6U)}'),
+    'correlation': ('correction_products.hpp', 'generated::ins_body_vector_joseph(P, A, K, V)',
+                    'generated::ins_body_vector_joseph(P, A, K, linalg::Matrix<Linalg, 3U, 3U>{})'),
+}
+for CASE, (FILE, OLD, NEW) in MUTATIONS.items():
+    RELATIVE = pathlib.Path('formal_eskf/eskf', FILE)
+    SOURCE = (ROOT / 'include' / RELATIVE).read_text()
+    assert OLD in SOURCE
+    TARGET = OUTPUT / CASE / RELATIVE
+    TARGET.parent.mkdir(parents=True, exist_ok=True)
+    TARGET.write_text(SOURCE.replace(OLD, NEW, 1))
+PY_MUTATIONS
+    for CASE in jacobian body-vector correlation; do
+        SOURCE="${PROOF_DIR}/correction_generated.cpp"
+        ARGUMENTS=(-D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=3
+            -D FORMAL_ESKF_PROOF_CORRECTION_MODEL=5 -D FORMAL_ESKF_PROOF_GENERATED_BOUNDARY=1)
+        case "${CASE}" in
+            jacobian)
+                SOURCE="${PROOF_DIR}/reset.cpp"
+                ENTRY=verify_reset
+                LABEL='E-RESET generated: every exact or first-order J entry reaches the kernel'
+                ARGUMENTS=(-D FORMAL_ESKF_PROOF_INS=1 -D FORMAL_ESKF_PROOF_RESET_CONTRACT=1
+                    -D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1 -D ESKF_RESET_APPROX=1)
+                ;;
+            body-vector)
+                ENTRY=verify_generated_cross
+                LABEL='Generated correction: body vector extracted from the correct skew-Jacobian entries'
+                ;;
+            correlation)
+                ENTRY=verify_generated_joseph
+                LABEL='Generated correction: selected Joseph kernel receives original P, full A/K/V exactly once'
+                ;;
+        esac
+        RESULT=0
+        "${ESBMC_COMMAND}" "${SOURCE}" -I "${TEST_WORK_DIR}/${CASE}" "${GENERATED_ARGUMENTS[@]}" \
+            --function "${ENTRY}" --unwind 226 --timeout 300s --memlimit 4g \
+            "${ARGUMENTS[@]}" >"${TEST_WORK_DIR}/${CASE}.log" 2>&1 || RESULT=$?
+        if [[ "${RESULT}" != 1 ]] || ! grep -q 'VERIFICATION FAILED' "${TEST_WORK_DIR}/${CASE}.log" ||
+            ! grep -A4 'Violated property:' "${TEST_WORK_DIR}/${CASE}.log" | grep -Fq "${LABEL}"; then
+            tail -n 35 "${TEST_WORK_DIR}/${CASE}.log" >&2
+            fail "generated routing mutation was not detected: ${CASE}"
+        fi
+    done
+    printf 'ESBMC generated routing regressions: pass (reset Jacobian, body-vector extraction, correlated noise)\n'
+)
+
 check_pcov_regressions()
 (
     local TEST_WORK_DIR BINARY64 CASE RESULT EXPECTED LABEL
@@ -2138,6 +2357,8 @@ check_prediction_rejection_arguments
 check_jacobian_arguments
 check_reset_arguments
 check_pcov_arguments
+check_pcov_generated_arguments
+check_generated_arguments
 check_step_arguments
 check_solve_arguments
 check_correction_arguments
@@ -2146,7 +2367,7 @@ check_linalg_arguments
 check_scalar_arguments
 check_observations_arguments
 check_solver_argument_guard
-printf 'ESBMC inventory tests: pass (2230 profiles; 249 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (2450 profiles; 259 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_ring_buffer_regressions
     check_mode_constants
@@ -2161,6 +2382,8 @@ if ((RUN_SOLVER)); then
     check_reset_regressions
     check_pcov_contract_guards
     check_pcov_regressions
+    check_pcov_generated_regressions
+    check_generated_routing_regressions
     check_step_contract_guards
     check_step_regressions
     check_step_correction_contract_guards

@@ -29,7 +29,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|accelerometer|magnetic-runtime|ring-buffer|codegen) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|accelerometer|magnetic-runtime|ring-buffer|codegen) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -39,13 +39,17 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|pcov|step|solve|correction|step-correction|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|accelerometer|magnetic-runtime|ring-buffer|codegen] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
-                printf 'Core producer/caller profiles select ESKF_CODEGEN=0; codegen checks generated kernels directly. Production generated composition is a separate obligation.\n'
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|accelerometer|magnetic-runtime|ring-buffer|codegen] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Core producer/caller profiles select ESKF_CODEGEN=0 except the *-generated suites (ESKF_CODEGEN=1); codegen checks emitted kernels directly.\n'
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
                 printf 'jacobian selects flow, entries, final predicate and boundary witnesses; all also runs its norm/scalar dependencies.\n'
                 printf 'reset selects covariance-reset callers and matrix producers; all also runs their right-Jacobian dependencies.\n'
+                printf 'pcov-generated selects INS generated covariance routing, actual kernel frames/mirroring and finite publication in both formats/modes/aliases; reuse pcov and its producer dependencies. Numerical accuracy remains separate; step-generated checks transaction composition.\n'
+                printf 'reset-generated selects INS kernel frames/mirroring and checked callers for both reset modes and aliases; reuse jacobian/reset producers and pcov-generated publication.\n'
+                printf 'correction-generated selects all five explicit model dispatches, kernel frames/mirroring, separate gain/apply callers, preparation and same-type publication; reuse correction/solve/observation producers.\n'
+                printf 'step-generated selects INS prediction, injection/reset and model-specific correction transactions, plus same-type reset frames; component producers remain mandatory.\n'
                 printf 'pcov selects covariance prediction and its new exact-type producers; all also runs its Exp and reset matrix dependencies.\n'
                 printf 'step selects prediction, injection/reset and correction transactions; all also runs their component dependencies.\n'
                 printf 'solve selects scalar producers, every Cholesky coefficient/column, orchestration and public solve/alias proofs. Root accuracy and numerical residual bounds are outside this source-level claim.\n'
@@ -563,6 +567,154 @@ run_pcov_suite()
                         "${PROFILE_ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_INS=${INS}" \
                         -D "ESKF_QUAT_APPROX=${APPROX}" -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" \
                         -D FORMAL_ESKF_PROOF_PCOV_CONTRACT=1 --multi-property
+                done
+            done
+        done
+    done
+}
+
+
+run_pcov_generated_suite()
+{
+    local BINARY64 APPROX ALIAS BASE_PROFILE
+    # Scoped override: all other suites retain their dense source-proof boundary.
+    local -a ESBMC_ARGUMENTS=("${ESBMC_ARGUMENTS[@]/ESKF_CODEGEN=0/ESKF_CODEGEN=1}")
+    local -a PROFILE_ARGUMENTS
+    for BINARY64 in 0 1; do
+        BASE_PROFILE="pcov-generated-binary$((32 + 32 * BINARY64))"
+        PROFILE_ARGUMENTS=(-D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}")
+        SOURCE_FILE="${PROOF_DIR}/covariance_generated.cpp"
+        PROFILE="${BASE_PROFILE}-actual-kernel"
+        # One query shares the emitted DAG across all mirror assertions.
+        verify verify_generated_covariance --proof-unwind 226 --proof-timeout 300s "${PROFILE_ARGUMENTS[@]}"
+        for ALIAS in 0 1; do
+            PROFILE="${BASE_PROFILE}-actual-publisher-alias${ALIAS}"
+            verify verify_publish_covariance --proof-unwind 226 --proof-timeout 300s "${PROFILE_ARGUMENTS[@]}" \
+                -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" --multi-property
+        done
+        SOURCE_FILE="${PROOF_DIR}/covariance_prediction.cpp"
+        for APPROX in 0 1; do
+            for ALIAS in 0 1; do
+                PROFILE="${BASE_PROFILE}-approx${APPROX}-caller-alias${ALIAS}"
+                verify verify_predict_covariance --proof-unwind 226 --proof-timeout 300s "${PROFILE_ARGUMENTS[@]}" \
+                    -D FORMAL_ESKF_PROOF_INS=1 -D "ESKF_QUAT_APPROX=${APPROX}" \
+                    -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" -D FORMAL_ESKF_PROOF_PCOV_CONTRACT=1 --multi-property
+            done
+        done
+    done
+}
+
+run_reset_generated_suite()
+{
+    local BINARY64 APPROX ALIAS BASE_PROFILE
+    local -a ESBMC_ARGUMENTS=("${ESBMC_ARGUMENTS[@]/ESKF_CODEGEN=0/ESKF_CODEGEN=1}")
+    local -a PROFILE_ARGUMENTS
+    for BINARY64 in 0 1; do
+        BASE_PROFILE="reset-generated-binary$((32 + 32 * BINARY64))"
+        PROFILE_ARGUMENTS=(-D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}")
+        SOURCE_FILE="${PROOF_DIR}/covariance_generated.cpp"
+        PROFILE="${BASE_PROFILE}-actual-kernel"
+        verify verify_generated_reset --proof-unwind 226 --proof-timeout 300s "${PROFILE_ARGUMENTS[@]}"
+        SOURCE_FILE="${PROOF_DIR}/reset.cpp"
+        for APPROX in 0 1; do
+            for ALIAS in 0 1; do
+                PROFILE="${BASE_PROFILE}-approx${APPROX}-caller-alias${ALIAS}"
+                verify verify_reset --proof-unwind 226 --proof-timeout 300s "${PROFILE_ARGUMENTS[@]}" \
+                    -D FORMAL_ESKF_PROOF_INS=1 -D "ESKF_RESET_APPROX=${APPROX}" \
+                    -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" -D FORMAL_ESKF_PROOF_RESET_CONTRACT=1 \
+                    -D FORMAL_ESKF_PROOF_FINITE_CONTRACT=1 --multi-property
+            done
+        done
+    done
+}
+
+run_correction_generated_suite()
+{
+    local BINARY64 MODEL SIZE BOUNDARY KIND ALIAS BASE_PROFILE
+    local -a ESBMC_ARGUMENTS=("${ESBMC_ARGUMENTS[@]/ESKF_CODEGEN=0/ESKF_CODEGEN=1}")
+    local -a ARGUMENTS
+    for BINARY64 in 0 1; do
+        for MODEL in 1 2 3 4 5; do
+            case "${MODEL}" in
+                1|3) SIZE=2 ;;
+                2) SIZE=1 ;;
+                4|5) SIZE=3 ;;
+            esac
+            BASE_PROFILE="correction-generated-binary$((32 + 32 * BINARY64))-model${MODEL}"
+            ARGUMENTS=(--proof-unwind 226 --proof-timeout 300s -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+                -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D "FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${SIZE}"
+                -D "FORMAL_ESKF_PROOF_CORRECTION_MODEL=${MODEL}")
+            SOURCE_FILE="${PROOF_DIR}/correction_generated.cpp"
+            for BOUNDARY in 0 1; do
+                for KIND in cross innovation joseph; do
+                    PROFILE="${BASE_PROFILE}-${KIND}-boundary${BOUNDARY}"
+                    verify "verify_generated_${KIND}" "${ARGUMENTS[@]}" \
+                        -D "FORMAL_ESKF_PROOF_GENERATED_BOUNDARY=${BOUNDARY}"
+                done
+            done
+            SOURCE_FILE="${PROOF_DIR}/correction.cpp"
+            for KIND in gain apply; do
+                PROFILE="${BASE_PROFILE}-${KIND}"
+                verify "verify_generated_${KIND}" "${ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_CORRECTION_CONTRACT=1
+            done
+            PROFILE="${BASE_PROFILE}-preparation"
+            verify verify_covariance_preparation "${ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_CORRECTION_CONTRACT=1
+        done
+        SOURCE_FILE="${PROOF_DIR}/correction_generated.cpp"
+        for ALIAS in 0 1; do
+            PROFILE="correction-generated-binary$((32 + 32 * BINARY64))-publisher-alias${ALIAS}"
+            verify verify_generated_publisher --proof-unwind 226 --proof-timeout 300s \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_STATE_SIZE=15 \
+                -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=3 -D FORMAL_ESKF_PROOF_CORRECTION_MODEL=5 \
+                -D "FORMAL_ESKF_PROOF_ALIAS=${ALIAS}" --multi-property
+        done
+    done
+}
+
+run_step_generated_suite()
+{
+    local BINARY64 MODEL SIZE APPROX ALIAS KIND BASE_PROFILE
+    local -a ESBMC_ARGUMENTS=("${ESBMC_ARGUMENTS[@]/ESKF_CODEGEN=0/ESKF_CODEGEN=1}")
+    local -a ARGUMENTS
+    for BINARY64 in 0 1; do
+        BASE_PROFILE="step-generated-binary$((32 + 32 * BINARY64))"
+        ARGUMENTS=(--proof-unwind 226 --proof-timeout 300s -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+            -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=3)
+        SOURCE_FILE="${PROOF_DIR}/correction_generated.cpp"
+        PROFILE="${BASE_PROFILE}-reset-kernel-frame"
+        verify verify_generated_reset_frame "${ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_CORRECTION_MODEL=5
+        SOURCE_FILE="${PROOF_DIR}/step_correction_frames.cpp"
+        for APPROX in 0 1; do
+            PROFILE="${BASE_PROFILE}-reset${APPROX}-frame"
+            verify verify_correction_reset_frame "${ARGUMENTS[@]}" -D FORMAL_ESKF_PROOF_STEP_FRAME=2 \
+                -D "ESKF_RESET_APPROX=${APPROX}"
+        done
+        SOURCE_FILE="${PROOF_DIR}/step_correction.cpp"
+        for MODEL in 0 1 2 3 4 5; do
+            case "${MODEL}" in
+                1|3) SIZE=2 ;;
+                2) SIZE=1 ;;
+                0|4|5) SIZE=3 ;;
+            esac
+            for ALIAS in 0 1 2 3; do
+                PROFILE="${BASE_PROFILE}-correction-model${MODEL}-alias${ALIAS}"
+                verify verify_correction_step --proof-unwind 226 --proof-timeout 300s \
+                    -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_STATE_SIZE=15 \
+                    -D "FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=${SIZE}" -D "FORMAL_ESKF_PROOF_CORRECTION_MODEL=${MODEL}" \
+                    -D FORMAL_ESKF_PROOF_BIAS_CONTROL=1 -D "FORMAL_ESKF_PROOF_STEP_ALIAS=${ALIAS}" \
+                    -D FORMAL_ESKF_PROOF_STEP_CONTRACT=1
+            done
+        done
+        SOURCE_FILE="${PROOF_DIR}/step.cpp"
+        for APPROX in 0 1; do
+            for KIND in prediction injection_reset; do
+                for ALIAS in 0 1 2 3 4 5 6 7; do
+                    if [[ "${KIND}" == prediction ]] && ((ALIAS > 3)); then continue; fi
+                    PROFILE="${BASE_PROFILE}-${KIND}-approx${APPROX}-alias${ALIAS}"
+                    verify "verify_${KIND}_step" --proof-unwind 226 --proof-timeout 300s \
+                        -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_INS=1 \
+                        -D "ESKF_QUAT_APPROX=${APPROX}" -D "ESKF_RESET_APPROX=${APPROX}" \
+                        -D "FORMAL_ESKF_PROOF_STEP_ALIAS=${ALIAS}" -D FORMAL_ESKF_PROOF_STEP_CONTRACT=1
                 done
             done
         done
@@ -1577,8 +1729,17 @@ main()
     if [[ "${SUITE}" == all || "${SUITE}" == reset ]]; then
         run_reset_suite
     fi
+    if [[ "${SUITE}" == all || "${SUITE}" == reset-generated ]]; then
+        run_reset_generated_suite
+    fi
     if [[ "${SUITE}" == all || "${SUITE}" == pcov ]]; then
         run_pcov_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == pcov-generated ]]; then
+        run_pcov_generated_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == step-generated ]]; then
+        run_step_generated_suite
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == step ]]; then
         run_step_suite
@@ -1588,6 +1749,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == correction ]]; then
         run_correction_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == correction-generated ]]; then
+        run_correction_generated_suite
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == step || "${SUITE}" == step-correction ]]; then
         run_step_correction_suite

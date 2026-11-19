@@ -140,6 +140,7 @@ python3 codegen/products.py controls
 |---|---|
 | Independent source/algebra checker | Parse actual formatted C++; check allowed syntax, complete assignments and exact identities against independently constructed matrix equations |
 | [Lean prediction](../formal/lean/FormalESKF/codegen) and [products](../formal/lean/FormalESKF/codegen/products) | Exact scalar identities, matrix assembly, conditional PSD/PD and innovation/Joseph algebraic composition |
+| ESBMC generated suites | INS covariance/reset/correction dispatch and combined source transactions, actual same-type kernel frames/mirroring and publication; requires the [shared producer dependencies](../docs/guides/verification.md#generated-covariance-prediction) |
 | ESBMC `codegen` | Actual pinned kernels and production Matrix wrapper with fixed-array storage: binary32/64 memory/access safety, without arithmetic range restrictions |
 | Native rational checker | Recorded finite numerical values agree with IEEE RNE simulation and propagated error bounds against independent exact references |
 | Differential arithmetic fixtures | Checked statuses, aliases, failure outputs, constrained gains, gate boundaries and dense/generated differences for executed cases |
@@ -213,10 +214,13 @@ Neither measurement is target WCET or a whole-program stack bound.
 - `formal/cpp/esbmc/codegen*.{cpp,hpp}`: shared proof storage and memory harnesses.
 
 The ESBMC runner explicitly selects `ESKF_CODEGEN=0` for existing core
-producer/caller summaries; `codegen` checks emitted kernels directly. Those
-results do not establish complete source-level composition of the generated
-production path. That proof, a deployment numerical budget and target
-performance/stack evidence remain separate obligations. AHRS generation is deferred.
+producer/caller summaries except `pcov-generated`, `reset-generated`,
+`correction-generated` and `step-generated`, which select `1` explicitly.
+`codegen` checks emitted kernels directly. Accept generated source composition
+only with the matching actual producers and complete execution evidence. A
+uniform deployment numerical budget and target performance/stack qualification
+remain separate obligations.
+AHRS generation is deferred.
 
 Logs and experiments stay in ignored output. Retain release evidence under the
 [evidence policy](../docs/guides/verification.md#record-ownership-and-reuse), with

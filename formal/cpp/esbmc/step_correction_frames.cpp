@@ -31,6 +31,22 @@ struct ProductResult
 } // namespace step_correction_proof
 
 #if FORMAL_ESKF_PROOF_STEP_FRAME == 2
+#if ESKF_CODEGEN && FORMAL_ESKF_PROOF_STATE_SIZE == 15
+namespace formal_eskf::detail::generated
+{
+// Actual same-backend kernel frames are checked in correction_generated.cpp.
+// The real reset validation, Jacobian and publisher remain in this caller.
+template <>
+inline step_correction_proof::Covariance
+ins_reset<step_correction_proof::Backend>(step_correction_proof::Covariance const &,
+                                          step_correction_proof::Matrix3 const &)
+{
+    __ESBMC_assert(step_correction_proof::ProductResult::calls++ == 0U,
+                   "E-STEP-CORRECT frame: at most one generated reset kernel");
+    return step_correction_proof::ProductResult::value;
+}
+} // namespace formal_eskf::detail::generated
+#else
 namespace formal_eskf::linalg
 {
 // The same-type actual sandwich and every ordered product/input-frame producer
@@ -46,6 +62,7 @@ sandwich<step_correction_proof::Backend, step_correction_proof::state_size, step
     return step_correction_proof::ProductResult::value;
 }
 } // namespace formal_eskf::linalg
+#endif
 #endif
 
 using namespace step_correction_proof;

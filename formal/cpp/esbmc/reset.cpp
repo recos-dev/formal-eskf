@@ -69,6 +69,15 @@ struct SandwichContract
     inline static unsigned calls = 0U;
 };
 
+#if ESKF_CODEGEN && FORMAL_ESKF_PROOF_INS
+struct GeneratedContract
+{
+    inline static Matrix result{}, covariance{};
+    inline static Matrix3 jacobian{};
+    inline static unsigned calls = 0U;
+};
+#endif
+
 struct FinishContract
 {
     inline static Matrix result{}, received{};
@@ -165,8 +174,38 @@ inline reset_proof::Matrix sandwich(reset_proof::Matrix const & transform, reset
 }
 } // namespace formal_eskf::linalg
 
+#if ESKF_CODEGEN && FORMAL_ESKF_PROOF_INS
+namespace formal_eskf::detail::generated
+{
+template <>
+inline reset_proof::Matrix ins_reset(reset_proof::Matrix const & covariance, reset_proof::Matrix3 const & jacobian)
+{
+    using reset_proof::GeneratedContract;
+    __ESBMC_assert(GeneratedContract::calls++ == 0U, "E-RESET generated: one reset kernel call");
+    GeneratedContract::covariance = covariance;
+    GeneratedContract::jacobian = jacobian;
+    return GeneratedContract::result;
+}
+} // namespace formal_eskf::detail::generated
+#endif
+
 namespace formal_eskf::detail
 {
+#if ESKF_CODEGEN && FORMAL_ESKF_PROOF_INS
+// Same exact-type publisher as E-PCOV. No successful or finite result assumed.
+template <> inline Status publish_covariance(reset_proof::Matrix const & candidate, reset_proof::Matrix & output)
+{
+    using namespace reset_proof;
+    __ESBMC_assert(FinishContract::calls++ == 0U && GeneratedContract::calls == 1U,
+                   "E-RESET generated: publish only after the kernel");
+    FinishContract::received = candidate;
+    if (FinishContract::status == Status::success)
+    {
+        output = candidate;
+    }
+    return FinishContract::status;
+}
+#else
 template <> inline Status finish_covariance(reset_proof::Matrix & candidate, reset_proof::Matrix & output)
 {
     using reset_proof::FinishContract;
@@ -181,6 +220,7 @@ template <> inline Status finish_covariance(reset_proof::Matrix & candidate, res
     }
     return FinishContract::status;
 }
+#endif
 } // namespace formal_eskf::detail
 #endif
 
@@ -264,6 +304,10 @@ void verify_reset(Error error, Matrix covariance, Matrix output, Matrix3 jacobia
     JacobianContract::result = jacobian;
     JacobianContract::status = jacobian_status;
     JacobianContract::calls = 0U;
+#if ESKF_CODEGEN && FORMAL_ESKF_PROOF_INS
+    GeneratedContract::result = product;
+    GeneratedContract::calls = 0U;
+#endif
     SandwichContract::result = product;
     SandwichContract::calls = 0U;
     FinishContract::result = finished;
@@ -281,10 +325,17 @@ void verify_reset(Error error, Matrix covariance, Matrix output, Matrix3 jacobia
         __ESBMC_assert(same_matrix(FiniteContract::received, covariance_before),
                        "E-RESET: the complete prior covariance is checked, without other error components");
     }
+#if ESKF_CODEGEN && FORMAL_ESKF_PROOF_INS
+    __ESBMC_assert(JacobianContract::calls == (call_jacobian ? 1U : 0U) &&
+                       GeneratedContract::calls == (call_sandwich ? 1U : 0U) && SandwichContract::calls == 0U &&
+                       FinishContract::calls == (call_sandwich ? 1U : 0U),
+                   "E-RESET generated: exact mode, eligibility, dispatch and publication");
+#else
     __ESBMC_assert(JacobianContract::calls == (call_jacobian ? 1U : 0U) &&
                        SandwichContract::calls == (call_sandwich ? 1U : 0U) &&
                        FinishContract::calls == (call_sandwich ? 1U : 0U),
                    "E-RESET: exact mode selection, call eligibility and finalization");
+#endif
     if (call_jacobian)
     {
         __ESBMC_assert(same_vector(JacobianContract::received, error_before.delta_theta_b),
@@ -297,6 +348,20 @@ void verify_reset(Error error, Matrix covariance, Matrix output, Matrix3 jacobia
         Scalar const y = error_before.delta_theta_b(1U) * Scalar{0.5};
         Scalar const z = error_before.delta_theta_b(2U) * Scalar{0.5};
         Scalar const skew[3U][3U]{{Scalar{0}, -z, y}, {z, Scalar{0}, -x}, {-y, x, Scalar{0}}};
+#if ESKF_CODEGEN && FORMAL_ESKF_PROOF_INS
+        for (std::size_t row = 0U; row < 3U; ++row)
+        {
+            for (std::size_t column = 0U; column < 3U; ++column)
+            {
+                Scalar const entry = ESKF_RESET_APPROX ? (row == column ? Scalar{1} : Scalar{0}) - skew[row][column]
+                                                       : jacobian(row, column);
+                __ESBMC_assert(same(GeneratedContract::jacobian(row, column), entry),
+                               "E-RESET generated: every exact or first-order J entry reaches the kernel");
+            }
+        }
+        __ESBMC_assert(same_matrix(GeneratedContract::covariance, covariance_before),
+                       "E-RESET generated: preserve the full old covariance at the kernel boundary");
+#else
         for (std::size_t row = 0U; row < size; ++row)
         {
             for (std::size_t column = 0U; column < size; ++column)
@@ -314,12 +379,17 @@ void verify_reset(Error error, Matrix covariance, Matrix output, Matrix3 jacobia
         }
         __ESBMC_assert(same_matrix(SandwichContract::covariance, covariance_before),
                        "E-RESET: the entire prior covariance is forwarded, with no dropped cross-covariances");
+#endif
         __ESBMC_assert(same_matrix(FinishContract::received, product),
                        "E-RESET: the complete sandwich result is finalized");
     }
     if (actual == Status::success)
     {
+#if ESKF_CODEGEN && FORMAL_ESKF_PROOF_INS
+        __ESBMC_assert(same_matrix(target, product), "E-RESET generated: publish the kernel candidate unchanged");
+#else
         __ESBMC_assert(same_matrix(target, finished), "E-RESET: every successful output coefficient is published");
+#endif
     }
     else
     {

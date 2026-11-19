@@ -108,11 +108,15 @@ struct Calls
     inline static Matrix const * covariance = nullptr;
     inline static Scalar dt{};
     inline static unsigned quaternion = 0U, finite = 0U, noise = 0U, transition = 0U, rotation = 0U, product = 0U,
-                           sandwich = 0U, noise_sandwich = 0U, finish = 0U;
+                           sandwich = 0U, noise_sandwich = 0U, generated = 0U, finish = 0U;
 };
 
 void check_candidate(Matrix const & actual)
 {
+#if ESKF_CODEGEN && FORMAL_ESKF_PROOF_INS
+    __ESBMC_assert(same_matrix(actual, Calls::result->propagated),
+                   "E-PCOV generated: publish the returned kernel candidate without arithmetic changes");
+#else
     Scalar candidate[size * size]{}, propagated[size * size]{}, noise[noise_size * noise_size]{};
     flatten(actual, candidate);
     flatten(Calls::result->propagated, propagated);
@@ -139,6 +143,7 @@ void check_candidate(Matrix const & actual)
         }
     }
     __ESBMC_assert(valid, "E-PCOV: all noise blocks and every unaffected covariance entry reach finalization");
+#endif
 }
 
 #if FORMAL_ESKF_PROOF_INS
@@ -222,6 +227,21 @@ attitude_error_transition<contract_proof::Linalg>(contract_proof::Vector3 const 
         output = Calls::result->transition;
     return Calls::result->transition_status;
 }
+#if ESKF_CODEGEN && FORMAL_ESKF_PROOF_INS
+// Paired with the actual publisher in covariance_generated.cpp. The status is
+// deliberately unconstrained: caller flow must not assume finite output/success.
+template <> inline Status publish_covariance(pcov_proof::Matrix const & candidate, pcov_proof::Matrix & output)
+{
+    using namespace pcov_proof;
+    __ESBMC_assert(Calls::finish++ == 0U, "E-PCOV generated: one covariance publisher");
+    check_candidate(candidate);
+    if (Calls::result->finish_status == Status::success)
+    {
+        output = candidate;
+    }
+    return Calls::result->finish_status;
+}
+#else
 template <> inline Status finish_covariance(pcov_proof::Matrix & candidate, pcov_proof::Matrix & output)
 {
     using namespace pcov_proof;
@@ -234,7 +254,29 @@ template <> inline Status finish_covariance(pcov_proof::Matrix & candidate, pcov
     }
     return Calls::result->finish_status;
 }
+#endif
 } // namespace formal_eskf::detail
+
+#if ESKF_CODEGEN && FORMAL_ESKF_PROOF_INS
+namespace formal_eskf::detail::generated
+{
+// Unconstrained result; kernel frame/symmetry is checked separately on this
+// exact backend. Exact algebra and numerical error evidence remain distinct.
+template <>
+inline pcov_proof::Matrix ins_covariance(pcov_proof::Matrix const & F, pcov_proof::Matrix const & P,
+                                         pcov_proof::Matrix3 const & R, pcov_proof::NoiseMatrix const & Q_i)
+{
+    using namespace pcov_proof;
+    __ESBMC_assert(Calls::generated++ == 0U, "E-PCOV generated: one prediction kernel call");
+    check_transition(F);
+    __ESBMC_assert(same_matrix(P, *Calls::covariance), "E-PCOV generated: complete OLD covariance reaches kernel");
+    __ESBMC_assert(same_matrix(R, Calls::result->rotation), "E-PCOV generated: OLD attitude rotation reaches kernel");
+    __ESBMC_assert(same_matrix(Q_i, Calls::result->noise),
+                   "E-PCOV generated: complete discretized noise reaches kernel");
+    return Calls::result->propagated;
+}
+} // namespace formal_eskf::detail::generated
+#endif
 
 namespace formal_eskf
 {
@@ -364,7 +406,8 @@ void verify_predict_covariance(State state, Matrix covariance, Imu imu, Scalar d
 
     Status expected = parameter_status(dt, parameters_before);
     unsigned quaternion_calls = 0U, finite_calls = 0U, noise_calls = 0U, transition_calls = 0U, rotation_calls = 0U,
-             product_calls = 0U, sandwich_calls = 0U, noise_sandwich_calls = 0U, finish_calls = 0U;
+             product_calls = 0U, sandwich_calls = 0U, noise_sandwich_calls = 0U, generated_calls = 0U,
+             finish_calls = 0U;
 #if FORMAL_ESKF_PROOF_INS
     if (expected == Status::success)
     {
@@ -428,9 +471,13 @@ void verify_predict_covariance(State state, Matrix covariance, Imu imu, Scalar d
 #endif
     if (expected == Status::success)
     {
+#if ESKF_CODEGEN && FORMAL_ESKF_PROOF_INS
+        generated_calls = 1U;
+#else
         sandwich_calls = 1U;
-        finish_calls = 1U;
         noise_sandwich_calls = FORMAL_ESKF_PROOF_INS ? 1U : 0U;
+#endif
+        finish_calls = 1U;
         expected = results.finish_status;
     }
     __ESBMC_assert(status == expected, "E-PCOV: ordered validation, overflow and callee-status propagation");
@@ -438,12 +485,20 @@ void verify_predict_covariance(State state, Matrix covariance, Imu imu, Scalar d
                        Calls::noise == noise_calls && Calls::transition == transition_calls &&
                        Calls::rotation == rotation_calls && Calls::product == product_calls &&
                        Calls::sandwich == sandwich_calls && Calls::noise_sandwich == noise_sandwich_calls &&
-                       Calls::finish == finish_calls,
+                       Calls::generated == generated_calls && Calls::finish == finish_calls,
                    "E-PCOV: no skipped, repeated or premature callee calls");
     if (status == Status::success)
+    {
+#if ESKF_CODEGEN && FORMAL_ESKF_PROOF_INS
+        __ESBMC_assert(same_matrix(target, results.propagated), "E-PCOV generated: publish every kernel coefficient");
+#else
         __ESBMC_assert(same_matrix(target, results.finished), "E-PCOV: publish every finalized coefficient on success");
+#endif
+    }
     else
+    {
         __ESBMC_assert(same_matrix(target, before), "E-PCOV: preserve every output coefficient on any failure");
+    }
 #if !FORMAL_ESKF_PROOF_ALIAS
     __ESBMC_assert(same_matrix(covariance, covariance_before), "E-PCOV: distinct input covariance is unchanged");
 #endif

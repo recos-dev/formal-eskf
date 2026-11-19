@@ -54,7 +54,7 @@ namespace formal_eskf::detail
 {
 template <>
 inline Status compute_correction_gain<step_correction_proof::Backend, step_correction_proof::state_size,
-                                      step_correction_proof::measurement_size>(
+                                      step_correction_proof::measurement_size, correction_proof::model>(
     step_correction_proof::Covariance const & P, step_correction_proof::Residual const & r,
     step_correction_proof::Jacobian const & H, step_correction_proof::Noise const & V,
     step_correction_proof::Scalar minimum, correction_proof::Gain & output)
@@ -77,7 +77,7 @@ inline Status compute_correction_gain<step_correction_proof::Backend, step_corre
 
 template <>
 inline Status apply_correction_gain<step_correction_proof::Backend, step_correction_proof::state_size,
-                                    step_correction_proof::measurement_size>(
+                                    step_correction_proof::measurement_size, correction_proof::model>(
     step_correction_proof::Covariance const & P, step_correction_proof::Residual const & r,
     step_correction_proof::Jacobian const & H, step_correction_proof::Noise const & V, correction_proof::Gain const & K,
     step_correction_proof::Correction & delta, step_correction_proof::Covariance & output)
@@ -197,12 +197,18 @@ void verify_correction_step(State state, Covariance covariance, Residual residua
     Calls::state_before = &before_state;
     Calls::covariance_before = &before_covariance;
     Calls::gain = Calls::correction = Calls::injection = Calls::reset = 0U;
-    auto const status = formal_eskf::correct(state, covariance, residual, H, V, minimum, target_state, target_covariance
-#if FORMAL_ESKF_PROOF_BIAS_CONTROL
-                                             ,
-                                             permissions
+    auto const status =
+        formal_eskf::correct<Backend, measurement_size
+#if FORMAL_ESKF_PROOF_STATE_SIZE == 15
+                             ,
+                             correction_proof::model
 #endif
-    );
+                             >(state, covariance, residual, H, V, minimum, target_state, target_covariance
+#if FORMAL_ESKF_PROOF_BIAS_CONTROL
+                               ,
+                               permissions
+#endif
+        );
     __ESBMC_assert(bias_proof::same_permissions(permissions, old_permissions),
                    "E-BIAS-UPDATE: public correction preserves caller permissions");
     bool const gain_ok = results.gain_status == Status::success;

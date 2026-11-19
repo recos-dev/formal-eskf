@@ -36,8 +36,64 @@ The [INS codegen package](../../codegen/README.md) is selected by default throug
 `ESKF_CODEGEN`. It has separate exact-algebra, conditional numerical and
 memory-safety checks. Production selection is tested by CTest; differential
 fixtures alone do not cover it. Existing ESBMC core producer/caller profiles are
-explicitly dense (`ESKF_CODEGEN=0`); emitted-kernel checks do not close the
-source-composition proof for the generated path. Run native suites in both modes.
+explicitly dense (`ESKF_CODEGEN=0`) except the explicit generated suites below.
+Run native suites in both modes.
+
+### Generated covariance prediction
+
+`./scripts/verify_esbmc.sh pcov-generated` selects `ESKF_CODEGEN=1`. Its INS
+caller profiles cover both scalar formats, attitude modes and whole-P aliases.
+They execute the production caller with unconstrained pure producer returns,
+checking complete F/P/R/Q forwarding, validation order, status propagation and
+publication/rollback. Separate actual-kernel profiles check input frames and
+mirroring on the same backend. Actual `publish_covariance` profiles check the
+finite scan, exact copying without averaging and failure preservation; they
+include all IEEE candidates and both aliases.
+
+Acceptance also requires the matching `pcov` transition, quaternion-validation,
+rotation and INS noise/storage producers, their Exp/normalization dependencies,
+and the reused same-type matrix/finite/storage producers. Successful noise
+construction supplies diagonal Q_i; the caller checks every F entry. Symmetric
+PSD P remains a caller premise. Neither kernel nor publisher summaries assume
+success, finiteness or symmetry. Exact kernel equations are covered by the
+separate codegen algebra evidence, not by these unconstrained-return summaries.
+
+### Generated reset, correction and transactions
+
+`reset-generated` covers the actual INS reset caller in both reset modes and
+both whole-P alias arrangements, with the same right-Jacobian/finite producers
+as `reset`. Its kernel profiles check complete input frames and mirrored output;
+it reuses the actual publisher from `pcov-generated`.
+
+`correction-generated` separates three obligations for each explicit observation
+layout: actual cross/innovation/Joseph kernel frames, actual dispatch forwarding,
+and checked preparation/gain/Joseph callers. Body-vector dispatch must extract
+the three correct skew-Jacobian entries. Joseph receives the full effective gain
+and full correlated V; it does not assume an unconstrained optimal gain. Known
+layouts require their exact H, supplied by the observation model/wrapper proofs.
+Symmetric P/V and the structured A = I - KH are premises of the exact kernel
+identities, not assumptions used to hide caller failures.
+
+The caller summaries return arbitrary IEEE matrices and statuses. They are
+paired with the existing exact-type validation, solve, matrix-product, subtraction,
+finite and innovation-finalizer producers, plus an actual same-backend generated
+publisher. Generated Joseph publication copies the mirrored result without a
+second average. Logical stage counters in the common caller oracle describe
+algebraic stages; they are not counts of executed dense operations.
+
+`step-generated` checks production INS prediction, injection/reset and full
+correction transactions, including state/P/error aliases and symbolic bias
+permissions. Same-backend reset kernel and actual reset-frame profiles discharge
+the terminal component's input/rollback contract in both reset modes. Injection,
+observation model/wrapper, bias-mask and solver dependencies remain mandatory;
+a component summary alone is not a closed composition proof. AHRS and arbitrary-H
+products retain their dense producer obligations.
+
+These are source behavior claims on the fixed-array proof backends. Exact-real
+equivalence comes from the independent codegen algebra/Lean certificates;
+finite-record IEEE error certificates do not establish a uniform deployment
+error budget, repeated-step PSD or identical dense/generated failure boundaries.
+Target numerical budgets and deployed backend/library internals remain separate.
 
 ## Running checks
 

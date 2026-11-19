@@ -426,6 +426,64 @@ validate_correction_inputs<correction_proof::Backend, correction_proof::state_si
     return Calls::results->input_status;
 }
 #endif
+
+#if ESKF_CODEGEN && FORMAL_ESKF_PROOF_CORRECTION_MODEL
+// These are pure product boundaries, not reimplementations of generated
+// arithmetic. The counters record logical stages shared with the dense oracle;
+// a generated innovation/Joseph kernel replaces its complete dense expression.
+// correction_generated.cpp discharges the actual dispatch and kernel frames.
+template <>
+inline correction_proof::Gain
+correction_cross<correction_proof::model, correction_proof::Backend, correction_proof::state_size,
+                 correction_proof::measurement_size>(correction_proof::Covariance const & P,
+                                                     correction_proof::Jacobian const & H)
+{
+    using namespace correction_proof;
+    __ESBMC_assert(Calls::products++ == 0U && matches(P, *Calls::prior) && matches(H, *Calls::H),
+                   "E-CORRECT generated: cross boundary receives original P and H first");
+    return Calls::results->cross_covariance;
+}
+template <>
+inline correction_proof::Noise correction_innovation<correction_proof::model, correction_proof::Backend,
+                                                     correction_proof::state_size, correction_proof::measurement_size>(
+    correction_proof::Gain const & C, correction_proof::Jacobian const & H, correction_proof::Noise const & V)
+{
+    using namespace correction_proof;
+    __ESBMC_assert(Calls::products++ == 1U && Calls::adds++ == 0U && matches(C, Calls::results->cross_covariance) &&
+                       matches(H, *Calls::H) && matches(V, *Calls::V),
+                   "E-CORRECT generated: innovation receives computed cross and full original H/V");
+    return Calls::results->innovation_sum;
+}
+template <>
+inline correction_proof::Covariance correction_joseph<correction_proof::model, correction_proof::Backend,
+                                                      correction_proof::state_size, correction_proof::measurement_size>(
+    correction_proof::Covariance const & P, correction_proof::Covariance const & A, correction_proof::Gain const & K,
+    correction_proof::Noise const & V)
+{
+    using namespace correction_proof;
+    __ESBMC_assert(Calls::products == 4U && Calls::sandwiches == 0U && Calls::adds++ == 1U &&
+                       matches(P, *Calls::prior) && matches(A, Calls::results->transform) &&
+                       matches(K, Calls::results->gain) && matches(V, *Calls::V),
+                   "E-CORRECT generated: Joseph receives original P/V, complete I-KH and effective gain");
+    Calls::sandwiches = 2U;
+    return Calls::results->joseph_sum;
+}
+template <>
+inline Status publish_covariance<correction_proof::Backend, correction_proof::state_size>(
+    correction_proof::Covariance const & candidate, correction_proof::Covariance & output)
+{
+    using namespace correction_proof;
+    unpublished();
+    __ESBMC_assert(&candidate == &output && &output != Calls::covariance_output && Calls::finishes++ == 1U &&
+                       Calls::sandwiches == 2U && Calls::adds == 2U && matches(candidate, Calls::results->joseph_sum),
+                   "E-CORRECT generated: publisher receives complete mirrored Joseph scratch without averaging");
+    if (Calls::results->covariance_status == Status::success)
+    {
+        output = candidate;
+    }
+    return Calls::results->covariance_status;
+}
+#endif
 #define CORRECTION_FINISH(N)                                                                                           \
     template <>                                                                                                        \
     inline Status finish_covariance<correction_proof::Backend, N>(                                                     \
@@ -624,8 +682,8 @@ void verify_covariance_preparation(Covariance prior, Residual residual, Jacobian
     Status const expected = !validated  ? results.input_status
                             : !prepared ? Status::non_finite_result
                                         : results.innovation_status;
-    auto const status =
-        formal_eskf::correction_covariances(prior, residual, H, V, minimum, cross_output, innovation_output);
+    auto const status = formal_eskf::correction_covariances<Backend, state_size, measurement_size, model>(
+        prior, residual, H, V, minimum, cross_output, innovation_output);
     __ESBMC_assert(
         status == expected && Calls::validations == 1U && Calls::symmetries == 0U &&
             Calls::products == (validated ? 1U : 0U) + (prepared ? 1U : 0U) &&
@@ -642,5 +700,106 @@ void verify_covariance_preparation(Covariance prior, Residual residual, Jacobian
                        same_matrix(V, old_V),
                    "R-MEASUREMENT-FUSION: covariance preparation preserves the entire original prior and observation");
 }
+
+#if ESKF_CODEGEN && FORMAL_ESKF_PROOF_CORRECTION_MODEL
+// Split at the existing production API boundaries. E-STEP-CORRECT composes
+// these actual gain and apply bodies; no copied production algorithm is used.
+void initialize_generated_calls(Results const & results, Covariance const & P, Residual const & r, Jacobian const & H,
+                                Noise const & V, Scalar minimum)
+{
+    Calls::observe = false;
+    Calls::prior = &P;
+    Calls::r = &r;
+    Calls::H = &H;
+    Calls::V = &V;
+    Calls::results = &results;
+    Calls::minimum = minimum;
+    Calls::correction_output = nullptr;
+    Calls::products = Calls::symmetries = Calls::finishes = Calls::solves = Calls::sandwiches = Calls::validations =
+        Calls::finites = Calls::adds = Calls::subtracts = 0U;
+}
+
+void verify_generated_gain(Covariance P, Residual r, Jacobian H, Noise V, Scalar minimum, Gain output, Results results)
+{
+    static_assert(FORMAL_ESKF_PROOF_CORRECTION_CONTRACT == 1 && state_size == 15U);
+    auto const old_P = P;
+    auto const old_r = r;
+    auto const old_H = H;
+    auto const old_V = V;
+    auto const before = output;
+    initialize_generated_calls(results, old_P, old_r, old_H, old_V, minimum);
+    bool const cross = results.input_status == Status::success;
+    bool const innovation = cross && results.cross_finite;
+    bool const solve = innovation && results.innovation_status == Status::success;
+    auto const expected = !cross        ? results.input_status
+                          : !innovation ? Status::non_finite_result
+                          : !solve      ? results.innovation_status
+                                        : results.solve_status;
+    auto const status = formal_eskf::detail::compute_correction_gain<Backend, state_size, measurement_size, model>(
+        P, r, H, V, minimum, output);
+    __ESBMC_assert(
+        status == expected && Calls::validations == 1U &&
+            Calls::products == static_cast<unsigned>(cross) + static_cast<unsigned>(innovation) &&
+            Calls::finites == static_cast<unsigned>(cross) && Calls::adds == static_cast<unsigned>(innovation) &&
+            Calls::finishes == static_cast<unsigned>(innovation) && Calls::solves == static_cast<unsigned>(solve) &&
+            Calls::sandwiches == 0U && Calls::subtracts == 0U,
+        "E-CORRECT generated gain: first failure, exact eligibility and no Joseph work");
+    if (status == Status::success)
+    {
+        __ESBMC_assert(same_matrix(output, results.gain), "E-CORRECT generated gain: publish complete solved gain");
+    }
+    else
+    {
+        __ESBMC_assert(same_matrix(output, before), "E-CORRECT generated gain: preserve complete output on failure");
+    }
+    __ESBMC_assert(same_matrix(P, old_P) && same_matrix(r, old_r) && same_matrix(H, old_H) && same_matrix(V, old_V),
+                   "E-CORRECT generated gain: complete input frames");
+}
+
+void verify_generated_apply(Covariance P, Residual r, Jacobian H, Noise V, Gain K, Correction delta, Covariance output,
+                            Results results)
+{
+    static_assert(FORMAL_ESKF_PROOF_CORRECTION_CONTRACT == 1 && state_size == 15U);
+    auto const old_P = P;
+    auto const old_r = r;
+    auto const old_H = H;
+    auto const old_V = V;
+    auto const old_K = K;
+    auto const old_delta = delta;
+    auto const before = output;
+    results.gain = K; // Arbitrary effective gain, including all possible row constraints.
+    results.solve_status = Status::success;
+    initialize_generated_calls(results, old_P, old_r, old_H, old_V, Scalar{0});
+    Calls::correction_output = &delta;
+    Calls::correction_before = &old_delta;
+    Calls::covariance_output = &output;
+    Calls::covariance_before = &before;
+    // Phase offsets for the shared observers, not assertions that gain ran here.
+    Calls::products = 2U;
+    Calls::solves = Calls::finishes = Calls::adds = Calls::finites = 1U;
+    bool const joseph = results.delta_finite && results.transform_finite;
+    auto const status = formal_eskf::detail::apply_correction_gain<Backend, state_size, measurement_size, model>(
+        P, r, H, V, K, delta, output);
+    __ESBMC_assert(
+        status == (joseph ? results.covariance_status : Status::non_finite_result) && Calls::products == 4U &&
+            Calls::subtracts == 1U && Calls::finites == 2U + static_cast<unsigned>(results.delta_finite) &&
+            Calls::adds == 1U + static_cast<unsigned>(joseph) && Calls::sandwiches == (joseph ? 2U : 0U) &&
+            Calls::finishes == 1U + static_cast<unsigned>(joseph) && Calls::validations == 0U && Calls::solves == 1U,
+        "E-CORRECT generated apply: first failure and exact Joseph eligibility");
+    if (status == Status::success)
+    {
+        __ESBMC_assert(same_matrix(delta, results.delta) && same_matrix(output, results.joseph_sum),
+                       "E-CORRECT generated apply: publish complete error and unchanged mirrored Joseph");
+    }
+    else
+    {
+        __ESBMC_assert(same_matrix(delta, old_delta) && same_matrix(output, before),
+                       "E-CORRECT generated apply: both outputs preserved on every failure");
+    }
+    __ESBMC_assert(same_matrix(P, old_P) && same_matrix(r, old_r) && same_matrix(H, old_H) && same_matrix(V, old_V) &&
+                       same_matrix(K, old_K),
+                   "E-CORRECT generated apply: complete input frames");
+}
+#endif
 
 int main() { return 0; }

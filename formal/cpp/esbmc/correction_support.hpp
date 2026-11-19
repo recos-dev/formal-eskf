@@ -94,6 +94,11 @@ template <typename Cell> bool same_cells(Cell const & a, Cell const & b)
     }
 }
 template <typename M> bool same_matrix(M const & a, M const & b) { return same_cells(cells(a), cells(b)); }
+#ifndef FORMAL_ESKF_PROOF_CORRECTION_MODEL
+#define FORMAL_ESKF_PROOF_CORRECTION_MODEL 0
+#endif
+constexpr auto model = static_cast<formal_eskf::detail::CorrectionModel>(FORMAL_ESKF_PROOF_CORRECTION_MODEL);
+static_assert(FORMAL_ESKF_PROOF_CORRECTION_MODEL >= 0 && FORMAL_ESKF_PROOF_CORRECTION_MODEL <= 5);
 constexpr std::size_t state_size = FORMAL_ESKF_PROOF_STATE_SIZE;
 constexpr std::size_t measurement_size = FORMAL_ESKF_PROOF_MEASUREMENT_SIZE;
 static_assert(state_size == 3U || state_size == 15U);

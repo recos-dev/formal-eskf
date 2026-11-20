@@ -15,14 +15,13 @@
 #include <formal_eskf/eskf/velocity.hpp>
 #include <formal_eskf/runtime/imu.hpp>
 #include "test_backend.hpp"
-#include "test_support.hpp"
+#include "test_cases.hpp"
 
 namespace
 {
 
 using formal_eskf::Status;
 using TestContext = formal_eskf::test::Context;
-constexpr std::string_view profile = "bias limits";
 
 template <typename Matrix> bool same_bits(Matrix const & a, Matrix const & b)
 {
@@ -46,7 +45,7 @@ template <typename State> bool same_navigation(State const & a, State const & b)
            same_bits(a.q_nb.coefficients(), b.q_nb.coefficients());
 }
 
-template <typename Linalg> void test_bounds(TestContext & test)
+template <typename Linalg> void test_bounds(TestContext & test, std::string_view profile)
 {
     using Scalar = typename Linalg::value_type;
     formal_eskf::configuration::Ins::NominalState<Linalg> state;
@@ -91,9 +90,16 @@ template <typename Linalg> void test_bounds(TestContext & test)
     {
         test.expect(state.b_a(axis) == Scalar{0} && state.b_g(axis) == Scalar{0}, profile, "zero bounds force zero");
     }
+    state = original;
+    state.b_a(0U) = -Scalar{0};
+    state.b_g(2U) = -Scalar{0};
+    auto const signed_zero = state;
+    test.expect(formal_eskf::runtime::limit_bias<Linalg>(state, limits) == Status::success &&
+                    same_bits(state.b_a, signed_zero.b_a) && same_bits(state.b_g, signed_zero.b_g),
+                profile, "in-range positive and negative zero representations remain untouched");
 }
 
-template <typename Linalg> void test_invalid(TestContext & test)
+template <typename Linalg> void test_invalid(TestContext & test, std::string_view profile)
 {
     using Scalar = typename Linalg::value_type;
     for (auto invalid : {Scalar{-1}, std::numeric_limits<Scalar>::infinity(), -std::numeric_limits<Scalar>::infinity(),
@@ -129,9 +135,35 @@ template <typename Linalg> void test_invalid(TestContext & test)
                         profile, "invalid limits or any non-finite bias leave the complete state unchanged");
         }
     }
+    // The limiter consumes only limits and six biases, not unrelated nominal fields.
+    for (std::size_t field = 0U; field < 6U; ++field)
+    {
+        formal_eskf::configuration::Ins::NominalState<Linalg> state;
+        if (field < 3U)
+        {
+            state.p_n(field) = std::numeric_limits<Scalar>::quiet_NaN();
+        }
+        else
+        {
+            state.v_n(field - 3U) = std::numeric_limits<Scalar>::infinity();
+        }
+        state.b_a(0U) = Scalar{2};
+        auto const before = state;
+        test.expect(formal_eskf::runtime::limit_bias<Linalg>(state, {Scalar{0.5}, Scalar{0.125}}) == Status::success &&
+                        same_navigation(state, before) && state.b_a(0U) == Scalar{0.5},
+                    profile, "nonfinite unused navigation fields neither reject nor get repaired");
+        state = before;
+        state.b_g(2U) = std::numeric_limits<Scalar>::quiet_NaN();
+        auto const invalid_state = state;
+        test.expect(formal_eskf::runtime::limit_bias<Linalg>(state, {Scalar{-1}, Scalar{0.125}}) ==
+                            Status::non_finite_input &&
+                        same_navigation(state, invalid_state) && same_bits(state.b_a, invalid_state.b_a) &&
+                        same_bits(state.b_g, invalid_state.b_g),
+                    profile, "nonfinite last bias wins before negative-limit domain validation and earlier clamp");
+    }
 }
 
-template <typename Linalg> void test_correction(TestContext & test)
+template <typename Linalg> void test_correction(TestContext & test, std::string_view profile)
 {
     using Scalar = typename Linalg::value_type;
     using Vector = formal_eskf::linalg::Vector<Linalg, 3U>;
@@ -192,22 +224,49 @@ template <typename Linalg> void test_correction(TestContext & test)
                 profile, "saturation does not latch or prevent a later inward correction");
 }
 
+template <typename Linalg> void no_latch(TestContext & test, std::string_view profile)
+{
+    test_correction<Linalg>(test, profile);
+    using Scalar = typename Linalg::value_type;
+    using Vector = formal_eskf::linalg::Vector<Linalg, 3U>;
+    using Covariance = formal_eskf::linalg::Matrix<Linalg, 15U, 15U>;
+    using Matrix3 = formal_eskf::linalg::Matrix<Linalg, 3U, 3U>;
+    formal_eskf::configuration::Ins::NominalState<Linalg> state;
+    state.b_a(0U) = Scalar{1};
+    formal_eskf::runtime::BiasLimits<Scalar> const limits{Scalar{0.125}, Scalar{0.125}};
+    test.expect(formal_eskf::runtime::limit_bias<Linalg>(state, limits) == Status::success &&
+                    state.b_a(0U) == Scalar{0.125},
+                profile, "begin on positive saturation boundary");
+    auto P = Covariance::identity() * Scalar{2};
+    P(3U, 9U) = Scalar{0.25};
+    P(9U, 3U) = Scalar{0.25};
+    auto const V = Matrix3::identity() * Scalar{2};
+    Vector measurement;
+    measurement(0U) = Scalar{-0.5};
+    // S=4I and L=2I: K_ba,x=1/16; delta_ba,x=(-1/2)/16=-1/32.
+    test.expect(formal_eskf::correct_velocity(state, P, measurement, V, Scalar{0.125}, state, P) == Status::success &&
+                    state.b_a(0U) == Scalar{0.09375},
+                profile, "independent dyadic correction leaves saturation by exactly one thirty-second");
+    auto const corrected = state;
+    auto const corrected_P = P;
+    test.expect(formal_eskf::runtime::limit_bias<Linalg>(state, limits) == Status::success &&
+                    same_navigation(state, corrected) && same_bits(state.b_a, corrected.b_a) &&
+                    same_bits(state.b_g, corrected.b_g) && same_bits(P, corrected_P),
+                profile, "inward correction releases immediately without covariance or nominal changes");
+}
+
 } /* end namespace */
 
-int main()
+int main(int argc, char ** argv)
 {
     formal_eskf::test::configure_backend_test();
-    TestContext test;
-    test_bounds<formal_eskf::test::Backend<float>>(test);
-    test_bounds<formal_eskf::test::Backend<double>>(test);
-    test_invalid<formal_eskf::test::Backend<float>>(test);
-    test_invalid<formal_eskf::test::Backend<double>>(test);
-    test_correction<formal_eskf::test::Backend<float>>(test);
-    test_correction<formal_eskf::test::Backend<double>>(test);
-    if (test.failures() != 0)
-    {
-        return 1;
-    }
-    std::cout << "Bias limits: pass\n";
-    return 0;
+    using formal_eskf::test::Case;
+    using Float = formal_eskf::test::Backend<float>;
+    using Double = formal_eskf::test::Backend<double>;
+    Case const cases[] = {
+        {"TC-R-BIAS-LIMITS-01", "float", test_bounds<Float>},  {"TC-R-BIAS-LIMITS-01", "double", test_bounds<Double>},
+        {"TC-R-BIAS-LIMITS-02", "float", test_invalid<Float>}, {"TC-R-BIAS-LIMITS-02", "double", test_invalid<Double>},
+        {"TC-R-BIAS-LIMITS-03", "float", no_latch<Float>},     {"TC-R-BIAS-LIMITS-03", "double", no_latch<Double>},
+    };
+    return formal_eskf::test::run_cases(cases, argc, argv);
 }

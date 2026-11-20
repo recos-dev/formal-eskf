@@ -196,6 +196,7 @@ template <typename Backend> void failures(Context & test, std::string_view profi
         unknown_mask,
         excessive_mask,
         norm_limit,
+        unsafe_norm,
         nan_limit,
         force_nan,
         angular_nan,
@@ -203,10 +204,10 @@ template <typename Backend> void failures(Context & test, std::string_view profi
         norm_overflow,
         priority
     };
-    constexpr std::array faults{Fault::zero_period,    Fault::excessive_period, Fault::unknown_mask,
-                                Fault::excessive_mask, Fault::norm_limit,       Fault::nan_limit,
-                                Fault::force_nan,      Fault::angular_nan,      Fault::angular_overflow,
-                                Fault::norm_overflow,  Fault::priority};
+    constexpr std::array faults{Fault::zero_period,      Fault::excessive_period, Fault::unknown_mask,
+                                Fault::excessive_mask,   Fault::norm_limit,       Fault::unsafe_norm,
+                                Fault::nan_limit,        Fault::force_nan,        Fault::angular_nan,
+                                Fault::angular_overflow, Fault::norm_overflow,    Fault::priority};
     for (unsigned prefix : {0U, 1U, 2U, 3U})
     {
         Sampler<Backend> baseline;
@@ -242,6 +243,10 @@ template <typename Backend> void failures(Context & test, std::string_view profi
                     break;
                 case Fault::norm_limit:
                     minimum = 0;
+                    break;
+                case Fault::unsafe_norm:
+                    minimum = Scalar{2};
+                    expected = Status::invalid_quaternion_norm;
                     break;
                 case Fault::nan_limit:
                     minimum = std::numeric_limits<Scalar>::quiet_NaN();

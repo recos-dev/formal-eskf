@@ -199,8 +199,8 @@ formal_eskf_add_backend_test(test_contracts common/test_contracts formal_eskf.co
 
 formal_eskf_add_backend_test(test_tilt_alignment runtime/test_tilt_alignment formal_eskf.tilt_alignment.eigen formal_eskf::runtime)
 
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
 if(FORMAL_ESKF_BUILD_EIGEN_BACKEND)
-    find_package(Python3 COMPONENTS Interpreter REQUIRED)
     separate_arguments(TEST_COMPILER_ARGS NATIVE_COMMAND "${CMAKE_CXX_COMPILER_ARG1} ${CMAKE_CXX_FLAGS}")
     list(TRANSFORM TEST_COMPILER_ARGS PREPEND "--compiler-arg=")
     add_test(NAME formal_eskf.common.compile_contracts
@@ -209,3 +209,6 @@ if(FORMAL_ESKF_BUILD_EIGEN_BACKEND)
             --include-dir $<TARGET_PROPERTY:Eigen3::Eigen,INTERFACE_INCLUDE_DIRECTORIES>)
     set_tests_properties(formal_eskf.common.compile_contracts PROPERTIES LABELS "plan-source:tests/common/test_compile_contracts.py")
 endif()
+
+add_test(NAME formal_eskf.tools.test_plan
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_test_plan.py)

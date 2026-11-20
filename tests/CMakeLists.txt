@@ -13,6 +13,8 @@ function(formal_eskf_configure_test target_name)
                 -Wconversion
                 -Wsign-conversion
                 -UNDEBUG
+                -fno-fast-math
+                -ffp-contract=off
         )
     endif()
 endfunction()

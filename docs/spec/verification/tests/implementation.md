@@ -102,6 +102,11 @@ Integration owners and production behavior changes remain outside this work.
 
 | T-65 | `tests/core/test_sequence.cpp` | Make float fixture conversions explicit while preserving represented values. | Implemented |
 
+| T-66 | `tests/core/test_prediction.cpp` | Use shared profile metadata and verify strict registry reconciliation. | Implemented |
+| T-67 | `tests/core/test_covariance.cpp` | Use shared profile metadata and verify strict registry reconciliation. | Pending |
+| T-68 | `tests/core/test_injection_reset.cpp` | Use shared profile metadata and verify strict registry reconciliation. | Pending |
+| T-69 | `tests/core/test_correction.cpp` | Use shared profile metadata and verify strict registry reconciliation. | Pending |
+
 ## Final reconciliation and cleanup
 
 After these replacements are reviewed, reconcile every design row and every old

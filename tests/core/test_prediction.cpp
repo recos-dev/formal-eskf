@@ -685,6 +685,5 @@ int main(int argc, char ** argv)
         {"TC-E-PRED-alias-frame", "AHRS.binary32", test_alias_frame<float_backend, Ahrs>},
         {"TC-E-PRED-alias-frame", "AHRS.binary64", test_alias_frame<double_backend, Ahrs>},
     };
-    std::cout << "Configuration: quat_approx=" << ESKF_QUAT_APPROX << '\n';
     return formal_eskf::test::run_cases(cases, argc, argv);
 }

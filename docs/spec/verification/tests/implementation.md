@@ -87,7 +87,7 @@ Integration owners and production behavior changes remain outside this work.
 
 | T-54 | `tests/common/test_compile_contracts.py` | Complete positive compile coverage for all 35 required matrix shapes. | Implemented |
 | T-55 | `tests/runtime/gravity/test_sampling.cpp` | Exercise reachable positive normalization-threshold failure and continuation. | Implemented |
-| T-56 | `tests/runtime/imu/test_bias_limits.cpp` | Check successful bias clamping preserves an unconsumed nonfinite quaternion. | Pending |
+| T-56 | `tests/runtime/imu/test_bias_limits.cpp` | Check successful bias clamping preserves an unconsumed nonfinite quaternion. | Implemented |
 | T-57 | `tests/runtime/imu/test_bias_process_noise.cpp` | Snapshot borrowed noise before the first disjoint failure call. | Pending |
 | T-58 | `tests/runtime/imu/test_bias_inhibition.cpp` | Observe all borrowed nominal fields on rejected policy updates. | Pending |
 | T-59 | `tests/runtime/gravity/test_fusion.cpp` | Replace opaque condition numbers with named scenarios without changing assertions. | Pending |

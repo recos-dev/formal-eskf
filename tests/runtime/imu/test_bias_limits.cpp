@@ -161,6 +161,27 @@ template <typename Linalg> void test_invalid(TestContext & test, std::string_vie
                         same_bits(state.b_g, invalid_state.b_g),
                     profile, "nonfinite last bias wins before negative-limit domain validation and earlier clamp");
     }
+    // The quaternion is also unconsumed by this operation. Construct invalid coefficients
+    // through public operations rather than changing object layout or private fields.
+    formal_eskf::configuration::Ins::NominalState<Linalg> state;
+    Scalar const tiny =
+        std::ldexp(Scalar{1}, (std::numeric_limits<Scalar>::min_exponent - std::numeric_limits<Scalar>::digits) / 2);
+    test.expect(decltype(state.q_nb)::from_coefficients(tiny, tiny / Scalar{2}, Scalar{0}, Scalar{0},
+                                                        std::numeric_limits<Scalar>::min(),
+                                                        state.q_nb) == Status::success,
+                profile, "public rounded-normalization witness");
+    for (unsigned count = 0; count < 64U && formal_eskf::linalg::all_finite(state.q_nb.coefficients()); ++count)
+    {
+        state.q_nb = state.q_nb * state.q_nb;
+    }
+    test.expect(!formal_eskf::linalg::all_finite(state.q_nb.coefficients()), profile,
+                "public raw products reach nonfinite unused attitude");
+    state.b_a(0U) = Scalar{2};
+    state.b_g(2U) = Scalar{-2};
+    auto const before = state;
+    test.expect(formal_eskf::runtime::limit_bias<Linalg>(state, {Scalar{0.5}, Scalar{0.125}}) == Status::success &&
+                    same_navigation(state, before) && state.b_a(0U) == Scalar{0.5} && state.b_g(2U) == Scalar{-0.125},
+                profile, "clamping neither consumes nor repairs nonfinite unused quaternion coefficients");
 }
 
 template <typename Linalg> void test_correction(TestContext & test, std::string_view profile)

@@ -9,12 +9,13 @@
 #include <formal_eskf/runtime/accelerometer.hpp>
 
 #include <array>
+#include <cmath>
 #include <iostream>
 #include <limits>
 #include <string_view>
 
 #include "test_backend.hpp"
-#include "test_support.hpp"
+#include "test_cases.hpp"
 
 namespace
 {
@@ -27,15 +28,6 @@ using TestContext = formal_eskf::test::Context;
 template <typename Linalg> void test_truth_table(TestContext & test, std::string_view profile)
 {
     using Magnitude = formal_eskf::runtime::AccelerometerMagnitude<Linalg>;
-    constexpr std::array<Status, 9U> statuses{Status::success,
-                                              Status::non_finite_input,
-                                              Status::domain_error,
-                                              Status::out_of_range,
-                                              Status::zero_or_unsafe_divisor,
-                                              Status::invalid_quaternion_norm,
-                                              Status::not_positive_definite,
-                                              Status::ill_conditioned,
-                                              Status::non_finite_result};
     // Five logical bits: enable, tilt, horizontal aiding, rest, magnitude band.
     for (unsigned flags = 0U; flags < 32U; ++flags)
     {
@@ -47,17 +39,13 @@ template <typename Linalg> void test_truth_table(TestContext & test, std::string
                 (flags & 4U) != 0U,
                 (flags & 8U) != 0U,
                 {(clipping & 1U) != 0U, (clipping & 2U) != 0U, (clipping & 4U) != 0U}};
-            for (auto const status : statuses)
-            {
-                typename Magnitude::Result const magnitude{status, (flags & 16U) != 0U, {}};
-                auto const result = check_accelerometer_fusion_conditions<Linalg>(conditions, magnitude);
-                // Enumerated active rows, independent of the production boolean expression.
-                bool const expected_active =
-                    status == Status::success && (flags == 11U || flags == 19U || flags == 27U);
-                test.expect(result.status == status && result.active == expected_active &&
-                                result.sample_eligible == (expected_active && clipping == 0U),
-                            profile, "all 256 boolean combinations and every Status preserve the two-stage decision");
-            }
+            typename Magnitude::Result const magnitude{Status::success, (flags & 16U) != 0U, {}};
+            auto const result = check_accelerometer_fusion_conditions<Linalg>(conditions, magnitude);
+            // Explicit accepted rows avoid reproducing the production Boolean expression.
+            bool const expected_active = flags == 11U || flags == 19U || flags == 27U;
+            test.expect(result.status == Status::success && result.active == expected_active &&
+                            result.sample_eligible == (expected_active && clipping == 0U),
+                        profile, "all 256 Boolean/clipping partitions preserve activation versus eligibility");
         }
     }
     constexpr typename Magnitude::Result magnitude{Status::success, true, {}};
@@ -109,25 +97,58 @@ template <typename Linalg> void test_magnitude_integration(TestContext & test, s
                 "rest cannot override a failed current-sample magnitude evaluation");
 }
 
-template <typename Scalar> void run_conformance(TestContext & test, std::string_view profile)
+template <typename Linalg> void test_failed_evidence(TestContext & test, std::string_view profile)
 {
-    using Linalg = formal_eskf::test::Backend<Scalar>;
-    test_truth_table<Linalg>(test, profile);
+    using Magnitude = formal_eskf::runtime::AccelerometerMagnitude<Linalg>;
+    using Scalar = typename Linalg::value_type;
+    constexpr std::array statuses{Status::non_finite_input,
+                                  Status::domain_error,
+                                  Status::out_of_range,
+                                  Status::zero_or_unsafe_divisor,
+                                  Status::invalid_quaternion_norm,
+                                  Status::not_positive_definite,
+                                  Status::ill_conditioned,
+                                  Status::non_finite_result};
+    for (auto status : statuses)
+    {
+        for (bool at_rest : {false, true})
+        {
+            AccelerometerFusionConditions const conditions{true, true, false, at_rest, {false, false, false}};
+            typename Magnitude::Result const magnitude{status, true, std::numeric_limits<Scalar>::quiet_NaN()};
+            auto const result = check_accelerometer_fusion_conditions<Linalg>(conditions, magnitude);
+            test.expect(result.status == status && !result.active && !result.sample_eligible, profile,
+                        "every failed producer status inhibits both flags even at rest");
+            test.expect(magnitude.status == status && magnitude.within_gravity_band &&
+                            std::isnan(magnitude.squared_norm) && conditions.enabled && conditions.tilt_aligned &&
+                            !conditions.horizontal_aiding && conditions.at_rest == at_rest,
+                        profile, "condition and evidence inputs remain unchanged");
+        }
+    }
+    for (Scalar unused :
+         {Scalar{-1}, std::numeric_limits<Scalar>::infinity(), std::numeric_limits<Scalar>::quiet_NaN()})
+    {
+        typename Magnitude::Result const magnitude{Status::success, true, unused};
+        AccelerometerFusionConditions const conditions{true, true, false, false, {false, false, false}};
+        auto const result = check_accelerometer_fusion_conditions<Linalg>(conditions, magnitude);
+        test.expect(result.status == Status::success && result.active && result.sample_eligible, profile,
+                    "only producer status and band verdict consumed; unused numeric diagnostics add no new gate");
+    }
     test_magnitude_integration<Linalg>(test, profile);
 }
 
 } /* end namespace */
 
-int main()
+int main(int argc, char ** argv)
 {
     formal_eskf::test::configure_backend_test();
-    TestContext test;
-    run_conformance<float>(test, "float");
-    run_conformance<double>(test, "double");
-    if (test.failures() != 0)
-    {
-        return 1;
-    }
-    std::cout << "Accelerometer fusion condition tests passed\n";
-    return 0;
+    using formal_eskf::test::Case;
+    using Float = formal_eskf::test::Backend<float>;
+    using Double = formal_eskf::test::Backend<double>;
+    constexpr std::array cases{
+        Case{"TC-R-ACCELEROMETER-CONDITIONS-01", "float", test_truth_table<Float>},
+        Case{"TC-R-ACCELEROMETER-CONDITIONS-01", "double", test_truth_table<Double>},
+        Case{"TC-R-ACCELEROMETER-CONDITIONS-02", "float", test_failed_evidence<Float>},
+        Case{"TC-R-ACCELEROMETER-CONDITIONS-02", "double", test_failed_evidence<Double>},
+    };
+    return formal_eskf::test::run_cases(cases, argc, argv);
 }

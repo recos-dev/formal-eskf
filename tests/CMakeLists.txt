@@ -145,7 +145,7 @@ if(FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND)
     add_test(NAME formal_eskf.linalg.cmsis_dsp.storage COMMAND test_cmsis_dsp_backend)
 endif()
 
-formal_eskf_add_backend_test(test_linalg_eigen test_linalg_eigen formal_eskf.linalg.eigen formal_eskf::linalg)
+formal_eskf_add_backend_test(test_linalg_eigen math/test_linalg formal_eskf.linalg.eigen formal_eskf::linalg)
 formal_eskf_add_backend_test(test_linalg_spd test_linalg_spd formal_eskf.linalg.spd formal_eskf::linalg)
 formal_eskf_add_backend_test(test_so3_eigen test_so3_eigen formal_eskf.so3.eigen formal_eskf::so3)
 formal_eskf_add_backend_test(test_so3_jacobian test_so3_jacobian formal_eskf.so3.jacobian formal_eskf::so3)

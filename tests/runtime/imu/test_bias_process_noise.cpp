@@ -167,11 +167,12 @@ template <typename Linalg> void test_failures(TestContext & test, std::string_vi
                 }
                 auto const expected = std::isfinite(invalid) ? Status::domain_error : Status::non_finite_input;
                 auto const covariance_before = fixture.covariance;
+                auto const input_before = fixture.noise;
                 test.expect(formal_eskf::runtime::inhibit_bias_process_noise(fixture.covariance, fixture.noise,
                                                                              output) == expected &&
-                                same_noise(output, before) && same_bits(fixture.covariance, covariance_before),
-                            profile, "invalid consumed input preserves every output coefficient");
-                auto const input_before = fixture.noise;
+                                same_noise(output, before) && same_noise(fixture.noise, input_before) &&
+                                same_bits(fixture.covariance, covariance_before),
+                            profile, "invalid consumed input preserves every input and output coefficient");
                 test.expect(formal_eskf::runtime::inhibit_bias_process_noise(fixture.covariance, fixture.noise,
                                                                              fixture.noise) == expected &&
                                 same_noise(fixture.noise, input_before) &&

@@ -48,9 +48,9 @@ def compile_source(ARGS, DIRECTORY, SOURCE, *, DEFINITIONS=(), EXPECT_SUCCESS=Tr
 
 def shapes(ARGS, DIRECTORY):
     SHAPES = [(N, 1) for N in (1, 2, 3, 4, 6, 15, 16)] + [
-        (1, 3), (1, 15), (2, 2), (2, 15), (2, 16), (15, 2),
+        (1, 3), (1, 15), (2, 2), (2, 3), (3, 2), (2, 15), (2, 16), (15, 2),
         (3, 3), (3, 15), (3, 16), (15, 3), (4, 3), (4, 4), (4, 15), (4, 16), (15, 4),
-        (6, 6), (6, 15), (6, 16), (15, 6), (12, 12), (12, 15), (15, 12), (15, 15), (16, 15)]
+        (6, 3), (3, 6), (6, 6), (6, 15), (6, 16), (15, 6), (12, 12), (12, 15), (15, 12), (15, 15), (16, 15)]
     BODY = "\n".join(f"Matrix<{R},{C}> m{I}; (void)m{I};" for I, (R, C) in enumerate(SHAPES))
     compile_source(ARGS, DIRECTORY, PREAMBLE + "int main(){" + BODY + "}")
     # Compile each valid companion immediately before its prohibited operation.

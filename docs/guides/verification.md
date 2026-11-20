@@ -16,9 +16,9 @@ it is neither a proof nor a mandatory review of every function.
 ## Open boundaries
 
 - Full `HeightAiding` transactions remain outside the completed producer checks.
-- Output-owner transactions and live IMU/PX4/replay calling sequences need
-  source-composition evidence. IMU and observation-owner contracts and induction
-  are described below; native owner/module tests do not prove the live sequence.
+- Live IMU/PX4/replay calling sequences still need source-composition evidence.
+  IMU, observation and output-owner contracts and induction are described below;
+  their component evidence and native module tests do not prove the live sequence.
 - Deployed matrix/libm accuracy, numerical error budgets and repeated-step
   invariants are not implied by finite outputs or exact-real theorems.
 - Work-queue/consumer behavior, dependency allocation/locking, forced shutdown,
@@ -275,6 +275,7 @@ git clone https://github.com/esbmc/esbmc.git tools/bootstrap/esbmc-reference
 git -C tools/bootstrap/esbmc-reference checkout 61172c6f9afe6faee097b117edd0347cfbb6f28d
 git -C tools/bootstrap/esbmc-reference apply "$PWD/configs/esbmc/reference-address.patch"
 git -C tools/bootstrap/esbmc-reference apply "$PWD/configs/esbmc/ieee-frame.patch"
+git -C tools/bootstrap/esbmc-reference apply "$PWD/configs/esbmc/array-filler.patch"
 cmake -S tools/bootstrap/esbmc-reference -B tools/bootstrap/esbmc-reference/build -G Ninja \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 \
     -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm -DClang_DIR=/usr/lib/llvm-18/lib/cmake/clang \
@@ -285,6 +286,8 @@ FORMAL_ESKF_ESBMC="$PWD/tools/bootstrap/esbmc-reference/build/src/esbmc/esbmc" \
     ./tests/test_esbmc.sh --references
 FORMAL_ESKF_ESBMC="$PWD/tools/bootstrap/esbmc-reference/build/src/esbmc/esbmc" \
     ./tests/test_esbmc.sh --frames
+FORMAL_ESKF_ESBMC="$PWD/tools/bootstrap/esbmc-reference/build/src/esbmc/esbmc" \
+    ./tests/test_esbmc.sh --initialization
 FORMAL_ESKF_ESBMC="$PWD/tools/bootstrap/esbmc-reference/build/src/esbmc/esbmc" \
     ./scripts/verify_esbmc.sh delayed-views
 ```
@@ -333,6 +336,85 @@ patch identities and reruns of affected source evidence, including IEEE storage
 frames. Earlier evidence is not transferred to the patched binary. Reviewed
 source, qualification and affected reruns are required together; passing this
 small qualification alone does not establish that all prior proofs remain valid.
+
+### Aggregate initialization tool qualification
+
+[array-filler.patch](../../configs/esbmc/array-filler.patch) applies to the same
+pinned frontend. It materializes Clang's omitted array-element initializers
+separately and completes each C++ element's initialization before the next.
+Zero-filling alone loses nonzero default member values, including the identity
+quaternion in an output history record; sharing or delaying evaluation can also
+change constructor and initializer side effects. Production initialization must
+not be rewritten to accommodate that verifier defect.
+
+`./tests/test_esbmc.sh --initialization` compares the cases with a native C/C++
+compiler and checks both scalar formats. It covers default and partial record
+arrays, nested and empty arrays, constructor/default-member evaluation order,
+explicit scalar initializers and C zero-fill/designated initialization. Named
+negative controls must fail their intended assertions. This qualification
+concerns those initialization semantics, not the complete frontend or compiler.
+Retain its tool/source identities and native/solver results with the accepted
+output-owner evidence; a preflight alone does not replace these checks.
+
+Symbolic conditional copies of nested aggregate values remain an isolated tool
+limitation in this build. Output reset source-step profiles bind each Boolean
+seed/history case separately; both cases and all physical slots are mandatory.
+The production conditional is unchanged. Proof oracles avoid that unsupported
+aggregate-copy construct. This does not establish general conditional-copy or
+constant-evaluation support for unrelated source.
+
+### Output predictor
+
+`delayed-output` covers the fixed 64-slot output owner in binary32/binary64,
+with 64-bit words and the default deployment profile. It checks initialization,
+configuration, seed, propagation wiring, feedback, reset and complete storage
+frames. Numerical inputs and producer outcomes remain arbitrary, including
+failure and non-finite values. Prediction requires admitted 3.8--4.2 ms real
+intervals; matching main-state success remains a caller premise.
+
+| Obligation | Required evidence |
+|---|---|
+| Storage and startup | Actual typed insertion/reset, complete constructor/seed/configuration frames, timing and state-validation producers. |
+| Prediction | Exact epoch/lag/overwrite guards, held-before-real propagation, full parameter/IMU forwarding, in-place nominal failure frame and publication only after success. |
+| Feedback | Exact delayed/start-epoch admission, quaternion operand order and normalization, original IEEE tracking equations, staging before commit and complete feedback publication. |
+| Reset | Exact prefix validation, each seed/history transform, finite/normalization failure, commit after all candidates and seed-only publication without synthetic history. |
+| Induction | Physical traversal matches the logical ring; successful staging supplies every committed record, failure preserves visible history, and source contracts preserve temporal order and session capacity. |
+
+The runner requires every physical position, both reset seed/history cases and
+every frame partition. Behavioral summaries permit arbitrary storage after a
+mutating producer; companion frame profiles check all cells under the same
+inputs. Actual typed producers supply copying equations. These overapproximations
+do not assume numerical success or let a caller modify state outside its contract.
+
+Large feedback/reset methods use
+[`output_steps.py`](../../formal/cpp/esbmc/output_steps.py) to extract pinned
+source fragments. Review the complete original method alongside the fragments:
+local initialization, call receiver and alias identity, loop bounds and cursor
+updates, early return, and publication order must agree. All fragments and their
+dependencies are required. Member references and explicit boundary parameters
+expose the original operations; they do not substitute new numerical formulas.
+An unknown source hash fails extraction rather than silently accepting changed
+code. Generated fragments and manifests are verification artifacts, not source
+replacements to deploy.
+
+[`OutputPredictor.lean`](../../formal/lean/FormalESKF/OutputPredictor.lean) proves
+the stage/commit and temporal relations, exact-real feedback identities and
+common-reset residual invariance. Its session invariant supplies nonzero ring
+length after seeding; ordered full history with at least two records supplies
+positive lag. The IEEE interval recurrence separately preserves its finite
+positive envelope. Connect these premises to actual configuration, seed, push,
+feedback and reset contracts when reviewing the composition.
+The count bound and unique physical ranks ensure that staging visits each slot
+at most once, so its per-slot candidate model permits independent producer outcomes.
+
+Acceptance also requires the matching normalization/Hamilton/Exp chain,
+same-type in-place nominal transaction, IMU mean-rate/timing producers and output
+view contracts. Initialization uses the qualified frontend described above.
+The source-step correspondence and source-to-Lean relation remain reviewed
+boundaries, not automated refinement proofs. External-input frame checks concern
+independent input storage; private workspace is not a supported input alias.
+Live caller order, deployed backend/libm accuracy, closed-loop stability,
+uniform floating-point error and target resource bounds remain separate.
 
 ### Delayed observations and context
 

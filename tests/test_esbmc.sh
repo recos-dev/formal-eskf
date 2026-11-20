@@ -18,7 +18,7 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 5169 '^PLAN'
+    check_count 6357 '^PLAN'
     check_count 14 'pcov-generated-binary(32|64)-'
     check_count 10 'reset-generated-binary(32|64)-'
     check_count 94 'correction-generated-binary(32|64)-'
@@ -33,6 +33,7 @@ check_plan()
     check_count 130 'delayed-storage-'
     check_count 409 'delayed-history-'
     check_count 2163 'delayed-observations-'
+    check_count 1188 'delayed-output-'
     check_count 4 'step-binary(32|64)-ins-quat[01]-nominal-transaction'
     check_count 36 'accelerometer-binary'
     check_count 1 'accelerometer-double-sample_round'
@@ -257,8 +258,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 316 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 5169 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 339 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 6357 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -804,6 +805,154 @@ check_delayed_observations_arguments()
         [[ "${COUNTS[${KEY%:*}.cpp]:-0}" == "${KEY#*:}" ]] || fail "missing observation partitions: ${KEY}"
     done
 )
+
+check_delayed_output_arguments()
+(
+    local COUNT=0 KEY REST BITS ENTRY EXPECTED_ENTRY FILE SLOT FIRST SEED INCLUDE_PATHS
+    local -a EXPECTED ORIGINAL_ARGS=("${ESBMC_ARGUMENTS[@]}")
+    local -A VISITED=() COUNTS=()
+    verify()
+    {
+        ENTRY="$1"
+        shift
+        [[ "${PROFILE}" =~ ^delayed-output-binary(32|64)- ]] || fail 'invalid output scalar profile'
+        BITS=0
+        [[ "${BASH_REMATCH[1]}" == 32 ]] || BITS=1
+        REST="${PROFILE#delayed-output-binary*-}"
+        EXPECTED=(--proof-unwind 70 --64 --z3 --array-flattener --tuple-sym-flattener
+                  -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}")
+        EXPECTED_ENTRY="verify_output_${REST}"
+        KEY="${REST}" FILE="${REST}"
+        case "${REST}" in
+            initialization|session_reset) FILE=owner ;;
+            validation) FILE=state ;;
+            seed|advance) ;;
+            storage[0-9]*)
+                SLOT="${REST#storage}"
+                if [[ ! "${SLOT}" =~ ^[0-9]+$ ]] || ((SLOT >= 64)); then
+                    fail 'invalid output storage position'
+                fi
+                FILE=storage KEY=storage EXPECTED_ENTRY=verify_output_typed_storage
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_WRITE=${SLOT}") ;;
+            storage-reset)
+                FILE=storage EXPECTED_ENTRY=verify_output_typed_reset
+                EXPECTED+=(-D FORMAL_ESKF_PROOF_WRITE=0) ;;
+            configuration-frame*)
+                FIRST="${REST#configuration-frame}"
+                case "${FIRST}" in 0|16|32|48) ;; *) fail 'invalid output configuration frame' ;; esac
+                FILE=configuration KEY=configuration EXPECTED_ENTRY=verify_output_configuration
+                EXPECTED=(--proof-unwind 70 --64 --z3 --fp2bv --array-flattener --tuple-sym-flattener
+                          -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}" -D "FORMAL_ESKF_PROOF_FRAME_FIRST=${FIRST}"
+                          -D "FORMAL_ESKF_PROOF_FRAME_END=$((FIRST + 16))") ;;
+            prediction)
+                EXPECTED+=(-D FORMAL_ESKF_PROOF_FRAME_FIRST=0 -D FORMAL_ESKF_PROOF_FRAME_END=0) ;;
+            prediction-frame*|feedback-frame*|reset-frame*)
+                SLOT="${REST##*frame}"
+                if [[ ! "${SLOT}" =~ ^[0-9]+$ ]] || ((SLOT >= 64)); then
+                    fail 'invalid output caller frame position'
+                fi
+                KEY="${REST%-frame*}-frame" FILE="${REST%-frame*}_frame" EXPECTED_ENTRY="verify_output_${FILE}"
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_SLOT=${SLOT}") ;;
+            feedback-admission|feedback-normalization|feedback-numerics)
+                FILE=feedback_admission
+                [[ "${REST}" != feedback-numerics ]] || FILE=feedback_numerics
+                EXPECTED_ENTRY="verify_output_feedback_${REST#feedback-}" ;;
+            feedback-publication)
+                FILE=feedback EXPECTED_ENTRY=verify_output_feedback_finish
+                EXPECTED+=(-D FORMAL_ESKF_PROOF_FRAME_FIRST=0 -D FORMAL_ESKF_PROOF_FRAME_END=0) ;;
+            interval) EXPECTED_ENTRY=verify_output_interval_range ;;
+            reset-plan) FILE=reset EXPECTED_ENTRY=verify_output_reset_plan ;;
+            reset-finish)
+                FILE=reset EXPECTED_ENTRY=verify_output_reset_finish
+                EXPECTED+=(-D FORMAL_ESKF_PROOF_FRAME_FIRST=0 -D FORMAL_ESKF_PROOF_FRAME_END=0) ;;
+            translation_step*|commit_step*|commit_finish*)
+                [[ "${REST}" =~ ^(translation_step|commit_step|commit_finish)([0-9]+)$ ]] || fail 'invalid output loop step'
+                KEY="${BASH_REMATCH[1]}" SLOT="${BASH_REMATCH[2]}" FILE=translation
+                ((SLOT < 64)) || fail 'output loop position outside capacity'
+                EXPECTED_ENTRY="verify_output_${KEY}"
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_SLOT=${SLOT}") ;;
+            transform-seed*-slot*)
+                [[ "${REST}" =~ ^transform-seed([01])-slot([0-9]+)$ ]] || fail 'invalid output reset case'
+                SEED="${BASH_REMATCH[1]}" SLOT="${BASH_REMATCH[2]}" FILE=transform KEY="transform-seed${SEED}"
+                ((SLOT < 64)) || fail 'output reset position outside capacity'
+                EXPECTED_ENTRY=verify_output_transform_step
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_SLOT=${SLOT}" -D "FORMAL_ESKF_PROOF_SEED_ONLY=${SEED}") ;;
+            *) fail "unknown output proof: ${PROFILE}" ;;
+        esac
+        [[ "${ENTRY}" == "${EXPECTED_ENTRY}" && "${SOURCE_FILE}" == "${PROOF_DIR}/output/${FILE}.cpp" &&
+           "$*" == "${EXPECTED[*]}" ]] || fail "output source/domain/flags mismatch: ${PROFILE}"
+        INCLUDE_PATHS="-I ${PROOF_DIR}"
+        case "${FILE}" in
+            feedback*|interval|reset*|translation|transform) INCLUDE_PATHS+=" -I ${REPO_DIR}/output/esbmc/output-steps" ;;
+        esac
+        [[ "${ESBMC_ARGUMENTS[*]}" == "${ORIGINAL_ARGS[*]/ESKF_CODEGEN=0/ESKF_CODEGEN=1} ${INCLUDE_PATHS}" ]] ||
+            fail 'output source include/model boundary changed'
+        [[ -z "${VISITED[${PROFILE}]:-}" ]] || fail 'duplicate output profile'
+        VISITED["${PROFILE}"]=1
+        COUNTS["${KEY}"]=$((${COUNTS[${KEY}]:-0} + 1))
+        COUNT=$((COUNT + 1))
+    }
+    run_delayed_output_suite
+    [[ "${COUNT}" == 1188 && "${#VISITED[@]}" == 1188 && "${ESBMC_ARGUMENTS[*]}" == "${ORIGINAL_ARGS[*]}" ]] ||
+        fail 'output inventory incomplete or model selection leaked'
+    for KEY in initialization:2 session_reset:2 validation:2 seed:2 advance:2 storage:128 storage-reset:2 \
+        configuration:8 prediction:2 prediction-frame:128 feedback-frame:128 feedback-admission:2 \
+        feedback-normalization:2 feedback-numerics:2 feedback-publication:2 interval:2 reset-plan:2 reset-finish:2 reset-frame:128 \
+        translation_step:128 commit_step:128 commit_finish:128 transform-seed0:128 transform-seed1:128; do
+        [[ "${COUNTS[${KEY%:*}]:-0}" == "${KEY#*:}" ]] || fail "missing output partitions: ${KEY}"
+    done
+)
+
+check_output_step_extraction()
+{
+    python3 - "${REPO_DIR}" <<'PYTHON'
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+
+sys.dont_write_bytecode = True
+ROOT = Path(sys.argv[1])
+RELATIVE = Path('formal/cpp/esbmc/output_steps.py')
+SPEC = importlib.util.spec_from_file_location('output_steps', ROOT / RELATIVE)
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
+with tempfile.TemporaryDirectory(prefix='formal-eskf-output-steps-') as TEMP:
+    FIXTURE = Path(TEMP) / 'repo'
+    for NAME in [*MODULE.PINS, str(RELATIVE)]:
+        DESTINATION = FIXTURE / NAME
+        DESTINATION.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / NAME, DESTINATION)
+    COMMAND = [sys.executable, str(FIXTURE / RELATIVE)]
+    OUTPUT = FIXTURE / 'output'
+    subprocess.run([*COMMAND, str(OUTPUT)], check=True, capture_output=True)
+    MANIFEST = json.loads((OUTPUT / 'output-steps.json').read_text())
+    assert MANIFEST['source_sha256'] == MODULE.PINS
+    assert MANIFEST['generator_sha256'] == hashlib.sha256((FIXTURE / RELATIVE).read_bytes()).hexdigest()
+    for NAME, HASH in MANIFEST['generated_sha256'].items():
+        assert hashlib.sha256((OUTPUT / NAME).read_bytes()).hexdigest() == HASH
+    SOURCE = (FIXTURE / 'integrations/px4/module/OutputPredictor.hpp').read_text()
+    assert MANIFEST['feedback_fragments']['correct'] == MODULE.sha256(
+        MODULE.body(SOURCE, 'bool OutputPredictor<Linalg>::correct(').encode())
+    RESET = MODULE.body(SOURCE, 'bool OutputPredictor<Linalg>::apply_reset(')
+    assert MANIFEST['history_fragments']['reset'] == MODULE.sha256(RESET.encode())
+    for NAME in MODULE.PINS:
+        SOURCE_FILE = FIXTURE / NAME
+        ORIGINAL = SOURCE_FILE.read_bytes()
+        SOURCE_FILE.write_bytes(ORIGINAL + b'\n// changed source\n')
+        RESULT = subprocess.run([*COMMAND, str(OUTPUT)], capture_output=True, text=True)
+        assert RESULT.returncode == 1 and 'requires review' in RESULT.stderr and NAME in RESULT.stderr
+        SOURCE_FILE.write_bytes(ORIGINAL)
+    for NAME in ['include', 'integrations', 'formal', 'tests', 'scripts', 'configs']:
+        RESULT = subprocess.run([*COMMAND, str(FIXTURE / NAME)], capture_output=True, text=True)
+        assert RESULT.returncode == 1 and 'must not replace' in RESULT.stderr
+    assert (FIXTURE / 'integrations/px4/module/OutputPredictor.hpp').read_text() == SOURCE
+PYTHON
+}
 
 check_ring_step_extraction()
 {
@@ -2853,6 +3002,93 @@ CHECK
     printf 'ESBMC IEEE frame checks: pass (14 positive; 6 negative controls)\n'
 )
 
+check_initialization_preflight()
+{
+    local PROBE_RESULT=0 PROBE_COUNT=0 ESBMC_COMMAND=initialization_probe
+    # Each command substitution has its own shell; inspect the two calls in
+    # separate runs so a rejected binary64 profile cannot be silently skipped.
+    initialization_probe()
+    {
+        [[ "$*" == "${REPO_DIR}/tests/esbmc/initialization_checks.cpp --std c++20 --64 --quiet --unwind 70 --timeout 30s --memlimit 1g -D FORMAL_ESKF_PROOF_BINARY64="[01]" --function verify_initialization --z3" ]] || return 2
+        [[ "${PROBE_RESULT}" == 0 || "$*" != *"FORMAL_ESKF_PROOF_BINARY64=${PROBE_COUNT} "* ]]
+    }
+    check_initialization_support
+    PROBE_RESULT=1
+    for PROBE_COUNT in 0 1; do
+        if (check_initialization_support) >/dev/null 2>&1; then
+            fail "unsupported binary$((32 + 32 * PROBE_COUNT)) initialization passed the preflight"
+        fi
+    done
+    unset -f initialization_probe
+}
+
+check_initialization_regressions()
+(
+    select_esbmc
+    check_esbmc_version
+    local ENTRY RESULT BINARY64 EXPECTED WORK_DIR
+    local -a ENTRIES=(default partial nested effects partial_effects constructor_effects empty builtin
+                     explicit_order scalar_order nested_partial)
+    local -a ASSERTIONS=('Array filler default member values'
+        'Array filler preserves explicit prefix and initializes suffix'
+        'Nested array filler initializes every record'
+        'Each default member initializer executes separately and in order'
+        'Only omitted elements execute the default member initializer'
+        'Each omitted element calls a distinct default constructor'
+        'Empty array invokes no element constructors'
+        'Builtin record and scalar arrays retain their initialization semantics'
+        'Explicit prefix and omitted suffix preserve evaluation order'
+        'Const scalar arrays preserve explicit order and zero filler'
+        'Nested partial scalar arrays preserve all values')
+    WORK_DIR="$(mktemp -d)"
+    trap 'rm -rf -- "${WORK_DIR}"' EXIT
+    ulimit -c 0
+    SOURCE_FILE="${TEST_DIR}/esbmc/initialization_checks.cpp"
+    for BINARY64 in 0 1; do
+        "${CXX:-c++}" -std=c++20 -Wall -Wextra -Werror -DNATIVE \
+            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" "${SOURCE_FILE}" -o "${WORK_DIR}/native"
+        "${WORK_DIR}/native"
+        for ENTRY in "${!ENTRIES[@]}"; do
+            PROFILE="initialization-binary$((32 + 32 * BINARY64))-${ENTRIES[ENTRY]}"
+            verify "verify_${ENTRIES[ENTRY]}" --proof-unwind 70 --proof-timeout 30s --proof-memory 1g \
+                --64 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" --z3
+            EXPECTED="${ASSERTIONS[ENTRY]}"
+            RESULT=0
+            "${ESBMC_COMMAND}" "${SOURCE_FILE}" "${ESBMC_ARGUMENTS[@]}" --64 \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D MUTATION=1 \
+                --unwind 70 --timeout 30s --memlimit 1g --function "verify_${ENTRIES[ENTRY]}" \
+                --z3 >"${WORK_DIR}/negative.log" 2>&1 || RESULT=$?
+            if ! python3 - "${WORK_DIR}/negative.log" "${EXPECTED}" "${RESULT}" <<'CHECK'
+from pathlib import Path
+import re
+import sys
+
+TEXT = Path(sys.argv[1]).read_text()
+PROPERTIES = re.findall(r"Violated property:\s*\n(.*?)(?:\n\s*\n|\Z)", TEXT, re.S)
+VALID = (sys.argv[3] == "1" and "VERIFICATION FAILED" in TEXT
+         and any(sys.argv[2] in PROPERTY for PROPERTY in PROPERTIES))
+raise SystemExit(0 if VALID else 1)
+CHECK
+            then
+                cat "${WORK_DIR}/negative.log"
+                fail "initialization negative control ${ENTRIES[ENTRY]} did not fail at its intended assertion"
+            fi
+        done
+    done
+    SOURCE_FILE="${TEST_DIR}/esbmc/initialization_checks.c"
+    "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -DNATIVE "${SOURCE_FILE}" -o "${WORK_DIR}/native-c"
+    "${WORK_DIR}/native-c"
+    PROFILE=initialization-c-arrays
+    RESULT=0
+    "${ESBMC_COMMAND}" "${SOURCE_FILE}" --std c11 --64 --quiet --unwind 10 \
+        --timeout 30s --memlimit 1g --function verify_c_arrays --z3 || RESULT=$?
+    printf 'RESULT\t%s\t%s\tverify_c_arrays\t%d\n' "${SOURCE_FILE#"${REPO_DIR}/"}" "${PROFILE}" "${RESULT}"
+    ((RESULT == 0)) || fail 'C array initialization regression failed'
+    ((FAILED_CHECKS == 0)) || fail 'aggregate initialization semantics are unsupported; see the verification guide tool patch'
+    check_initialization_support
+    printf 'ESBMC initialization checks: pass (23 positive; 22 negative controls; native C/C++ comparison)\n'
+)
+
 check_reference_regressions()
 (
     select_esbmc
@@ -2887,16 +3123,22 @@ case "${1:-}" in
         check_frame_regressions
         exit 0
         ;;
+    --initialization)
+        (($# == 1)) || fail '--initialization takes no other arguments'
+        check_initialization_regressions
+        exit 0
+        ;;
     --references)
         (($# == 1)) || fail '--references takes no other arguments'
         check_reference_regressions
         exit 0
         ;;
     --help|-h)
-        printf 'Usage: %s [--solver|--references|--frames]\n' "${0##*/}"
+        printf 'Usage: %s [--solver|--references|--frames|--initialization]\n' "${0##*/}"
         printf 'Check the profile inventory; --solver also runs a real ESBMC negative regression.\n'
         printf '%s\n' '--frames runs only IEEE representation and bit-cast tool qualification cases.'
         printf '%s\n' '--references runs only the reference-address tool qualification cases.'
+        printf '%s\n' '--initialization compares aggregate initialization with native C/C++ and checks tool regressions.'
         exit 0
         ;;
     *) fail "unknown argument: $1" ;;
@@ -2914,6 +3156,8 @@ check_delayed_seed_arguments
 check_delayed_storage_arguments
 check_delayed_history_arguments
 check_delayed_observations_arguments
+check_delayed_output_arguments
+check_output_step_extraction
 check_ring_step_extraction
 check_navigation_recovery_arguments
 check_navigation_reset_arguments
@@ -2943,7 +3187,8 @@ check_observations_arguments
 check_solver_argument_guard
 check_reference_preflight
 check_frame_preflight
-printf 'ESBMC inventory tests: pass (5169 profiles; 316 entry points; all shards)\n'
+check_initialization_preflight
+printf 'ESBMC inventory tests: pass (6357 profiles; 339 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_runtime_input_regressions
     check_ring_buffer_regressions

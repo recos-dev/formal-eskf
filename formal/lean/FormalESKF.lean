@@ -53,3 +53,4 @@ import FormalESKF.codegen.products.Composition
 
 import FormalESKF.RingBuffer
 import FormalESKF.ObservationHistory
+import FormalESKF.OutputPredictor

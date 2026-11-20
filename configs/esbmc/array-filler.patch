@@ -1,0 +1,43 @@
+diff --git a/src/clang-c-frontend/clang_c_convert.cpp b/src/clang-c-frontend/clang_c_convert.cpp
+index e074c4c5..f0de2229 100644
+--- a/src/clang-c-frontend/clang_c_convert.cpp
++++ b/src/clang-c-frontend/clang_c_convert.cpp
+@@ -2712,6 +2712,38 @@ bool clang_c_convertert::get_expr(const clang::Stmt &stmt, exprt &new_expr)
+       if (get_base_flattened_inits(init_stmt, flat_inits))
+         return true;
+ 
++      // Clang represents the remaining elements of an aggregate-initialized
++      // array with one filler expression. In C++ it may run a default
++      // constructor or member initializer, so zero-filling is not equivalent.
++      // Convert it separately for each element to retain distinct constructor
++      // calls and their side effects.
++      if (t.is_array() && init_stmt.hasArrayFiller())
++      {
++        while (flat_inits.size() < inits.operands().size())
++        {
++          exprt filler;
++          if (get_expr(*init_stmt.getArrayFiller(), filler))
++            return true;
++          flat_inits.push_back(std::move(filler));
++        }
++      }
++
++      // Finish evaluating each array element before evaluating the next.
++      // Otherwise side-effect removal can leave earlier elements referring to
++      // a variable subsequently changed by a later initializer (e.g. ++count).
++      if (t.is_array() && mode == "C++")
++      {
++        for (exprt &init : flat_inits)
++        {
++          if (init.statement() == "temporary_object")
++            continue;
++          side_effect_exprt temporary("temporary_object", init.type());
++          temporary.location() = init.location();
++          temporary.move_to_operands(init);
++          init.swap(temporary);
++        }
++      }
++
+       unsigned int num = static_cast<unsigned>(flat_inits.size());
+       for (unsigned int i = 0, j = 0; (i < inits.operands().size() && j < num);
+            ++i)

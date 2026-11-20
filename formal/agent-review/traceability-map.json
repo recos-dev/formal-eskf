@@ -6179,7 +6179,7 @@
     },
     {
       "id": "R-PX4-OUTPUT-PREDICTOR",
-      "title": "Current-time INS output borrowed-view contracts; prediction, feedback/history transactions and live binding remain open",
+      "title": "Output predictor source transactions, complete storage frames and temporal induction; live binding and target numerical bounds remain separate",
       "references": {
         "spec": [
           {
@@ -6187,7 +6187,204 @@
             "symbol": "# R-PX4-OUTPUT-PREDICTOR: current-time output tracking"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem stage_success_iff"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem stage_outside"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem stage_success_at"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem stage_failure_witness"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem commit_at"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem transaction_failure_frame"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem transaction_success_fields"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem seed_epochs"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem predict_epochs"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem correct_epochs"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem transform_epochs"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem transform_order"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem predict_order"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem feedback_positive_lag"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem stageLoop_eq_forward"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem commitLoop_eq_forward"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem commit_logical"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem successful_logical_candidates"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem seed_reset_failure"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem seed_reset_success"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem chain_append"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem chain_drop"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem end_append"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem transformed_chain"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem transformed_end"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem full_push_preserves_pending"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem latched_blocks"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem session_initial"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem session_configure"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem session_seed"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem session_predict"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem session_reset"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem common_left_reset_residual"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem common_translation_residual"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem attitude_error_zero_boundary"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem attitude_error_negation"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem rate_feedback_over_lag"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem filtered_period_fixed"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem filtered_period_bounds"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem pi_translation_zero_error"
+          },
+          {
+            "file": "formal/lean/FormalESKF/OutputPredictor.lean",
+            "symbol": "theorem pi_translation_zero_memory"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem forward_range"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem forward_length"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem logical_enqueue"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem push_write_coherent"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem newest_store_after_push"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem push_nonempty"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem slot_rank_unique"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem forward_mem_rank"
+          }
+        ],
         "cpp": [
           {
             "file": "integrations/px4/module/OutputPredictor.hpp",
@@ -6224,12 +6421,192 @@
           {
             "file": "integrations/px4/module/OutputPredictor.hpp",
             "symbol": "vector3_type const & angular_rate_b() const"
+          },
+          {
+            "file": "integrations/px4/module/OutputPredictor.hpp",
+            "symbol": "OutputPredictor<Linalg>::valid_quaternion("
+          },
+          {
+            "file": "integrations/px4/module/OutputPredictor.hpp",
+            "symbol": "OutputPredictor<Linalg>::valid_state("
+          },
+          {
+            "file": "integrations/px4/module/OutputPredictor.hpp",
+            "symbol": "OutputPredictor<Linalg>::advance("
+          },
+          {
+            "file": "integrations/px4/module/OutputPredictor.hpp",
+            "symbol": "OutputPredictor<Linalg>::stage_translation("
+          },
+          {
+            "file": "integrations/px4/module/OutputPredictor.hpp",
+            "symbol": "OutputPredictor<Linalg>::commit_history("
+          },
+          {
+            "file": "integrations/px4/module/OutputPredictor.hpp",
+            "symbol": "OutputPredictor<Linalg>::fail("
           }
         ],
         "esbmc": [
           {
             "file": "formal/cpp/esbmc/delayed_views.cpp",
             "symbol": "void verify_output_views("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/advance.cpp",
+            "symbol": "void verify_output_advance("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/configuration.cpp",
+            "symbol": "void verify_output_configuration("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/feedback.cpp",
+            "symbol": "void verify_output_feedback_finish("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/feedback_admission.cpp",
+            "symbol": "void verify_output_feedback_admission("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/feedback_admission.cpp",
+            "symbol": "void verify_output_feedback_normalization("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/feedback_frame.cpp",
+            "symbol": "void verify_output_feedback_frame("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/feedback_numerics.cpp",
+            "symbol": "void verify_output_feedback_numerics("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/interval.cpp",
+            "symbol": "void verify_output_interval_range("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/owner.cpp",
+            "symbol": "void verify_output_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/owner.cpp",
+            "symbol": "void verify_output_session_reset("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/prediction.cpp",
+            "symbol": "void verify_output_prediction("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/prediction_frame.cpp",
+            "symbol": "void verify_output_prediction_frame("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/reset.cpp",
+            "symbol": "void verify_output_reset_plan("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/reset.cpp",
+            "symbol": "void verify_output_reset_finish("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/reset_frame.cpp",
+            "symbol": "void verify_output_reset_frame("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/seed.cpp",
+            "symbol": "void verify_output_seed("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/state.cpp",
+            "symbol": "void verify_output_validation("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/storage.cpp",
+            "symbol": "void verify_output_typed_storage("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/storage.cpp",
+            "symbol": "void verify_output_typed_reset("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/transform.cpp",
+            "symbol": "void verify_output_transform_step("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/translation.cpp",
+            "symbol": "void verify_output_translation_step("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/translation.cpp",
+            "symbol": "void verify_output_commit_step("
+          },
+          {
+            "file": "formal/cpp/esbmc/output/translation.cpp",
+            "symbol": "void verify_output_commit_finish("
+          },
+          {
+            "file": "formal/cpp/esbmc/delayed_library.cpp",
+            "symbol": "void verify_delayed_max("
+          },
+          {
+            "file": "formal/cpp/esbmc/delayed_input.cpp",
+            "symbol": "void verify_timing_configuration("
+          },
+          {
+            "file": "formal/cpp/esbmc/delayed_input.cpp",
+            "symbol": "void verify_imu_input("
+          },
+          {
+            "file": "formal/cpp/esbmc/imu_producers.cpp",
+            "symbol": "void verify_imu_mean_rates("
+          },
+          {
+            "file": "formal/cpp/esbmc/algebra.cpp",
+            "symbol": "void verify_representation("
+          },
+          {
+            "file": "formal/cpp/esbmc/algebra.cpp",
+            "symbol": "void verify_product("
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "void verify_norm_producer("
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "void verify_division_producer("
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "void verify_checked_normalization("
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "void verify_constructor("
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "void verify_normalize_wrapper("
+          },
+          {
+            "file": "formal/cpp/esbmc/normalization.cpp",
+            "symbol": "void verify_composition_general("
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "void verify_scalar_wrappers("
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "void verify_squared_norm_producer("
+          },
+          {
+            "file": "formal/cpp/esbmc/maps.cpp",
+            "symbol": "void verify_exp_behavior("
+          },
+          {
+            "file": "formal/cpp/esbmc/step.cpp",
+            "symbol": "void verify_nominal_prediction_transaction("
           }
         ]
       }

@@ -37,10 +37,15 @@ It owns neither covariance nor sensor admission, clock, fusion or publication.
 - Use bounded work and fixed persistent storage. Readiness indicates completed
   feedback and no fault; it does not certify freshness, accuracy or safe publication.
 
-Current evidence is native binary64 testing with Eigen and PX4 matrix, including
+Acceptance requires the [output-owner verification scope](../../../../guides/verification.md#output-predictor):
+source contracts and complete storage frames in both scalar formats, temporal and
+stage/commit induction, and matching producer evidence. Source-step extraction and
+the Lean correspondence require review; they are not an automated refinement proof.
+Native binary64 tests with Eigen and PX4 matrix supplement these claims with
 analytic motion, variable periods, repeated wraps, feedback, reset and numerical
-rollback. Lean/ESBMC source evidence, nonlinear stability/error bounds and target
-resource bounds remain open. Live binding is owned by [R-PX4-DELAYED-FUSION](delayed-fusion.md).
+rollback. Nonlinear stability, uniform floating-point error and target resource
+bounds remain separate obligations. Live binding is owned by
+[R-PX4-DELAYED-FUSION](delayed-fusion.md).
 
 The tracking structure follows the pinned PX4 output predictor. Let subscript
 `d` denote the matching delayed output, `m` the completed main state, and

@@ -29,7 +29,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|delayed-history|delayed-observations|accelerometer|magnetic-runtime|ring-buffer|codegen) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|delayed-history|delayed-observations|delayed-output|accelerometer|magnetic-runtime|ring-buffer|codegen) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -39,8 +39,8 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|delayed-history|delayed-observations|accelerometer|magnetic-runtime|ring-buffer|codegen] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
-                printf 'Core producer/caller profiles select ESKF_CODEGEN=0 except the *-generated, delayed-views, delayed-seed, delayed-storage, delayed-history and delayed-observations suites (ESKF_CODEGEN=1); codegen checks emitted kernels directly.\n'
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|delayed-history|delayed-observations|delayed-output|accelerometer|magnetic-runtime|ring-buffer|codegen] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Core producer/caller profiles select ESKF_CODEGEN=0 except the *-generated, delayed-views, delayed-seed, delayed-storage, delayed-history, delayed-observations and delayed-output suites (ESKF_CODEGEN=1); codegen checks emitted kernels directly.\n'
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -70,6 +70,7 @@ parse_arguments()
                 printf 'delayed-seed checks actual 64-slot IMU construction and complete seed publication/failure/storage frames in binary32/64. Requires matching delayed-input producers; push/completion/reset remain separate.\n'
                 printf 'delayed-storage checks actual 64-slot IMU ring insertion, source preservation and complete backing frames in binary32/64. Every destination partition and equality profile is required; owner admission/completion/reset remain separate.\n'
                 printf 'delayed-observations selects typed storage, source control, complete owner/caller frames and context source steps; acceptance also requires Lean loop induction, reviewed source correspondence and the matching storage producers.\n'
+                printf 'delayed-output selects typed output storage, owner/caller contracts and source steps; every frame/position profile, Lean induction and producer dependency is required.\n'
                 printf 'height selects scalar offset equations, defaults and private source admission/read-only contracts for both sources and formats; full height transaction induction and platform publication remain separate.\n'
                 printf 'navigation-recovery selects actual gate diagnostic contracts, vertical limiter and both public recovery callers with every state/P alias. Same-type correction frames are reused; root accuracy and caller health/permission remain separate.\n'
                 printf 'navigation-reset selects exact-type validation, symmetry-pair arithmetic and all four numerical reset callers with independent state/P aliases. Real PSD is proved separately in Lean; source permission and target backends remain separate.\n'
@@ -133,6 +134,19 @@ check_frame_support()
             -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" --function verify_literals --z3 2>&1)"; then
             printf '%s\n' "${DETAILS}" >&2
             fail 'IEEE frame tool preflight failed; see docs/guides/verification.md'
+        fi
+    done
+}
+
+check_initialization_support()
+{
+    local DETAILS BINARY64
+    for BINARY64 in 0 1; do
+        if ! DETAILS="$("${ESBMC_COMMAND}" "${REPO_DIR}/tests/esbmc/initialization_checks.cpp" \
+            --std c++20 --64 --quiet --unwind 70 --timeout 30s --memlimit 1g \
+            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" --function verify_initialization --z3 2>&1)"; then
+            printf '%s\n' "${DETAILS}" >&2
+            fail 'aggregate initialization tool preflight failed; see docs/guides/verification.md'
         fi
     done
 }
@@ -1600,6 +1614,107 @@ run_delayed_observations_suite()
     done
 }
 
+# Output contracts retain the actual 64-slot storage. Behavior/frame partitions
+# are complementary obligations, never substitutes for each other or producers.
+run_delayed_output_suite()
+{
+    local BINARY64 KIND FILE SLOT FIRST SEED_ONLY
+    local -a ESBMC_ARGUMENTS=("${ESBMC_ARGUMENTS[@]/ESKF_CODEGEN=0/ESKF_CODEGEN=1}")
+    ESBMC_ARGUMENTS+=(-I "${PROOF_DIR}")
+    local -a OUTPUT_BASE_ARGUMENTS=("${ESBMC_ARGUMENTS[@]}")
+    for BINARY64 in 0 1; do
+        ESBMC_ARGUMENTS=("${OUTPUT_BASE_ARGUMENTS[@]}")
+        for KIND in initialization session_reset validation seed advance; do
+            case "${KIND}" in
+                initialization|session_reset) FILE=owner ;;
+                validation) FILE=state ;;
+                *) FILE="${KIND}" ;;
+            esac
+            SOURCE_FILE="${PROOF_DIR}/output/${FILE}.cpp"
+            PROFILE="delayed-output-binary$((32 + 32 * BINARY64))-${KIND}"
+            verify "verify_output_${KIND}" --proof-unwind 70 --64 --z3 --array-flattener --tuple-sym-flattener \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        done
+        SOURCE_FILE="${PROOF_DIR}/output/storage.cpp"
+        for ((SLOT = 0; SLOT < 64; ++SLOT)); do
+            PROFILE="delayed-output-binary$((32 + 32 * BINARY64))-storage${SLOT}"
+            verify verify_output_typed_storage --proof-unwind 70 --64 --z3 --array-flattener --tuple-sym-flattener \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_WRITE=${SLOT}"
+        done
+        PROFILE="delayed-output-binary$((32 + 32 * BINARY64))-storage-reset"
+        verify verify_output_typed_reset --proof-unwind 70 --64 --z3 --array-flattener --tuple-sym-flattener \
+            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_WRITE=0
+        SOURCE_FILE="${PROOF_DIR}/output/configuration.cpp"
+        for FIRST in 0 16 32 48; do
+            PROFILE="delayed-output-binary$((32 + 32 * BINARY64))-configuration-frame${FIRST}"
+            verify verify_output_configuration --proof-unwind 70 --64 --z3 --fp2bv --array-flattener --tuple-sym-flattener \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_FRAME_FIRST=${FIRST}" \
+                -D "FORMAL_ESKF_PROOF_FRAME_END=$((FIRST + 16))"
+        done
+        SOURCE_FILE="${PROOF_DIR}/output/prediction.cpp"
+        PROFILE="delayed-output-binary$((32 + 32 * BINARY64))-prediction"
+        verify verify_output_prediction --proof-unwind 70 --64 --z3 --array-flattener --tuple-sym-flattener \
+            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_FRAME_FIRST=0 -D FORMAL_ESKF_PROOF_FRAME_END=0
+        for KIND in prediction feedback; do
+            if [[ "${KIND}" == feedback ]]; then
+                ESBMC_ARGUMENTS+=(-I "${REPO_DIR}/output/esbmc/output-steps")
+            fi
+            SOURCE_FILE="${PROOF_DIR}/output/${KIND}_frame.cpp"
+            for ((SLOT = 0; SLOT < 64; ++SLOT)); do
+                PROFILE="delayed-output-binary$((32 + 32 * BINARY64))-${KIND}-frame${SLOT}"
+                verify "verify_output_${KIND}_frame" --proof-unwind 70 --64 --z3 --array-flattener --tuple-sym-flattener \
+                    -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_SLOT=${SLOT}"
+            done
+        done
+        for KIND in admission normalization numerics; do
+            FILE=feedback_admission
+            if [[ "${KIND}" == numerics ]]; then FILE=feedback_numerics; fi
+            SOURCE_FILE="${PROOF_DIR}/output/${FILE}.cpp"
+            PROFILE="delayed-output-binary$((32 + 32 * BINARY64))-feedback-${KIND}"
+            verify "verify_output_feedback_${KIND}" --proof-unwind 70 --64 --z3 --array-flattener --tuple-sym-flattener \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        done
+        SOURCE_FILE="${PROOF_DIR}/output/feedback.cpp"
+        PROFILE="delayed-output-binary$((32 + 32 * BINARY64))-feedback-publication"
+        verify verify_output_feedback_finish --proof-unwind 70 --64 --z3 --array-flattener --tuple-sym-flattener \
+            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_FRAME_FIRST=0 -D FORMAL_ESKF_PROOF_FRAME_END=0
+        SOURCE_FILE="${PROOF_DIR}/output/interval.cpp"
+        PROFILE="delayed-output-binary$((32 + 32 * BINARY64))-interval"
+        verify verify_output_interval_range --proof-unwind 70 --64 --z3 --array-flattener --tuple-sym-flattener \
+            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        SOURCE_FILE="${PROOF_DIR}/output/reset.cpp"
+        PROFILE="delayed-output-binary$((32 + 32 * BINARY64))-reset-plan"
+        verify verify_output_reset_plan --proof-unwind 70 --64 --z3 --array-flattener --tuple-sym-flattener \
+            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        PROFILE="delayed-output-binary$((32 + 32 * BINARY64))-reset-finish"
+        verify verify_output_reset_finish --proof-unwind 70 --64 --z3 --array-flattener --tuple-sym-flattener \
+            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_FRAME_FIRST=0 -D FORMAL_ESKF_PROOF_FRAME_END=0
+        SOURCE_FILE="${PROOF_DIR}/output/reset_frame.cpp"
+        for ((SLOT = 0; SLOT < 64; ++SLOT)); do
+            PROFILE="delayed-output-binary$((32 + 32 * BINARY64))-reset-frame${SLOT}"
+            verify verify_output_reset_frame --proof-unwind 70 --64 --z3 --array-flattener --tuple-sym-flattener \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_SLOT=${SLOT}"
+        done
+        SOURCE_FILE="${PROOF_DIR}/output/translation.cpp"
+        for KIND in translation_step commit_step commit_finish; do
+            for ((SLOT = 0; SLOT < 64; ++SLOT)); do
+                PROFILE="delayed-output-binary$((32 + 32 * BINARY64))-${KIND}${SLOT}"
+                verify "verify_output_${KIND}" --proof-unwind 70 --64 --z3 --array-flattener --tuple-sym-flattener \
+                    -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_SLOT=${SLOT}"
+            done
+        done
+        SOURCE_FILE="${PROOF_DIR}/output/transform.cpp"
+        for SEED_ONLY in 0 1; do
+            for ((SLOT = 0; SLOT < 64; ++SLOT)); do
+                PROFILE="delayed-output-binary$((32 + 32 * BINARY64))-transform-seed${SEED_ONLY}-slot${SLOT}"
+                verify verify_output_transform_step --proof-unwind 70 --64 --z3 --array-flattener --tuple-sym-flattener \
+                    -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_SLOT=${SLOT}" \
+                    -D "FORMAL_ESKF_PROOF_SEED_ONLY=${SEED_ONLY}"
+            done
+        done
+    done
+}
+
 run_height_suite()
 {
     local BINARY64 SOURCE KIND
@@ -2043,12 +2158,16 @@ main()
     if ((!LIST_ONLY)); then
         select_esbmc
         check_esbmc_version
-        if [[ "${SUITE}" == all || "${SUITE}" == delayed-views || "${SUITE}" == delayed-seed || "${SUITE}" == delayed-storage || "${SUITE}" == delayed-history || "${SUITE}" == delayed-observations ]]; then
+        if [[ "${SUITE}" == all || "${SUITE}" == delayed-views || "${SUITE}" == delayed-seed || "${SUITE}" == delayed-storage || "${SUITE}" == delayed-history || "${SUITE}" == delayed-observations || "${SUITE}" == delayed-output ]]; then
             check_reference_support
             check_frame_support
         fi
         if [[ "${SUITE}" == all || "${SUITE}" == delayed-observations ]]; then
             python3 "${PROOF_DIR}/ring_steps.py" "${REPO_DIR}/output/esbmc/ring-steps"
+        fi
+        if [[ "${SUITE}" == all || "${SUITE}" == delayed-output ]]; then
+            check_initialization_support
+            python3 "${PROOF_DIR}/output_steps.py" "${REPO_DIR}/output/esbmc/output-steps"
         fi
         printf 'SELECTION\t%s\tshard %d/%d\n' "${SUITE}" "${SHARD_INDEX}" "${SHARD_COUNT}"
     fi
@@ -2180,6 +2299,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == delayed-observations ]]; then
         run_delayed_observations_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == delayed-output ]]; then
+        run_delayed_output_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

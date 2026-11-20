@@ -11,8 +11,31 @@ baseline for review, not a coverage report or approval of current code.
 Use the [test standard](../testing.md), then [shared profiles and oracles](profiles.md)
 and the relevant family below. A case table records specific partitions/actions,
 expected outputs/history, an independent oracle and the defect it should expose.
-All executable bindings are Pending. No new test or production implementation is
-part of this draft.
+Executable bindings are updated after implementation review. They describe the
+tested scope and remaining acceptance gaps; they do not approve Draft requirements.
+
+## Run the tests
+
+```bash
+./scripts/verify_tests.py
+```
+
+The runner configures/builds the selected CMake directory, reconciles this design
+with CTest source labels and each executable's case registry, and reports
+`[Pass]` or `[Failed]` for each case/profile. Results and logs stay under
+`output/tests/`. A failure returns exit code 1; missing/unresolved bindings,
+registrations or build errors return 2. An empty or assertion-free case cannot pass.
+
+Use `--build-dir PATH` for another configured backend/macro profile, `--list` to
+inspect registrations, or `--case CASE_ID` to select cases. `--no-build` uses existing
+binaries and explicitly leaves source-to-binary freshness unchecked. Registry
+reconciliation still checks the whole design when execution is filtered.
+
+Execution results and acceptance are separate: `Partial` bindings retain numerical,
+contract or source-evidence gaps even when their executable checks pass. `Analysis`
+and `Delegated` obligations are not executable passes. This runner covers the
+configured native core/runtime profile; integration, tool self-tests, formal proofs
+and deployment qualification keep their own runners.
 
 ## Scope inventory
 

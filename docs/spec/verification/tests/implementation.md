@@ -43,7 +43,7 @@ Integration owners and production behavior changes remain outside this work.
 | T-10 | `tests/math/test_spd_solve.cpp` | F-SOLVE: equations, correlated/multiple RHS, domains, failures and aliases. | Implemented |
 | T-11 | `tests/math/test_so3.cpp` | Quaternion and Exp/Log: coefficients, geometry, branches, domains and failure frames. | Implemented |
 | T-12 | `tests/math/test_so3_jacobian.cpp` | Right Jacobian formula, branch boundary, independent derivative and failure frames. | Implemented |
-| T-13 | `tests/math/test_cmsis_dsp_backend.cpp` | Qualify adapter-specific storage/padding checks; retain only contract-relevant assertions. | Pending |
+| T-13 | `tests/math/test_cmsis_dsp_backend.cpp` | Qualify adapter-specific storage/padding checks; retain only contract-relevant assertions. | Implemented |
 | T-14 | `tests/core/test_types.cpp` | State/configuration dimensions and field/coordinate ownership. | Implemented |
 | T-15 | `tests/core/test_prediction.cpp` | Nominal prediction model, parameter/prior boundaries, consumption, overflow and aliases. | Implemented |
 | T-16 | `tests/core/test_covariance.cpp` | Process noise, full transition/noise mapping, publication and joint prediction transaction. | Implemented |

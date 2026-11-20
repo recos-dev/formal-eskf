@@ -139,7 +139,7 @@ function(formal_eskf_add_backend_test target_name source_name test_name library)
 endfunction()
 
 if(FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND)
-    add_executable(test_cmsis_dsp_backend test_cmsis_dsp_backend.cpp)
+    add_executable(test_cmsis_dsp_backend math/test_cmsis_dsp_backend.cpp)
     target_link_libraries(test_cmsis_dsp_backend PRIVATE formal_eskf::linalg_cmsis_dsp)
     formal_eskf_configure_test(test_cmsis_dsp_backend)
     add_test(NAME formal_eskf.linalg.cmsis_dsp.storage COMMAND test_cmsis_dsp_backend)

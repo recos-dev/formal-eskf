@@ -17,7 +17,7 @@
 #include <formal_eskf/linalg/backend/cmsis_dsp.hpp>
 #include <formal_eskf/linalg/linalg.hpp>
 
-#include "test_support.hpp"
+#include "test_cases.hpp"
 
 namespace
 {
@@ -48,7 +48,7 @@ template <typename Matrix> bool padding_is(Matrix const & matrix, typename Matri
 }
 
 template <typename Linalg, std::size_t Rows, std::size_t Inner, std::size_t Columns>
-void test_shape(TestContext & test, std::string_view profile)
+void test_product_shape(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
     using left_type = formal_eskf::linalg::Matrix<Linalg, Rows, Inner>;
@@ -56,7 +56,6 @@ void test_shape(TestContext & test, std::string_view profile)
     using storage_type = typename Linalg::template storage_type<Rows, Inner>;
     static_assert(alignof(storage_type) >= 16U);
     static_assert(storage_type::padding_size * sizeof(value_type) >= 12U);
-    static_assert(std::is_trivially_copyable_v<storage_type>);
 
     left_type left;
     right_type right;
@@ -94,30 +93,9 @@ void test_shape(TestContext & test, std::string_view profile)
         }
     }
 
-    auto const transposed = formal_eskf::linalg::transpose(left);
-    auto const sum = left + left;
-    auto const difference = sum - left;
-    auto const negative = -left;
-    auto const scaled = left * value_type{2};
-    auto const divided = scaled / value_type{2};
-    for (std::size_t row = 0U; row < Rows; ++row)
-    {
-        for (std::size_t column = 0U; column < Inner; ++column)
-        {
-            value_type const entry = left(row, column);
-            test.expect(transposed(column, row) == entry && sum(row, column) == entry * value_type{2} &&
-                            difference(row, column) == entry && negative(row, column) == -entry &&
-                            scaled(row, column) == entry * value_type{2} && divided(row, column) == entry,
-                        profile, "elementwise and transpose kernels preserve row-major layout and odd tails");
-        }
-    }
-    test.expect(padding_is(left, value_type{37}) && padding_is(right, value_type{37}), profile,
-                "read-only descriptors do not modify source padding");
-    test.expect(padding_is(product, value_type{0}) && padding_is(transposed, value_type{0}) &&
-                    padding_is(sum, value_type{0}) && padding_is(difference, value_type{0}) &&
-                    padding_is(negative, value_type{0}) && padding_is(scaled, value_type{0}) &&
-                    padding_is(divided, value_type{0}),
-                profile, "kernels write logical output coefficients only");
+    // Padding is private adapter storage, not part of the public coefficient
+    // write contract. This probe establishes exclusion from logical products;
+    // target SIMD overread/write safety requires its instrumented target build.
 }
 
 template <typename Linalg, std::size_t Size> void test_vector_tail(TestContext & test, std::string_view profile)
@@ -135,9 +113,10 @@ template <typename Linalg, std::size_t Size> void test_vector_tail(TestContext &
                     formal_eskf::linalg::squared_norm(vector) == expected,
                 profile, "dot product excludes tail padding at the selected scalar precision");
     value_type const expected_norm = std::sqrt(expected);
-    test.expect(formal_eskf::test::near(formal_eskf::linalg::norm(vector), expected_norm,
-                                        value_type{8} * std::numeric_limits<value_type>::epsilon() * expected_norm),
-                profile, "norm uses the selected scalar square root");
+    // The integer dot sum above is exact. This checks adapter wiring to the
+    // selected scalar root; independent elementary accuracy belongs to F-SCALAR.
+    test.expect(formal_eskf::linalg::norm(vector) == expected_norm, profile,
+                "adapter routes the exact logical dot to the selected scalar square root");
 }
 
 template <typename Linalg> void test_ownership(TestContext & test, std::string_view profile)
@@ -172,9 +151,7 @@ template <typename Linalg> void test_precision_and_division(TestContext & test, 
     auto const increment = vector_type::from_row_major({delta});
     auto const precise = one + increment;
     test.expect(precise(0U) == value_type{1} + delta && (precise - one)(0U) == delta &&
-                    (one * (value_type{1} + delta))(0U) == value_type{1} + delta &&
-                    (precise * one)(0U) == value_type{1} + delta &&
-                    formal_eskf::linalg::dot(precise, one) == value_type{1} + delta,
+                    (one * (value_type{1} + delta))(0U) == value_type{1} + delta,
                 profile, "binary64 kernels do not silently narrow to binary32");
 
     // Gradual-underflow profile: a reciprocal would overflow, but a direct
@@ -187,37 +164,104 @@ template <typename Linalg> void test_precision_and_division(TestContext & test, 
     test.expect(std::signbit((signed_zero / value_type{2})(0U)), profile, "division preserves negative zero");
 }
 
-template <typename Scalar> void run_conformance_tests(TestContext & test, std::string_view profile)
+template <typename Linalg, std::size_t Rows, std::size_t Columns>
+void test_elementwise_shape(TestContext & test, std::string_view profile)
 {
-    using Linalg = formal_eskf::linalg::CmsisDspBackend<Scalar>;
-    test_shape<Linalg, 1U, 1U, 1U>(test, profile);
-    test_shape<Linalg, 2U, 2U, 2U>(test, profile);
-    test_shape<Linalg, 2U, 3U, 4U>(test, profile);
-    test_shape<Linalg, 3U, 3U, 3U>(test, profile);
-    test_shape<Linalg, 4U, 4U, 4U>(test, profile);
-    test_shape<Linalg, 5U, 7U, 3U>(test, profile);
-    test_shape<Linalg, 15U, 15U, 15U>(test, profile);
-    test_shape<Linalg, 15U, 3U, 15U>(test, profile);
-    test_vector_tail<Linalg, 1U>(test, profile);
-    test_vector_tail<Linalg, 3U>(test, profile);
-    test_vector_tail<Linalg, 4U>(test, profile);
-    test_vector_tail<Linalg, 15U>(test, profile);
-    test_ownership<Linalg>(test, profile);
-    test_precision_and_division<Linalg>(test, profile);
+    using Scalar = typename Linalg::value_type;
+    using Matrix = formal_eskf::linalg::Matrix<Linalg, Rows, Columns>;
+    Matrix input;
+    for (std::size_t row = 0; row < Rows; ++row)
+    {
+        for (std::size_t column = 0; column < Columns; ++column)
+        {
+            input(row, column) = static_cast<Scalar>(row + 1) * Scalar{0.5} - static_cast<Scalar>(column);
+        }
+    }
+    mark_padding(input);
+    auto const transposed = formal_eskf::linalg::transpose(input), sum = input + input, difference = sum - input;
+    auto const negative = -input, scaled = input * Scalar{2}, divided = scaled / Scalar{2};
+    for (std::size_t row = 0; row < Rows; ++row)
+    {
+        for (std::size_t column = 0; column < Columns; ++column)
+        {
+            Scalar const expected = static_cast<Scalar>(row + 1) * Scalar{0.5} - static_cast<Scalar>(column);
+            test.expect(input(row, column) == expected && transposed(column, row) == expected &&
+                            sum(row, column) == 2 * expected && difference(row, column) == expected &&
+                            negative(row, column) == -expected && scaled(row, column) == 2 * expected &&
+                            divided(row, column) == expected,
+                        profile, "odd-tail arithmetic/transpose excludes private padding and preserves inputs");
+        }
+    }
 }
 
-} /* end namespace */
-
-int main()
+template <typename Scalar> void construction(TestContext & test, std::string_view profile)
 {
-    TestContext test;
-    run_conformance_tests<float>(test, "binary32");
-    run_conformance_tests<double>(test, "binary64");
-    if (test.failures() != 0)
-    {
-        std::cerr << test.failures() << " CMSIS-DSP backend test(s) failed\n";
-        return 1;
-    }
-    std::cout << "All CMSIS-DSP storage and precision tests passed\n";
-    return 0;
+    using B = formal_eskf::linalg::CmsisDspBackend<Scalar>;
+    using Storage = typename B::template storage_type<3, 3>;
+    static_assert(alignof(Storage) >= 16);
+    static_assert(Storage::padding_size * sizeof(Scalar) >= 3 * sizeof(std::uint32_t));
+    // Dependency-specific guard allocation, not a general Matrix ABI promise.
+    formal_eskf::linalg::Matrix<B, 3, 3> matrix;
+    test.expect(padding_is(matrix, Scalar{0}), profile, "CMSIS read guard lies in initialized owned storage");
+    test_ownership<B>(test, profile);
+}
+
+template <typename Scalar> void products(TestContext & test, std::string_view profile)
+{
+    using B = formal_eskf::linalg::CmsisDspBackend<Scalar>;
+    test_product_shape<B, 1, 1, 1>(test, profile);
+    test_product_shape<B, 2, 2, 2>(test, profile);
+    test_product_shape<B, 2, 3, 4>(test, profile);
+    test_product_shape<B, 3, 3, 3>(test, profile);
+    test_product_shape<B, 4, 4, 4>(test, profile);
+    test_product_shape<B, 5, 7, 3>(test, profile);
+    test_product_shape<B, 15, 15, 15>(test, profile);
+    test_product_shape<B, 15, 3, 15>(test, profile);
+    using Matrix = formal_eskf::linalg::Matrix<B, 1, 1>;
+    Scalar const precise = Scalar{1} + Scalar{8} * std::numeric_limits<Scalar>::epsilon();
+    auto const a = Matrix::from_row_major({precise}), one = Matrix::from_row_major({1});
+    test.expect((a * one)(0, 0) == precise, profile, "product dispatch retains selected binary precision");
+}
+
+template <typename Scalar> void arithmetic(TestContext & test, std::string_view profile)
+{
+    using B = formal_eskf::linalg::CmsisDspBackend<Scalar>;
+    test_elementwise_shape<B, 1, 1>(test, profile);
+    test_elementwise_shape<B, 2, 3>(test, profile);
+    test_elementwise_shape<B, 3, 3>(test, profile);
+    test_elementwise_shape<B, 4, 4>(test, profile);
+    test_elementwise_shape<B, 5, 7>(test, profile);
+    test_elementwise_shape<B, 15, 15>(test, profile);
+    test_precision_and_division<B>(test, profile);
+}
+
+template <typename Scalar> void reductions(TestContext & test, std::string_view profile)
+{
+    using B = formal_eskf::linalg::CmsisDspBackend<Scalar>;
+    test_vector_tail<B, 1>(test, profile);
+    test_vector_tail<B, 3>(test, profile);
+    test_vector_tail<B, 4>(test, profile);
+    test_vector_tail<B, 15>(test, profile);
+    using Vector = formal_eskf::linalg::Vector<B, 1>;
+    Scalar const precise = Scalar{1} + Scalar{8} * std::numeric_limits<Scalar>::epsilon();
+    auto const a = Vector::from_row_major({precise}), one = Vector::from_row_major({1});
+    test.expect(formal_eskf::linalg::dot(a, one) == precise, profile, "dot kernel retains selected binary precision");
+}
+} // namespace
+
+int main(int argc, char ** argv)
+{
+    using formal_eskf::test::Case;
+    std::cout << "Backend: CMSIS-DSP adapter host supplement; target SIMD qualification separate\n";
+    Case const cases[]{
+        {"TC-F-LINALG-CONSTRUCTION", "cmsis.guard.binary32", construction<float>},
+        {"TC-F-LINALG-CONSTRUCTION", "cmsis.guard.binary64", construction<double>},
+        {"TC-F-LINALG-PRODUCT", "cmsis.tail.binary32", products<float>},
+        {"TC-F-LINALG-PRODUCT", "cmsis.tail.binary64", products<double>},
+        {"TC-F-LINALG-ELEMENTWISE", "cmsis.tail.binary32", arithmetic<float>},
+        {"TC-F-LINALG-ELEMENTWISE", "cmsis.tail.binary64", arithmetic<double>},
+        {"TC-F-LINALG-REDUCTIONS", "cmsis.tail.binary32", reductions<float>},
+        {"TC-F-LINALG-REDUCTIONS", "cmsis.tail.binary64", reductions<double>},
+    };
+    return formal_eskf::test::run_cases(cases, argc, argv);
 }

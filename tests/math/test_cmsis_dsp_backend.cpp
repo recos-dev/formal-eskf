@@ -178,7 +178,9 @@ void test_elementwise_shape(TestContext & test, std::string_view profile)
         }
     }
     mark_padding(input);
-    auto const transposed = formal_eskf::linalg::transpose(input), sum = input + input, difference = sum - input;
+    auto const transposed = formal_eskf::linalg::transpose(input);
+    auto const sum = input + input;
+    auto const difference = sum - input;
     auto const negative = -input, scaled = input * Scalar{2}, divided = scaled / Scalar{2};
     for (std::size_t row = 0; row < Rows; ++row)
     {

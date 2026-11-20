@@ -98,7 +98,7 @@ Integration owners and production behavior changes remain outside this work.
 
 | T-63 | `tests/math/test_spd_solve.cpp` | Separate differently typed snapshot declarations for portable Clang compilation. | Implemented |
 
-| T-64 | `tests/math/test_cmsis_dsp_backend.cpp` | Separate rectangular transpose and arithmetic snapshots for portable Clang compilation. | Pending |
+| T-64 | `tests/math/test_cmsis_dsp_backend.cpp` | Separate rectangular transpose and arithmetic snapshots for portable Clang compilation. | Implemented |
 
 ## Final reconciliation and cleanup
 

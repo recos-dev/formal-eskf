@@ -93,6 +93,58 @@ class TestPlan(unittest.TestCase):
             _, ERRORS, _ = RUNNER.collect_tests(SELF.CTEST, SELF.PLAN, SELF.ROOT, 1, SELF.ROOT)
         SELF.assertTrue(any(f"second: missing source-bound IDs: {ID}" in ERROR for ERROR in ERRORS))
 
+    def test_shared_id_cannot_hide_an_absent_bound_source(SELF):
+        SECOND = "tests/common/second.cpp"
+        SELF.PLAN[ID]["sources"].append(SECOND)
+        _, ERRORS, NOT_SELECTED = SELF.collect(f"{ID} binary64\n")
+        SELF.assertTrue(any(SECOND in ERROR and "no source-labeled target" in ERROR for ERROR in ERRORS))
+        SELF.assertEqual(NOT_SELECTED, [])
+
+    def test_optional_cmsis_source_requires_explicit_disabled_configuration(SELF):
+        OPTIONAL = "tests/math/test_cmsis_dsp_backend.cpp"
+        SELF.PLAN[ID]["sources"].append(OPTIONAL)
+        CACHE = SELF.ROOT / "CMakeCache.txt"
+        for CONTENT in (None, "", "FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND:BOOL=ON\n",
+                        "UNRELATED_FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND:BOOL=OFF\n"):
+            if CONTENT is None:
+                CACHE.unlink(missing_ok=True)
+            else:
+                CACHE.write_text(CONTENT)
+            _, ERRORS, NOT_SELECTED = SELF.collect(f"{ID} binary64\n")
+            SELF.assertTrue(any(OPTIONAL in ERROR for ERROR in ERRORS))
+            SELF.assertEqual(NOT_SELECTED, [])
+        CACHE.write_text("FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND:BOOL=OFF\n")
+        TESTS, ERRORS, NOT_SELECTED = SELF.collect(f"{ID} binary64\n")
+        SELF.assertEqual(ERRORS, [])
+        SELF.assertEqual(len(TESTS), 1)
+        SELF.assertEqual(NOT_SELECTED, [{"source": OPTIONAL, "reason": "FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND=OFF"}])
+
+    def test_report_hashes_shared_and_production_headers(SELF):
+        HEADER = SELF.ROOT / "include/formal_eskf/scalar/math.hpp"
+        SUPPORT = SELF.ROOT / "tests/support/correction_reference.hpp"
+        for FILE in (HEADER, SUPPORT):
+            FILE.parent.mkdir(parents=True, exist_ok=True)
+            FILE.write_text("// first content\n")
+        NOT_SELECTED = [{"source": "tests/math/test_cmsis_dsp_backend.cpp",
+                         "reason": "FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND=OFF"}]
+        with patch.object(RUNNER, "REPO_DIR", SELF.ROOT), \
+                patch.object(RUNNER, "PLAN_DIR", SELF.PLAN_DIR), \
+                patch.object(RUNNER, "run_command", return_value=(0, "same HEAD and dirty paths\n")):
+            RUNNER.write_report(SELF.ROOT, SELF.PLAN, [], [], 1.0, SELF.ROOT, [], True, NOT_SELECTED)
+            BEFORE = json.loads((SELF.ROOT / "report.json").read_text())
+            for FILE in (HEADER, SUPPORT):
+                SELF.assertIn(str(FILE), BEFORE["file_sha256"])
+                FILE.write_text("// second content, same dirty path\n")
+            RUNNER.write_report(SELF.ROOT, SELF.PLAN, [], [], 1.0, SELF.ROOT, [], True, NOT_SELECTED)
+            AFTER = json.loads((SELF.ROOT / "report.json").read_text())
+        SELF.assertEqual(BEFORE["head"], AFTER["head"])
+        SELF.assertEqual(BEFORE["working_tree"], AFTER["working_tree"])
+        SELF.assertEqual(AFTER["not_selected_sources"], NOT_SELECTED)
+        SELF.assertEqual(AFTER["results"], [])
+        SELF.assertIn(str(Path(RUNNER.__file__).resolve()), AFTER["file_sha256"])
+        for FILE in (HEADER, SUPPORT):
+            SELF.assertNotEqual(BEFORE["file_sha256"][str(FILE)], AFTER["file_sha256"][str(FILE)])
+
     def test_disabled_missing_and_unresolved_are_not_passes(SELF):
         SELF.CTEST["tests"][0]["properties"].append({"name": "DISABLED", "value": True})
         _, ERRORS, _ = SELF.collect(f"{ID} binary64\n")
@@ -139,6 +191,9 @@ class TestPlan(unittest.TestCase):
         SELF.assertEqual(RESULT["exit_code"], 124)
 
     def test_display_totals_and_exit_status(SELF):
+        OPTIONAL = "tests/math/test_cmsis_dsp_backend.cpp"
+        SELF.PLAN[ID]["sources"].append(OPTIONAL)
+        (SELF.ROOT / "CMakeCache.txt").write_text("FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND:BOOL=OFF\n")
         for PASS, EXPECTED in ((True, 0), (False, 1)):
             def COMMAND(COMMAND, *_ARGS, **_KWARGS):
                 if COMMAND[0] == "ctest":
@@ -156,6 +211,7 @@ class TestPlan(unittest.TestCase):
                     contextlib.redirect_stdout(OUTPUT):
                 SELF.assertEqual(RUNNER.main(), EXPECTED)
             SELF.assertIn(f"[{'Pass' if PASS else 'Failed'}] {ID}", OUTPUT.getvalue())
+            SELF.assertIn(f"[Not selected] {OPTIONAL}: FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND=OFF", OUTPUT.getvalue())
             SELF.assertIn(f"{int(PASS)} passed, {int(not PASS)} failed, 0 registration gaps", OUTPUT.getvalue())
 
 

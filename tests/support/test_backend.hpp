@@ -17,6 +17,9 @@
 #include <formal_eskf/linalg/backend/cmsis_dsp.hpp>
 #else
 #include <formal_eskf/linalg/backend/eigen.hpp>
+#if defined(EIGEN_NO_DEBUG)
+#error "Eigen test allocation guard requires assertions; compile tests with -UNDEBUG"
+#endif
 #endif
 
 namespace formal_eskf::test
@@ -41,6 +44,19 @@ inline void configure_backend_test()
 #else
     Eigen::internal::set_is_malloc_allowed(false);
     std::cout << "Backend: Eigen (runtime allocation guard enabled)\n";
+#endif
+    std::cout << "Compiler: " << __VERSION__ << '\n';
+#if defined(ESKF_CODEGEN)
+    std::cout << "ESKF_CODEGEN=" << ESKF_CODEGEN << '\n';
+#endif
+#if defined(ESKF_QUAT_APPROX)
+    std::cout << "ESKF_QUAT_APPROX=" << ESKF_QUAT_APPROX << '\n';
+#endif
+#if defined(ESKF_RESET_APPROX)
+    std::cout << "ESKF_RESET_APPROX=" << ESKF_RESET_APPROX << '\n';
+#endif
+#if defined(ESKF_MAG_TILT)
+    std::cout << "ESKF_MAG_TILT=" << ESKF_MAG_TILT << '\n';
 #endif
 }
 

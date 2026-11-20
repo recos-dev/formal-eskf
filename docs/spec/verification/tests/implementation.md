@@ -33,7 +33,7 @@ Integration owners and production behavior changes remain outside this work.
 |---|---|---|---|
 | T-01 | `tests/CMakeLists.txt` | Centralize test registration; preserve target names and executable paths; enable optimized assertions. | Implemented |
 | T-02 | `tests/support/test_support.hpp` | Count assertions and preserve nonfatal failure reporting. | Implemented |
-| T-03 | `tests/support/test_backend.hpp` | Select and identify actual backend; verify allocation-guard assumptions. | Pending |
+| T-03 | `tests/support/test_backend.hpp` | Select and identify actual backend; verify allocation-guard assumptions. | Implemented |
 | T-04 | `tests/support/test_cases.hpp` | Adopt selectable IDs/profiles; reject empty, duplicate, unknown and assertion-free cases. | Pending |
 | T-05 | `tests/tools/test_case_runner.cpp` | Exercise runner success, failure, bad selection and false-pass negative controls. | Pending |
 | T-06 | `tests/common/test_contracts.cpp` | Status meanings, floating-point profile and independent-instance checks. | Pending |

@@ -123,3 +123,9 @@ adapters. Verify removed paths have no live CMake/script/spec/traceability calle
 Report implemented cases separately from partial numerical/source-evidence rows,
 unsupported profiles and remaining retention decisions. No test-count percentage
 stands for correctness, structural coverage or proof completion.
+
+Retain `tests/test_px4_*.cpp`, `tests/test_replay_*.cpp`, replay CMake scenarios,
+`tests/esbmc/` and tool fixtures under their existing owners. They observe
+integration or verification-tool behavior outside this allocation; their continued
+CTest execution does not qualify them as designed core/runtime cases. A later
+integration test design should determine their grouping and any further refactor.

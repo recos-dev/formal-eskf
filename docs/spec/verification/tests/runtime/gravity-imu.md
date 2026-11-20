@@ -28,7 +28,7 @@ numerical budgets follow the shared rules.
 
 **Regression:** Every listed boundary and transition becomes a deterministic
 regression fixture once implemented. Mutation sensitivity is stated in the
-oracle column. All executable bindings remain pending.
+oracle column. The case tables identify executable bindings and remaining acceptance gaps.
 
 ## Operation allocation
 
@@ -118,8 +118,8 @@ oracle column. All executable bindings remain pending.
 
 ## Review Pending
 
-- Approve the scenario partitions and requirement links before implementation;
-  each Pending family still needs explicit executable fixtures and selectors.
+- Review the scenario partitions and requirement links before accepting coverage.
+  Executable bindings identify implemented fixtures, selectors and remaining gaps.
 - Bind independent numerical acceptance to the shared input/error-budget
   policy. Exact protocol/frame checks do not establish numerical accuracy.
 - Confirm existing seams or scoped proof disposition for unreachable internal

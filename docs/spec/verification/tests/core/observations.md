@@ -103,5 +103,5 @@ Paths below are relative to `include/formal_eskf/eskf/`.
 
 ## Review
 
-Pending. Case definitions and profile partitions are planned; no existing test or
-prior run is credited as executed coverage.
+Pending owner approval. Executable bindings identify the reviewed implementation;
+execution results and numerical acceptance remain profile-specific.

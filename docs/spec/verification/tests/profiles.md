@@ -4,7 +4,9 @@
 
 This is the shared setup for the [core/runtime test design](README.md), under
 the [test standard](../testing.md). Existing test implementations and their
-tolerances are not acceptance criteria. Every case starts as **Pending**.
+tolerances are not acceptance criteria. Bindings distinguish **Native** execution,
+**Partial** acceptance, **Analysis** and **Delegated** obligations; an unresolved
+**Pending** binding is a registration gap, never a passing case.
 
 ## Scope and configurations
 

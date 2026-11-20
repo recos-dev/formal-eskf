@@ -92,4 +92,5 @@ Paths below are relative to `include/formal_eskf/eskf/`.
 
 ## Review
 
-Pending. These are planned cases, not reviewed or executed coverage.
+Pending owner approval. Executable bindings identify the reviewed implementation
+and its remaining acceptance gaps; a binding is not an execution result.

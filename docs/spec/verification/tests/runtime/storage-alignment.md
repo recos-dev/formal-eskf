@@ -28,7 +28,7 @@ pushes or storage-aliased output and then invent an expected error response.
 
 **Regression:** Deterministic wrap/fill/pop/reconfigure sequences and threshold
 fixtures are stable regression cases. Every case has an explicit fault target;
-all executable bindings are pending.
+the case tables identify executable bindings and remaining acceptance gaps.
 
 ## Operation allocation
 
@@ -78,7 +78,7 @@ observations requiring that approval, not facts inferred from existing tests.
 
 - Approve or revise the alignment requirement owner and construction/reset
   semantics before treating its candidate cases as normative acceptance.
-- Bind each family to explicit fixtures/executable selectors and report the
-  required partitions individually; these documents record design, not results.
+- Review the listed fixture/selector bindings and required profiles before
+  accepting results; these documents record design and scope, not executions.
 - Bounded copy/work inspection does not certify a deployment's WCET, total
   memory budget, single-owner enforcement or caller loss-handling policy.

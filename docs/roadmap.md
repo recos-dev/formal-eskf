@@ -129,23 +129,24 @@ neither track substitutes for the other's evidence.
 
 ### V-02 — Design and execution-evidence pilot
 
-**Status: Design.** Review the [clean-slate core/runtime test design](spec/verification/tests/README.md)
-before mapping existing tests to it. Integration is excluded from this design;
-pilot execution-evidence tooling with a reviewed `E-STEP-PRED` subset.
+**Status: Native case registration implemented; acceptance integration open.**
+The [core/runtime test design](spec/verification/tests/README.md) maps requirements
+and source responsibilities to executable cases or explicit alternate evidence.
+The [per-file implementation](spec/verification/tests/implementation.md) and
+[native runner](../scripts/verify_tests.py) provide selectable results, source
+reconciliation and local evidence. Integration remains outside this allocation.
 
-1. Allocate requirements and public API groups to meaningful cases with independent
-   oracles, boundaries, failure frames, state sequences and applicable profiles.
-   Resolve missing behavioral owners and numerical criteria explicitly.
-2. Map reviewed cases to native implementations, starting with the prediction
-   transaction pilot. Reuse existing tests only after oracle/profile review;
-   reject unknown or duplicate selections. Filenames do not establish coverage.
-3. Extend the existing map/report schema with source/build/tool identity, command,
-   outcome, duration and log hashes. Dirty-tree runs need snapshot identity.
-4. Check missing cases/profiles, stale references, duplicate results and modified
-   runner-owned outcomes offline; they must not produce a complete PASS.
-5. Expand executable registration to the remaining designed families after pilot
-   review. Keep native, mathematical, bounded-source and AI evidence distinct and
-   retrievable; do not credit unmapped prior runs.
+Remaining work:
+
+1. Review and approve applicable requirements, test partitions and numerical
+   acceptance criteria; retain unresolved owners and general error budgets.
+2. Review required scalar/backend/macro profiles and structural coverage gaps.
+   Discovered case IDs and source labels alone do not prove profile completeness.
+3. Integrate native results with the formal/agent evidence schema and release
+   retention, including complete dependency/build identity, durations and artifact
+   hashes. Keep native execution, mathematical and bounded-source proofs distinct.
+4. Validate stale/missing evidence and modified runner-owned outcomes offline
+   before accepting a release baseline. Local green results do not approve it.
 
 ### V-03 — AST mapping and review completeness
 

@@ -96,5 +96,5 @@ Paths below are relative to `include/formal_eskf/eskf/`.
 
 ## Review
 
-Pending. All executable bindings and numerical acceptance records remain to be
-implemented/reviewed; this design does not credit previous tests as coverage.
+Pending owner approval. Executable bindings distinguish implemented checks from
+remaining source-evidence and numerical acceptance obligations.

@@ -3,8 +3,8 @@
 **Status:** Draft
 
 This defines the tests the numerical core and portable runtime need, derived
-from requirements and production responsibilities. Existing tests are treated
-as absent during design. They may later satisfy a case only after their inputs,
+from requirements and production responsibilities. Existing tests were treated
+as absent during design. A retained test satisfies a case only after its inputs,
 oracle, assertions and profiles have been reviewed against it. This is a design
 baseline for review, not a coverage report or approval of current code.
 
@@ -24,12 +24,16 @@ The runner configures/builds the selected CMake directory, reconciles this desig
 with CTest source labels and each executable's case registry, and reports
 `[Pass]` or `[Failed]` for each case/profile. Results and logs stay under
 `output/tests/`. A failure returns exit code 1; missing/unresolved bindings,
-registrations or build errors return 2. An empty or assertion-free case cannot pass.
+registrations or build errors return 2. The C++ case runner rejects empty or
+assertion-free cases; every selected command must return its exact result markers.
 
 Use `--build-dir PATH` for another configured backend/macro profile, `--list` to
 inspect registrations, or `--case CASE_ID` to select cases. `--no-build` uses existing
 binaries and explicitly leaves source-to-binary freshness unchecked. Registry
-reconciliation still checks the whole design when execution is filtered.
+reconciliation still checks the whole design when execution is filtered. Missing
+bound sources fail reconciliation; an explicitly disabled optional CMSIS adapter
+is reported as `Not selected`. Required scalar/macro/backend profile coverage is
+reviewed against [profiles](profiles.md), not inferred from the discovered registry.
 
 Execution results and acceptance are separate: `Partial` bindings retain numerical,
 contract or source-evidence gaps even when their executable checks pass. `Analysis`
@@ -110,8 +114,8 @@ it does not establish the actual producer's correctness.
 Case counts refer to table rows, not assertions or executable invocations. A row
 may require several input partitions and case/profile executions. The current
 design allocates every in-scope requirement file and header group, while explicitly
-retaining the gaps below. Existing runs contribute **no accepted execution
-coverage** to this clean-slate design until mapped and reviewed.
+retaining the gaps below. Historical runs contribute no execution coverage
+without mapped, reviewed bindings and a matching build/profile record.
 
 ## Decisions needed before acceptance
 
@@ -123,7 +127,7 @@ coverage** to this clean-slate design until mapped and reviewed.
 | Publicly unreachable failure inputs | Select a legitimate seam or scoped source proof for malformed private quaternion states and controlled producer failures. Do not fabricate objects through layout casts. |
 | Observation of call order | Select passive instrumentation/source evidence where output equality cannot prove a callee was skipped or which arguments it consumed. Actual body tests remain required. |
 | Supported instance/target limits | Bind capacities, generic sizes, FTZ/FMA behavior, dependencies and resource budgets to explicit profiles. Non-10000-us AccelerometerSample instantiations need an extended cadence contract. No universal maximum or host-to-target acceptance is implied. |
-| Execution registration | Bind each approved case/partition/profile to selectors, fixtures, retrievable results and freshness checks in V-02; implementation and acceptance are still pending. |
+| Profile acceptance | The runner reconciles configured case IDs and sources. Review required scalar, backend and macro selections against [profiles](profiles.md); registry completeness alone cannot establish profile completeness or numerical acceptance. |
 
 These decisions are not waivers. A case with an unresolved oracle/budget cannot
 be reported as passing that property. Requirements remain Draft until the owner
@@ -132,7 +136,7 @@ approves their revision; a mechanically complete allocation does not approve the
 The [per-file action list](implementation.md) binds the implementation and review
 sequence to primary files.
 
-## Implementation order after design review
+## Implementation and maintenance order
 
 1. Review the common/profile rules and one complete core transaction family.
    Resolve its domain/fixture/bound questions; establish selectable per-case
@@ -151,8 +155,8 @@ sequence to primary files.
 
 This elaborates [V-02](../../../roadmap.md#v-02--design-and-execution-evidence-pilot).
 It does not reorder V-01 proofs or bring integration tests into the current scope.
-Existing tests will be surveyed during implementation; they are not the source
-of this design or a second authoritative allocation.
+Retained tests are reviewed against this design; historical tests are not a
+second authoritative allocation.
 
 ## Review
 

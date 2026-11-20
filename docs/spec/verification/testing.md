@@ -5,8 +5,8 @@
 **Applies to:** Native, replay, PX4 integration and verification-tool tests.
 Requirements define behavior; test specifications define how to check it;
 execution records show what actually ran. The [core/runtime test design](tests/README.md)
-allocates the current clean-slate scope. Existing tests may later be matched to
-that design; they are not its coverage baseline. This format does not approve
+allocates the current clean-slate scope. Retained in-scope core/runtime tests are qualified against that design; their
+existence alone is not coverage. This format does not approve
 existing cases or results.
 
 ## Test specification template
@@ -101,9 +101,10 @@ this document.
 ## Execution evidence
 
 The runner should produce one bundle for related cases, with shared metadata
-recorded once. These are acceptance requirements for evidence, not a claim that
-V-02 automation already exists. Until automated, equivalent retained records are
-needed for any claimed acceptance.
+recorded once. These are acceptance requirements for evidence. The
+[native case runner](tests/README.md#run-the-tests) implements case/source
+reconciliation and local results; profile completeness, dependency identity,
+approved numerical criteria and release retention still need explicit review.
 
 | Record | Minimum content |
 |---|---|
@@ -125,8 +126,8 @@ Keep logs outside specifications and preserve accepted evidence under the
 [retention policy](../../guides/verification.md#record-ownership-and-reuse).
 The catalog, report schema and runner integration belong to
 [V-02](../../roadmap.md#v-02--design-and-execution-evidence-pilot). Design the
-core/runtime scope first, then pilot evidence registration with a reviewed
-`E-STEP-PRED` subset. Adopting this format does not close implementation tasks.
+core/runtime scope first and qualify executable bindings against it. Adopting
+this format or passing native tests does not establish acceptance of all evidence.
 
 ## Basis and tailoring
 

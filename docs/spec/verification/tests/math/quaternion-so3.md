@@ -65,4 +65,5 @@ pi sign cut or outside its mathematical domain.
 
 ## Review
 
-Pending owner review; all executable allocations remain Pending.
+Pending owner approval. Executable bindings record implemented scope and explicit
+acceptance gaps; execution results belong to the selected build record.

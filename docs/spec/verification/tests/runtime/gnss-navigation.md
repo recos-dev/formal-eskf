@@ -32,7 +32,7 @@ continuation after rejected calls to detect changes to private watermarks/histor
 **Regression:** Retain fixed boundary and event sequences with explicit expected
 results. A result produced by the implementation under test is not a golden
 oracle. Every row is a required case family; listed partitions are obligations,
-not optional examples. All executable bindings are pending.
+not optional examples. The case tables identify executable bindings and remaining acceptance gaps.
 
 ## Operation allocation
 
@@ -137,8 +137,8 @@ timestamps. It does not infer successful fusion from an accepted quality sample.
 
 ## Review Pending
 
-- Approve the scenario partitions and requirement links before implementation;
-  each Pending family still needs explicit executable fixtures and selectors.
+- Review the scenario partitions and requirement links before accepting coverage.
+  Executable bindings identify implemented fixtures, selectors and remaining gaps.
 - Bind independent numerical acceptance to the shared input/error-budget
   policy. Exact protocol/frame checks do not establish numerical accuracy.
 - Confirm existing seams or scoped proof disposition for unreachable internal

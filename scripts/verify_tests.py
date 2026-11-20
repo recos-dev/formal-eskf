@@ -87,12 +87,14 @@ def parse_registry(OUTPUT):
 
 
 def collect_tests(CTEST, PLAN, BUILD_DIR, TIMEOUT, LOG_DIR):
-    TESTS, ERRORS = [], []
+    TESTS, ERRORS, NOT_SELECTED = [], [], []
     BOUND_SOURCES = {SOURCE for CASE in PLAN.values() for SOURCE in CASE["sources"]}
+    CONFIGURED_SOURCES = set()
     for TEST in CTEST.get("tests", []):
         PROPERTIES = {ITEM["name"]: ITEM["value"] for ITEM in TEST.get("properties", [])}
         SOURCES = [LABEL.removeprefix("plan-source:") for LABEL in PROPERTIES.get("LABELS", [])
                    if LABEL.startswith("plan-source:")]
+        CONFIGURED_SOURCES.update(SOURCES)
         if not any(SOURCE in BOUND_SOURCES for SOURCE in SOURCES):
             continue
         NAME = TEST["name"]
@@ -122,13 +124,21 @@ def collect_tests(CTEST, PLAN, BUILD_DIR, TIMEOUT, LOG_DIR):
                               "directory": str(DIRECTORY), "environment": ENVIRONMENT})
         except ValueError as ERROR:
             ERRORS.append(f"{NAME}: {ERROR}")
+    CACHE_FILE = BUILD_DIR / "CMakeCache.txt"
+    CACHE = CACHE_FILE.read_text() if CACHE_FILE.is_file() else ""
+    CMSIS_DISABLED = re.search(r"^FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND:[^=\n]+=OFF$", CACHE, re.MULTILINE) is not None
+    for SOURCE in sorted(BOUND_SOURCES - CONFIGURED_SOURCES):
+        if SOURCE == "tests/math/test_cmsis_dsp_backend.cpp" and CMSIS_DISABLED:
+            NOT_SELECTED.append({"source": SOURCE, "reason": "FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND=OFF"})
+        else:
+            ERRORS.append(f"{SOURCE}: no source-labeled target in the configured build")
     FOUND = {TEST["id"] for TEST in TESTS}
     for ID, CASE in PLAN.items():
         if CASE["kind"] in ("Native", "Partial") and ID not in FOUND:
             ERRORS.append(f"{ID}: no executable registration in the configured build")
         elif CASE["kind"] not in ("Native", "Partial", "Analysis", "Delegated"):
             ERRORS.append(f"{ID}: unresolved binding: {CASE['binding']}")
-    return TESTS, ERRORS
+    return TESTS, ERRORS, NOT_SELECTED
 
 
 def execute_case(TEST, TIMEOUT, LOG_FILE):
@@ -145,11 +155,14 @@ def execute_case(TEST, TIMEOUT, LOG_FILE):
             "passed": PASSED, "exit_code": CODE, "log": str(LOG_FILE)}
 
 
-def write_report(LOG_DIR, PLAN, RESULTS, ERRORS, ELAPSED, BUILD_DIR, TESTS, BUILD_PERFORMED):
+def write_report(LOG_DIR, PLAN, RESULTS, ERRORS, ELAPSED, BUILD_DIR, TESTS, BUILD_PERFORMED, NOT_SELECTED):
     CODE, HEAD = run_command(["git", "rev-parse", "HEAD"], REPO_DIR, 30)
     _, STATUS = run_command(["git", "status", "--short"], REPO_DIR, 30)
     FILES = set(PLAN_DIR.rglob("*.md"))
     FILES.update(REPO_DIR / SOURCE for CASE in PLAN.values() for SOURCE in CASE["sources"])
+    FILES.update((REPO_DIR / "include/formal_eskf").rglob("*.hpp"))
+    FILES.update(PATH for PATH in (REPO_DIR / "tests/support").rglob("*") if PATH.is_file())
+    FILES.add(Path(__file__).resolve())
     FILES.update(PATH for PATH in (BUILD_DIR / "CMakeCache.txt", BUILD_DIR / "compile_commands.json")
                  if PATH.is_file())
     FILES.update(Path(TEST["command"][0]) for TEST in TESTS if Path(TEST["command"][0]).is_file())
@@ -159,6 +172,7 @@ def write_report(LOG_DIR, PLAN, RESULTS, ERRORS, ELAPSED, BUILD_DIR, TESTS, BUIL
               "build_dir": str(BUILD_DIR), "build_performed": BUILD_PERFORMED,
               "freshness": "Build executed" if BUILD_PERFORMED else "Existing binaries; source freshness not checked",
               "file_sha256": HASHES, "plan": PLAN,
+              "not_selected_sources": NOT_SELECTED,
               "results": RESULTS, "errors": ERRORS, "elapsed_seconds": ELAPSED}
     (LOG_DIR / "report.json").write_text(json.dumps(REPORT, indent=2) + "\n")
 
@@ -198,9 +212,11 @@ def main():
         if CODE:
             raise ValueError(f"CTest inventory failed ({CODE}): {OUTPUT}")
         (LOG_DIR / "ctest.json").write_text(OUTPUT)
-        TESTS, ERRORS = collect_tests(json.loads(OUTPUT), PLAN, BUILD_DIR, ARGS.timeout, LOG_DIR)
+        TESTS, ERRORS, NOT_SELECTED = collect_tests(json.loads(OUTPUT), PLAN, BUILD_DIR, ARGS.timeout, LOG_DIR)
         for ERROR in ERRORS:
             print(f"[Missing] {ERROR}")
+        for ITEM in NOT_SELECTED:
+            print(f"[Not selected] {ITEM['source']}: {ITEM['reason']}")
         RESULTS = []
         for INDEX, TEST in enumerate(TESTS):
             if ARGS.case and TEST["id"] not in ARGS.case:
@@ -222,7 +238,7 @@ def main():
         print(f"\nExecution: {PASS_COUNT} passed, {FAIL_COUNT} failed, {len(ERRORS)} registration gaps")
         print(f"Design: {len(PLAN)} IDs; {PARTIAL} partial acceptance, {NON_EXECUTABLE} analysis/delegated obligations")
         print(f"Total elapsed: {ELAPSED:.1f} s\nReport: {LOG_DIR / 'report.json'}")
-        write_report(LOG_DIR, PLAN, RESULTS, ERRORS, ELAPSED, BUILD_DIR, TESTS, not ARGS.no_build)
+        write_report(LOG_DIR, PLAN, RESULTS, ERRORS, ELAPSED, BUILD_DIR, TESTS, not ARGS.no_build, NOT_SELECTED)
         return 2 if ERRORS else int(FAIL_COUNT != 0)
     except (ValueError, OSError, KeyError) as ERROR:
         print(f"error: {ERROR}\nLogs: {LOG_DIR}", file=sys.stderr)

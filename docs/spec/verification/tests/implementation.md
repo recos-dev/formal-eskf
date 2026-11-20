@@ -93,7 +93,7 @@ Integration owners and production behavior changes remain outside this work.
 
 | T-60 | `tests/core/test_sequence.cpp` | Use shared profile metadata so case registration remains machine-readable. | Implemented |
 
-| T-61 | `scripts/verify_tests.py` | Check configured source completeness, report optional backend exclusions and hash shared production/oracle dependencies. | Pending |
+| T-61 | `scripts/verify_tests.py` | Check configured source completeness, report optional backend exclusions and hash shared production/oracle dependencies. | Implemented |
 | T-62 | `tests/tools/test_test_plan.py` | Reject missing enabled sources and verify optional exclusions and dependency provenance. | Pending |
 
 ## Final reconciliation and cleanup

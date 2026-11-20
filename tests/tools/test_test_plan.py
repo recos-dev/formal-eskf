@@ -71,15 +71,15 @@ class TestPlan(unittest.TestCase):
             return RUNNER.collect_tests(SELF.CTEST, SELF.PLAN, SELF.ROOT, 1, SELF.ROOT)
 
     def test_registry_reconciles_id_and_owning_source(SELF):
-        TESTS, ERRORS = SELF.collect(f"{ID} binary64\n")
+        TESTS, ERRORS, NOT_SELECTED = SELF.collect(f"{ID} binary64\n")
         SELF.assertFalse(ERRORS)
         SELF.assertEqual(len(TESTS), 1)
         SELF.assertEqual(TESTS[0]["command"][-4:], ["--case", ID, "--profile", "binary64"])
         for OUTPUT, CODE in (("TC-UNKNOWN-case binary64\n", 0), (f"{ID} binary64\n", 1), ("", 0)):
-            _, ERRORS = SELF.collect(OUTPUT, CODE)
+            _, ERRORS, _ = SELF.collect(OUTPUT, CODE)
             SELF.assertTrue(ERRORS)
         SELF.PLAN["TC-SECOND-case"] = dict(SELF.PLAN[ID])
-        _, ERRORS = SELF.collect(f"{ID} binary64\n")
+        _, ERRORS, _ = SELF.collect(f"{ID} binary64\n")
         SELF.assertTrue(any("TC-SECOND-case" in ERROR for ERROR in ERRORS))
 
     def test_shared_id_cannot_hide_one_sources_missing_case(SELF):
@@ -90,28 +90,28 @@ class TestPlan(unittest.TestCase):
                                     "properties": [{"name": "LABELS", "value": ["plan-source:" + SECOND]}]})
         with patch.object(RUNNER, "run_command", side_effect=[(0, f"{ID} binary64\n"),
                                                                 (0, "TC-SECOND-case binary64\n")]):
-            _, ERRORS = RUNNER.collect_tests(SELF.CTEST, SELF.PLAN, SELF.ROOT, 1, SELF.ROOT)
+            _, ERRORS, _ = RUNNER.collect_tests(SELF.CTEST, SELF.PLAN, SELF.ROOT, 1, SELF.ROOT)
         SELF.assertTrue(any(f"second: missing source-bound IDs: {ID}" in ERROR for ERROR in ERRORS))
 
     def test_disabled_missing_and_unresolved_are_not_passes(SELF):
         SELF.CTEST["tests"][0]["properties"].append({"name": "DISABLED", "value": True})
-        _, ERRORS = SELF.collect(f"{ID} binary64\n")
+        _, ERRORS, _ = SELF.collect(f"{ID} binary64\n")
         SELF.assertTrue(ERRORS)
         SELF.CTEST["tests"] = []
-        _, ERRORS = SELF.collect("")
+        _, ERRORS, _ = SELF.collect("")
         SELF.assertTrue(ERRORS)
         SELF.PLAN[ID] = {"kind": "Pending", "sources": [], "binding": "Pending"}
-        _, ERRORS = SELF.collect("")
+        _, ERRORS, _ = SELF.collect("")
         SELF.assertTrue(any("unresolved" in ERROR for ERROR in ERRORS))
         SELF.PLAN[ID] = {"kind": "Proved", "sources": [], "binding": "Proved: native run"}
-        _, ERRORS = SELF.collect("")
+        _, ERRORS, _ = SELF.collect("")
         SELF.assertTrue(any("unresolved" in ERROR for ERROR in ERRORS))
 
     def test_analysis_and_delegation_do_not_become_executable_passes(SELF):
         SELF.CTEST["tests"] = []
         for KIND in ("Analysis", "Delegated"):
             SELF.PLAN[ID] = {"kind": KIND, "sources": [], "binding": KIND + ": owner review"}
-            TESTS, ERRORS = SELF.collect("")
+            TESTS, ERRORS, NOT_SELECTED = SELF.collect("")
             SELF.assertEqual(TESTS, [])
             SELF.assertEqual(ERRORS, [])
 

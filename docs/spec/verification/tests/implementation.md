@@ -84,6 +84,8 @@ Integration owners and production behavior changes remain outside this work.
 | T-51 | `tests/CMakeLists.txt` | Enforce the declared strict floating-point test profile, including optimized builds. | Implemented |
 | T-52 | `tests/support/correction_reference.hpp` | Share an independent dense correction oracle across core/runtime cases; validate with exact analytic controls. | Implemented |
 
+| T-53 | `tests/support/correction_reference.hpp` | Extend the independent oracle with explicit heading gain projection; verify exact identity and tilted controls and default preservation. | Implemented |
+
 ## Final reconciliation and cleanup
 
 After these replacements are reviewed, reconcile every design row and every old

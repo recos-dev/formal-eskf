@@ -82,7 +82,7 @@ template <std::size_t Size> struct ReferenceCorrection
 template <typename Fixture>
 ReferenceCorrection<Fixture::size>
 reference_correction(Fixture const & fixture, bool approximate_reset,
-                     formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {})
+                     formal_eskf::configuration::Ins::BiasUpdate const & bias_update = {}, bool project_heading = false)
 {
     constexpr std::size_t n = Fixture::size;
     constexpr std::size_t m = Fixture::measurement_size;
@@ -159,6 +159,29 @@ reference_correction(Fixture const & fixture, bool approximate_reset,
             selection[12U + axis][12U + axis] = bias_update.gyroscope[axis] ? 1.0L : 0.0L;
         }
         K = product(selection, K);
+    }
+    if (project_heading)
+    {
+        // Right-local attitude gain is restricted to navigation Down expressed
+        // in body coordinates. Compute u*(u dot K) directly, independently of
+        // the production matrix-projector helper and its multiplication order.
+        long double const w = fixture.state.q_nb.q0();
+        long double const x = fixture.state.q_nb.q1();
+        long double const y = fixture.state.q_nb.q2();
+        long double const z = fixture.state.q_nb.q3();
+        std::array<long double, 3U> const down{2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)};
+        for (std::size_t column = 0U; column < m; ++column)
+        {
+            long double along_down = 0;
+            for (std::size_t axis = 0U; axis < 3U; ++axis)
+            {
+                along_down += down[axis] * K[offset + axis][column];
+            }
+            for (std::size_t axis = 0U; axis < 3U; ++axis)
+            {
+                K[offset + axis][column] = down[axis] * along_down;
+            }
+        }
     }
     result.delta_x = product(K, copied(fixture.r));
     auto A = product(K, H);

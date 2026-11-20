@@ -10,6 +10,8 @@
 #include <bit>
 #include <cmath>
 #include <cstddef>
+#include <cmath>
+#include <type_traits>
 #include <initializer_list>
 #include <iostream>
 #include <limits>
@@ -20,6 +22,8 @@
 #include "test_backend.hpp"
 
 #include "test_support.hpp"
+#include "test_cases.hpp"
+#include "correction_reference.hpp"
 
 namespace
 {
@@ -35,7 +39,8 @@ template <typename Matrix> bool same_bits(Matrix const & a, Matrix const & b)
     {
         for (std::size_t column = 0U; column < Matrix::column_count; ++column)
         {
-            if (std::bit_cast<bytes_type>(a(row, column)) != std::bit_cast<bytes_type>(b(row, column)))
+            if (!(std::isnan(a(row, column)) && std::isnan(b(row, column))) &&
+                std::bit_cast<bytes_type>(a(row, column)) != std::bit_cast<bytes_type>(b(row, column)))
             {
                 return false;
             }
@@ -164,6 +169,8 @@ void test_accelerometer_jacobian(TestContext & test, std::string_view profile)
                 profile, "general attitude is valid");
     fixture.g_n = Fixture::vector_type::from_row_major({value_type{0.25}, value_type{-0.5}, value_type{2}});
     auto const H = fixture.jacobian();
+    // Supplemental finite-difference regression; this step/tolerance pair is
+    // not a certified general derivative/truncation bound.
     constexpr bool binary32 = std::numeric_limits<value_type>::digits == 24;
     constexpr value_type step = static_cast<value_type>(binary32 ? 0.005 : 1.0e-5);
     constexpr value_type tolerance = static_cast<value_type>(binary32 ? 0.002 : 3.0e-9);
@@ -271,8 +278,7 @@ void test_accelerometer_analytic(TestContext & test, std::string_view profile, t
     }
 }
 
-template <typename Linalg, typename Configuration>
-void test_accelerometer_delegation(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
+template <typename Linalg, typename Configuration> auto coupled_fixture(TestContext & test, std::string_view profile)
 {
     using value_type = typename Linalg::value_type;
     using Fixture = AccelerometerFixture<Linalg, Configuration>;
@@ -299,6 +305,57 @@ void test_accelerometer_delegation(TestContext & test, std::string_view profile,
     }
     fixture.V(0U, 1U) = value_type{0.25};
     fixture.V(1U, 0U) = value_type{0.25};
+    fixture.V(0U, 2U) = value_type{0.125};
+    fixture.V(2U, 0U) = value_type{0.125};
+    fixture.V(1U, 2U) = value_type{-0.125};
+    fixture.V(2U, 1U) = value_type{-0.125};
+    return fixture;
+}
+
+template <typename Fixture> struct GravityReference
+{
+    using value_type = typename Fixture::value_type;
+    using state_type = typename Fixture::state_type;
+    using covariance_type = typename Fixture::covariance_type;
+    static constexpr bool is_ins = Fixture::size == 15U;
+    static constexpr std::size_t size = Fixture::size;
+    static constexpr std::size_t attitude_offset = Fixture::attitude_offset;
+    static constexpr std::size_t measurement_size = 3U;
+    state_type state;
+    covariance_type P;
+    typename Fixture::jacobian_type H;
+    typename Fixture::vector_type r;
+    typename Fixture::matrix3_type V;
+
+    explicit GravityReference(Fixture const & fixture) : state(fixture.state), P(fixture.P), V(fixture.V)
+    {
+        auto const h = observation(fixture.state, fixture.g_n);
+        long double const skew[3][3]{{0, -h[2], h[1]}, {h[2], 0, -h[0]}, {-h[1], h[0], 0}};
+        for (std::size_t row = 0U; row < 3U; ++row)
+        {
+            long double measurement = fixture.f_b(row);
+            if constexpr (is_ins)
+            {
+                measurement -= fixture.state.b_a(row);
+            }
+            r(row) = static_cast<value_type>(measurement - h[row]);
+            for (std::size_t column = 0U; column < 3U; ++column)
+            {
+                H(row, attitude_offset + column) = static_cast<value_type>(skew[row][column]);
+            }
+        }
+    }
+};
+
+template <typename Linalg, typename Configuration>
+void test_accelerometer_delegation(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
+{
+    using Fixture = AccelerometerFixture<Linalg, Configuration>;
+    auto fixture = coupled_fixture<Linalg, Configuration>(test, profile);
+    GravityReference<Fixture> const independent_input(fixture);
+    auto const independent =
+        formal_eskf::test::reference::reference_correction(independent_input, ESKF_RESET_APPROX != 0);
+    auto const r = independent_input.r;
     typename Fixture::state_type expected_state;
     typename Fixture::covariance_type expected_P;
     // Bitwise delegation/alias checks use the same selected arithmetic. Dense
@@ -335,6 +392,9 @@ void test_accelerometer_delegation(TestContext & test, std::string_view profile,
         test.expect(input.correct(state_output, P_output) == Status::success &&
                         same_state(state_output, expected_state) && same_bits(P_output, expected_P),
                     profile, "all output aliases match generic Joseph/injection/reset exactly");
+        test.expect(formal_eskf::test::reference::matches_reference(independent_input, independent, state_output,
+                                                                    P_output, tolerance),
+                    profile, "whole gravity wrapper matches independently constructed h/H/r and full correction");
         test.expect(((aliases & 1U) != 0U || same_state(input.state, fixture.state)) &&
                         ((aliases & 2U) != 0U || same_bits(input.P, fixture.P)) && same_bits(input.f_b, fixture.f_b) &&
                         same_bits(input.g_n, fixture.g_n) && same_bits(input.V, fixture.V),
@@ -346,52 +406,13 @@ void test_accelerometer_delegation(TestContext & test, std::string_view profile,
                     formal_eskf::so3::same_rotation(opposite.state.q_nb, expected_state.q_nb, tolerance) &&
                     formal_eskf::linalg::max_abs(opposite.P - expected_P) <= tolerance,
                 profile, "q and -q give the same physical correction and covariance");
-
-    if constexpr (Fixture::size == 15U)
-    {
-        for (unsigned permissions = 0U; permissions < 64U; ++permissions)
-        {
-            formal_eskf::configuration::Ins::BiasUpdate bias_update;
-            for (unsigned axis = 0U; axis < 3U; ++axis)
-            {
-                bias_update.accelerometer[axis] = (permissions & (1U << axis)) != 0U;
-                bias_update.gyroscope[axis] = (permissions & (1U << (3U + axis))) != 0U;
-            }
-            test.expect(formal_eskf::correct<Linalg, 3U, formal_eskf::detail::CorrectionModel::body_vector>(
-                            fixture.state, fixture.P, r, fixture.jacobian(), fixture.V, Fixture::minimum_norm,
-                            expected_state, expected_P, bias_update) == Status::success,
-                        profile, "controlled generic correction succeeds");
-            for (unsigned aliases = 0U; aliases < 4U; ++aliases)
-            {
-                auto input = fixture;
-                typename Fixture::state_type separate_state;
-                typename Fixture::covariance_type separate_P;
-                auto & state_output = (aliases & 1U) != 0U ? input.state : separate_state;
-                auto & P_output = (aliases & 2U) != 0U ? input.P : separate_P;
-                test.expect(input.correct(state_output, P_output, Fixture::minimum_norm, bias_update) ==
-                                    Status::success &&
-                                same_state(state_output, expected_state) && same_bits(P_output, expected_P),
-                            profile, "all bias permissions and aliases match controlled generic correction");
-                test.expect(((aliases & 1U) != 0U || same_state(input.state, fixture.state)) &&
-                                ((aliases & 2U) != 0U || same_bits(input.P, fixture.P)) &&
-                                same_bits(input.f_b, fixture.f_b) && same_bits(input.g_n, fixture.g_n) &&
-                                same_bits(input.V, fixture.V),
-                            profile, "controlled correction preserves non-output inputs");
-                auto const state_before = state_output;
-                auto const P_before = P_output;
-                test.expect(input.correct(state_output, P_output, value_type{0}, bias_update) == Status::domain_error &&
-                                same_state(state_output, state_before) && same_bits(P_output, P_before),
-                            profile, "controlled correction preserves both outputs on downstream failure");
-            }
-        }
-    }
 }
 
-template <typename Linalg> void test_ins_gravity_model(TestContext & test, typename Linalg::value_type tolerance)
+template <typename Linalg>
+void test_ins_gravity_model(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
 {
     using value_type = typename Linalg::value_type;
     using Fixture = AccelerometerFixture<Linalg, formal_eskf::configuration::Ins>;
-    constexpr std::string_view profile = "INS gravity model";
     Fixture fixture;
     fixture.state.v_n(0U) = value_type{3};
     auto const before = fixture.state;
@@ -433,7 +454,15 @@ void test_accelerometer_failures(TestContext & test, std::string_view profile)
         {
             auto input = bad;
             auto separate_state = fixture.state;
+            separate_state.q_nb = -separate_state.q_nb;
+            if constexpr (Fixture::size == 15U)
+            {
+                separate_state.p_n(0U) = std::numeric_limits<value_type>::quiet_NaN();
+                separate_state.v_n(1U) = -value_type{0};
+            }
             typename Fixture::covariance_type separate_P = fixture.P * value_type{7};
+            separate_P(0U, 1U) = -value_type{0};
+            separate_P(1U, 0U) = std::numeric_limits<value_type>::quiet_NaN();
             auto & output = (aliases & 1U) != 0U ? input.state : separate_state;
             auto & P_output = (aliases & 2U) != 0U ? input.P : separate_P;
             auto const state_before = output;
@@ -443,7 +472,7 @@ void test_accelerometer_failures(TestContext & test, std::string_view profile)
                         profile, description);
             test.expect(same_state(input.state, bad.state) && same_bits(input.P, bad.P) &&
                             same_bits(input.f_b, bad.f_b) && same_bits(input.g_n, bad.g_n) && same_bits(input.V, bad.V),
-                        profile, "failure preserves every input bit-for-bit");
+                        profile, "failure preserves every logical input field");
         }
     };
     for (value_type invalid :
@@ -478,6 +507,14 @@ void test_accelerometer_failures(TestContext & test, std::string_view profile)
     bad.g_n(2U) = std::numeric_limits<value_type>::max();
     bad.f_b(2U) = std::numeric_limits<value_type>::max();
     fail(bad, Fixture::minimum_norm, Status::non_finite_result, "finite residual overflow rolls back");
+    bad = fixture;
+    test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::from_coefficients(value_type{2}, value_type{0}, value_type{0},
+                                                                            value_type{1}, Fixture::minimum_norm,
+                                                                            bad.state.q_nb) == Status::success,
+                profile, "nonaxis rotation-overflow fixture is unit");
+    bad.g_n(0U) = std::numeric_limits<value_type>::max();
+    bad.g_n(1U) = std::numeric_limits<value_type>::max();
+    fail(bad, Fixture::minimum_norm, Status::non_finite_result, "finite gravity rotation overflow rolls back");
     bad = fixture;
     bad.V(0U, 1U) = value_type{0.25};
     fail(bad, Fixture::minimum_norm, Status::domain_error, "asymmetric effective V rolls back");
@@ -517,34 +554,230 @@ void test_accelerometer_failures(TestContext & test, std::string_view profile)
 }
 
 template <typename Linalg, typename Configuration>
-void run_accelerometer_tests(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
+void test_fixed_preprocessing(TestContext & test, std::string_view profile)
 {
-    test_accelerometer_jacobian<Linalg, Configuration>(test, profile);
+    using value_type = typename Linalg::value_type;
+    using Fixture = AccelerometerFixture<Linalg, Configuration>;
+    auto fixture = coupled_fixture<Linalg, Configuration>(test, profile);
+    auto original = fixture;
+    test.expect(original.correct(original.state, original.P) == Status::success, profile,
+                "fixed-preprocessing control correction succeeds");
+    if constexpr (Fixture::size == 15U)
+    {
+        auto shifted = fixture;
+        auto const offset = Fixture::vector_type::from_row_major({value_type{0.5}, value_type{-1}, value_type{2}});
+        shifted.state.b_a = shifted.state.b_a + offset;
+        shifted.f_b = shifted.f_b + offset;
+        auto const H = shifted.jacobian();
+        for (std::size_t row = 0U; row < 3U; ++row)
+        {
+            for (std::size_t column = 9U; column < 15U; ++column)
+            {
+                test.expect(H(row, column) == value_type{0}, profile,
+                            "fixed prior-bias preprocessing does not add bias Jacobian columns");
+            }
+        }
+        test.expect(shifted.correct(shifted.state, shifted.P) == Status::success, profile,
+                    "equal raw-force/prior-bias shifts preserve the processed measurement");
+        auto expected = original.state;
+        expected.b_a = expected.b_a + offset;
+        // Encoded dyadic shifts preserve r exactly in this fixture. Nominal
+        // bias addition can round differently after the changed offset.
+        constexpr value_type rounding = value_type{8} * std::numeric_limits<value_type>::epsilon();
+        test.expect(same_bits(shifted.P, original.P) &&
+                        same_bits(shifted.state.q_nb.coefficients(), original.state.q_nb.coefficients()) &&
+                        same_bits(shifted.state.p_n, original.state.p_n) &&
+                        same_bits(shifted.state.v_n, original.state.v_n) &&
+                        same_bits(shifted.state.b_g, original.state.b_g),
+                    profile, "fixed measurement leaves gain, nonbias correction and covariance identical");
+        for (std::size_t axis = 0U; axis < 3U; ++axis)
+        {
+            test.expect(near(shifted.state.b_a(axis), expected.b_a(axis), rounding), profile,
+                        "changed prior bias receives the same estimated increment within two-addition rounding");
+        }
+        test_ins_gravity_model<Linalg>(test, profile, rounding);
+    }
+    else
+    {
+        auto scaled = fixture;
+        scaled.f_b = scaled.f_b * value_type{2};
+        scaled.g_n = scaled.g_n * value_type{2};
+        scaled.V = scaled.V * value_type{4};
+        test.expect(scaled.correct(scaled.state, scaled.P) == Status::success &&
+                        same_state(scaled.state, original.state) && same_bits(scaled.P, original.P),
+                    profile, "power-of-two unit scaling of force/gravity and covariance leaves AHRS update unchanged");
+    }
+}
+
+template <typename Linalg> void test_bias_forwarding(TestContext & test, std::string_view profile)
+{
+    using value_type = typename Linalg::value_type;
+    using Fixture = AccelerometerFixture<Linalg, formal_eskf::configuration::Ins>;
+    auto fixture = coupled_fixture<Linalg, formal_eskf::configuration::Ins>(test, profile);
+    GravityReference<Fixture> const independent_input(fixture);
+    // Independent finite-angle regression; general acceptance envelope is open.
+    constexpr value_type tolerance = static_cast<value_type>(std::is_same_v<value_type, float> ? 8e-6 : 2e-12);
+    std::array<unsigned, 14U> permissions{0U, 63U};
+    for (unsigned axis = 0U; axis < 6U; ++axis)
+    {
+        permissions[2U + axis] = 1U << axis;
+        permissions[8U + axis] = 63U ^ (1U << axis);
+    }
+    auto unrestricted = fixture;
+    test.expect(unrestricted.correct(unrestricted.state, unrestricted.P) == Status::success, profile,
+                "default gravity permissions permit correction");
+    for (unsigned mask : permissions)
+    {
+        formal_eskf::configuration::Ins::BiasUpdate permission;
+        for (std::size_t axis = 0U; axis < 3U; ++axis)
+        {
+            permission.accelerometer[axis] = (mask & (1U << axis)) != 0U;
+            permission.gyroscope[axis] = (mask & (1U << (3U + axis))) != 0U;
+        }
+        auto const reference =
+            formal_eskf::test::reference::reference_correction(independent_input, ESKF_RESET_APPROX != 0, permission);
+        for (unsigned aliases = 0U; aliases < 4U; ++aliases)
+        {
+            auto input = fixture;
+            typename Fixture::state_type separate_state;
+            typename Fixture::covariance_type separate_P;
+            auto & state = (aliases & 1U) != 0U ? input.state : separate_state;
+            auto & P = (aliases & 2U) != 0U ? input.P : separate_P;
+            test.expect(
+                input.correct(state, P, Fixture::minimum_norm, permission) == Status::success &&
+                    formal_eskf::test::reference::matches_reference(independent_input, reference, state, P, tolerance),
+                profile, "gravity wrapper forwards each bias permission to both error and Joseph update");
+            if (mask == 63U)
+            {
+                test.expect(same_state(state, unrestricted.state) && same_bits(P, unrestricted.P), profile,
+                            "default/all-enabled and omitted gravity permissions agree exactly");
+            }
+            for (std::size_t axis = 0U; axis < 3U; ++axis)
+            {
+                test.expect((permission.accelerometer[axis] || state.b_a(axis) == fixture.state.b_a(axis)) &&
+                                (permission.gyroscope[axis] || state.b_g(axis) == fixture.state.b_g(axis)),
+                            profile, "disabled nominal bias coordinates remain unchanged");
+            }
+            test.expect(((aliases & 1U) != 0U || same_state(input.state, fixture.state)) &&
+                            ((aliases & 2U) != 0U || same_bits(input.P, fixture.P)) &&
+                            same_bits(input.f_b, fixture.f_b) && same_bits(input.g_n, fixture.g_n) &&
+                            same_bits(input.V, fixture.V),
+                        profile, "bias permissions preserve borrowed observation inputs");
+            auto const saved = state;
+            auto const saved_P = P;
+            test.expect(input.correct(state, P, value_type{0}, permission) == Status::domain_error &&
+                            same_state(state, saved) && same_bits(P, saved_P),
+                        profile, "permissions do not bypass downstream checks or atomic failure");
+        }
+    }
+}
+
+template <typename Linalg, typename Configuration>
+void test_domain_transaction(TestContext & test, std::string_view profile)
+{
+    using value_type = typename Linalg::value_type;
+    constexpr value_type tolerance = static_cast<value_type>(std::is_same_v<value_type, float> ? 8e-6 : 2e-12);
     test_accelerometer_analytic<Linalg, Configuration>(test, profile, tolerance);
     test_accelerometer_delegation<Linalg, Configuration>(test, profile, tolerance);
     test_accelerometer_failures<Linalg, Configuration>(test, profile);
 }
 
+template <typename Linalg, typename Configuration>
+void test_boundary_ownership(TestContext & test, std::string_view profile)
+{
+    using Fixture = AccelerometerFixture<Linalg, Configuration>;
+    using value_type = typename Linalg::value_type;
+    for (bool const cyclic : {false, true})
+    {
+        Fixture fixture;
+        if (cyclic)
+        {
+            moving_state(test, fixture, profile);
+        }
+        auto const h = observation(fixture.state, fixture.g_n);
+        for (std::size_t axis = 0U; axis < 3U; ++axis)
+        {
+            fixture.f_b(axis) = static_cast<value_type>(h[axis]);
+            if constexpr (Fixture::size == 15U)
+            {
+                fixture.f_b(axis) += fixture.state.b_a(axis);
+            }
+        }
+        fixture.V = Fixture::matrix3_type::identity() * value_type{12};
+        auto const H = fixture.jacobian();
+        for (std::size_t row = 0U; row < 3U; ++row)
+        {
+            value_type null_component = value_type{0};
+            for (std::size_t axis = 0U; axis < 3U; ++axis)
+            {
+                null_component += H(row, Fixture::attitude_offset + axis) * static_cast<value_type>(h[axis]);
+            }
+            test.expect(null_component == value_type{0}, profile,
+                        "instantaneous observation derivative annihilates rotation along the gravity vector");
+        }
+        auto state = fixture.state;
+        auto P = fixture.P;
+        test.expect(fixture.correct(state, P) == Status::success && same_state(state, fixture.state), profile,
+                    "zero residual at each current prior preserves nominal state without skipping covariance");
+        std::size_t const gravity_axis = cyclic ? 1U : 2U;
+        for (std::size_t row = 0U; row < Fixture::size; ++row)
+        {
+            bool const observed = row >= Fixture::attitude_offset && row < Fixture::attitude_offset + 3U &&
+                                  row != Fixture::attitude_offset + gravity_axis;
+            for (std::size_t column = 0U; column < Fixture::size; ++column)
+            {
+                value_type const expected =
+                    row == column ? (observed ? value_type{0.75} : value_type{1}) : value_type{0};
+                test.expect(
+                    P(row, column) == expected, profile,
+                    "exact posterior is relinearized at supplied attitude, retaining one field-direction variance");
+            }
+        }
+    }
+}
+
 } /* end namespace */
 
-int main()
+int main(int argc, char ** argv)
 {
-    TestContext test;
     formal_eskf::test::configure_backend_test();
-    using formal_eskf::configuration::Ahrs;
-    using formal_eskf::configuration::Ins;
-    using formal_eskf::test::Backend;
-    run_accelerometer_tests<Backend<float>, Ahrs>(test, "AHRS accelerometer binary32", 8.0e-6F);
-    run_accelerometer_tests<Backend<double>, Ahrs>(test, "AHRS accelerometer binary64", 2.0e-12);
-    run_accelerometer_tests<Backend<float>, Ins>(test, "INS accelerometer binary32", 8.0e-6F);
-    run_accelerometer_tests<Backend<double>, Ins>(test, "INS accelerometer binary64", 2.0e-12);
-    test_ins_gravity_model<Backend<float>>(test, 8.0e-6F);
-    test_ins_gravity_model<Backend<double>>(test, 2.0e-12);
-    if (test.failures() != 0)
-    {
-        std::cerr << test.failures() << " ESKF accelerometer test(s) failed\n";
-        return 1;
-    }
-    std::cout << "All ESKF accelerometer tests passed\n";
-    return 0;
+    formal_eskf::test::Case const cases[] = {
+        {"TC-E-OBS-boundary-ownership", "INS.accelerometer.binary32",
+         test_boundary_ownership<formal_eskf::test::Backend<float>, formal_eskf::configuration::Ins>},
+        {"TC-E-OBS-boundary-ownership", "INS.accelerometer.binary64",
+         test_boundary_ownership<formal_eskf::test::Backend<double>, formal_eskf::configuration::Ins>},
+        {"TC-E-OBS-boundary-ownership", "AHRS.accelerometer.binary32",
+         test_boundary_ownership<formal_eskf::test::Backend<float>, formal_eskf::configuration::Ahrs>},
+        {"TC-E-OBS-boundary-ownership", "AHRS.accelerometer.binary64",
+         test_boundary_ownership<formal_eskf::test::Backend<double>, formal_eskf::configuration::Ahrs>},
+        {"TC-E-OBS-ACCEL-gravity-model", "INS.binary32",
+         test_accelerometer_jacobian<formal_eskf::test::Backend<float>, formal_eskf::configuration::Ins>},
+        {"TC-E-OBS-ACCEL-gravity-model", "INS.binary64",
+         test_accelerometer_jacobian<formal_eskf::test::Backend<double>, formal_eskf::configuration::Ins>},
+        {"TC-E-OBS-ACCEL-gravity-model", "AHRS.binary32",
+         test_accelerometer_jacobian<formal_eskf::test::Backend<float>, formal_eskf::configuration::Ahrs>},
+        {"TC-E-OBS-ACCEL-gravity-model", "AHRS.binary64",
+         test_accelerometer_jacobian<formal_eskf::test::Backend<double>, formal_eskf::configuration::Ahrs>},
+        {"TC-E-OBS-ACCEL-fixed-preprocessing", "INS.binary32",
+         test_fixed_preprocessing<formal_eskf::test::Backend<float>, formal_eskf::configuration::Ins>},
+        {"TC-E-OBS-ACCEL-fixed-preprocessing", "INS.binary64",
+         test_fixed_preprocessing<formal_eskf::test::Backend<double>, formal_eskf::configuration::Ins>},
+        {"TC-E-OBS-ACCEL-fixed-preprocessing", "AHRS.binary32",
+         test_fixed_preprocessing<formal_eskf::test::Backend<float>, formal_eskf::configuration::Ahrs>},
+        {"TC-E-OBS-ACCEL-fixed-preprocessing", "AHRS.binary64",
+         test_fixed_preprocessing<formal_eskf::test::Backend<double>, formal_eskf::configuration::Ahrs>},
+        {"TC-E-OBS-ACCEL-domain-transaction", "INS.binary32",
+         test_domain_transaction<formal_eskf::test::Backend<float>, formal_eskf::configuration::Ins>},
+        {"TC-E-OBS-ACCEL-domain-transaction", "INS.binary64",
+         test_domain_transaction<formal_eskf::test::Backend<double>, formal_eskf::configuration::Ins>},
+        {"TC-E-OBS-ACCEL-domain-transaction", "AHRS.binary32",
+         test_domain_transaction<formal_eskf::test::Backend<float>, formal_eskf::configuration::Ahrs>},
+        {"TC-E-OBS-ACCEL-domain-transaction", "AHRS.binary64",
+         test_domain_transaction<formal_eskf::test::Backend<double>, formal_eskf::configuration::Ahrs>},
+        {"TC-E-OBS-bias-forwarding", "INS.accelerometer.binary32",
+         test_bias_forwarding<formal_eskf::test::Backend<float>>},
+        {"TC-E-OBS-bias-forwarding", "INS.accelerometer.binary64",
+         test_bias_forwarding<formal_eskf::test::Backend<double>>},
+    };
+    return formal_eskf::test::run_cases(cases, argc, argv);
 }

@@ -277,27 +277,46 @@ template <typename Linalg, typename Configuration> void test_conditions(TestCont
     using fixture_type = FusionFixture<Linalg, Configuration>;
     using value_type = typename fixture_type::value_type;
     fixture_type const baseline;
-    for (unsigned reason = 0U; reason < 7U; ++reason)
+    enum class Rejection
+    {
+        disabled,
+        unaligned,
+        horizontal_aiding,
+        out_of_band,
+        clipped_x,
+        clipped_y,
+        clipped_z
+    };
+    std::array const reasons{Rejection::disabled,    Rejection::unaligned, Rejection::horizontal_aiding,
+                             Rejection::out_of_band, Rejection::clipped_x, Rejection::clipped_y,
+                             Rejection::clipped_z};
+    for (auto reason : reasons)
     {
         auto fixture = baseline;
         switch (reason)
         {
-        case 0U:
+        case Rejection::disabled:
             fixture.conditions.enabled = false;
             break;
-        case 1U:
+        case Rejection::unaligned:
             fixture.conditions.tilt_aligned = false;
             break;
-        case 2U:
+        case Rejection::horizontal_aiding:
             fixture.conditions.horizontal_aiding = true;
             break;
-        case 3U:
+        case Rejection::out_of_band:
             fixture.sample = -fixture.gravity * value_type{2};
             fixture.monitor.reset();
             fixture.magnitude = fixture.monitor.update(fixture.sample);
             break;
-        default:
-            fixture.conditions.clipped[reason - 4U] = true;
+        case Rejection::clipped_x:
+            fixture.conditions.clipped[0U] = true;
+            break;
+        case Rejection::clipped_y:
+            fixture.conditions.clipped[1U] = true;
+            break;
+        case Rejection::clipped_z:
+            fixture.conditions.clipped[2U] = true;
             break;
         }
         expect_preserved(test, profile, fixture, FusionDecision::rejected, Status::success);

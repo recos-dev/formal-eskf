@@ -190,3 +190,5 @@ formal_eskf_add_backend_test(test_eskf_magnetometer test_eskf_magnetometer forma
 formal_eskf_add_backend_test(test_eskf_accelerometer test_eskf_accelerometer formal_eskf.accelerometer.eigen formal_eskf::core)
 
 formal_eskf_add_backend_test(test_contracts common/test_contracts formal_eskf.common.contracts formal_eskf::runtime)
+
+formal_eskf_add_backend_test(test_tilt_alignment runtime/test_tilt_alignment formal_eskf.tilt_alignment.eigen formal_eskf::runtime)

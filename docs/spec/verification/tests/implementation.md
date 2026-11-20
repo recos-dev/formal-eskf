@@ -69,7 +69,7 @@ Integration owners and production behavior changes remain outside this work.
 | T-36 | `tests/runtime/imu/test_vertical_health.cpp` | Signed evidence, source grouping, clipping counters, clocks, reset and failure frames. | Implemented |
 | T-37 | `tests/runtime/gnss/test_quality.cpp` | Quality flags, thresholds, filters, qualification, invalid calls and history. | Implemented |
 | T-38 | `tests/runtime/gnss/test_lifecycle.cpp` | All 15 lifecycle families and portable SW-GNSS command/feedback sequence. | Pending |
-| T-39 | `tests/runtime/gnss/test_measurement.cpp` | Generic/named gated fusion, diagnostics, vertical recovery and sequential groups. | Pending |
+| T-39 | `tests/runtime/gnss/test_measurement.cpp` | Generic/named gated fusion, diagnostics, vertical recovery and sequential groups. | Implemented |
 | T-40 | `tests/runtime/gnss/test_reset.cpp` | Four reset equations, covariance masks, delta, aliases and failure publication. | Implemented |
 | T-41 | `tests/runtime/test_measurement_fusion.cpp` | Generic measurement reporting, checked gate/correction and failure transactions. | Pending |
 | T-42 | `tests/runtime/magnetic/test_field.cpp` | Independent field geometry, selection/reference combinations, thresholds and failures. | Pending |

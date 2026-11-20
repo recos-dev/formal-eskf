@@ -64,7 +64,7 @@ Integration owners and production behavior changes remain outside this work.
 | T-31 | `tests/runtime/gravity/test_fusion.cpp` | Condition-first correction, permissions, failure frames and SW-GRAVITY sequences. | Implemented |
 | T-32 | `tests/runtime/imu/test_bias_inhibition.cpp` | Peak dynamics, axis permissions, failure history and missing-sample behavior. | Implemented |
 | T-33 | `tests/runtime/imu/test_process_noise.cpp` | Fault/clipping noise replacement, validation and immediate restoration. | Implemented |
-| T-34 | `tests/runtime/imu/test_bias_process_noise.cpp` | Bias-noise thresholds, consumption, aliases, inhibit/release and SW-IMU sequence. | Pending |
+| T-34 | `tests/runtime/imu/test_bias_process_noise.cpp` | Bias-noise thresholds, consumption, aliases, inhibit/release and SW-IMU sequence. | Implemented |
 | T-35 | `tests/runtime/imu/test_bias_limits.cpp` | Per-axis limits, complete validation and idempotent/released clamping. | Implemented |
 | T-36 | `tests/runtime/imu/test_vertical_health.cpp` | Signed evidence, source grouping, clipping counters, clocks, reset and failure frames. | Pending |
 | T-37 | `tests/runtime/gnss/test_quality.cpp` | Quality flags, thresholds, filters, qualification, invalid calls and history. | Pending |

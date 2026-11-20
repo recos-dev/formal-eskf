@@ -197,7 +197,8 @@ template <typename B, std::size_t Rows, std::size_t Size> void known_right(Conte
         }
     }
     auto const rhs = reference_product(expected, fixture.system);
-    auto const saved_rhs = rhs, saved_system = fixture.system;
+    auto const saved_rhs = rhs;
+    auto const saved_system = fixture.system;
     Matrix output;
     test.expect(right_solve_spd(rhs, fixture.system, output) == Status::success && exact(output, expected) &&
                     exact(reference_product(output, fixture.system), rhs),

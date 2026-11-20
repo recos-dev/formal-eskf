@@ -71,7 +71,7 @@ parse_arguments()
                 printf 'delayed-storage checks actual 64-slot IMU ring insertion, source preservation and complete backing frames in binary32/64. Every destination partition and equality profile is required; owner admission/completion/reset remain separate.\n'
                 printf 'delayed-observations selects typed storage, source control, complete owner/caller frames and context source steps; acceptance also requires Lean loop induction, reviewed source correspondence and the matching storage producers.\n'
                 printf 'delayed-output selects typed output storage, owner/caller contracts and source steps; every frame/position profile, Lean induction and producer dependency is required.\n'
-                printf 'height selects scalar offset equations, defaults and private source admission/read-only contracts for both sources and formats; full height transaction induction and platform publication remain separate.\n'
+                printf 'height selects scalar producers and complete height-owner transactions/invariants in both formats; numerical producer dependencies and live module publication require separate evidence.\n'
                 printf 'navigation-recovery selects actual gate diagnostic contracts, vertical limiter and both public recovery callers with every state/P alias. Same-type correction frames are reused; root accuracy and caller health/permission remain separate.\n'
                 printf 'navigation-reset selects exact-type validation, symmetry-pair arithmetic and all four numerical reset callers with independent state/P aliases. Real PSD is proved separately in Lean; source permission and target backends remain separate.\n'
                 printf 'ring-buffer selects actual fixed-storage operations and inductive history invariants for capacities 1/3/8 and 32/64-bit word models. Caller admission, deployed sample types, other capacities and target timing remain separate.\n'
@@ -1736,7 +1736,11 @@ run_height_suite()
         SOURCE_FILE="${PROOF_DIR}/height_bias.cpp"
         for KIND in initialization prediction update; do
             PROFILE="height-bias-binary$((32 + 32 * BINARY64))-${KIND}"
-            verify "verify_height_bias_${KIND}" "${ARGUMENTS[@]}"
+            if [[ "${KIND}" == update ]]; then
+                verify "verify_height_bias_${KIND}" "${ARGUMENTS[@]}" --cvc5 --multi-property
+            else
+                verify "verify_height_bias_${KIND}" "${ARGUMENTS[@]}"
+            fi
         done
         SOURCE_FILE="${PROOF_DIR}/height_filter.cpp"
         for KIND in filter filter_range; do
@@ -1745,7 +1749,7 @@ run_height_suite()
         done
         SOURCE_FILE="${PROOF_DIR}/height_admission.cpp"
         PROFILE="height-binary$((32 + 32 * BINARY64))-initialization"
-        verify verify_height_initialization "${ARGUMENTS[@]}"
+        verify verify_height_initialization "${ARGUMENTS[@]}" --cvc5 --multi-property
         for SOURCE in 0 1; do
             SOURCE_FILE="${PROOF_DIR}/height_session_storage.cpp"
             PROFILE="height-library-binary$((32 + 32 * BINARY64))-source${SOURCE}-storage"
@@ -1755,9 +1759,49 @@ run_height_suite()
                 PROFILE="height-binary$((32 + 32 * BINARY64))-source${SOURCE}-${KIND}"
                 if [[ "${KIND}" == admission ]]; then
                     verify verify_height_admission "${ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}" --cvc5
+                elif [[ "${KIND}" == stop ]]; then
+                    verify verify_height_stop "${ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}" --cvc5 --multi-property
                 else
                     verify "verify_height_${KIND}" "${ARGUMENTS[@]}" -D "FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}"
                 fi
+            done
+        done
+    done
+}
+
+# Whole-owner contracts keep both sessions and the full INS covariance. The
+# separately checked reporting producer supplies only its typed field contract.
+run_height_owner_suite()
+{
+    local BINARY64 SOURCE KIND
+    local -a SOLVER_ARGUMENTS
+    local -a ESBMC_ARGUMENTS=("${ESBMC_ARGUMENTS[@]/ESKF_CODEGEN=0/ESKF_CODEGEN=1}")
+    local -a HEADER=(-I "${REPO_DIR}/integrations/px4/module"
+        -D "FORMAL_ESKF_PROOF_HEIGHT_HEADER=\"${REPO_DIR}/output/esbmc/height/HeightAiding.hpp\"")
+    local -a ARGUMENTS
+    for BINARY64 in 0 1; do
+        ARGUMENTS=(--proof-unwind 230 --proof-timeout 300s --proof-memory 4g --64 --z3 --array-flattener
+            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_STATE_SIZE=15
+            -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=1)
+        for KIND in selection transaction; do
+            SOURCE_FILE="${PROOF_DIR}/height_${KIND}.cpp"
+            PROFILE="height-owner-invariants-binary$((32 + 32 * BINARY64))-${KIND}"
+            verify "verify_height_${KIND}" "${ARGUMENTS[@]}" "${HEADER[@]}" --tuple-node-flattener --multi-property
+        done
+        for SOURCE in 0 1; do
+            SOURCE_FILE="${PROOF_DIR}/height_process.cpp"
+            PROFILE="height-owner-invariants-binary$((32 + 32 * BINARY64))-source${SOURCE}-process"
+            verify verify_height_process "${ARGUMENTS[@]}" "${HEADER[@]}" --tuple-node-flattener --multi-property \
+                -D "FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}"
+            SOURCE_FILE="${PROOF_DIR}/height_reset.cpp"
+            for KIND in reset recovery; do
+                PROFILE="height-owner-invariants-binary$((32 + 32 * BINARY64))-source${SOURCE}-${KIND}"
+                SOLVER_ARGUMENTS=(--tuple-sym-flattener)
+                if [[ "${KIND}" == recovery ]]; then
+                    SOLVER_ARGUMENTS=(--tuple-node-flattener --multi-property)
+                fi
+                verify "verify_height_${KIND}" "${ARGUMENTS[@]}" "${SOLVER_ARGUMENTS[@]}" \
+                    -D "FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}"
             done
         done
     done
@@ -1799,8 +1843,9 @@ run_navigation_reset_suite()
         verify verify_navigation_symmetry_pair --proof-unwind 230 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
         for MODEL in 0 1 3; do
             PROFILE="navigation-reset-binary$((32 + 32 * BINARY64))-validation${MODEL}"
-            verify verify_navigation_validation --proof-unwind 230 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
-                -D "FORMAL_ESKF_PROOF_NAVIGATION_RESET=${MODEL}"
+            verify verify_navigation_validation --proof-unwind 230 --proof-timeout 420s -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                -D "FORMAL_ESKF_PROOF_NAVIGATION_RESET=${MODEL}" \
+                --z3 --array-flattener --tuple-node-flattener --multi-property
         done
         for MODEL in 0 1 2 3; do
             for ALIAS in 0 1 2 3; do
@@ -1814,13 +1859,15 @@ run_navigation_reset_suite()
     # HeightAiding uses this exact solver backend and in-place reset shape.
     for BINARY64 in 0 1; do
         PROFILE="navigation-reset-solve-binary$((32 + 32 * BINARY64))-validation"
-        verify verify_navigation_validation --proof-unwind 230 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
-            -D FORMAL_ESKF_PROOF_NAVIGATION_RESET=1 -D FORMAL_ESKF_PROOF_NAVIGATION_SOLVE_BACKEND=1
+        verify verify_navigation_validation --proof-unwind 230 --proof-timeout 300s -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+            -D FORMAL_ESKF_PROOF_NAVIGATION_RESET=1 -D FORMAL_ESKF_PROOF_NAVIGATION_SOLVE_BACKEND=1 \
+            --64 --z3 --array-flattener --tuple-node-flattener --multi-property
         for MODEL in 1 2; do
             PROFILE="navigation-reset-solve-binary$((32 + 32 * BINARY64))-model${MODEL}"
             verify verify_navigation_reset --proof-unwind 230 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
                 -D "FORMAL_ESKF_PROOF_NAVIGATION_RESET=${MODEL}" -D FORMAL_ESKF_PROOF_ALIAS=3 \
-                -D FORMAL_ESKF_PROOF_NAVIGATION_CALLER=1 -D FORMAL_ESKF_PROOF_NAVIGATION_SOLVE_BACKEND=1
+                -D FORMAL_ESKF_PROOF_NAVIGATION_CALLER=1 -D FORMAL_ESKF_PROOF_NAVIGATION_SOLVE_BACKEND=1 \
+                --64 --z3 --array-flattener --tuple-node-flattener --multi-property
         done
     done
 }
@@ -2169,6 +2216,14 @@ main()
             check_initialization_support
             python3 "${PROOF_DIR}/output_steps.py" "${REPO_DIR}/output/esbmc/output-steps"
         fi
+        if [[ "${SUITE}" == height ]]; then
+            check_reference_support
+            check_frame_support
+            check_initialization_support
+        fi
+        if [[ "${SUITE}" == all || "${SUITE}" == height ]]; then
+            python3 "${PROOF_DIR}/height_source.py" "${REPO_DIR}/output/esbmc/height"
+        fi
         printf 'SELECTION\t%s\tshard %d/%d\n' "${SUITE}" "${SHARD_INDEX}" "${SHARD_COUNT}"
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == quaternion ]]; then
@@ -2281,6 +2336,7 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == height ]]; then
         run_height_suite
+        run_height_owner_suite
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == delayed-input ]]; then
         run_delayed_input_suite

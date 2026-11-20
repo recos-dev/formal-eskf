@@ -63,10 +63,10 @@ void verify_height_initialization(Manager manager, std::uint64_t now, Scalar alt
         expected.m_started = now;
     }
     Manager fresh;
-    __ESBMC_assert(empty_history(fresh, 0U, Scalar{0}),
+    __ESBMC_assert(empty_history(fresh, 0U, Scalar{0}) && height_proof::control_domain(fresh),
                    "R-HEIGHT-FUSION: constructor establishes every specified empty field");
     auto const status = manager.initialize(now, altitude);
-    __ESBMC_assert(!valid || height_proof::history_domain(manager, now),
+    __ESBMC_assert(!valid || (height_proof::history_domain(manager, now) && height_proof::control_domain(manager)),
                    "R-HEIGHT-FUSION: initialize establishes the public owner induction domain");
     __ESBMC_assert(!valid || empty_history(manager, now, altitude),
                    "R-HEIGHT-FUSION: successful initialize establishes exact defaults");
@@ -79,8 +79,11 @@ void verify_height_stop(Manager manager, Reason reason)
     constexpr Source source = static_cast<Source>(FORMAL_ESKF_PROOF_HEIGHT_SOURCE);
     Manager expected;
     expected = manager;
+    bool const control = height_proof::control_domain(manager);
     stopped(expected, source, reason);
     manager.stop(source, reason);
+    __ESBMC_assert(!control || height_proof::control_domain(manager),
+                   "Height stop: owner origin, filter, intervals and active-reference invariant preserved");
     __ESBMC_assert(
         same_manager(manager, expected),
         "R-HEIGHT-FUSION: stopping clears only selected authority/diagnostics and its reference, retaining history");
@@ -98,6 +101,7 @@ void verify_height_admission(Manager manager, std::uint64_t now, Sample sample, 
     expected = manager;
     auto expected_result = result;
     bool const domain = height_proof::history_domain(manager, now);
+    bool const control = height_proof::control_domain(manager);
     auto const before_sample = sample;
     bool const barometer = source == Source::barometer;
     auto & aid = expected.m_sessions[barometer ? 0U : 1U];
@@ -165,6 +169,8 @@ void verify_height_admission(Manager manager, std::uint64_t now, Sample sample, 
         "counts and full frame");
     __ESBMC_assert(!domain || height_proof::history_domain(manager, now),
                    "R-HEIGHT-FUSION: admission preserves the complete owner induction domain");
+    __ESBMC_assert(!control || height_proof::control_domain(manager),
+                   "Height admission: source retirement/reset preserves owner control invariants");
     auto const & after = manager.session(source);
     __ESBMC_assert(
         after.data_time <= after.sample_time && after.sample_time <= now &&

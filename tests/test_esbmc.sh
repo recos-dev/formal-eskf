@@ -18,7 +18,7 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 6357 '^PLAN'
+    check_count 6373 '^PLAN'
     check_count 14 'pcov-generated-binary(32|64)-'
     check_count 10 'reset-generated-binary(32|64)-'
     check_count 94 'correction-generated-binary(32|64)-'
@@ -26,7 +26,7 @@ check_plan()
     check_count 2 'codegen-binary(32|64)-memory'
     check_count 32 'codegen-ins_.*-binary(32|64)-memory'
     check_count 160 'magnetic-runtime-'
-    check_count 33 'height-'
+    check_count 49 'height-'
     check_count 4 'delayed-input-'
     check_count 4 'delayed-views-'
     check_count 4 'delayed-seed-'
@@ -258,8 +258,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 339 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 6357 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 344 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 6373 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -1031,9 +1031,11 @@ check_height_arguments()
             *)
                 local BASE="--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=1"
                 case "${PROFILE}" in
+                    height-bias-*-update) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_bias.cpp" && "${ENTRY}" == verify_height_bias_update && "$*" == "${BASE} --cvc5 --multi-property" ]] || fail 'wrong bias update solver arguments' ;;
                     height-bias-*) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_bias.cpp" && "${ENTRY}" == "verify_height_bias_${KIND}" && "$*" == "${BASE}" ]] || fail 'wrong bias producer arguments' ;;
                     *-filter|*-filter_range) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_filter.cpp" && "${ENTRY}" == "verify_height_${KIND}" && "$*" == "${BASE} --cvc5" ]] || fail 'wrong height filter arguments' ;;
-                    *-initialization) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_admission.cpp" && "${ENTRY}" == verify_height_initialization && "$*" == "${BASE}" ]] || fail 'wrong height initialization arguments' ;;
+                    *-initialization) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_admission.cpp" && "${ENTRY}" == verify_height_initialization && "$*" == "${BASE} --cvc5 --multi-property" ]] || fail 'wrong height initialization arguments' ;;
+                    *-stop) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_admission.cpp" && "${ENTRY}" == verify_height_stop && "$*" == "${BASE} -D FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE} --cvc5 --multi-property" ]] || fail 'wrong height stop solver arguments' ;;
                     *-admission) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_admission.cpp" && "${ENTRY}" == verify_height_admission && "$*" == "${BASE} -D FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE} --cvc5" ]] || fail 'wrong height admission arguments' ;;
                     *) [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_admission.cpp" && "${ENTRY}" == "verify_height_${KIND}" && "$*" == "${BASE} -D FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}" ]] || fail 'wrong height source partition arguments' ;;
                 esac ;;
@@ -1043,6 +1045,93 @@ check_height_arguments()
     run_height_suite
     [[ "${COUNT}" == 33 ]] || fail 'height producer matrix incomplete'
 )
+
+check_height_owner_arguments()
+(
+    local COUNT=0
+    verify()
+    {
+        local ENTRY="$1"
+        shift
+        local BASE="--proof-unwind 230 --proof-timeout 300s --proof-memory 4g --64 --z3 --array-flattener -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_STATE_SIZE=15 -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=1"
+        local ADAPTER="-I ${REPO_DIR}/integrations/px4/module -D FORMAL_ESKF_PROOF_HEIGHT_HEADER=\"${REPO_DIR}/output/esbmc/height/HeightAiding.hpp\""
+        [[ " ${ESBMC_ARGUMENTS[*]} " == *' -D ESKF_CODEGEN=1 '* ]] || fail 'height owner must bind the deployment codegen selection'
+        case "${PROFILE}" in
+            *-selection|*-transaction)
+                [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_${KIND}.cpp" && "${ENTRY}" == "verify_height_${KIND}" && "$*" == "${BASE} ${ADAPTER} --tuple-node-flattener --multi-property" ]] || fail 'wrong height transaction/selection arguments' ;;
+            *-process)
+                [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_process.cpp" && "${ENTRY}" == verify_height_process && "$*" == "${BASE} ${ADAPTER} --tuple-node-flattener --multi-property -D FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}" ]] || fail 'wrong height process arguments' ;;
+            *-reset|*-recovery)
+                local SOLVER=--tuple-sym-flattener
+                if [[ "${KIND}" == recovery ]]; then SOLVER='--tuple-node-flattener --multi-property'; fi
+                [[ "${SOURCE_FILE}" == "${PROOF_DIR}/height_reset.cpp" && "${ENTRY}" == "verify_height_${KIND}" && "$*" == "${BASE} ${SOLVER} -D FORMAL_ESKF_PROOF_HEIGHT_SOURCE=${SOURCE}" ]] || fail 'wrong height reset/recovery arguments' ;;
+            *) fail 'unknown height-owner profile' ;;
+        esac
+        COUNT=$((COUNT + 1))
+    }
+    run_height_owner_suite
+    [[ "${COUNT}" == 16 ]] || fail 'height owner matrix incomplete'
+)
+
+check_height_source_boundary()
+{
+    python3 - "${REPO_DIR}" <<'PYTHON'
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+
+sys.dont_write_bytecode = True
+ROOT = Path(sys.argv[1])
+RELATIVE = Path('formal/cpp/esbmc/height_source.py')
+SPEC = importlib.util.spec_from_file_location('height_source', ROOT / RELATIVE)
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
+with tempfile.TemporaryDirectory(prefix='formal-eskf-height-source-') as TEMP:
+    FIXTURE = Path(TEMP) / 'repo'
+    ORIGINALS = {}
+    for NAME in [*MODULE.PINS, str(RELATIVE)]:
+        TARGET = FIXTURE / NAME
+        TARGET.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / NAME, TARGET)
+        ORIGINALS[NAME] = TARGET.read_text()
+    COMMAND = [sys.executable, str(FIXTURE / RELATIVE)]
+    OUTPUT = FIXTURE / 'output'
+    subprocess.run([*COMMAND, str(OUTPUT)], check=True, capture_output=True)
+    MANIFEST = json.loads((OUTPUT / 'manifest.json').read_text())
+    assert MANIFEST['source_sha256'] == MODULE.PINS
+    assert MANIFEST['generator_sha256'] == hashlib.sha256((FIXTURE / RELATIVE).read_bytes()).hexdigest()
+    for NAME, HASH in MANIFEST['generated_sha256'].items():
+        assert hashlib.sha256((OUTPUT / NAME).read_bytes()).hexdigest() == HASH
+    HEIGHT = (OUTPUT / 'HeightAiding.hpp').read_text()
+    START = HEIGHT.index('    static Sample const & selected_sample(')
+    END = HEIGHT.index('    static constexpr std::size_t index(', START)
+    RESTORED = (HEIGHT[:START] + HEIGHT[END:]).replace(
+        'selected_sample(source, barometer, gnss)', 'source == Source::barometer ? barometer : gnss')
+    assert RESTORED == ORIGINALS['integrations/px4/module/HeightAiding.hpp']
+    REPORT = (OUTPUT / 'InnovationRatio.hpp').read_text()
+    ORIGINAL = ORIGINALS['integrations/px4/module/InnovationRatio.hpp']
+    PREFIX = ORIGINAL[:ORIGINAL.index('    void update(')]
+    SUFFIX = ORIGINAL[ORIGINAL.index('    void reset('):]
+    assert REPORT.startswith(PREFIX) and REPORT.endswith(SUFFIX)
+    assert REPORT[len(PREFIX):-len(SUFFIX)].strip() == (
+        'void update(std::uint64_t sample_time_us, double innovation, double ratio);')
+    for NAME in MODULE.PINS:
+        TARGET = FIXTURE / NAME
+        TARGET.write_text(ORIGINALS[NAME] + '\n// changed source\n')
+        RESULT = subprocess.run([*COMMAND, str(OUTPUT)], capture_output=True, text=True)
+        assert RESULT.returncode == 1 and 'source changed' in RESULT.stderr and NAME in RESULT.stderr
+        TARGET.write_text(ORIGINALS[NAME])
+    for NAME in ('include', 'integrations', 'formal', 'tests', 'scripts', 'configs'):
+        RESULT = subprocess.run([*COMMAND, str(FIXTURE / NAME)], capture_output=True, text=True)
+        assert RESULT.returncode == 1 and 'must not replace' in RESULT.stderr
+    assert all((FIXTURE / NAME).read_text() == TEXT for NAME, TEXT in ORIGINALS.items())
+PYTHON
+}
 
 check_navigation_recovery_arguments()
 (
@@ -1068,6 +1157,7 @@ check_navigation_recovery_arguments()
 check_navigation_reset_arguments()
 (
     local COUNT=0
+    local EXPECTED_SOLVER_ARGUMENTS="--z3 --array-flattener --tuple-node-flattener --multi-property"
     verify()
     {
         local ENTRY="$1"
@@ -1075,13 +1165,13 @@ check_navigation_reset_arguments()
         [[ "${SOURCE_FILE}" == "${PROOF_DIR}/navigation_reset.cpp" ]] || fail 'wrong navigation reset source'
         case "${PROFILE}" in
             navigation-reset-solve-*-validation)
-                [[ "${ENTRY}" == verify_navigation_validation && "$*" == "--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_NAVIGATION_RESET=1 -D FORMAL_ESKF_PROOF_NAVIGATION_SOLVE_BACKEND=1" ]] || fail 'wrong height reset validation arguments' ;;
+                [[ "${ENTRY}" == verify_navigation_validation && "$*" == "--proof-unwind 230 --proof-timeout 300s -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_NAVIGATION_RESET=1 -D FORMAL_ESKF_PROOF_NAVIGATION_SOLVE_BACKEND=1 --64 ${EXPECTED_SOLVER_ARGUMENTS}" ]] || fail 'wrong height reset validation arguments' ;;
             navigation-reset-solve-*-model*)
-                [[ "${ENTRY}" == verify_navigation_reset && "$*" == "--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_NAVIGATION_RESET=${MODEL} -D FORMAL_ESKF_PROOF_ALIAS=3 -D FORMAL_ESKF_PROOF_NAVIGATION_CALLER=1 -D FORMAL_ESKF_PROOF_NAVIGATION_SOLVE_BACKEND=1" ]] || fail 'wrong height reset caller arguments' ;;
+                [[ "${ENTRY}" == verify_navigation_reset && "$*" == "--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_NAVIGATION_RESET=${MODEL} -D FORMAL_ESKF_PROOF_ALIAS=3 -D FORMAL_ESKF_PROOF_NAVIGATION_CALLER=1 -D FORMAL_ESKF_PROOF_NAVIGATION_SOLVE_BACKEND=1 --64 ${EXPECTED_SOLVER_ARGUMENTS}" ]] || fail 'wrong height reset caller arguments' ;;
             *-symmetry-pair)
                 [[ "${ENTRY}" == verify_navigation_symmetry_pair && "$*" == "--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" ]] || fail 'wrong symmetry pair arguments' ;;
             *-validation*)
-                [[ "${ENTRY}" == verify_navigation_validation && "$*" == "--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_NAVIGATION_RESET=${MODEL}" ]] || fail 'wrong navigation validation arguments' ;;
+                [[ "${ENTRY}" == verify_navigation_validation && "$*" == "--proof-unwind 230 --proof-timeout 420s -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_NAVIGATION_RESET=${MODEL} ${EXPECTED_SOLVER_ARGUMENTS}" ]] || fail 'wrong navigation validation arguments' ;;
             *-model*-alias*)
                 [[ "${ENTRY}" == verify_navigation_reset && "$*" == "--proof-unwind 230 -D FORMAL_ESKF_PROOF_BINARY64=${BINARY64} -D FORMAL_ESKF_PROOF_NAVIGATION_RESET=${MODEL} -D FORMAL_ESKF_PROOF_ALIAS=${ALIAS} -D FORMAL_ESKF_PROOF_NAVIGATION_CALLER=1" ]] || fail 'wrong navigation reset caller arguments' ;;
             *) fail 'unknown navigation reset profile' ;;
@@ -3150,6 +3240,8 @@ check_ring_buffer_arguments
 check_magnetic_runtime_arguments
 check_accelerometer_arguments
 check_height_arguments
+check_height_owner_arguments
+check_height_source_boundary
 check_delayed_input_arguments
 check_delayed_views_arguments
 check_delayed_seed_arguments
@@ -3188,7 +3280,7 @@ check_solver_argument_guard
 check_reference_preflight
 check_frame_preflight
 check_initialization_preflight
-printf 'ESBMC inventory tests: pass (6357 profiles; 339 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (6373 profiles; 344 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_runtime_input_regressions
     check_ring_buffer_regressions

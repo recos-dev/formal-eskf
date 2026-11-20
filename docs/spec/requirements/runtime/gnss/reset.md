@@ -99,8 +99,13 @@ The height owner additionally has exact `solve_proof::Backend` profiles for its
 size-one validator and in-place Down-position/Down-velocity resets; this avoids
 assuming equivalence with the original opaque-math backend.
 The same-type validation summary is input-pure and allows every returned status;
-callers check its exact arguments and invocation. State/delta behavior, complete
-covariance decorrelation/floors, overflow errors, failure atomicity and preserved
+callers check its exact arguments and invocation. The validator's complete
+input frames and exhaustive non-finite/domain-error/success
+partition are checked separately. The independent symmetry oracle compares
+transposed coefficients and instantiates the scalar zero-residual lemma for
+each pair; acceptance requires that lemma in the same scalar format. No input
+matrix is assumed symmetric. State/delta behavior, complete covariance
+decorrelation/floors, overflow errors, failure atomicity and preserved
 borrowed inputs are checked. An arbitrary bounded row/column quantifies every
 covariance output, not selected sample entries. Comparisons retain values, signed
 zero and NaN classification; NaN payload preservation is not claimed. Public invalid

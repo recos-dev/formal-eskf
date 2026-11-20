@@ -115,18 +115,27 @@ report reset on source changes, and conditional preservation of the owner time
 and bias domains. The reporting helper has an independent IEEE double oracle.
 Bias prediction admits finite nonnegative variance and non-finite scratch;
 finite-result variance bounds retain the finite ceiling and interval premises.
-The complete public transition must still establish these producer premises.
-These private checks alone are not an inductive proof of `HeightAiding::update`.
+The owner profiles check these premises at the actual call sites, source order,
+prior-offset observation construction, reset/recovery authority, full field
+frames and the public transaction's publication/rollback. Construction and
+transition preservation establish the chronological/control domain, including
+reference activity, bounded filtering and finite nonnegative bias intervals.
+Both read-only sample arguments may share storage. Numerical producer outcomes
+remain arbitrary, including failure and non-finite scratch; acceptance requires
+the matching actual producers and core transaction dependencies.
 
 The scoped standard-library models preserve min/max reference selection,
 bounded `any_of`, and the two sessions' value construction/copy/index/iteration
-semantics. ESBMC 8.4.0's member-name and container initialization/copy defects
-are recorded with native controls; no production body is rewritten to obtain
-a pass. Model controls do not prove target STL layout, ABI or implementation.
-The complete height transaction, history induction, numerical callee composition,
-actual module/replay ordering/publication and floating-point error bounds remain
-separate obligations. Bias estimates are not independent altitude truth or a
-proof of physical sensor health.
+semantics. A pinned verification adapter exposes conditional sample borrowing
+through explicit reference returns and the reporting update through its original
+declaration; all other production bodies and fields remain unchanged. The
+[verification guide](../../../../guides/verification.md#height-aiding) defines
+qualification, composition and evidence requirements. Source/model correspondence
+is reviewed, not an automated refinement proof or a target STL/ABI claim.
+
+Actual module/replay ordering/publication, numerical covariance invariants and
+floating-point error bounds remain separate obligations. Bias estimates are not
+independent altitude truth or a proof of physical sensor health.
 
 ## Caller bindings
 

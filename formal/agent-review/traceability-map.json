@@ -5747,7 +5747,7 @@
     },
     {
       "id": "R-HEIGHT-FUSION",
-      "title": "Height offset mathematics and scoped IEEE/admission producers, including source generations; complete height transaction, history induction and module formal proof remain pending",
+      "title": "Height offset mathematics, owner transaction and chronological/control invariants under producer contracts; live module binding remains separate",
       "references": {
         "spec": [
           {
@@ -5848,6 +5848,26 @@
           }
         ],
         "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/height_transaction.cpp",
+            "symbol": "void verify_height_transaction("
+          },
+          {
+            "file": "formal/cpp/esbmc/height_process.cpp",
+            "symbol": "void verify_height_process("
+          },
+          {
+            "file": "formal/cpp/esbmc/height_reset.cpp",
+            "symbol": "void verify_height_reset("
+          },
+          {
+            "file": "formal/cpp/esbmc/height_reset.cpp",
+            "symbol": "void verify_height_recovery("
+          },
+          {
+            "file": "formal/cpp/esbmc/height_selection.cpp",
+            "symbol": "void verify_height_selection("
+          },
           {
             "file": "formal/cpp/esbmc/height_filter.cpp",
             "symbol": "void verify_height_filter("

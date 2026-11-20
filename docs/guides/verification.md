@@ -15,7 +15,6 @@ it is neither a proof nor a mandatory review of every function.
 
 ## Open boundaries
 
-- Full `HeightAiding` transactions remain outside the completed producer checks.
 - Live IMU/PX4/replay calling sequences still need source-composition evidence.
   IMU, observation and output-owner contracts and induction are described below;
   their component evidence and native module tests do not prove the live sequence.
@@ -136,11 +135,49 @@ do not revive the withdrawn text-based deduplication optimization.
 
 ## Runtime producer boundaries
 
-The `height` suite includes per-producer history-domain preservation, complete
-innovation-reporting frames and the actual double-precision reporting filter.
-The bias producer also admits non-finite scratch variance; it proves the stated
-finite-result bounds without assuming successful owner publication. These
-properties do not close the `HeightAiding::update` transaction.
+### Height aiding
+
+The `height` suite separates scalar/admission producers from the actual
+`HeightAiding` source-processing, reset/recovery and public-update callers.
+Owner profiles cover both sources, binary32/binary64, the complete 15-state
+covariance, arbitrary numerical producer outcomes and shared read-only sample
+arguments. They check barometer-before-GNSS order, prior-offset observation
+construction, reference-only recovery authority, complete reset accounting,
+validation precedence and joint owner/state/covariance rollback on failure.
+
+Construction and initialization establish the chronological/control domain.
+Actual admission, filter, stop, reset, recovery and update contracts preserve
+its clocks, bounded warmup/filter, active-reference relationship and finite
+nonnegative bias interval. Conditional preservation assertions retain the older
+producer domains. Non-finite scratch bias values remain admitted; the public
+update must reject them before commit. These properties do not establish a
+numerical covariance invariant or physical sensor validity.
+
+Acceptance requires all owner profiles and the matching actual bias,
+reporting, library, admission/filter, navigation reset, vertical recovery,
+bias-limit and generated correction/step dependencies. Summaries admit arbitrary
+failure candidates and check exact prior receiver state and forwarded arguments.
+Core state/quaternion/covariance premises remain caller obligations; a successful
+owner result does not establish them independently.
+
+The pinned [`height_source.py`](../../formal/cpp/esbmc/height_source.py)
+adapter exposes a borrowed conditional sample through explicit reference returns
+because the qualified verifier mishandles the original conditional lvalue.
+Selection profiles check reference identity and complete read-only payloads,
+including shared inputs. It also replaces only `InnovationRatio::update`'s body
+with its declaration, retaining the actual fields, defaults and reset body;
+the actual reporting producer separately discharges that pure contract. Source
+pins, reverse-comparison checks and native controls guard this reviewed
+correspondence. Unknown source revisions fail generation. Neither this adapter
+nor the qualified two-session library model proves target STL layout or ABI.
+
+Base/transition preservation supplies owner induction through these contracts;
+the source/model correspondence is reviewed, not machine-checked refinement.
+Retain successful logs and named negative controls for the same baseline.
+Live module ordering/publication, deployed numerical accuracy and target timing
+remain separate obligations.
+
+### IMU input and history
 
 `delayed-input` checks the implemented 250 Hz signed timing configuration,
 capacity/arrival budget, unchanged output on rejection, and binary32/binary64

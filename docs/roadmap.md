@@ -114,8 +114,10 @@ requirement-to-source-to-evidence chain.
 
 **Status: Partial.** Scoped core/runtime evidence exists. Close the source,
 numerical and composition gaps listed in the
-[open verification boundaries](guides/verification.md#open-boundaries), including
-full `HeightAiding` transactions, delayed owners and actual module/replay callers.
+[open verification boundaries](guides/verification.md#open-boundaries), particularly
+actual module/replay callers. IMU, observation/context, output-predictor and
+`HeightAiding` owners have scoped contracts and inductive evidence within their
+documented producer and source-adapter boundaries.
 Keep producer/caller dependencies and history/feedback transactions explicit;
 the entire callback is not assumed atomic. Record accepted profiles and remaining
 gaps in the [traceability map](../formal/agent-review/traceability-map.json) and

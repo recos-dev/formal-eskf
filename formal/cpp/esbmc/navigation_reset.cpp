@@ -54,23 +54,23 @@ Status validation(State const & s, Covariance const & P, Observation const & obs
     }
     Scalar prior[225];
     covariance_oracle::flatten(P, prior);
-    Scalar maximum{0};
+    bool symmetric = true;
     for (std::size_t i = 0U; i < 15U; ++i)
     {
         for (std::size_t j = 0U; j < 15U; ++j)
         {
-            Scalar const residual = std::fabs(prior[15U * i + j] - prior[15U * j + i]);
-            if (!std::isfinite(residual))
-            {
-                return Status::domain_error;
-            }
-            if (residual > maximum)
-            {
-                maximum = residual;
-            }
+            Scalar const a = prior[15U * i + j];
+            Scalar const b = prior[15U * j + i];
+            Scalar const residual = std::fabs(a - b);
+            // Instance of verify_navigation_symmetry_pair, independently
+            // proved for all IEEE inputs in this scalar format. This cut
+            // adds no input restriction; its producer is mandatory.
+            __ESBMC_assume(!(std::isfinite(a) && std::isfinite(b)) ||
+                           ((std::isfinite(residual) && residual <= Scalar{0}) == (a == b)));
+            symmetric = (a == b) && symmetric;
         }
     }
-    if (maximum > Scalar{0})
+    if (!symmetric)
     {
         return Status::domain_error;
     }
@@ -152,11 +152,21 @@ void verify_navigation_validation(State state, Covariance P, Observation observa
     auto const old_P = P;
     auto const old_observation = observation;
     auto const old_variance = variance;
-    auto const expected = validation(state, P, observation, variance);
     auto const actual = formal_eskf::runtime::detail::validate_navigation_reset_inputs(state, P, observation, variance);
-    __ESBMC_assert(actual == expected && same_state(state, old_state) && same_matrix(P, old_P) &&
-                       same_matrix(observation, old_observation) && same_matrix(variance, old_variance),
-                   "R-GNSS-RESET: actual validation producer has exact status and preserves every borrowed input");
+    __ESBMC_assert(same_state(state, old_state), "R-GNSS-RESET: validation preserves the complete state");
+    __ESBMC_assert(same_matrix(P, old_P), "R-GNSS-RESET: validation preserves every covariance coefficient");
+    __ESBMC_assert(same_matrix(observation, old_observation), "R-GNSS-RESET: validation preserves the observation");
+    __ESBMC_assert(same_matrix(variance, old_variance), "R-GNSS-RESET: validation preserves the variances");
+    auto const expected = validation(old_state, old_P, old_observation, old_variance);
+    __ESBMC_assert(expected == Status::non_finite_input || expected == Status::domain_error ||
+                       expected == Status::success,
+                   "R-GNSS-RESET: the status partition covers every oracle result");
+    __ESBMC_assert(expected != Status::non_finite_input || actual == Status::non_finite_input,
+                   "R-GNSS-RESET: nonfinite inputs are rejected before domain checks");
+    __ESBMC_assert(expected != Status::domain_error || actual == Status::domain_error,
+                   "R-GNSS-RESET: finite asymmetric or negative-variance inputs are rejected");
+    __ESBMC_assert(expected != Status::success || actual == Status::success,
+                   "R-GNSS-RESET: finite symmetric nonnegative-variance inputs are accepted");
 }
 
 #endif

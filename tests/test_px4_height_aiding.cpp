@@ -105,9 +105,48 @@ template <typename Linalg> void ground_effect(Context & test)
     }
 }
 
+// Const observation inputs may legally name the same object. Compare that
+// call with two equal independent samples through the actual production owner.
+template <typename Linalg> void shared_sample(Context & test)
+{
+    using F = HeightFixture<Linalg>;
+    using T = typename F::value_type;
+    F shared;
+    shared.start(test);
+    auto separate = shared;
+    typename F::aiding_type::Sample sample{shared.now + 20000U, 1U, 0U, shared.baro_altitude, T{1}};
+    auto const duplicate = sample;
+    auto const aliased = shared.aiding.update(sample.time_us, sample, sample, true, shared.state, shared.P);
+    auto const independent =
+        separate.aiding.update(sample.time_us, sample, duplicate, true, separate.state, separate.P);
+    test.expect(aliased.status == Status::success && independent.status == Status::success &&
+                    aliased.fused == independent.fused && aliased.rejected == independent.rejected &&
+                    aliased.height_resets == independent.height_resets &&
+                    aliased.velocity_resets == independent.velocity_resets &&
+                    aliased.height_delta == independent.height_delta &&
+                    aliased.velocity_delta == independent.velocity_delta,
+                "shared sample", "shared and independent borrowing produce identical successful/reset accounting");
+    using formal_eskf::linalg::max_abs;
+    test.expect(max_abs(shared.state.p_n - separate.state.p_n) == T{0} &&
+                    max_abs(shared.state.v_n - separate.state.v_n) == T{0} &&
+                    max_abs(shared.state.b_a - separate.state.b_a) == T{0} &&
+                    max_abs(shared.state.b_g - separate.state.b_g) == T{0} &&
+                    max_abs(shared.state.q_nb.coefficients() - separate.state.q_nb.coefficients()) == T{0} &&
+                    max_abs(shared.P - separate.P) == T{0} &&
+                    shared.aiding.reference() == separate.aiding.reference() &&
+                    shared.aiding.progress_time() == separate.aiding.progress_time(),
+                "shared sample", "aliasing preserves the complete estimator result and source authority");
+    test.expect(sample.time_us == duplicate.time_us && sample.device_id == duplicate.device_id &&
+                    sample.calibration_count == duplicate.calibration_count && sample.altitude == duplicate.altitude &&
+                    sample.variance == duplicate.variance && sample.qualified == duplicate.qualified &&
+                    sample.generation == duplicate.generation,
+                "shared sample", "both borrowed observation arguments remain unchanged");
+}
+
 template <typename Linalg> void run(Context & test)
 {
     ground_effect<Linalg>(test);
+    shared_sample<Linalg>(test);
     using F = HeightFixture<Linalg>;
     using Aiding = typename F::aiding_type;
     using Scalar = typename F::value_type;

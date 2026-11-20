@@ -23,7 +23,11 @@
 #define min formal_eskf_proof_min
 #define any_of formal_eskf_proof_any_of
 #define finite formal_eskf_proof_finite
+#ifdef FORMAL_ESKF_PROOF_HEIGHT_HEADER
+#include FORMAL_ESKF_PROOF_HEIGHT_HEADER
+#else
 #include "../../../integrations/px4/module/HeightAiding.hpp"
+#endif
 #undef finite
 #undef any_of
 #undef min
@@ -131,6 +135,24 @@ inline bool altitude_valid(Scalar altitude)
 {
     return std::isfinite(altitude) && altitude > static_cast<Scalar>(setting::minimum_altitude_m) &&
            altitude < static_cast<Scalar>(setting::maximum_altitude_m);
+}
+// Inductive owner properties established by construction/initialization and
+// preserved by every source transition. They do not require finite scratch
+// bias values: update rejects those before publishing the candidate.
+inline bool control_domain(Manager const & owner)
+{
+    constexpr Scalar lpf_bound{131072};
+    bool const reference_valid = owner.m_reference == Source::none ||
+                                 (owner.m_reference == Source::barometer && owner.m_sessions[0U].active) ||
+                                 (owner.m_reference == Source::gnss && owner.m_sessions[1U].active);
+    bool intervals_valid = true;
+    for (auto const & aid : owner.m_sessions)
+    {
+        intervals_valid = intervals_valid && std::isfinite(aid.bias.dt) && aid.bias.dt >= Scalar{0};
+    }
+    return altitude_valid(owner.m_origin_altitude) && std::isfinite(owner.m_barometer_lpf) &&
+           owner.m_barometer_lpf >= -lpf_bound && owner.m_barometer_lpf <= lpf_bound && reference_valid &&
+           intervals_valid;
 }
 inline void stopped(Manager & expected, Source source, Reason reason)
 {

@@ -79,8 +79,8 @@ Integration owners and production behavior changes remain outside this work.
 | T-46 | `tests/runtime/magnetic/test_fusion.cpp` | Field/gate/correction stages, independent references, effective gain and diagnostics. | Pending |
 | T-47 | `tests/runtime/magnetic/test_reset.cpp` | Heading/covariance transport, delta quaternion, floors, failure frames and repeat behavior. | Pending |
 | T-48 | `tests/runtime/magnetic/test_lifecycle.cpp` | All 13 lifecycle families and SW-MAGNETIC source/reference/reset sequences. | Pending |
-| T-49 | `scripts/check_test_plan.py` | Reconcile authoritative design IDs/dispositions with executable registrations; missing cases cannot silently pass. | Pending |
-| T-50 | `tests/tools/test_test_plan.py` | Negative controls for missing/duplicate/unknown case registrations and unsupported evidence claims. | Pending |
+| T-49 | `scripts/verify_tests.py` | Reconcile design IDs/dispositions with registrations; run cases with per-item `[Pass]`/`[Failed]`, totals and a failing exit status; missing cases cannot silently pass. | Pending |
+| T-50 | `tests/tools/test_test_plan.py` | Negative controls for missing/duplicate/unknown registrations, failed/empty execution, display totals and unsupported evidence claims. | Pending |
 
 ## Final reconciliation and cleanup
 

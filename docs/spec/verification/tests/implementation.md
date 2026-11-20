@@ -41,7 +41,7 @@ Integration owners and production behavior changes remain outside this work.
 | T-08 | `tests/math/test_scalar.cpp` | F-SCALAR: checked primitives, aliases, domains, result failures and independent known answers. | Implemented |
 | T-09 | `tests/math/test_linalg.cpp` | F-LINALG: values, access, dimensions, arithmetic, reductions, normalization and derived operations. | Implemented |
 | T-10 | `tests/math/test_spd_solve.cpp` | F-SOLVE: equations, correlated/multiple RHS, domains, failures and aliases. | Implemented |
-| T-11 | `tests/math/test_so3.cpp` | Quaternion and Exp/Log: coefficients, geometry, branches, domains and failure frames. | Pending |
+| T-11 | `tests/math/test_so3.cpp` | Quaternion and Exp/Log: coefficients, geometry, branches, domains and failure frames. | Implemented |
 | T-12 | `tests/math/test_so3_jacobian.cpp` | Right Jacobian formula, branch boundary, independent derivative and failure frames. | Pending |
 | T-13 | `tests/math/test_cmsis_dsp_backend.cpp` | Qualify adapter-specific storage/padding checks; retain only contract-relevant assertions. | Pending |
 | T-14 | `tests/core/test_types.cpp` | State/configuration dimensions and field/coordinate ownership. | Implemented |

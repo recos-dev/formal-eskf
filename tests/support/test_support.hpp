@@ -9,6 +9,7 @@
 #pragma once
 
 #include <cmath>
+#include <cstddef>
 #include <iostream>
 #include <string_view>
 
@@ -20,6 +21,7 @@ class Context
 public:
     void expect(bool condition, std::string_view profile, std::string_view description)
     {
+        ++m_assertions;
         if (!condition)
         {
             ++m_failures;
@@ -28,9 +30,11 @@ public:
     }
 
     int failures() const { return m_failures; }
+    std::size_t assertions() const { return m_assertions; }
 
 private:
     int m_failures = 0;
+    std::size_t m_assertions = 0;
 };
 
 template <typename T> bool near(T actual, T expected, T tolerance)

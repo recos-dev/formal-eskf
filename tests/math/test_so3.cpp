@@ -782,6 +782,11 @@ template <typename Base> void small_log(Context & test, std::string_view profile
     using Q = so::UnitQuaternion<B>;
     using Vector = la::Vector<B, 3>;
     auto const boundary = boundary_vector<B>();
+    // The dyadic seed has a rounded total squared norm of one in both formats:
+    // q0*q0 rounds to 1-epsilon and the vector contributes epsilon. Adjacent
+    // vector steps perturb that total only by O(epsilon^2), so either backend
+    // reduction order leaves normalization unchanged at the requested boundary.
+    Scalar const q0 = Scalar{1} - std::numeric_limits<Scalar>::epsilon() / Scalar{2};
     for (int side : {-1, 0, 1})
     {
         B::reset();
@@ -791,8 +796,10 @@ template <typename Base> void small_log(Context & test, std::string_view profile
             v(0) = std::nextafter(v(0), side < 0 ? Scalar{0} : Scalar{1});
         }
         Q q;
-        test.expect(Q::from_coefficients(Scalar{1}, v(0), v(1), v(2), Scalar{0.125}, q) == Status::success, profile,
+        test.expect(Q::from_coefficients(q0, v(0), v(1), v(2), Scalar{0.125}, q) == Status::success, profile,
                     "public small-vector quaternion fixture");
+        test.expect(q.q0() == q0 && q.q1() == v(0) && q.q2() == v(1) && q.q3() == v(2), profile,
+                    "normalization preserves the independently constructed boundary coefficients");
         Scalar const square = q.q1() * q.q1() + q.q2() * q.q2() + q.q3() * q.q3();
         test.expect(side == 0 ? square == std::numeric_limits<Scalar>::epsilon()
                               : (side < 0 ? square < std::numeric_limits<Scalar>::epsilon()

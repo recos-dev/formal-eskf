@@ -107,6 +107,8 @@ Integration owners and production behavior changes remain outside this work.
 | T-68 | `tests/core/test_injection_reset.cpp` | Use shared profile metadata and verify strict registry reconciliation. | Implemented |
 | T-69 | `tests/core/test_correction.cpp` | Use shared profile metadata and verify strict registry reconciliation. | Implemented |
 
+| T-70 | `tests/math/test_so3.cpp` | Construct Log branch boundary quaternions that retain their specified side through each backend normalization. | Implemented |
+
 ## Final reconciliation and cleanup
 
 After these replacements are reviewed, reconcile every design row and every old

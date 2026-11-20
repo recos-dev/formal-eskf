@@ -18,7 +18,7 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 6373 '^PLAN'
+    check_count 6395 '^PLAN'
     check_count 14 'pcov-generated-binary(32|64)-'
     check_count 10 'reset-generated-binary(32|64)-'
     check_count 94 'correction-generated-binary(32|64)-'
@@ -27,6 +27,7 @@ check_plan()
     check_count 32 'codegen-ins_.*-binary(32|64)-memory'
     check_count 160 'magnetic-runtime-'
     check_count 49 'height-'
+    check_count 22 'module-flow-binary64-'
     check_count 4 'delayed-input-'
     check_count 4 'delayed-views-'
     check_count 4 'delayed-seed-'
@@ -258,8 +259,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 344 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 6373 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 366 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 6395 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -1072,6 +1073,106 @@ check_height_owner_arguments()
     run_height_owner_suite
     [[ "${COUNT}" == 16 ]] || fail 'height owner matrix incomplete'
 )
+
+check_module_flow_arguments()
+(
+    local COUNT=0
+    local -a ORIGINAL_ARGS=("${ESBMC_ARGUMENTS[@]}")
+    local -A VISITED=()
+    verify()
+    {
+        local ENTRY="$1" EXPECTED_KIND FILE
+        shift
+        case "${ENTRY}" in
+            verify_module_*)
+                EXPECTED_KIND="${ENTRY#verify_module_}" FILE="${ENTRY#verify_module_}"
+                case "${EXPECTED_KIND}" in
+                    startup|callback|initialization|process|prediction|feedback|selection|gnss|validity|publication|reset|magnetic_reset|height) ;;
+                    startup_context) FILE=selection ;;
+                    message_epochs) FILE=publication ;;
+                    velocity_reset|vertical_reset|position_reset) FILE=reset_paths ;;
+                    *) fail 'unknown module caller' ;;
+                esac
+                [[ "${PROFILE}" == "module-flow-binary64-${EXPECTED_KIND}" ]] || fail 'module caller profile mismatch'
+                ;;
+            verify_replay_*)
+                EXPECTED_KIND="${ENTRY#verify_replay_}" FILE="replay_${ENTRY#verify_replay_}"
+                case "${EXPECTED_KIND}" in prediction|imu) ;; navigation|magnetic) FILE=replay_events ;; *) fail 'unknown replay caller' ;; esac
+                [[ "${PROFILE}" == "module-flow-binary64-replay-${EXPECTED_KIND}" ]] || fail 'replay caller profile mismatch'
+                ;;
+            *) fail 'unknown module-flow entry' ;;
+        esac
+        [[ "${SOURCE_FILE}" == "${PROOF_DIR}/module/${FILE}.cpp" &&
+           "$*" == '--proof-unwind 32 --proof-timeout 120s --proof-memory 4g --64 --z3 --array-flattener --tuple-node-flattener --multi-property -D FORMAL_ESKF_PROOF_BINARY64=1' ]] || fail 'module caller source or domain changed'
+        [[ "${ESBMC_ARGUMENTS[*]}" == "${ORIGINAL_ARGS[*]/ESKF_CODEGEN=0/ESKF_CODEGEN=1} -I ${REPO_DIR}/output/esbmc/module" ]] || fail 'module caller include/model selection changed'
+        [[ -z "${VISITED[${ENTRY}]:-}" ]] || fail 'duplicate module caller'
+        VISITED["${ENTRY}"]=1
+        COUNT=$((COUNT + 1))
+    }
+    run_module_flow_suite
+    [[ "${COUNT}" == 22 && "${#VISITED[@]}" == 22 && "${ESBMC_ARGUMENTS[*]}" == "${ORIGINAL_ARGS[*]}" ]] || fail 'module caller inventory incomplete or argument state leaked'
+)
+
+check_module_source_boundary()
+{
+    python3 - "${REPO_DIR}" <<'PYTHON'
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+
+sys.dont_write_bytecode = True
+ROOT = Path(sys.argv[1])
+RELATIVE = Path('formal/cpp/esbmc/module_source.py')
+SPEC = importlib.util.spec_from_file_location('module_source', ROOT / RELATIVE)
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
+with tempfile.TemporaryDirectory(prefix='formal-eskf-module-source-') as TEMP:
+    FIXTURE = Path(TEMP) / 'repo'
+    ORIGINALS = {}
+    for NAME in [*MODULE.PINS, str(RELATIVE)]:
+        TARGET = FIXTURE / NAME
+        TARGET.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / NAME, TARGET)
+        ORIGINALS[NAME] = TARGET.read_text()
+    COMMAND = [sys.executable, str(FIXTURE / RELATIVE)]
+    OUTPUT = FIXTURE / 'output'
+    subprocess.run([*COMMAND, str(OUTPUT)], check=True, capture_output=True)
+    MANIFEST = json.loads((OUTPUT / 'manifest.json').read_text())
+    assert MANIFEST['source_sha256'] == MODULE.PINS
+    assert MANIFEST['generator_sha256'] == hashlib.sha256((FIXTURE / RELATIVE).read_bytes()).hexdigest()
+    for NAME, HASH in MANIFEST['generated_sha256'].items():
+        assert hashlib.sha256((OUTPUT / NAME).read_bytes()).hexdigest() == HASH
+    for GROUP, (FILE, SIGNATURES) in MODULE.GROUPS.items():
+        SOURCE = ORIGINALS['integrations/px4/module/' + FILE]
+        EXPECTED = '// Verification-only source extraction; do not edit.\n'
+        EXPECTED += '\n\n'.join(MODULE.method(SOURCE, SIGNATURE).replace('FormalEskf::', 'Flow::')
+                                  for SIGNATURE in SIGNATURES) + '\n'
+        assert (OUTPUT / f'module_{GROUP}.inc').read_text() == EXPECTED
+    assert len(MANIFEST['publication_prefixes']) == 7 and len(MANIFEST['reset_branches']) == 3
+    SOURCE = ORIGINALS['examples/replay_ins.cpp']
+    MAG = MODULE.method(SOURCE, 'while (has_magnetometer && timestamp(magnetic_row[0U]) <= time)')
+    assert MANIFEST['source_steps']['replay_magnetic']['parent_sha256'] == hashlib.sha256(MAG.encode()).hexdigest()
+    assert 'if (has_magnetometer && timestamp(magnetic_row[0U]) <= time)' in (OUTPUT / 'replay_magnetic.inc').read_text()
+    assert (OUTPUT / 'replay_navigation_cursor.inc').read_text().count('continue;') == 1
+    SNAPSHOT = {P.name: P.read_bytes() for P in OUTPUT.iterdir()}
+    for NAME in MODULE.PINS:
+        TARGET = FIXTURE / NAME
+        TARGET.write_text(ORIGINALS[NAME] + '\n// stale correspondence\n')
+        RESULT = subprocess.run([*COMMAND, str(OUTPUT)], capture_output=True, text=True)
+        assert RESULT.returncode == 1 and 'requires review' in RESULT.stderr and NAME in RESULT.stderr
+        assert SNAPSHOT == {P.name: P.read_bytes() for P in OUTPUT.iterdir()}
+        TARGET.write_text(ORIGINALS[NAME])
+    for NAME in ('include', 'integrations', 'formal', 'tests', 'scripts', 'configs'):
+        RESULT = subprocess.run([*COMMAND, str(FIXTURE / NAME)], capture_output=True, text=True)
+        assert RESULT.returncode == 1 and 'must not replace' in RESULT.stderr
+    assert all((FIXTURE / NAME).read_text() == TEXT for NAME, TEXT in ORIGINALS.items())
+PYTHON
+}
 
 check_height_source_boundary()
 {
@@ -3242,6 +3343,8 @@ check_accelerometer_arguments
 check_height_arguments
 check_height_owner_arguments
 check_height_source_boundary
+check_module_flow_arguments
+check_module_source_boundary
 check_delayed_input_arguments
 check_delayed_views_arguments
 check_delayed_seed_arguments
@@ -3280,7 +3383,7 @@ check_solver_argument_guard
 check_reference_preflight
 check_frame_preflight
 check_initialization_preflight
-printf 'ESBMC inventory tests: pass (6373 profiles; 344 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (6395 profiles; 366 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_runtime_input_regressions
     check_ring_buffer_regressions

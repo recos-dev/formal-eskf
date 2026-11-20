@@ -40,8 +40,11 @@ of the scheduler, backend, sensor producers or complete flight system.
 
 Evidence must exercise production `Run`, native uORB decoding/publication,
 configuration, warmup, delays, source changes, context, resets and failures, plus
-the pinned SIH acceptance scenario. Source formal proof, nonlinear tracking-error
-bounds, hardware/resource qualification and flight-fault safety remain open.
+the pinned SIH acceptance scenario. The
+[caller proof boundary](../../../../guides/verification.md#px4-and-replay-temporal-callers)
+checks source-composed ordering under component and external-service contracts.
+Complete deployed-module refinement, nonlinear tracking-error bounds,
+hardware/resource qualification and flight-fault safety remain open.
 
 ### Caller and context binding
 

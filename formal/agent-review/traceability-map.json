@@ -2226,6 +2226,10 @@
           {
             "file": "docs/guides/verification.md",
             "symbol": "### Generated reset, correction and transactions"
+          },
+          {
+            "file": "docs/guides/verification.md",
+            "symbol": "### PX4 and replay temporal callers"
           }
         ],
         "lean": [
@@ -2384,6 +2388,14 @@
           {
             "file": "formal/cpp/esbmc/step.cpp",
             "symbol": "void verify_nominal_prediction_transaction("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/replay_prediction.cpp",
+            "symbol": "void verify_replay_prediction("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/replay_imu.cpp",
+            "symbol": "void verify_replay_imu("
           }
         ]
       }
@@ -3919,6 +3931,10 @@
           {
             "file": "docs/spec/requirements/integration/px4/magnetic-model.md",
             "symbol": "# R-PX4-MAGNETIC-MODEL: PX4 module geographic magnetic reference"
+          },
+          {
+            "file": "docs/guides/verification.md",
+            "symbol": "### PX4 and replay temporal callers"
           }
         ],
         "lean": [],
@@ -3980,6 +3996,10 @@
           {
             "file": "formal/cpp/esbmc/magnetometer_lifecycle.cpp",
             "symbol": "void verify_mag_lifecycle_reset("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/replay_events.cpp",
+            "symbol": "void verify_replay_magnetic("
           }
         ]
       }
@@ -4786,7 +4806,7 @@
     },
     {
       "id": "R-REPLAY-BIAS",
-      "title": "Replay bias inhibition: portable IEEE peak/permission invariants verified; replay sequencing and metadata remain open",
+      "title": "Replay bias inhibition: portable permission invariants and source-composed tick ordering; decoded-input provenance and physical validity remain separate",
       "references": {
         "spec": [
           {
@@ -4796,6 +4816,10 @@
           {
             "file": "docs/spec/requirements/runtime/imu/bias-inhibition.md",
             "symbol": "# R-IMU-BIAS-INHIBITION: Decaying-peak bias-learning permissions"
+          },
+          {
+            "file": "docs/guides/verification.md",
+            "symbol": "### PX4 and replay temporal callers"
           }
         ],
         "lean": [],
@@ -4857,6 +4881,10 @@
           {
             "file": "formal/cpp/esbmc/imu_inhibition.cpp",
             "symbol": "void verify_imu_inhibition("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/replay_imu.cpp",
+            "symbol": "void verify_replay_imu("
           }
         ]
       }
@@ -4968,7 +4996,7 @@
     },
     {
       "id": "R-IMU-PROCESS-NOISE",
-      "title": "Portable fault-noise replacement and actual module prediction helper verified; full loop sequencing and target behavior remain open",
+      "title": "Portable fault-noise policy and module/replay prediction ordering under producer contracts; input provenance and target behavior remain separate",
       "references": {
         "spec": [
           {
@@ -4982,6 +5010,10 @@
           {
             "file": "docs/spec/requirements/integration/replay/imu-bias.md",
             "symbol": "# R-REPLAY-BIAS: Replay bias-learning binding"
+          },
+          {
+            "file": "docs/guides/verification.md",
+            "symbol": "### PX4 and replay temporal callers"
           }
         ],
         "lean": [
@@ -5052,13 +5084,17 @@
           {
             "file": "formal/cpp/esbmc/step.cpp",
             "symbol": "void verify_prediction_step("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/replay_prediction.cpp",
+            "symbol": "void verify_replay_prediction("
           }
         ]
       }
     },
     {
       "id": "R-BIAS-PROCESS-NOISE",
-      "title": "Portable bias-noise policy and module prediction ordering verified; full loop and target numerical behavior remain open",
+      "title": "Portable bias-noise policy and module/replay prediction ordering under producer contracts; target numerical behavior remains separate",
       "references": {
         "spec": [
           {
@@ -5072,6 +5108,10 @@
           {
             "file": "docs/spec/requirements/integration/replay/imu-bias.md",
             "symbol": "# R-REPLAY-BIAS: Replay bias-learning binding"
+          },
+          {
+            "file": "docs/guides/verification.md",
+            "symbol": "### PX4 and replay temporal callers"
           }
         ],
         "lean": [
@@ -5146,6 +5186,10 @@
           {
             "file": "formal/cpp/esbmc/step.cpp",
             "symbol": "void verify_prediction_step("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/replay_prediction.cpp",
+            "symbol": "void verify_replay_prediction("
           }
         ]
       }
@@ -5955,6 +5999,10 @@
           {
             "file": "docs/spec/requirements/integration/px4/gnss-quality.md",
             "symbol": "# R-PX4-GNSS-QUALITY: PX4 GNSS integration"
+          },
+          {
+            "file": "docs/guides/verification.md",
+            "symbol": "### PX4 and replay temporal callers"
           }
         ],
         "lean": [],
@@ -6028,6 +6076,10 @@
           {
             "file": "formal/cpp/esbmc/gnss_quality.cpp",
             "symbol": "void verify_gnss_transition("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/replay_events.cpp",
+            "symbol": "void verify_replay_navigation("
           }
         ]
       }
@@ -7235,7 +7287,7 @@
     },
     {
       "id": "R-PX4-DELAYED-FUSION",
-      "title": "Live delayed/current timeline integration: native and SIH checks; source formal proof and target resource acceptance remain open",
+      "title": "Live delayed/current timeline: source-composed caller order, reset notification and publication epochs under reviewed contracts; full deployed refinement and target qualification remain open",
       "references": {
         "spec": [
           {
@@ -7245,6 +7297,10 @@
           {
             "file": "docs/spec/requirements/integration/px4/configuration.md",
             "symbol": "# PX4-CONFIG: packaged build profile"
+          },
+          {
+            "file": "docs/guides/verification.md",
+            "symbol": "### PX4 and replay temporal callers"
           }
         ],
         "lean": [],
@@ -7322,7 +7378,80 @@
             "symbol": "inline constexpr runtime::GnssQualityParameters<double> quality"
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/module/startup.cpp",
+            "symbol": "void verify_module_startup("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/callback.cpp",
+            "symbol": "void verify_module_callback("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/initialization.cpp",
+            "symbol": "void verify_module_initialization("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/process.cpp",
+            "symbol": "void verify_module_process("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/prediction.cpp",
+            "symbol": "void verify_module_prediction("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/feedback.cpp",
+            "symbol": "void verify_module_feedback("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/selection.cpp",
+            "symbol": "void verify_module_selection("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/selection.cpp",
+            "symbol": "void verify_module_startup_context("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/gnss.cpp",
+            "symbol": "void verify_module_gnss("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/validity.cpp",
+            "symbol": "void verify_module_validity("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/publication.cpp",
+            "symbol": "void verify_module_publication("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/publication.cpp",
+            "symbol": "void verify_module_message_epochs("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/reset.cpp",
+            "symbol": "void verify_module_reset("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/reset_paths.cpp",
+            "symbol": "void verify_module_velocity_reset("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/reset_paths.cpp",
+            "symbol": "void verify_module_vertical_reset("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/reset_paths.cpp",
+            "symbol": "void verify_module_position_reset("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/magnetic_reset.cpp",
+            "symbol": "void verify_module_magnetic_reset("
+          },
+          {
+            "file": "formal/cpp/esbmc/module/height.cpp",
+            "symbol": "void verify_module_height("
+          }
+        ]
       }
     },
     {

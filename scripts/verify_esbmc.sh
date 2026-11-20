@@ -29,7 +29,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|delayed-history|delayed-observations|delayed-output|accelerometer|magnetic-runtime|ring-buffer|codegen) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|delayed-history|delayed-observations|delayed-output|module-flow|accelerometer|magnetic-runtime|ring-buffer|codegen) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -39,7 +39,7 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|delayed-history|delayed-observations|delayed-output|accelerometer|magnetic-runtime|ring-buffer|codegen] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|delayed-history|delayed-observations|delayed-output|module-flow|accelerometer|magnetic-runtime|ring-buffer|codegen] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
                 printf 'Core producer/caller profiles select ESKF_CODEGEN=0 except the *-generated, delayed-views, delayed-seed, delayed-storage, delayed-history, delayed-observations and delayed-output suites (ESKF_CODEGEN=1); codegen checks emitted kernels directly.\n'
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
@@ -71,6 +71,7 @@ parse_arguments()
                 printf 'delayed-storage checks actual 64-slot IMU ring insertion, source preservation and complete backing frames in binary32/64. Every destination partition and equality profile is required; owner admission/completion/reset remain separate.\n'
                 printf 'delayed-observations selects typed storage, source control, complete owner/caller frames and context source steps; acceptance also requires Lean loop induction, reviewed source correspondence and the matching storage producers.\n'
                 printf 'delayed-output selects typed output storage, owner/caller contracts and source steps; every frame/position profile, Lean induction and producer dependency is required.\n'
+                printf 'module-flow selects source-composed PX4 startup/callback/timeline/reset/publication and replay temporal callers for the pinned default binary64 profile. Numeric producers, source frames, native bindings and external scheduler/STL contracts remain required.\n'
                 printf 'height selects scalar producers and complete height-owner transactions/invariants in both formats; numerical producer dependencies and live module publication require separate evidence.\n'
                 printf 'navigation-recovery selects actual gate diagnostic contracts, vertical limiter and both public recovery callers with every state/P alias. Same-type correction frames are reused; root accuracy and caller health/permission remain separate.\n'
                 printf 'navigation-reset selects exact-type validation, symmetry-pair arithmetic and all four numerical reset callers with independent state/P aliases. Real PSD is proved separately in Lean; source permission and target backends remain separate.\n'
@@ -1715,6 +1716,36 @@ run_delayed_output_suite()
     done
 }
 
+run_module_flow_suite()
+{
+    local ENTRY FILE
+    local -a SAVED_ARGUMENTS=("${ESBMC_ARGUMENTS[@]}")
+    ESBMC_ARGUMENTS=("${ESBMC_ARGUMENTS[@]/ESKF_CODEGEN=0/ESKF_CODEGEN=1}"
+                     -I "${REPO_DIR}/output/esbmc/module")
+    for ENTRY in startup callback initialization process prediction feedback selection startup_context gnss \
+                 validity publication message_epochs reset velocity_reset vertical_reset position_reset magnetic_reset height; do
+        FILE="${ENTRY}"
+        case "${ENTRY}" in
+            startup_context) FILE=selection ;;
+            message_epochs) FILE=publication ;;
+            velocity_reset|vertical_reset|position_reset) FILE=reset_paths ;;
+        esac
+        SOURCE_FILE="${PROOF_DIR}/module/${FILE}.cpp"
+        PROFILE="module-flow-binary64-${ENTRY}"
+        verify "verify_module_${ENTRY}" --proof-unwind 32 --proof-timeout 120s --proof-memory 4g \
+            --64 --z3 --array-flattener --tuple-node-flattener --multi-property -D FORMAL_ESKF_PROOF_BINARY64=1
+    done
+    for ENTRY in prediction imu navigation magnetic; do
+        FILE="${ENTRY}"
+        case "${ENTRY}" in navigation|magnetic) FILE=events ;; esac
+        SOURCE_FILE="${PROOF_DIR}/module/replay_${FILE}.cpp"
+        PROFILE="module-flow-binary64-replay-${ENTRY}"
+        verify "verify_replay_${ENTRY}" --proof-unwind 32 --proof-timeout 120s --proof-memory 4g \
+            --64 --z3 --array-flattener --tuple-node-flattener --multi-property -D FORMAL_ESKF_PROOF_BINARY64=1
+    done
+    ESBMC_ARGUMENTS=("${SAVED_ARGUMENTS[@]}")
+}
+
 run_height_suite()
 {
     local BINARY64 SOURCE KIND
@@ -2221,6 +2252,14 @@ main()
             check_frame_support
             check_initialization_support
         fi
+        if [[ "${SUITE}" == module-flow ]]; then
+            check_reference_support
+            check_frame_support
+            check_initialization_support
+        fi
+        if [[ "${SUITE}" == all || "${SUITE}" == module-flow ]]; then
+            python3 "${PROOF_DIR}/module_source.py" "${REPO_DIR}/output/esbmc/module"
+        fi
         if [[ "${SUITE}" == all || "${SUITE}" == height ]]; then
             python3 "${PROOF_DIR}/height_source.py" "${REPO_DIR}/output/esbmc/height"
         fi
@@ -2358,6 +2397,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == delayed-output ]]; then
         run_delayed_output_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == module-flow ]]; then
+        run_module_flow_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

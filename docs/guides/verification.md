@@ -15,9 +15,9 @@ it is neither a proof nor a mandatory review of every function.
 
 ## Open boundaries
 
-- Live IMU/PX4/replay calling sequences still need source-composition evidence.
-  IMU, observation and output-owner contracts and induction are described below;
-  their component evidence and native module tests do not prove the live sequence.
+- PX4/replay temporal callers have the scoped source-composition evidence below.
+  Opaque callee contracts, source-fragment frames and platform/native bindings
+  remain reviewed boundaries; this is not a proof of the complete deployed module.
 - Deployed matrix/libm accuracy, numerical error budgets and repeated-step
   invariants are not implied by finite outputs or exact-real theorems.
 - Work-queue/consumer behavior, dependency allocation/locking, forced shutdown,
@@ -174,8 +174,8 @@ nor the qualified two-session library model proves target STL layout or ABI.
 Base/transition preservation supplies owner induction through these contracts;
 the source/model correspondence is reviewed, not machine-checked refinement.
 Retain successful logs and named negative controls for the same baseline.
-Live module ordering/publication, deployed numerical accuracy and target timing
-remain separate obligations.
+The module caller evidence below connects owner results to output notification
+and reporting. Deployed numerical accuracy and target timing remain separate.
 
 ### IMU input and history
 
@@ -450,8 +450,9 @@ view contracts. Initialization uses the qualified frontend described above.
 The source-step correspondence and source-to-Lean relation remain reviewed
 boundaries, not automated refinement proofs. External-input frame checks concern
 independent input storage; private workspace is not a supported input alias.
-Live caller order, deployed backend/libm accuracy, closed-loop stability,
-uniform floating-point error and target resource bounds remain separate.
+The module caller evidence below checks live call order under these owner
+contracts. Deployed backend/libm accuracy, closed-loop stability, uniform
+floating-point error and target resource bounds remain separate.
 
 ### Delayed observations and context
 
@@ -461,7 +462,8 @@ Both scalar formats use the 64-bit word model and qualified reference/IEEE-frame
 verifier. Numerical payloads, including inactive storage, remain arbitrary IEEE
 values. Copy frames preserve signed zero and NaN classification, not padding or
 NaN payload bits. Public inputs/outputs are external to the owner's private
-storage. Live caller sequencing, deployed backends and WCET remain separate.
+storage. The module caller evidence below connects selection to its consumers;
+deployed backends and WCET remain separate.
 
 Acceptance composes the following obligations; neither a caller summary nor an
 isolated Lean theorem replaces its dependencies.
@@ -524,6 +526,73 @@ The boundary needs current positive results and named mutation controls for the
 same source/tool/configuration. Timeout, OOM, incomplete partitions or missing
 producer evidence remain gaps. No numerical estimator success, sensor validity,
 whole-callback atomicity or target timing follows from these queue properties.
+
+### PX4 and replay temporal callers
+
+`./scripts/verify_esbmc.sh module-flow` checks the pinned default PX4 binary64
+profile and the separate host replay timeline. It uses the qualified reference,
+IEEE-frame and initialization frontend above. Successful component proofs alone
+do not establish these caller properties; all selected profiles, source bindings,
+producer dependencies and native checks are required.
+
+| Caller boundary | Property checked |
+|---|---|
+| Startup | Parameter lookup/field mapping, one timing configuration for all owners, resource and publication preparation before callback registration, and failure short-circuiting. |
+| `Run` and immediate IMU | Current propagation precedes delayed work; arrivals and diagnostics retain their own clock; startup admission and active history/context/output order are distinct. |
+| Alignment and delayed prediction | Corrections precede seeding at one epoch; held rates precede real rates; only successful real prediction commits the delayed epoch; aiding follows the existing checked order. |
+| Observation/context and GNSS | Selection occurs once per source, misses cannot revive magnetic/barometer input, context uses the selected epoch, and source generations and consumed watermarks prevent stale qualification. |
+| Feedback and output | Correct the exact delayed epoch before acknowledging history; retain borrowed samples; publish current-time navigation only after successful feedback. Strict freshness and generation gates remain effective. |
+| Resets and height | Forward original reset deltas, authority, source epochs and permissions; notify output before reporting; preserve reset epochs and unsigned accounting. A later failure does not undo an earlier committed core reset. |
+| Topic epochs | Attitude/navigation use current output time; estimator status/flags/bias use delayed main time; publication time remains separate. |
+| Replay | Checked noise selection/inhibition precedes prediction; held and real intervals retain their own duration; commit a tick only after its required statuses succeed. GNSS rejection still consumes its event; magnetic drain retains the newest due event before fusion. |
+
+[`module_source.py`](../../formal/cpp/esbmc/module_source.py) checks source hashes
+before extracting complete methods, selected reset branches, message initialization
+prefixes and replay steps. Complete methods retain their statements and only
+rename the owning class. The generated manifest identifies every fragment,
+parent hash and transformation; an unknown source revision fails before proof
+execution. Review the original enclosing method and omitted frame as well as
+the extracted statements. A source hash establishes identity, not correctness.
+
+The bindings retain actual timestamps, source/generation identifiers, Boolean
+decisions and counter widths. Numerical objects not used by temporal decisions
+can be represented by ghost identities. Their producers allow arbitrary status
+outcomes; parameter/delta forwarding profiles retain actual binary64 fields where
+needed. These projections prove source control/data flow, not PX4 class layout,
+all payload serialization or machine-code equivalence. Library summaries for
+`max`, `clamp`, `optional` and diagnostic effects are explicit assumptions.
+
+Acceptance composes IMU admission/history, observation/context, output tracking,
+GNSS quality/lifecycle, height owner, reset, bias/noise and core transaction
+contracts. Review callee footprints: no hidden write may invalidate a borrowed
+history record, frozen configuration, clock or observation cursor. Primitive
+numeric/backend/libm accuracy is not inferred from an opaque successful return.
+Source-to-contract and source-to-Lean correspondence remain reviewed rather than
+machine-checked refinement boundaries.
+
+Replay has no delayed-owner/output-predictor pipeline. Its event-step proofs use
+the original guard and one arbitrary loop iteration, with stream advancement as
+a contract. Seed watermarks establish the base case. Each successful step keeps
+the source watermark at/before the unchanged IMU epoch; a magnetic pending event
+is either absent or equals the newest consumed watermark. Repeating this step
+over a finite stream preserves the invariant; exhaustion/future input exits,
+and disorder or callee failure throws. The two GNSS advances are disjoint
+rejection/fallthrough paths. The enclosing source review must retain their
+no-cursor-write frame and the absence of fusion inside magnetic draining.
+This does not prove CSV parsing, host I/O, exception RTTI or diagnostic allocation.
+
+Native acceptance uses the existing production `Run()` fixture with real PX4
+messages/uORB and the actual replay executable, retaining installed-source,
+compiler/binary and input identities. Named source mutations must fail the
+intended assertions; stale adapters, timeouts and parse errors do not count as
+successful negative controls. Keep these results separate from symbolic claims.
+
+External monotonic clock, single-owner execution, scheduler/uORB behavior and
+native ABI remain assumptions. Gate-time freshness does not prove freshness
+after publication latency. The complete callback is not atomic: earlier fast
+attitude, held prediction or main reset can precede a later fault. Neither these
+proofs nor the native fixtures establish flight safety, tracking-error bounds,
+target allocation/locking, stack usage or WCET.
 
 ## Proof execution resources
 

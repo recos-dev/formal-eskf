@@ -68,7 +68,7 @@ Dynamic-pressure compensation remains D-03.
 | Task | Status | Scope and completion boundary |
 |---|---|---|
 | F-04.1 — Timing design | Completed | Initial [250 Hz SIH profile](spec/profiles/px4-sih-250hz.md): epochs, delays, capacities, horizon, ordering/overflow and reset behavior. Target resource and accuracy acceptance remain F-07. |
-| F-04.2 — Delayed fusion and output prediction | Partial | IMU, observation/context and output owners are connected to live delayed prediction/fusion and current-time publication, with scenario tests. Source-composition proof remains open under V-01; landing, accuracy and target resource acceptance remain F-07. |
+| F-04.2 — Delayed fusion and output prediction | Partial | IMU, observation/context and output owners are connected to live delayed prediction/fusion and current-time publication, with source-composed caller checks and native scenarios. Full deployed refinement remains outside V-01's scoped claim; landing, accuracy and target resource acceptance remain F-07. |
 
 Contracts: [delayed fusion](spec/requirements/integration/px4/delayed-fusion.md),
 [output tracking](spec/requirements/integration/px4/output-predictor.md).
@@ -114,10 +114,13 @@ requirement-to-source-to-evidence chain.
 
 **Status: Partial.** Scoped core/runtime evidence exists. Close the source,
 numerical and composition gaps listed in the
-[open verification boundaries](guides/verification.md#open-boundaries), particularly
-actual module/replay callers. IMU, observation/context, output-predictor and
+[open verification boundaries](guides/verification.md#open-boundaries).
+IMU, observation/context, output-predictor and
 `HeightAiding` owners have scoped contracts and inductive evidence within their
-documented producer and source-adapter boundaries.
+documented producer and source-adapter boundaries. Owner/caller coverage also
+includes source-composed PX4/replay temporal checks; its
+[reviewed frames and platform assumptions](guides/verification.md#px4-and-replay-temporal-callers)
+do not establish full deployed-module refinement or numerical tracking bounds.
 Keep producer/caller dependencies and history/feedback transactions explicit;
 the entire callback is not assumed atomic. Record accepted profiles and remaining
 gaps in the [traceability map](../formal/agent-review/traceability-map.json) and

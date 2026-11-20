@@ -55,7 +55,7 @@ Integration owners and production behavior changes remain outside this work.
 | T-22 | `tests/core/test_accelerometer.cpp` | Gravity observation, fixed preprocessing, domains and wrapper transactions. | Implemented |
 | T-23 | `tests/core/test_magnetometer.cpp` | Magnetic observation, selected gain projection, geometry and wrapper transactions. | Implemented |
 | T-24 | `tests/core/test_sequence.cpp` | Portable full-core sequences and meaningful interacting macro profiles. | Implemented |
-| T-25 | `tests/core/test_codegen.cpp` | Generated caller selection and equation checks; no mere dense/generated agreement claim. | Pending |
+| T-25 | `tests/core/test_codegen.cpp` | Generated caller selection and equation checks; no mere dense/generated agreement claim. | Implemented |
 | T-26 | `tests/runtime/test_ring_buffer.cpp` | All 11 ring-buffer families, including full-backing clearing evidence and legal horizon aliases. | Implemented |
 | T-27 | `tests/runtime/test_tilt_alignment.cpp` | Three candidate producer cases; clarify contract binding without inventing requirement approval. | Implemented |
 | T-28 | `tests/runtime/gravity/test_magnitude.cpp` | Vector filtering, strict band, history preservation and cadence. | Implemented |
@@ -84,13 +84,17 @@ Integration owners and production behavior changes remain outside this work.
 | T-51 | `tests/CMakeLists.txt` | Enforce the declared strict floating-point test profile, including optimized builds. | Implemented |
 | T-52 | `tests/support/correction_reference.hpp` | Share an independent dense correction oracle across core/runtime cases; validate with exact analytic controls. | Implemented |
 | T-53 | `tests/support/correction_reference.hpp` | Extend the independent oracle with explicit heading gain projection; verify exact identity and tilted controls and default preservation. | Implemented |
-
 | T-54 | `tests/common/test_compile_contracts.py` | Complete positive compile coverage for all 35 required matrix shapes. | Implemented |
 | T-55 | `tests/runtime/gravity/test_sampling.cpp` | Exercise reachable positive normalization-threshold failure and continuation. | Implemented |
 | T-56 | `tests/runtime/imu/test_bias_limits.cpp` | Check successful bias clamping preserves an unconsumed nonfinite quaternion. | Implemented |
 | T-57 | `tests/runtime/imu/test_bias_process_noise.cpp` | Snapshot borrowed noise before the first disjoint failure call. | Implemented |
 | T-58 | `tests/runtime/imu/test_bias_inhibition.cpp` | Observe all borrowed nominal fields on rejected policy updates. | Implemented |
 | T-59 | `tests/runtime/gravity/test_fusion.cpp` | Replace opaque condition numbers with named scenarios without changing assertions. | Implemented |
+
+| T-60 | `tests/core/test_sequence.cpp` | Use shared profile metadata so case registration remains machine-readable. | Pending |
+
+| T-61 | `scripts/verify_tests.py` | Check configured source completeness, report optional backend exclusions and hash shared production/oracle dependencies. | Pending |
+| T-62 | `tests/tools/test_test_plan.py` | Reject missing enabled sources and verify optional exclusions and dependency provenance. | Pending |
 
 ## Final reconciliation and cleanup
 

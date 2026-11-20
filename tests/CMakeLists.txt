@@ -161,7 +161,7 @@ formal_eskf_add_backend_test(test_eskf_prediction core/test_prediction formal_es
 formal_eskf_add_backend_test(test_eskf_covariance core/test_covariance formal_eskf.covariance.eigen formal_eskf::core)
 formal_eskf_add_backend_test(test_eskf_injection core/test_injection_reset formal_eskf.injection.eigen formal_eskf::core)
 formal_eskf_add_backend_test(test_eskf_correction core/test_correction formal_eskf.correction.eigen formal_eskf::core)
-formal_eskf_add_backend_test(test_codegen test_codegen formal_eskf.codegen.eigen formal_eskf::runtime)
+formal_eskf_add_backend_test(test_codegen core/test_codegen formal_eskf.codegen.eigen formal_eskf::runtime)
 formal_eskf_add_backend_test(test_eskf_innovation core/test_innovation formal_eskf.innovation.eigen formal_eskf::core)
 formal_eskf_add_backend_test(test_gnss_quality runtime/gnss/test_quality formal_eskf.gnss_quality.eigen formal_eskf::runtime)
 formal_eskf_add_backend_test(test_gnss_fusion runtime/gnss/test_lifecycle formal_eskf.gnss_fusion.eigen formal_eskf::runtime)

@@ -19,7 +19,7 @@ function(formal_eskf_configure_test target_name)
     endif()
 endfunction()
 
-add_executable(test_scalar_standard test_scalar_standard.cpp)
+add_executable(test_scalar_standard math/test_scalar.cpp)
 target_link_libraries(test_scalar_standard PRIVATE formal_eskf::scalar_math)
 formal_eskf_configure_test(test_scalar_standard)
 add_test(NAME formal_eskf.scalar.standard COMMAND test_scalar_standard)

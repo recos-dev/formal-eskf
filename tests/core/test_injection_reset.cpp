@@ -866,6 +866,5 @@ int main(int argc, char ** argv)
         {"TC-E-STEP-INJECT-RESET-transaction", "AHRS.binary32", test_transaction<FloatLinalg, Ahrs>},
         {"TC-E-STEP-INJECT-RESET-transaction", "AHRS.binary64", test_transaction<DoubleLinalg, Ahrs>},
     };
-    std::cout << "Configuration: reset_approx=" << ESKF_RESET_APPROX << " codegen=" << ESKF_CODEGEN << '\n';
     return formal_eskf::test::run_cases(cases, argc, argv);
 }

@@ -192,3 +192,13 @@ formal_eskf_add_backend_test(test_eskf_accelerometer test_eskf_accelerometer for
 formal_eskf_add_backend_test(test_contracts common/test_contracts formal_eskf.common.contracts formal_eskf::runtime)
 
 formal_eskf_add_backend_test(test_tilt_alignment runtime/test_tilt_alignment formal_eskf.tilt_alignment.eigen formal_eskf::runtime)
+
+if(FORMAL_ESKF_BUILD_EIGEN_BACKEND)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    separate_arguments(TEST_COMPILER_ARGS NATIVE_COMMAND "${CMAKE_CXX_COMPILER_ARG1} ${CMAKE_CXX_FLAGS}")
+    list(TRANSFORM TEST_COMPILER_ARGS PREPEND "--compiler-arg=")
+    add_test(NAME formal_eskf.common.compile_contracts
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/common/test_compile_contracts.py
+            --compiler ${CMAKE_CXX_COMPILER} ${TEST_COMPILER_ARGS}
+            --include-dir $<TARGET_PROPERTY:Eigen3::Eigen,INTERFACE_INCLUDE_DIRECTORIES>)
+endif()

@@ -36,7 +36,7 @@ Integration owners and production behavior changes remain outside this work.
 | T-03 | `tests/support/test_backend.hpp` | Select and identify actual backend; verify allocation-guard assumptions. | Implemented |
 | T-04 | `tests/support/test_cases.hpp` | Adopt selectable IDs/profiles; reject empty, duplicate, unknown and assertion-free cases. | Implemented |
 | T-05 | `tests/tools/test_case_runner.cpp` | Exercise runner success, failure, bad selection and false-pass negative controls. | Implemented |
-| T-06 | `tests/common/test_contracts.cpp` | Status meanings, floating-point profile and independent-instance checks. | Pending |
+| T-06 | `tests/common/test_contracts.cpp` | Status meanings, floating-point profile and independent-instance checks. | Implemented |
 | T-07 | `tests/common/test_compile_contracts.py` | Compile-time shape/configuration restrictions, dependency boundaries and explicit inspection dispositions. | Pending |
 | T-08 | `tests/math/test_scalar.cpp` | F-SCALAR: checked primitives, aliases, domains, result failures and independent known answers. | Pending |
 | T-09 | `tests/math/test_linalg.cpp` | F-LINALG: values, access, dimensions, arithmetic, reductions, normalization and derived operations. | Pending |

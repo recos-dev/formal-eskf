@@ -22,6 +22,11 @@ target_link_libraries(test_scalar_standard PRIVATE formal_eskf::scalar_math)
 formal_eskf_configure_test(test_scalar_standard)
 add_test(NAME formal_eskf.scalar.standard COMMAND test_scalar_standard)
 
+add_executable(test_case_runner tools/test_case_runner.cpp)
+target_link_libraries(test_case_runner PRIVATE formal_eskf::scalar_math)
+formal_eskf_configure_test(test_case_runner)
+add_test(NAME formal_eskf.test_cases.TC-TOOL-test-cases-selection.host COMMAND test_case_runner)
+
 add_executable(test_ring_buffer test_ring_buffer.cpp)
 target_link_libraries(test_ring_buffer PRIVATE formal_eskf::runtime)
 formal_eskf_configure_test(test_ring_buffer)

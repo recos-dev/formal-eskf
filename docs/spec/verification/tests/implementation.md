@@ -56,7 +56,7 @@ Integration owners and production behavior changes remain outside this work.
 | T-23 | `tests/core/test_magnetometer.cpp` | Magnetic observation, selected gain projection, geometry and wrapper transactions. | Pending |
 | T-24 | `tests/core/test_sequence.cpp` | Portable full-core sequences and meaningful interacting macro profiles. | Pending |
 | T-25 | `tests/core/test_codegen.cpp` | Generated caller selection and equation checks; no mere dense/generated agreement claim. | Pending |
-| T-26 | `tests/runtime/test_ring_buffer.cpp` | All 11 ring-buffer families, including full-backing clearing evidence and legal horizon aliases. | Pending |
+| T-26 | `tests/runtime/test_ring_buffer.cpp` | All 11 ring-buffer families, including full-backing clearing evidence and legal horizon aliases. | Implemented |
 | T-27 | `tests/runtime/test_tilt_alignment.cpp` | Three candidate producer cases; clarify contract binding without inventing requirement approval. | Pending |
 | T-28 | `tests/runtime/gravity/test_magnitude.cpp` | Vector filtering, strict band, history preservation and cadence. | Pending |
 | T-29 | `tests/runtime/gravity/test_sampling.cpp` | Rotating accumulation, interval completion, clipping, failures and source interruption. | Pending |

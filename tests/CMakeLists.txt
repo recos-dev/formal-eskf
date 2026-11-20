@@ -27,7 +27,7 @@ target_link_libraries(test_case_runner PRIVATE formal_eskf::scalar_math)
 formal_eskf_configure_test(test_case_runner)
 add_test(NAME formal_eskf.test_cases.TC-TOOL-test-cases-selection.host COMMAND test_case_runner)
 
-add_executable(test_ring_buffer test_ring_buffer.cpp)
+add_executable(test_ring_buffer runtime/test_ring_buffer.cpp)
 target_link_libraries(test_ring_buffer PRIVATE formal_eskf::runtime)
 formal_eskf_configure_test(test_ring_buffer)
 add_test(NAME formal_eskf.runtime.ring_buffer COMMAND test_ring_buffer)

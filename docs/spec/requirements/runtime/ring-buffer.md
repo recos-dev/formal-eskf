@@ -102,7 +102,7 @@ module integration remain separate obligations. These integer/storage checks
 need no real-number Lean model; they do not verify deployed standard-library
 internals, target layout, every payload type, scheduler behavior or target WCET.
 
-Native evidence is `tests/test_ring_buffer.cpp`, registered as
+Native evidence is `tests/runtime/test_ring_buffer.cpp`, registered as
 `formal_eskf.runtime.ring_buffer`: configuration/failure preservation, non-consuming
 history, wrap/overwrite, indexed payload correction, selection/expiry/future
 retention, timestamp boundaries and deterministic sequences against a linear-list

@@ -67,7 +67,7 @@ Integration owners and production behavior changes remain outside this work.
 | T-34 | `tests/runtime/imu/test_bias_process_noise.cpp` | Bias-noise thresholds, consumption, aliases, inhibit/release and SW-IMU sequence. | Implemented |
 | T-35 | `tests/runtime/imu/test_bias_limits.cpp` | Per-axis limits, complete validation and idempotent/released clamping. | Implemented |
 | T-36 | `tests/runtime/imu/test_vertical_health.cpp` | Signed evidence, source grouping, clipping counters, clocks, reset and failure frames. | Implemented |
-| T-37 | `tests/runtime/gnss/test_quality.cpp` | Quality flags, thresholds, filters, qualification, invalid calls and history. | Pending |
+| T-37 | `tests/runtime/gnss/test_quality.cpp` | Quality flags, thresholds, filters, qualification, invalid calls and history. | Implemented |
 | T-38 | `tests/runtime/gnss/test_lifecycle.cpp` | All 15 lifecycle families and portable SW-GNSS command/feedback sequence. | Pending |
 | T-39 | `tests/runtime/gnss/test_measurement.cpp` | Generic/named gated fusion, diagnostics, vertical recovery and sequential groups. | Pending |
 | T-40 | `tests/runtime/gnss/test_reset.cpp` | Four reset equations, covariance masks, delta, aliases and failure publication. | Pending |

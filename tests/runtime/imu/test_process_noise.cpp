@@ -16,7 +16,7 @@
 #include <formal_eskf/eskf/eskf.hpp>
 #include <formal_eskf/runtime/imu.hpp>
 #include "test_backend.hpp"
-#include "test_support.hpp"
+#include "test_cases.hpp"
 
 namespace
 {
@@ -25,7 +25,6 @@ using formal_eskf::Status;
 using TestContext = formal_eskf::test::Context;
 using Conditions = formal_eskf::runtime::ImuNoiseConditions;
 using Ins = formal_eskf::configuration::Ins;
-constexpr std::string_view profile = "IMU process noise";
 
 template <typename Noise> auto noise_vectors(Noise & noise)
 {
@@ -63,7 +62,7 @@ template <typename Linalg> Ins::ProcessNoise<Linalg> configured_noise()
             Vector::from_row_major({Scalar{0.03125}, Scalar{0.0625}, Scalar{0.125}})};
 }
 
-template <typename Linalg> void test_selection(TestContext & test)
+template <typename Linalg> void test_selection(TestContext & test, std::string_view profile)
 {
     using Scalar = typename Linalg::value_type;
     auto const configured = configured_noise<Linalg>();
@@ -111,7 +110,7 @@ template <typename Linalg> void test_selection(TestContext & test)
     }
 }
 
-template <typename Linalg> void test_failures(TestContext & test)
+template <typename Linalg> void test_failures(TestContext & test, std::string_view profile)
 {
     using Scalar = typename Linalg::value_type;
     for (auto invalid : {Scalar{-1}, std::numeric_limits<Scalar>::infinity(), -std::numeric_limits<Scalar>::infinity(),
@@ -151,9 +150,40 @@ template <typename Linalg> void test_failures(TestContext & test)
             }
         }
     }
+    // Fault parameter validation precedes every configured coefficient.
+    for (bool alias : {false, true})
+    {
+        auto noise = configured_noise<Linalg>();
+        noise.specific_force_variance(0U) = std::numeric_limits<Scalar>::quiet_NaN();
+        auto const original = noise;
+        auto separate = configured_noise<Linalg>();
+        separate.angular_rate_variance(2U) = -Scalar{0};
+        auto const old_separate = separate;
+        auto & output = alias ? noise : separate;
+        test.expect(formal_eskf::runtime::select_imu_process_noise(noise, {true, {}}, Scalar{-1}, output) ==
+                            Status::domain_error &&
+                        same_noise(noise, original) && same_noise(separate, old_separate),
+                    profile, "negative fault variance wins before nonfinite configuration, without publication");
+        noise = configured_noise<Linalg>();
+        noise.specific_force_variance(0U) = Scalar{-1};
+        auto const negative_input = noise;
+        test.expect(formal_eskf::runtime::select_imu_process_noise(noise, {}, std::numeric_limits<Scalar>::infinity(),
+                                                                   output) == Status::non_finite_input &&
+                        same_noise(noise, negative_input) && same_noise(separate, old_separate),
+                    profile, "nonfinite fault variance wins before negative configuration");
+    }
+    auto configured = configured_noise<Linalg>();
+    auto selected = configured;
+    test.expect(formal_eskf::runtime::select_imu_process_noise(configured, {true, {}}, Scalar{16}, selected) ==
+                    Status::success,
+                profile, "select fault noise before recovery");
+    test.expect(formal_eskf::runtime::select_imu_process_noise(configured, {}, Scalar{16}, selected) ==
+                        Status::success &&
+                    same_noise(configured, selected),
+                profile, "restoration uses original configuration, without history or repeated scaling");
 }
 
-template <typename Linalg> void test_prediction(TestContext & test)
+template <typename Linalg> void test_prediction(TestContext & test, std::string_view profile)
 {
     using Scalar = typename Linalg::value_type;
     using Vector = formal_eskf::linalg::Vector<Linalg, 3U>;
@@ -207,22 +237,26 @@ template <typename Linalg> void test_prediction(TestContext & test)
     }
 }
 
+template <typename Linalg> void replacement(TestContext & test, std::string_view profile)
+{
+    test_selection<Linalg>(test, profile);
+    // Supplementary exact rotated-prediction regression preserves earlier useful evidence.
+    test_prediction<Linalg>(test, profile);
+}
+
 } /* end namespace */
 
-int main()
+int main(int argc, char ** argv)
 {
     formal_eskf::test::configure_backend_test();
-    TestContext test;
-    test_selection<formal_eskf::test::Backend<float>>(test);
-    test_selection<formal_eskf::test::Backend<double>>(test);
-    test_failures<formal_eskf::test::Backend<float>>(test);
-    test_failures<formal_eskf::test::Backend<double>>(test);
-    test_prediction<formal_eskf::test::Backend<float>>(test);
-    test_prediction<formal_eskf::test::Backend<double>>(test);
-    if (test.failures() != 0)
-    {
-        return 1;
-    }
-    std::cout << "IMU process noise: pass\n";
-    return 0;
+    using formal_eskf::test::Case;
+    using Float = formal_eskf::test::Backend<float>;
+    using Double = formal_eskf::test::Backend<double>;
+    Case const cases[] = {
+        {"TC-R-IMU-PROCESS-NOISE-01", "float", replacement<Float>},
+        {"TC-R-IMU-PROCESS-NOISE-01", "double", replacement<Double>},
+        {"TC-R-IMU-PROCESS-NOISE-02", "float", test_failures<Float>},
+        {"TC-R-IMU-PROCESS-NOISE-02", "double", test_failures<Double>},
+    };
+    return formal_eskf::test::run_cases(cases, argc, argv);
 }

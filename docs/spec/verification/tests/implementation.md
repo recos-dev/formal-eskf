@@ -75,7 +75,7 @@ Integration owners and production behavior changes remain outside this work.
 | T-42 | `tests/runtime/magnetic/test_field.cpp` | Independent field geometry, selection/reference combinations, thresholds and failures. | Implemented |
 | T-43 | `tests/runtime/magnetic/test_reference.cpp` | Reference conversion/adoption/timing; revision exhaustion mapped to scoped source evidence. | Implemented |
 | T-44 | `tests/runtime/magnetic/test_heading.cpp` | Acceleration/heading filters, observability, latch, partial resets and failures. | Implemented |
-| T-45 | `tests/runtime/magnetic/test_filter.cpp` | Reset-only filter seed/recurrence, failure atomicity and source/reference distinction. | Pending |
+| T-45 | `tests/runtime/magnetic/test_filter.cpp` | Reset-only filter seed/recurrence, failure atomicity and source/reference distinction. | Implemented |
 | T-46 | `tests/runtime/magnetic/test_fusion.cpp` | Field/gate/correction stages, independent references, effective gain and diagnostics. | Pending |
 | T-47 | `tests/runtime/magnetic/test_reset.cpp` | Heading/covariance transport, delta quaternion, floors, failure frames and repeat behavior. | Pending |
 | T-48 | `tests/runtime/magnetic/test_lifecycle.cpp` | All 13 lifecycle families and SW-MAGNETIC source/reference/reset sequences. | Pending |

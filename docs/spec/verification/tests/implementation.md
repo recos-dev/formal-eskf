@@ -31,7 +31,7 @@ Integration owners and production behavior changes remain outside this work.
 
 | Action | Primary file | Work / review boundary | Progress |
 |---|---|---|---|
-| T-01 | `tests/CMakeLists.txt` | Centralize test registration; preserve target names and executable paths; enable optimized assertions. | Pending |
+| T-01 | `tests/CMakeLists.txt` | Centralize test registration; preserve target names and executable paths; enable optimized assertions. | Implemented |
 | T-02 | `tests/support/test_support.hpp` | Count assertions and preserve nonfatal failure reporting. | Pending |
 | T-03 | `tests/support/test_backend.hpp` | Select and identify actual backend; verify allocation-guard assumptions. | Pending |
 | T-04 | `tests/support/test_cases.hpp` | Adopt selectable IDs/profiles; reject empty, duplicate, unknown and assertion-free cases. | Pending |

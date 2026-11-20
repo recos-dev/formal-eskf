@@ -1473,6 +1473,5 @@ int main(int argc, char ** argv)
         {"TC-E-STEP-PRED-joint-publication", "AHRS.binary32", test_joint_publication<float_backend, Ahrs>},
         {"TC-E-STEP-PRED-joint-publication", "AHRS.binary64", test_joint_publication<double_backend, Ahrs>},
     };
-    std::cout << "Configuration: quat_approx=" << ESKF_QUAT_APPROX << " codegen=" << ESKF_CODEGEN << '\n';
     return formal_eskf::test::run_cases(cases, argc, argv);
 }

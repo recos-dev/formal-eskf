@@ -289,13 +289,13 @@ void test_reference_timeline(Context & test, std::string_view profile)
     using full_reference = TimelineReference<Backend, Configuration, 3U>;
     typename types::nominal_state_type state;
     test.expect(formal_eskf::so3::UnitQuaternion<Backend>::from_coefficients(
-                    value_type{0.5}, value_type{0.5}, value_type{0.5}, value_type{0.5}, value_type{0.000001},
-                    state.q_nb) == Status::success,
+                    value_type{0.5}, value_type{0.5}, value_type{0.5}, value_type{0.5},
+                    static_cast<value_type>(0.000001), state.q_nb) == Status::success,
                 profile, "exact cyclic trajectory attitude is valid");
     typename types::parameter_type parameters;
     parameters.dt_min = value_type{0.125};
     parameters.dt_max = value_type{0.25};
-    parameters.minimum_quaternion_norm = value_type{0.000001};
+    parameters.minimum_quaternion_norm = static_cast<value_type>(0.000001);
     parameters.quaternion_squared_norm_tolerance = value_type{0.125};
     typename types::imu_sample_type imu;
     imu.specific_force_b(1U) = value_type{-8};

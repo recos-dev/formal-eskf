@@ -97,7 +97,7 @@ endif()
 
 if(FORMAL_ESKF_BUILD_EIGEN_BACKEND OR FORMAL_ESKF_BUILD_PX4_MATRIX_BACKEND OR
    FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND)
-    # Independent eigenvalue oracle in test_eskf_covariance.cpp only.
+    # Independent eigenvalue oracle in core/test_covariance.cpp only.
     # PX4/CMSIS-DSP production targets never link Eigen.
     find_package(Eigen3 3.3 CONFIG REQUIRED)
 endif()
@@ -152,7 +152,7 @@ formal_eskf_add_backend_test(test_so3_jacobian test_so3_jacobian formal_eskf.so3
 formal_eskf_add_backend_test(test_eskf_types core/test_types formal_eskf.types.eigen formal_eskf::core)
 formal_eskf_add_backend_test(test_eskf_sequence test_eskf_sequence formal_eskf.sequence.eigen formal_eskf::core)
 formal_eskf_add_backend_test(test_eskf_prediction core/test_prediction formal_eskf.prediction.eigen formal_eskf::core)
-formal_eskf_add_backend_test(test_eskf_covariance test_eskf_covariance formal_eskf.covariance.eigen formal_eskf::core)
+formal_eskf_add_backend_test(test_eskf_covariance core/test_covariance formal_eskf.covariance.eigen formal_eskf::core)
 formal_eskf_add_backend_test(test_eskf_injection core/test_injection_reset formal_eskf.injection.eigen formal_eskf::core)
 formal_eskf_add_backend_test(test_eskf_correction test_eskf_correction formal_eskf.correction.eigen formal_eskf::core)
 formal_eskf_add_backend_test(test_codegen test_codegen formal_eskf.codegen.eigen formal_eskf::runtime)

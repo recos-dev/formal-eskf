@@ -58,7 +58,7 @@ Integration owners and production behavior changes remain outside this work.
 | T-25 | `tests/core/test_codegen.cpp` | Generated caller selection and equation checks; no mere dense/generated agreement claim. | Pending |
 | T-26 | `tests/runtime/test_ring_buffer.cpp` | All 11 ring-buffer families, including full-backing clearing evidence and legal horizon aliases. | Implemented |
 | T-27 | `tests/runtime/test_tilt_alignment.cpp` | Three candidate producer cases; clarify contract binding without inventing requirement approval. | Implemented |
-| T-28 | `tests/runtime/gravity/test_magnitude.cpp` | Vector filtering, strict band, history preservation and cadence. | Pending |
+| T-28 | `tests/runtime/gravity/test_magnitude.cpp` | Vector filtering, strict band, history preservation and cadence. | Implemented |
 | T-29 | `tests/runtime/gravity/test_sampling.cpp` | Rotating accumulation, interval completion, clipping, failures and source interruption. | Pending |
 | T-30 | `tests/runtime/gravity/test_conditions.cpp` | Complete eligibility truth table and failed evidence. | Pending |
 | T-31 | `tests/runtime/gravity/test_fusion.cpp` | Condition-first correction, permissions, failure frames and SW-GRAVITY sequences. | Pending |

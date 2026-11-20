@@ -46,7 +46,7 @@ Checked failure behavior follows this project's scalar contract. This is not
 alignment with the older v1.16.2 gravity-fusion peak envelope, a claim of complete
 PX4 fusion equivalence, or a backend-independent bitwise equivalence claim.
 
-`tests/test_accelerometer_magnitude.cpp` checks both scalar formats, recurrence,
+`tests/runtime/gravity/test_magnitude.cpp` checks both scalar formats, recurrence,
 startup/reset, strict band boundaries, vector-before-magnitude behavior and
 failure preservation. Separate Lean theorems prove the real affine recurrence,
 constant-input preservation, convex bounds, one-step residual contraction and

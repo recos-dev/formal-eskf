@@ -9,6 +9,7 @@
 #include <array>
 #include <bit>
 #include <cstddef>
+#include <cmath>
 #include <iostream>
 #include <limits>
 #include <string_view>
@@ -16,6 +17,7 @@
 // Exercise the standalone public header on each configured backend.
 #include <formal_eskf/runtime/navigation.hpp>
 #include "test_backend.hpp"
+#include "test_cases.hpp"
 #include "test_support.hpp"
 
 namespace
@@ -142,7 +144,8 @@ template <typename Scalar, ResetGroup Group> struct Fixture
 };
 
 template <typename Scalar, ResetGroup Group>
-void check_success(TestContext & test, Fixture<Scalar, Group> const & fixture, std::string_view profile)
+void check_success(TestContext & test, Fixture<Scalar, Group> const & fixture, std::string_view profile,
+                   unsigned alias_mask = 15U)
 {
     using F = Fixture<Scalar, Group>;
     auto expected_state = fixture.state;
@@ -198,6 +201,10 @@ void check_success(TestContext & test, Fixture<Scalar, Group> const & fixture, s
     }
     for (unsigned aliases = 0U; aliases < 4U; ++aliases)
     {
+        if ((alias_mask & (1U << aliases)) == 0U)
+        {
+            continue;
+        }
         auto input = fixture;
         typename F::state_type separate_state;
         auto separate_P = F::covariance_type::identity() * Scalar{99};
@@ -245,13 +252,40 @@ void check_failure(TestContext & test, Fixture<Scalar, Group> const & fixture, S
     }
 }
 
-template <typename Scalar, ResetGroup Group> void run_conformance(TestContext & test, std::string_view profile)
+template <typename Scalar, ResetGroup Group> void equations(TestContext & test, std::string_view profile)
 {
     using F = Fixture<Scalar, Group>;
     F fixture;
     test.expect(F::state_type::quaternion_type::from_coefficients(Scalar{0.5}, Scalar{-0.5}, Scalar{0.5}, Scalar{-0.5},
                                                                   Scalar{0.125}, fixture.state.q_nb) == Status::success,
                 profile, "non-identity attitude fixture is valid");
+    check_success(test, fixture, profile, 1U);
+    constexpr Scalar floor = static_cast<Scalar>(0.01) * static_cast<Scalar>(0.01);
+    for (Scalar variance : {Scalar{0}, -Scalar{0}, std::numeric_limits<Scalar>::denorm_min(), floor / Scalar{4},
+                            floor / Scalar{2}, std::nextafter(floor, Scalar{0}), floor,
+                            std::nextafter(floor, std::numeric_limits<Scalar>::infinity()), Scalar{4}})
+    {
+        auto input = fixture;
+        for (std::size_t axis = 0U; axis < F::size; ++axis)
+        {
+            input.variances(axis) = variance;
+        }
+        check_success(test, input, profile, 1U);
+    }
+    auto mixed = fixture;
+    mixed.variances(0U) = Scalar{0};
+    check_success(test, mixed, profile, 1U);
+    auto singular = fixture;
+    singular.P = typename F::covariance_type{};
+    check_success(test, singular, profile, 1U);
+}
+template <typename Scalar, ResetGroup Group> void aliases(TestContext & test, std::string_view profile)
+{
+    using F = Fixture<Scalar, Group>;
+    F fixture;
+    test.expect(F::state_type::quaternion_type::from_coefficients(Scalar{0.5}, Scalar{-0.5}, Scalar{0.5}, Scalar{-0.5},
+                                                                  Scalar{0.125}, fixture.state.q_nb) == Status::success,
+                profile, "exact nonidentity fixture");
     check_success(test, fixture, profile);
     if constexpr (F::vertical)
     {
@@ -263,24 +297,11 @@ template <typename Scalar, ResetGroup Group> void run_conformance(TestContext & 
             check_success(test, input, profile);
         }
     }
-    constexpr Scalar floor = static_cast<Scalar>(0.01) * static_cast<Scalar>(0.01);
-    for (Scalar variance : {Scalar{0}, -Scalar{0}, std::numeric_limits<Scalar>::denorm_min(), floor / Scalar{4},
-                            floor / Scalar{2}, floor, Scalar{4}})
-    {
-        auto input = fixture;
-        for (std::size_t axis = 0U; axis < F::size; ++axis)
-        {
-            input.variances(axis) = variance;
-        }
-        check_success(test, input, profile);
-    }
-    auto mixed = fixture;
-    mixed.variances(0U) = Scalar{0};
-    check_success(test, mixed, profile);
-    auto singular = fixture;
-    singular.P = typename F::covariance_type{};
-    check_success(test, singular, profile);
-
+}
+template <typename Scalar, ResetGroup Group> void failures(TestContext & test, std::string_view profile)
+{
+    using F = Fixture<Scalar, Group>;
+    F fixture;
     Scalar const nan = std::numeric_limits<Scalar>::quiet_NaN();
     Scalar const inf = std::numeric_limits<Scalar>::infinity();
     Scalar const max = std::numeric_limits<Scalar>::max();
@@ -362,26 +383,101 @@ template <typename Scalar, ResetGroup Group> void run_conformance(TestContext & 
     {
         check_success(test, extreme, profile);
     }
+    // Reach nonfinite quaternion coefficients through the public raw product, without mutating private representation.
+    auto malformed = fixture;
+    Scalar const tiny = std::ldexp(Scalar{1}, std::is_same_v<Scalar, float> ? -74 : -537);
+    test.expect(F::state_type::quaternion_type::from_coefficients(tiny, tiny / Scalar{2}, Scalar{0}, Scalar{0},
+                                                                  std::numeric_limits<Scalar>::min(),
+                                                                  malformed.state.q_nb) == Status::success,
+                profile, "public rounded normalization witness");
+    for (unsigned count = 0; count < 64U && formal_eskf::linalg::all_finite(malformed.state.q_nb.coefficients());
+         ++count)
+    {
+        malformed.state.q_nb = malformed.state.q_nb * malformed.state.q_nb;
+    }
+    test.expect(!formal_eskf::linalg::all_finite(malformed.state.q_nb.coefficients()), profile,
+                "raw multiplication reaches nonfinite prior");
+    check_failure(test, malformed, Status::non_finite_input, profile);
+}
+template <typename Scalar, ResetGroup Group> void repeated_reset(TestContext & test, std::string_view profile)
+{
+    using F = Fixture<Scalar, Group>;
+    using Linalg = typename F::linalg_type;
+    F fixture;
+    typename F::vector_type delta;
+    test.expect(fixture.reset(fixture.state, fixture.P, delta) == Status::success, profile,
+                "first actual reset publishes prior");
+    auto const once = fixture;
+    test.expect(fixture.reset(fixture.state, fixture.P, delta) == Status::success &&
+                    same_state(fixture.state, once.state) && same_bits(fixture.P, once.P) &&
+                    formal_eskf::linalg::max_abs(delta) == Scalar{0},
+                profile, "identical reset is idempotent and reports zero actual change");
+    using Position = formal_eskf::linalg::Vector<Linalg, 2U>;
+    using Noise = formal_eskf::linalg::Matrix<Linalg, 2U, 2U>;
+    Position position =
+        Position::from_row_major({fixture.state.p_n(0) + Scalar{0.125}, fixture.state.p_n(1) - Scalar{0.25}});
+    auto const corrected =
+        formal_eskf::runtime::fuse_horizontal_position(fixture.state, fixture.P, position, Noise::identity(),
+                                                       static_cast<Scalar>(1e-6), Scalar{10}, fixture.state, fixture.P);
+    test.expect(
+        corrected.status == Status::success && corrected.decision == formal_eskf::runtime::FusionDecision::fused,
+        profile, "interleave actual correction before a later reset; correction accuracy belongs to its own cases");
+    for (std::size_t axis = 0; axis < F::size; ++axis)
+    {
+        fixture.observation(axis) += static_cast<Scalar>(axis + 1U);
+    }
+    check_success(test, fixture, profile);
+    auto const before = fixture;
+    test.expect(fixture.reset(fixture.state, fixture.P, delta) == Status::success, profile,
+                "later supplied observation resets current estimate");
+    for (std::size_t axis = 0; axis < F::size; ++axis)
+    {
+        auto const prior =
+            F::velocity ? before.state.v_n(F::axis_offset + axis) : before.state.p_n(F::axis_offset + axis);
+        test.expect(delta(axis) == fixture.observation(axis) - prior, profile,
+                    "delta references corrected current state, not original reset history");
+    }
 }
 
 } /* end namespace */
 
-int main()
+int main(int argc, char ** argv)
 {
     formal_eskf::test::configure_backend_test();
-    TestContext test;
-    run_conformance<float, ResetGroup::horizontal_position>(test, "horizontal position / float");
-    run_conformance<double, ResetGroup::horizontal_position>(test, "horizontal position / double");
-    run_conformance<float, ResetGroup::vertical_position>(test, "vertical position / float");
-    run_conformance<double, ResetGroup::vertical_position>(test, "vertical position / double");
-    run_conformance<float, ResetGroup::vertical_velocity>(test, "vertical velocity / float");
-    run_conformance<double, ResetGroup::vertical_velocity>(test, "vertical velocity / double");
-    run_conformance<float, ResetGroup::velocity>(test, "velocity / float");
-    run_conformance<double, ResetGroup::velocity>(test, "velocity / double");
-    if (test.failures() != 0)
-    {
-        return 1;
-    }
-    std::cout << "GNSS reset tests passed\n";
-    return 0;
+    using formal_eskf::test::Case;
+    Case const cases[]{
+        {"TC-R-GNSS-RESET-01", "horizontal_position.binary32", equations<float, ResetGroup::horizontal_position>},
+        {"TC-R-GNSS-RESET-01", "horizontal_position.binary64", equations<double, ResetGroup::horizontal_position>},
+        {"TC-R-GNSS-RESET-01", "vertical_position.binary32", equations<float, ResetGroup::vertical_position>},
+        {"TC-R-GNSS-RESET-01", "vertical_position.binary64", equations<double, ResetGroup::vertical_position>},
+        {"TC-R-GNSS-RESET-01", "vertical_velocity.binary32", equations<float, ResetGroup::vertical_velocity>},
+        {"TC-R-GNSS-RESET-01", "vertical_velocity.binary64", equations<double, ResetGroup::vertical_velocity>},
+        {"TC-R-GNSS-RESET-01", "velocity.binary32", equations<float, ResetGroup::velocity>},
+        {"TC-R-GNSS-RESET-01", "velocity.binary64", equations<double, ResetGroup::velocity>},
+        {"TC-R-GNSS-RESET-02", "horizontal_position.binary32", aliases<float, ResetGroup::horizontal_position>},
+        {"TC-R-GNSS-RESET-02", "horizontal_position.binary64", aliases<double, ResetGroup::horizontal_position>},
+        {"TC-R-GNSS-RESET-02", "vertical_position.binary32", aliases<float, ResetGroup::vertical_position>},
+        {"TC-R-GNSS-RESET-02", "vertical_position.binary64", aliases<double, ResetGroup::vertical_position>},
+        {"TC-R-GNSS-RESET-02", "vertical_velocity.binary32", aliases<float, ResetGroup::vertical_velocity>},
+        {"TC-R-GNSS-RESET-02", "vertical_velocity.binary64", aliases<double, ResetGroup::vertical_velocity>},
+        {"TC-R-GNSS-RESET-02", "velocity.binary32", aliases<float, ResetGroup::velocity>},
+        {"TC-R-GNSS-RESET-02", "velocity.binary64", aliases<double, ResetGroup::velocity>},
+        {"TC-R-GNSS-RESET-03", "horizontal_position.binary32", failures<float, ResetGroup::horizontal_position>},
+        {"TC-R-GNSS-RESET-03", "horizontal_position.binary64", failures<double, ResetGroup::horizontal_position>},
+        {"TC-R-GNSS-RESET-03", "vertical_position.binary32", failures<float, ResetGroup::vertical_position>},
+        {"TC-R-GNSS-RESET-03", "vertical_position.binary64", failures<double, ResetGroup::vertical_position>},
+        {"TC-R-GNSS-RESET-03", "vertical_velocity.binary32", failures<float, ResetGroup::vertical_velocity>},
+        {"TC-R-GNSS-RESET-03", "vertical_velocity.binary64", failures<double, ResetGroup::vertical_velocity>},
+        {"TC-R-GNSS-RESET-03", "velocity.binary32", failures<float, ResetGroup::velocity>},
+        {"TC-R-GNSS-RESET-03", "velocity.binary64", failures<double, ResetGroup::velocity>},
+        {"TC-R-GNSS-RESET-04", "horizontal_position.binary32", repeated_reset<float, ResetGroup::horizontal_position>},
+        {"TC-R-GNSS-RESET-04", "horizontal_position.binary64", repeated_reset<double, ResetGroup::horizontal_position>},
+        {"TC-R-GNSS-RESET-04", "vertical_position.binary32", repeated_reset<float, ResetGroup::vertical_position>},
+        {"TC-R-GNSS-RESET-04", "vertical_position.binary64", repeated_reset<double, ResetGroup::vertical_position>},
+        {"TC-R-GNSS-RESET-04", "vertical_velocity.binary32", repeated_reset<float, ResetGroup::vertical_velocity>},
+        {"TC-R-GNSS-RESET-04", "vertical_velocity.binary64", repeated_reset<double, ResetGroup::vertical_velocity>},
+        {"TC-R-GNSS-RESET-04", "velocity.binary32", repeated_reset<float, ResetGroup::velocity>},
+        {"TC-R-GNSS-RESET-04", "velocity.binary64", repeated_reset<double, ResetGroup::velocity>},
+    };
+    return formal_eskf::test::run_cases(cases, argc, argv);
 }

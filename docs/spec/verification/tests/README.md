@@ -106,6 +106,9 @@ These decisions are not waivers. A case with an unresolved oracle/budget cannot
 be reported as passing that property. Requirements remain Draft until the owner
 approves their revision; a mechanically complete allocation does not approve them.
 
+The [per-file action list](implementation.md) binds the implementation and review
+sequence to primary files.
+
 ## Implementation order after design review
 
 1. Review the common/profile rules and one complete core transaction family.

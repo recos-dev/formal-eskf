@@ -47,7 +47,7 @@ Integration owners and production behavior changes remain outside this work.
 | T-14 | `tests/core/test_types.cpp` | State/configuration dimensions and field/coordinate ownership. | Implemented |
 | T-15 | `tests/core/test_prediction.cpp` | Nominal prediction model, parameter/prior boundaries, consumption, overflow and aliases. | Implemented |
 | T-16 | `tests/core/test_covariance.cpp` | Process noise, full transition/noise mapping, publication and joint prediction transaction. | Pending |
-| T-17 | `tests/core/test_injection_reset.cpp` | Injection, reset and three-output transaction, both reset models and all allowed aliases. | Pending |
+| T-17 | `tests/core/test_injection_reset.cpp` | Injection, reset and three-output transaction, both reset models and all allowed aliases. | Implemented |
 | T-18 | `tests/core/test_correction.cpp` | Independent gain/Joseph equations, solve/failure stages, bias controls and joint publication. | Pending |
 | T-19 | `tests/core/test_innovation.cpp` | Componentwise ratios, threshold equality, IEEE limits and complete diagnostic publication. | Implemented |
 | T-20 | `tests/core/test_position.cpp` | Position selectors, residuals, noise/permissions forwarding and correction transactions. | Pending |

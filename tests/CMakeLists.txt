@@ -149,7 +149,7 @@ formal_eskf_add_backend_test(test_linalg_eigen test_linalg_eigen formal_eskf.lin
 formal_eskf_add_backend_test(test_linalg_spd test_linalg_spd formal_eskf.linalg.spd formal_eskf::linalg)
 formal_eskf_add_backend_test(test_so3_eigen test_so3_eigen formal_eskf.so3.eigen formal_eskf::so3)
 formal_eskf_add_backend_test(test_so3_jacobian test_so3_jacobian formal_eskf.so3.jacobian formal_eskf::so3)
-formal_eskf_add_backend_test(test_eskf_types test_eskf_types formal_eskf.types.eigen formal_eskf::core)
+formal_eskf_add_backend_test(test_eskf_types core/test_types formal_eskf.types.eigen formal_eskf::core)
 formal_eskf_add_backend_test(test_eskf_sequence test_eskf_sequence formal_eskf.sequence.eigen formal_eskf::core)
 formal_eskf_add_backend_test(test_eskf_prediction core/test_prediction formal_eskf.prediction.eigen formal_eskf::core)
 formal_eskf_add_backend_test(test_eskf_covariance test_eskf_covariance formal_eskf.covariance.eigen formal_eskf::core)

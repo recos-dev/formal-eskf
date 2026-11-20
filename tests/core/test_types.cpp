@@ -6,17 +6,22 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include <cmath>
 #include <cstddef>
+#include <limits>
 #include <iostream>
 #include <string_view>
 
 #include <formal_eskf/eskf/configuration/ahrs.hpp>
 #include <formal_eskf/eskf/configuration/ins.hpp>
 #include <formal_eskf/eskf/types.hpp>
+#include <formal_eskf/eskf/injection.hpp>
+#include <formal_eskf/eskf/prediction.hpp>
 #include <formal_eskf/linalg/operations.hpp>
 #include "test_backend.hpp"
 
 #include "test_support.hpp"
+#include "test_cases.hpp"
 
 namespace
 {
@@ -181,31 +186,119 @@ void test_ahrs_types(TestContext & test, std::string_view profile, typename Lina
                 profile, "AHRS parameters contain angular-rate process noise and time bounds");
 }
 
-template <typename Linalg>
-void run_type_tests(TestContext & test, std::string_view profile, typename Linalg::value_type tolerance)
+template <typename Linalg> void test_shape(TestContext & test, std::string_view profile)
 {
-    test_nominal_state<Linalg>(test, profile, tolerance);
-    test_error_state_and_covariance<Linalg>(test, profile, tolerance);
-    test_imu_and_configuration<Linalg>(test, profile, tolerance);
-    test_ahrs_types<Linalg>(test, profile, tolerance);
+    using value_type = typename Linalg::value_type;
+    test_nominal_state<Linalg>(test, profile, value_type{0});
+    test_error_state_and_covariance<Linalg>(test, profile, value_type{0});
+    test_imu_and_configuration<Linalg>(test, profile, value_type{0});
+    test_ahrs_types<Linalg>(test, profile, value_type{0});
+
+    using ins_types = formal_eskf::EskfTypes<Linalg, formal_eskf::configuration::Ins>;
+    using ahrs_types = formal_eskf::EskfTypes<Linalg, formal_eskf::configuration::Ahrs>;
+    static_assert(!requires(typename ins_types::nominal_state_type state, typename ahrs_types::error_state_type error) {
+        formal_eskf::inject_nominal(state, error, value_type{0.5}, state);
+    });
+    static_assert(!requires(typename ahrs_types::nominal_state_type state, typename ins_types::error_state_type error) {
+        formal_eskf::inject_nominal(state, error, value_type{0.5}, state);
+    });
+    static_assert(
+        !requires(typename ins_types::error_state_type error, typename ahrs_types::error_covariance_type covariance) {
+            formal_eskf::reset_covariance(error, covariance, covariance);
+        });
+    static_assert(
+        !requires(typename ahrs_types::error_state_type error, typename ins_types::error_covariance_type covariance) {
+            formal_eskf::reset_covariance(error, covariance, covariance);
+        });
+    typename ins_types::nominal_state_type prior, output;
+    typename ins_types::error_state_type error;
+    for (std::size_t axis = 0U; axis < 3U; ++axis)
+    {
+        value_type const i = static_cast<value_type>(axis);
+        prior.p_n(axis) = value_type{1} + i;
+        prior.v_n(axis) = value_type{4} + i;
+        prior.b_a(axis) = value_type{7} + i;
+        prior.b_g(axis) = value_type{10} + i;
+        error.delta_p_n(axis) = value_type{16} + i;
+        error.delta_v_n(axis) = value_type{32} + i;
+        error.delta_b_a(axis) = value_type{48} + i;
+        error.delta_b_g(axis) = value_type{64} + i;
+    }
+    auto const status = formal_eskf::inject_nominal(prior, error, value_type{0.5}, output);
+    test.expect(status == formal_eskf::Status::success, profile,
+                "named error blocks can be injected through public types");
+    for (std::size_t axis = 0U; axis < 3U; ++axis)
+    {
+        value_type const twice_axis = value_type{2} * static_cast<value_type>(axis);
+        test.expect(
+            output.p_n(axis) == value_type{17} + twice_axis && output.v_n(axis) == value_type{36} + twice_axis &&
+                output.b_a(axis) == value_type{55} + twice_axis && output.b_g(axis) == value_type{74} + twice_axis,
+            profile, "distinct logical error blocks reach exactly their corresponding nominal fields");
+    }
+    test.expect(formal_eskf::so3::same_coefficients(output.q_nb, prior.q_nb), profile,
+                "zero attitude error preserves identity independently of additive state blocks");
+}
+
+template <typename Linalg> void test_frame(TestContext & test, std::string_view profile)
+{
+    using value_type = typename Linalg::value_type;
+    using vector_type = formal_eskf::linalg::Vector<Linalg, 3U>;
+    using quaternion_type = formal_eskf::so3::UnitQuaternion<Linalg>;
+    quaternion_type permutation;
+    test.expect(quaternion_type::from_coefficients(value_type{0.5}, value_type{0.5}, value_type{0.5}, value_type{0.5},
+                                                   value_type{0.5}, permutation) == formal_eskf::Status::success,
+                profile, "exact cyclic body-to-NED attitude is constructible");
+    auto const body = vector_type::from_row_major({value_type{1}, value_type{2}, value_type{4}});
+    auto const expected_navigation = vector_type::from_row_major({value_type{4}, value_type{1}, value_type{2}});
+    test.expect(
+        vector_near(formal_eskf::so3::rotate(permutation, body), expected_navigation, value_type{0}) &&
+            vector_near(formal_eskf::so3::rotate(-permutation, body), expected_navigation, value_type{0}),
+        profile,
+        "independent exact cyclic permutation establishes body-to-NED direction and quaternion sign equivalence");
+
+    using ahrs_types = formal_eskf::EskfTypes<Linalg, formal_eskf::configuration::Ahrs>;
+    typename ahrs_types::nominal_state_type prior, output;
+    typename ahrs_types::error_state_type error;
+    test.expect(quaternion_type::from_coefficients(value_type{0}, value_type{1}, value_type{0}, value_type{0},
+                                                   value_type{0.5}, prior.q_nb) == formal_eskf::Status::success,
+                profile, "exact half-turn prior is constructible");
+    // theta is small enough that higher terms round away; the Hamilton product
+    // [0,1,0,0] * [1,0,theta/2,0] has positive final component, unlike left multiplication.
+    value_type const theta = std::ldexp(value_type{1}, -(std::numeric_limits<value_type>::digits + 2));
+    error.delta_theta_b(1U) = theta;
+    auto const status = formal_eskf::inject_nominal(prior, error, value_type{0.5}, output);
+    test.expect(status == formal_eskf::Status::success && output.q_nb.q0() == value_type{0} &&
+                    output.q_nb.q1() == value_type{1} && output.q_nb.q2() == value_type{0} &&
+                    output.q_nb.q3() == theta * value_type{0.5},
+                profile, "local rotation-vector error right-multiplies with radians and scalar-first Hamilton signs");
+
+    using ins_types = formal_eskf::EskfTypes<Linalg, formal_eskf::configuration::Ins>;
+    typename ins_types::nominal_state_type stationary, predicted;
+    typename ins_types::imu_sample_type imu;
+    typename ins_types::parameter_type parameters;
+    parameters.gravity_n(2U) = value_type{10};
+    parameters.minimum_quaternion_norm = value_type{0.5};
+    parameters.quaternion_squared_norm_tolerance = value_type{0.125};
+    parameters.dt_min = parameters.dt_max = value_type{0.5};
+    imu.specific_force_b(2U) = value_type{-10};
+    test.expect(formal_eskf::predict_nominal(stationary, imu, value_type{0.5}, parameters, predicted) ==
+                        formal_eskf::Status::success &&
+                    vector_near(predicted.p_n, vector_type::zero(), value_type{0}) &&
+                    vector_near(predicted.v_n, vector_type::zero(), value_type{0}),
+                profile,
+                "positive-Down gravity cancels stationary body specific force without a hidden unit conversion");
 }
 
 } /* end namespace */
 
-int main()
+int main(int argc, char ** argv)
 {
-    TestContext test;
-
     formal_eskf::test::configure_backend_test();
-    run_type_tests<formal_eskf::test::Backend<double>>(test, "binary64", 1.0e-12);
-    run_type_tests<formal_eskf::test::Backend<float>>(test, "binary32", 1.0e-5F);
-
-    if (test.failures() != 0)
-    {
-        std::cerr << test.failures() << " ESKF type test(s) failed\n";
-        return 1;
-    }
-
-    std::cout << "All ESKF domain type tests passed\n";
-    return 0;
+    formal_eskf::test::Case const cases[] = {
+        {"TC-E-STATE-shape", "INS+AHRS.binary32", test_shape<formal_eskf::test::Backend<float>>},
+        {"TC-E-STATE-shape", "INS+AHRS.binary64", test_shape<formal_eskf::test::Backend<double>>},
+        {"TC-E-STATE-frame", "INS+AHRS.binary32", test_frame<formal_eskf::test::Backend<float>>},
+        {"TC-E-STATE-frame", "INS+AHRS.binary64", test_frame<formal_eskf::test::Backend<double>>},
+    };
+    return formal_eskf::test::run_cases(cases, argc, argv);
 }

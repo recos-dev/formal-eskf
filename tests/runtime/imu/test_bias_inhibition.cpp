@@ -193,6 +193,8 @@ template <typename Linalg> void failures(TestContext & test, std::string_view pr
     using Policy = formal_eskf::runtime::ImuBiasInhibition<Linalg>;
     typename Policy::Parameters const parameters{Scalar{25}, Scalar{3}, Scalar{0.5}, true, true};
     typename Policy::state_type original_state;
+    original_state.p_n = decltype(original_state.p_n)::from_row_major({Scalar{1}, -Scalar{0}, Scalar{-2}});
+    original_state.v_n = decltype(original_state.v_n)::from_row_major({Scalar{-3}, Scalar{4}, -Scalar{0}});
     formal_eskf::ImuSample<Linalg> spike;
     spike.specific_force_b(2U) = Scalar{-50};
     spike.angular_rate_b(0U) = Scalar{6};
@@ -210,7 +212,8 @@ template <typename Linalg> void failures(TestContext & test, std::string_view pr
                         result.angular_rate_peak == Scalar{0} && result.bias_update.accelerometer == none &&
                         result.bias_update.gyroscope == none,
                     profile, "failure publishes disabled placeholder permissions");
-        test.expect(same_bits(state.b_a, old_state.b_a) && same_bits(state.b_g, old_state.b_g) &&
+        test.expect(same_bits(state.p_n, old_state.p_n) && same_bits(state.v_n, old_state.v_n) &&
+                        same_bits(state.b_a, old_state.b_a) && same_bits(state.b_g, old_state.b_g) &&
                         same_bits(state.q_nb.coefficients(), old_state.q_nb.coefficients()) &&
                         same_bits(imu.specific_force_b, old_imu.specific_force_b) &&
                         same_bits(imu.angular_rate_b, old_imu.angular_rate_b),

@@ -14,9 +14,10 @@
 context under [the deployment profile](../../../profiles/px4-sih-250hz.md).
 It does not own numerical validation, source qualification, lifecycle or fusion.
 
-- Validate startup timing settings. Seed at a nonzero alignment epoch with known
-  context and existing source watermarks; reject invalid/repeated seeds and live
-  reconfiguration without mutation. Never replay pre-seed events as new corrections.
+- Validate startup timing settings. Seed at a nonzero alignment epoch with
+  timestamped context, explicit known/unknown flags and existing source watermarks.
+  Reject invalid/repeated seeds and live reconfiguration without mutation. Never
+  replay pre-seed events as new corrections.
 - Record one context snapshot per admitted real IMU endpoint. Preserve original
   message times and explicit known flags; reject IMU sequence errors. Future or
   late-arriving messages cannot rewrite past snapshots. Held gaps are not evidence.
@@ -43,13 +44,15 @@ It does not own numerical validation, source qualification, lifecycle or fusion.
   This grants neither observation selection nor a second advance.
 - Use fixed bounded storage/work; report aiding overwrites without claiming a
   successful fusion or moving the horizon. Reset clears temporal state while
-  retaining configuration. Caller sequencing errors must not partially advance it.
+  retaining configuration. Rejected IMU record/fusion sequence operations must
+  not partially advance it; source admission follows the watermark rules below.
 
-Current evidence is native binary64 scenario testing on Eigen and PX4 matrix,
-including timing limits, source switches, independent selection and context
-histories. Formal source evidence and target storage/stack/WCET remain open.
-Live policy/time binding is owned by [R-PX4-DELAYED-FUSION](delayed-fusion.md). Existing ring-buffer proof does
-not prove this owner's provenance, larger concrete payloads or temporal protocol.
+Verification must cover the concrete payloads, owner frames, source provenance
+and temporal protocol in addition to the reusable ring contract. The
+[verification guide](../../../../guides/verification.md#delayed-observations-and-context)
+defines producer/caller composition and evidence limits. Live policy/time binding
+belongs to [R-PX4-DELAYED-FUSION](delayed-fusion.md); target storage, stack and
+WCET need separate evidence.
 
 ### Admission and context details
 
@@ -60,8 +63,11 @@ Repeated context timestamps shall not overwrite values or refresh age. Late
 messages cannot backfill older snapshots. Reject inconsistent/future seed
 watermarks without mutation; transfer qualification separately at the seed epoch.
 
-Rejected observed source timestamps advance the raw watermark; impossible times
-or clock regression do not. A nonzero source/calibration change, or device ID zero
+Valid newer source timestamps advance the raw watermark even when a later
+admission check rejects them. Duplicate/older raw timestamps retain raw, source,
+generation and admitted-time watermarks; a valid arrival clock can still advance.
+Impossible times or arrival/IMU clock regression preserve the timeline.
+A nonzero source/calibration change, or device ID zero
 at a valid newer timestamp, clears that source's pending history even if the
 payload fails age/rate/IMU-freshness checks. Preserve rate watermarks across the
 switch and report the discarded count, source change, rejection reason and any
@@ -75,7 +81,8 @@ original message times, without this half-period offset. This differs from PX4's
 system-flag event buffer. Ordinary `context()` lookup cannot exceed the begun
 fusion epoch; `prediction_context()` separately permits only the next admissible
 delayed interval before prediction. Neither lookup advances selection/history.
-Sequence errors preserve state; callers stop rather than skip work.
+Rejected IMU record/fusion sequence operations preserve state; callers stop
+rather than skip work. Source admission follows the watermark mutation rules above.
 
 Queueing preserves raw numerical/quality data, including invalid velocity,
 spoofing indicators and non-finite payloads, for delayed validators. It never

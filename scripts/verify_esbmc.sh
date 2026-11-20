@@ -29,7 +29,7 @@ parse_arguments()
 {
     while (($#)); do
         case "$1" in
-            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|delayed-history|accelerometer|magnetic-runtime|ring-buffer|codegen) SUITE="$1" ;;
+            all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|delayed-history|delayed-observations|accelerometer|magnetic-runtime|ring-buffer|codegen) SUITE="$1" ;;
             --list) LIST_ONLY=1 ;;
             --shard)
                 [[ "${2:-}" =~ ^([1-9][0-9]{0,2})/([1-9][0-9]{0,2})$ ]] || fail "--shard requires INDEX/COUNT, starting at 1"
@@ -39,8 +39,8 @@ parse_arguments()
                 shift
                 ;;
             --help|-h)
-                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|delayed-history|accelerometer|magnetic-runtime|ring-buffer|codegen] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
-                printf 'Core producer/caller profiles select ESKF_CODEGEN=0 except the *-generated, delayed-views, delayed-seed, delayed-storage and delayed-history suites (ESKF_CODEGEN=1); codegen checks emitted kernels directly.\n'
+                printf 'Usage: %s [all|quaternion|rotation|prediction|prediction32|prediction64|noise|injection|jacobian|reset|reset-generated|pcov|pcov-generated|step|solve|correction|correction-generated|step-correction|step-generated|linalg|scalar|observations|innovation|bias|magnetic|fusion|imu-policies|vertical-health|imu-inhibition|imu-prediction|gnss-quality|gnss-lifecycle|navigation-reset|navigation-recovery|height|delayed-input|delayed-views|delayed-seed|delayed-storage|delayed-history|delayed-observations|accelerometer|magnetic-runtime|ring-buffer|codegen] [--list] [--shard INDEX/COUNT]\n' "${0##*/}"
+                printf 'Core producer/caller profiles select ESKF_CODEGEN=0 except the *-generated, delayed-views, delayed-seed, delayed-storage, delayed-history and delayed-observations suites (ESKF_CODEGEN=1); codegen checks emitted kernels directly.\n'
                 printf 'Defaults to all. --list prints the exact planned profile/entry-point inventory without running proofs.\n'
                 printf 'Shards are partial, disjoint inventories. Combine every shard before claiming full coverage.\n'
                 printf 'injection selects caller proofs; all also runs their quaternion producer dependencies.\n'
@@ -69,6 +69,7 @@ parse_arguments()
                 printf 'delayed-views selects actual 64-slot IMU/output borrowed views and scalar metadata for binary32/64 with 64-bit words. Requires reference-address tool qualification; history mutation/induction and numerical tracking remain separate.\n'
                 printf 'delayed-seed checks actual 64-slot IMU construction and complete seed publication/failure/storage frames in binary32/64. Requires matching delayed-input producers; push/completion/reset remain separate.\n'
                 printf 'delayed-storage checks actual 64-slot IMU ring insertion, source preservation and complete backing frames in binary32/64. Every destination partition and equality profile is required; owner admission/completion/reset remain separate.\n'
+                printf 'delayed-observations selects typed storage, source control, complete owner/caller frames and context source steps; acceptance also requires Lean loop induction, reviewed source correspondence and the matching storage producers.\n'
                 printf 'height selects scalar offset equations, defaults and private source admission/read-only contracts for both sources and formats; full height transaction induction and platform publication remain separate.\n'
                 printf 'navigation-recovery selects actual gate diagnostic contracts, vertical limiter and both public recovery callers with every state/P alias. Same-type correction frames are reused; root accuracy and caller health/permission remain separate.\n'
                 printf 'navigation-reset selects exact-type validation, symmetry-pair arithmetic and all four numerical reset callers with independent state/P aliases. Real PSD is proved separately in Lean; source permission and target backends remain separate.\n'
@@ -119,7 +120,7 @@ check_reference_support()
         --std c++20 --64 --assign-param-nondet --quiet --unwind 70 --timeout 15s --memlimit 1g \
         --function verify_reference_identity --z3 2>&1)"; then
         printf '%s\n' "${DETAILS}" >&2
-        fail 'reference-address tool preflight failed; see docs/guides/verification.md before running delayed-views, delayed-seed, delayed-storage, delayed-history or all'
+        fail 'reference-address tool preflight failed; see docs/guides/verification.md before running delayed-views, delayed-seed, delayed-storage, delayed-history, delayed-observations or all'
     fi
 }
 
@@ -1444,6 +1445,161 @@ run_delayed_history_suite()
     done
 }
 
+# The generated include retains the original class and public methods. Only the
+# ring step profiles use its additional, data-free verification entry points.
+run_delayed_observations_suite()
+{
+    local BINARY64 SOURCE CAPACITY SLOT KIND FRAME CHUNKS CHUNK PREDICTION
+    local -a FLAGS
+    local -a ESBMC_ARGUMENTS=("${ESBMC_ARGUMENTS[@]/ESKF_CODEGEN=0/ESKF_CODEGEN=1}")
+    local -a ORIGINAL_ARGUMENTS=("${ESBMC_ARGUMENTS[@]}")
+    SOURCE_FILE="${PROOF_DIR}/observation_control.cpp"
+    PROFILE=delayed-observations-double_frame_equality
+    verify verify_double_frame_equality --proof-unwind 140 \
+        --64 --z3 --array-flattener --tuple-sym-flattener \
+        -D FORMAL_ESKF_PROOF_BINARY64=0 -D FORMAL_ESKF_PROOF_OBSERVATION_SOURCE=0
+    SOURCE_FILE="${PROOF_DIR}/observation_storage.cpp"
+    for SOURCE in 0 1 2 3; do
+        case "${SOURCE}" in
+            0) CAPACITY=16 ;;
+            1) CAPACITY=64 ;;
+            2|3) CAPACITY=128 ;;
+        esac
+        for BINARY64 in 0 1; do
+            for ((SLOT = 0; SLOT < CAPACITY; ++SLOT)); do
+                PROFILE="delayed-observations-binary$((32 + 32 * BINARY64))-storage${SOURCE}-write${SLOT}"
+                verify verify_observation_typed_push --proof-unwind 140 \
+                    --64 --z3 --array-flattener --tuple-sym-flattener \
+                    -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                    -D "FORMAL_ESKF_PROOF_OBSERVATION_SOURCE=${SOURCE}" -D "FORMAL_ESKF_PROOF_WRITE=${SLOT}"
+            done
+            PROFILE="delayed-observations-binary$((32 + 32 * BINARY64))-storage${SOURCE}-reset"
+            verify verify_observation_typed_reset --proof-unwind 140 \
+                --64 --z3 --array-flattener --tuple-sym-flattener \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                -D "FORMAL_ESKF_PROOF_OBSERVATION_SOURCE=${SOURCE}" -D FORMAL_ESKF_PROOF_WRITE=0
+        done
+    done
+    for BINARY64 in 0 1; do
+        SOURCE_FILE="${PROOF_DIR}/observation_control.cpp"
+        for KIND in source_identity seed_source snapshot period_range observation_clock observation_configuration observation_views; do
+            PROFILE="delayed-observations-binary$((32 + 32 * BINARY64))-${KIND}"
+            verify "verify_${KIND}" --proof-unwind 140 \
+                --64 --z3 --array-flattener --tuple-sym-flattener \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_OBSERVATION_SOURCE=0
+        done
+        for SOURCE in 0 1 2; do
+            for KIND in admission selection; do
+                PROFILE="delayed-observations-binary$((32 + 32 * BINARY64))-source${SOURCE}-${KIND}"
+                verify "verify_observation_${KIND}" --proof-unwind 140 \
+                    --64 --z3 --array-flattener --tuple-sym-flattener \
+                    -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_OBSERVATION_SOURCE=${SOURCE}"
+            done
+        done
+        SOURCE_FILE="${PROOF_DIR}/observation_frame.cpp"
+        for FRAME in 0 1 2 3; do
+            PROFILE="delayed-observations-binary$((32 + 32 * BINARY64))-frame${FRAME}"
+            verify verify_observation_storage_frame --proof-unwind 140 \
+                --64 --z3 --array-flattener --tuple-sym-flattener \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_FRAME=${FRAME}"
+        done
+    done
+    ESBMC_ARGUMENTS=(-I "${REPO_DIR}/output/esbmc/ring-steps" "${ORIGINAL_ARGUMENTS[@]}")
+    SOURCE_FILE="${PROOF_DIR}/observation_ring.cpp"
+    for SOURCE in 0 1 2; do
+        case "${SOURCE}" in
+            0) CAPACITY=16 ;;
+            1) CAPACITY=64 ;;
+            2) CAPACITY=128 ;;
+        esac
+        for BINARY64 in 0 1; do
+            for ((SLOT = 0; SLOT < CAPACITY; ++SLOT)); do
+                for KIND in search retire; do
+                    PROFILE="delayed-observations-binary$((32 + 32 * BINARY64))-source${SOURCE}-${KIND}${SLOT}"
+                    verify "verify_observation_ring_${KIND}" --proof-unwind 140 \
+                        --64 --z3 --array-flattener --tuple-sym-flattener \
+                        -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                        -D "FORMAL_ESKF_PROOF_OBSERVATION_SOURCE=${SOURCE}" -D "FORMAL_ESKF_PROOF_SLOT=${SLOT}"
+                done
+            done
+            for KIND in finish null_output; do
+                PROFILE="delayed-observations-binary$((32 + 32 * BINARY64))-source${SOURCE}-${KIND}"
+                verify "verify_observation_ring_${KIND}" --proof-unwind 140 \
+                    --64 --z3 --array-flattener --tuple-sym-flattener \
+                    -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                    -D "FORMAL_ESKF_PROOF_OBSERVATION_SOURCE=${SOURCE}" -D FORMAL_ESKF_PROOF_SLOT=0
+            done
+        done
+    done
+    ESBMC_ARGUMENTS=("${ORIGINAL_ARGUMENTS[@]}")
+    for BINARY64 in 0 1; do
+        SOURCE_FILE="${PROOF_DIR}/observation_owner.cpp"
+        for KIND in constructor reset; do
+            PROFILE="delayed-observations-binary$((32 + 32 * BINARY64))-owner-${KIND}"
+            verify "verify_observation_${KIND}" --proof-unwind 140 --64 --z3 \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}"
+        done
+        SOURCE_FILE="${PROOF_DIR}/observation_context_caller.cpp"
+        for PREDICTION in 0 1; do
+            PROFILE="delayed-observations-binary$((32 + 32 * BINARY64))-context-caller${PREDICTION}"
+            verify verify_context_caller --proof-unwind 140 --64 --z3 \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_FRAME=4 \
+                -D FORMAL_ESKF_PROOF_CHUNK=0 -D "FORMAL_ESKF_PROOF_PREDICTION=${PREDICTION}"
+        done
+        # Each frame is split by physical storage position, not by input values.
+        # Their union covers every field, including unused backing storage.
+        for FRAME in 0 1 2 3; do
+            case "${FRAME}" in
+                0) CHUNKS=1 ;;
+                1) CHUNKS=4 ;;
+                2|3) CHUNKS=8 ;;
+            esac
+            for ((CHUNK = 0; CHUNK < CHUNKS; ++CHUNK)); do
+                SOURCE_FILE="${PROOF_DIR}/observation_seed.cpp"
+                PROFILE="delayed-observations-binary$((32 + 32 * BINARY64))-seed-frame${FRAME}-chunk${CHUNK}"
+                verify verify_observation_seed --proof-unwind 140 --64 --z3 --fp2bv \
+                    --tuple-sym-flattener --array-flattener -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                    -D "FORMAL_ESKF_PROOF_FRAME=${FRAME}" -D "FORMAL_ESKF_PROOF_CHUNK=${CHUNK}"
+                SOURCE_FILE="${PROOF_DIR}/observation_record.cpp"
+                PROFILE="delayed-observations-binary$((32 + 32 * BINARY64))-record-frame${FRAME}-chunk${CHUNK}"
+                verify verify_context_record --proof-unwind 140 --64 --z3 --fp2bv \
+                    --tuple-sym-flattener --array-flattener -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                    -D "FORMAL_ESKF_PROOF_FRAME=${FRAME}" -D "FORMAL_ESKF_PROOF_CHUNK=${CHUNK}"
+                for SOURCE in 0 1 2; do
+                    for KIND in enqueue pop; do
+                        SOURCE_FILE="${PROOF_DIR}/observation_${KIND}.cpp"
+                        PROFILE="delayed-observations-binary$((32 + 32 * BINARY64))-source${SOURCE}-${KIND}-frame${FRAME}-chunk${CHUNK}"
+                        verify "verify_observation_${KIND}" --proof-unwind 140 --64 --z3 --fp2bv \
+                            --tuple-sym-flattener --array-flattener \
+                            -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" \
+                            -D "FORMAL_ESKF_PROOF_OBSERVATION_SOURCE=${SOURCE}" \
+                            -D "FORMAL_ESKF_PROOF_FRAME=${FRAME}" -D "FORMAL_ESKF_PROOF_CHUNK=${CHUNK}"
+                    done
+                done
+            done
+        done
+    done
+    # Only the source-step producer includes the pinned extracted lookup body.
+    ESBMC_ARGUMENTS=(-I "${REPO_DIR}/output/esbmc/ring-steps/context" -I "${PROOF_DIR}" "${ORIGINAL_ARGUMENTS[@]}")
+    SOURCE_FILE="${PROOF_DIR}/observation_context_producers.cpp"
+    for BINARY64 in 0 1; do
+        for ((SLOT = 0; SLOT < 128; ++SLOT)); do
+            PROFILE="delayed-observations-binary$((32 + 32 * BINARY64))-context-step${SLOT}"
+            verify verify_context_step --proof-unwind 140 --64 --z3 \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_FRAME=4 \
+                -D FORMAL_ESKF_PROOF_CHUNK=0 -D "FORMAL_ESKF_PROOF_SLOT=${SLOT}"
+        done
+        for KIND in views empty; do
+            FLAGS=(--tuple-sym-flattener --array-flattener)
+            if [[ "${KIND}" == empty ]]; then FLAGS=(--fp2bv --smt-symex-guard); fi
+            PROFILE="delayed-observations-binary$((32 + 32 * BINARY64))-context-${KIND}"
+            verify "verify_context_${KIND}" --proof-unwind 140 --64 --z3 "${FLAGS[@]}" \
+                -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_FRAME=4 \
+                -D FORMAL_ESKF_PROOF_CHUNK=0 -D FORMAL_ESKF_PROOF_SLOT=0
+        done
+    done
+}
+
 run_height_suite()
 {
     local BINARY64 SOURCE KIND
@@ -1887,9 +2043,12 @@ main()
     if ((!LIST_ONLY)); then
         select_esbmc
         check_esbmc_version
-        if [[ "${SUITE}" == all || "${SUITE}" == delayed-views || "${SUITE}" == delayed-seed || "${SUITE}" == delayed-storage || "${SUITE}" == delayed-history ]]; then
+        if [[ "${SUITE}" == all || "${SUITE}" == delayed-views || "${SUITE}" == delayed-seed || "${SUITE}" == delayed-storage || "${SUITE}" == delayed-history || "${SUITE}" == delayed-observations ]]; then
             check_reference_support
             check_frame_support
+        fi
+        if [[ "${SUITE}" == all || "${SUITE}" == delayed-observations ]]; then
+            python3 "${PROOF_DIR}/ring_steps.py" "${REPO_DIR}/output/esbmc/ring-steps"
         fi
         printf 'SELECTION\t%s\tshard %d/%d\n' "${SUITE}" "${SHARD_INDEX}" "${SHARD_COUNT}"
     fi
@@ -2018,6 +2177,9 @@ main()
     fi
     if [[ "${SUITE}" == all || "${SUITE}" == delayed-history ]]; then
         run_delayed_history_suite
+    fi
+    if [[ "${SUITE}" == all || "${SUITE}" == delayed-observations ]]; then
+        run_delayed_observations_suite
     fi
     if ((FAILED_CHECKS != 0)); then
         printf 'ESBMC: %d checks failed or did not complete\n' "${FAILED_CHECKS}" >&2

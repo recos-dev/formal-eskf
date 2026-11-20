@@ -6432,7 +6432,7 @@
     },
     {
       "id": "R-PX4-OBSERVATION-HISTORY",
-      "title": "Delayed observations and context: native-tested temporal owner; formal proof remains open; live binding tracked separately",
+      "title": "Delayed observations and context: scoped typed source contracts and temporal/physical induction; live callers and target resources remain separate",
       "references": {
         "spec": [
           {
@@ -6440,7 +6440,220 @@
             "symbol": "# R-PX4-OBSERVATION-HISTORY: delayed observations and context"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem seed_valid"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem record_valid"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem begin_valid"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem next_query_not_future"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem selection_after_begin"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem timeline_seed"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem timeline_imu_advance"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem timeline_arrival"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem timeline_new_raw"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem generation_no_wrap"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem timeline_admitted"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem effective_time"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem physical_enqueue_refines"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem enqueue_length"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem enqueue_order"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem admission_after_retained"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem enqueue_fields"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem enqueue_watermark"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem retained_order"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem retained_fields"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem ordered_selection"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem snapshot_message_valid"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem context_known_age"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem contextLoop_eq_search"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem context_missing"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem context_expired"
+          },
+          {
+            "file": "formal/lean/FormalESKF/ObservationHistory.lean",
+            "symbol": "theorem context_fresh"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem search_none_iff"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem search_none_removed"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem search_match"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem search_removed_le"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem publish_failure_frame"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem expired_match_retires"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem retire_payload"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem retire_time"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem searchLoop_eq"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem retireLoop_storage"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem retireLoop_oldest"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem retireLoop_frame"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem retirement_restores_metadata"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem bounded_counters"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem searchCursor_closed"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem searchCursor_bound"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem logical_search_order"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem searchPhysical_eq"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem physical_match"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem selected_has_retirement"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem owner_retired_count"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem logical_enqueue"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem push_write_coherent"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem logical_retirement_drop"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem newest_store_after_push"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem push_nonempty"
+          }
+        ],
         "cpp": [
           {
             "file": "integrations/px4/module/ObservationHistory.hpp",
@@ -6511,7 +6724,116 @@
             "symbol": "ObservationHistory<Linalg>::lookup_context("
           }
         ],
-        "esbmc": []
+        "esbmc": [
+          {
+            "file": "formal/cpp/esbmc/observation_context_caller.cpp",
+            "symbol": "void verify_context_caller("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_context_producers.cpp",
+            "symbol": "void verify_context_step("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_context_producers.cpp",
+            "symbol": "void verify_context_empty("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_context_producers.cpp",
+            "symbol": "void verify_context_views("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_control.cpp",
+            "symbol": "void verify_observation_admission("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_control.cpp",
+            "symbol": "void verify_source_identity("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_control.cpp",
+            "symbol": "void verify_seed_source("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_control.cpp",
+            "symbol": "void verify_snapshot("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_control.cpp",
+            "symbol": "void verify_period_range("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_control.cpp",
+            "symbol": "void verify_observation_clock("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_control.cpp",
+            "symbol": "void verify_observation_selection("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_control.cpp",
+            "symbol": "void verify_observation_configuration("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_control.cpp",
+            "symbol": "void verify_observation_views("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_control.cpp",
+            "symbol": "void verify_double_frame_equality("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_enqueue.cpp",
+            "symbol": "void verify_observation_enqueue("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_frame.cpp",
+            "symbol": "void verify_observation_storage_frame("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_owner.cpp",
+            "symbol": "void verify_observation_constructor("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_owner.cpp",
+            "symbol": "void verify_observation_reset("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_pop.cpp",
+            "symbol": "void verify_observation_pop("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_record.cpp",
+            "symbol": "void verify_context_record("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_ring.cpp",
+            "symbol": "void verify_observation_ring_search("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_ring.cpp",
+            "symbol": "void verify_observation_ring_retire("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_ring.cpp",
+            "symbol": "void verify_observation_ring_finish("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_ring.cpp",
+            "symbol": "void verify_observation_ring_null_output("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_seed.cpp",
+            "symbol": "void verify_observation_seed("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_storage.cpp",
+            "symbol": "void verify_observation_typed_push("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_storage.cpp",
+            "symbol": "void verify_observation_typed_reset("
+          }
+        ]
       }
     },
     {
@@ -6620,7 +6942,112 @@
             "symbol": "# PX4-TIME: timestamps and bounded history"
           }
         ],
-        "lean": [],
+        "lean": [
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem search_none_iff"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem search_none_removed"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem search_match"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem search_removed_le"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem publish_failure_frame"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem expired_match_retires"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem retire_payload"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem retire_time"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem searchLoop_eq"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem retireLoop_storage"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem retireLoop_oldest"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem retireLoop_frame"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem retirement_restores_metadata"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem bounded_counters"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem searchCursor_closed"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem searchCursor_bound"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem logical_search_order"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem searchPhysical_eq"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem physical_match"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem selected_has_retirement"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem owner_retired_count"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem logical_enqueue"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem push_write_coherent"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem logical_retirement_drop"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem newest_store_after_push"
+          },
+          {
+            "file": "formal/lean/FormalESKF/RingBuffer.lean",
+            "symbol": "theorem push_nonempty"
+          }
+        ],
         "cpp": [
           {
             "file": "include/formal_eskf/runtime/ring_buffer.hpp",
@@ -6687,6 +7114,30 @@
           {
             "file": "formal/cpp/esbmc/imu_reset.cpp",
             "symbol": "void verify_imu_storage_reset_owner_frame("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_ring.cpp",
+            "symbol": "void verify_observation_ring_search("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_ring.cpp",
+            "symbol": "void verify_observation_ring_retire("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_ring.cpp",
+            "symbol": "void verify_observation_ring_finish("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_ring.cpp",
+            "symbol": "void verify_observation_ring_null_output("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_storage.cpp",
+            "symbol": "void verify_observation_typed_push("
+          },
+          {
+            "file": "formal/cpp/esbmc/observation_storage.cpp",
+            "symbol": "void verify_observation_typed_reset("
           }
         ]
       }

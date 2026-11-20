@@ -18,7 +18,7 @@ check_plan()
 {
     local PLAN SHARD SHARDED='' BINARY64 APPROX COEFFICIENT ALIAS TAYLOR BASE_PROFILE CONFIGURATION SIZE COLUMNS COLUMN SHAPE
     PLAN="$("${RUNNER}" --list)"
-    check_count 3006 '^PLAN'
+    check_count 5169 '^PLAN'
     check_count 14 'pcov-generated-binary(32|64)-'
     check_count 10 'reset-generated-binary(32|64)-'
     check_count 94 'correction-generated-binary(32|64)-'
@@ -32,6 +32,7 @@ check_plan()
     check_count 4 'delayed-seed-'
     check_count 130 'delayed-storage-'
     check_count 409 'delayed-history-'
+    check_count 2163 'delayed-observations-'
     check_count 4 'step-binary(32|64)-ins-quat[01]-nominal-transaction'
     check_count 36 'accelerometer-binary'
     check_count 1 'accelerometer-double-sample_round'
@@ -256,8 +257,8 @@ check_plan()
             done
         done
     done
-    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 289 ]] || fail 'entry-point inventory changed'
-    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 3006 ]] || fail 'duplicate planned profile'
+    [[ "$(printf '%s\n' "${PLAN}" | cut -f 2,4 | sort -u | wc -l)" == 316 ]] || fail 'entry-point inventory changed'
+    [[ "$(printf '%s\n' "${PLAN}" | sort -u | wc -l)" == 5169 ]] || fail 'duplicate planned profile'
     for SHARD in 1 2 3 4; do
         SHARDED+="$("${RUNNER}" --list --shard "${SHARD}/4")"$'\n'
     done
@@ -669,6 +670,195 @@ check_delayed_history_arguments()
         done
     done
 )
+
+check_delayed_observations_arguments()
+(
+    local COUNT=0
+    local -A VISITED=() COUNTS=() INVOCATIONS=()
+    verify()
+    {
+        local ENTRY="$1" BITS=0 OBS_SOURCE OBS_SLOT OBS_KIND FRAME CHUNK LIMIT KEY PREFIX
+        local -a EXPECTED FLAGS=()
+        shift
+        [[ "${PROFILE}" == delayed-observations-double_frame_equality ||
+           "${PROFILE}" =~ ^delayed-observations-binary(32|64)- ]] || fail 'wrong observation format profile'
+        [[ "${PROFILE}" == delayed-observations-binary64-* ]] && BITS=1
+        [[ -z "${VISITED[${PROFILE}]:-}" ]] || fail 'duplicate observation history profile'
+        VISITED["${PROFILE}"]=1
+        [[ " ${ESBMC_ARGUMENTS[*]} " == *' ESKF_CODEGEN=1 '* &&
+           " ${ESBMC_ARGUMENTS[*]} " != *' ESKF_CODEGEN=0 '* ]] || fail 'observation history uses generated profile'
+        EXPECTED=(--proof-unwind 140 --64 --z3 --array-flattener --tuple-sym-flattener
+                  -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}")
+        PREFIX="${PROOF_DIR}/observation_"
+        KEY="${SOURCE_FILE#"${PREFIX}"}"
+        case "${KEY}" in
+            storage.cpp)
+                [[ "${PROFILE}" =~ -storage([0123])-(write([0-9]+)|reset)$ ]] || fail 'wrong typed storage profile'
+                OBS_SOURCE="${BASH_REMATCH[1]}" OBS_KIND="${BASH_REMATCH[2]}" OBS_SLOT="${BASH_REMATCH[3]:-0}"
+                case "${OBS_SOURCE}" in 0) LIMIT=16 ;; 1) LIMIT=64 ;; 2|3) LIMIT=128 ;; esac
+                ((OBS_SLOT < LIMIT)) || fail 'typed storage partition outside capacity'
+                if [[ "${OBS_KIND}" == reset ]]; then OBS_KIND=reset; else OBS_KIND=push; fi
+                [[ "${ENTRY}" == "verify_observation_typed_${OBS_KIND}" ]] || fail 'wrong typed storage entry'
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_OBSERVATION_SOURCE=${OBS_SOURCE}" -D "FORMAL_ESKF_PROOF_WRITE=${OBS_SLOT}")
+                ;;
+            control.cpp)
+                OBS_SOURCE=0
+                if [[ "${PROFILE}" =~ -source([012])-(admission|selection)$ ]]; then
+                    OBS_SOURCE="${BASH_REMATCH[1]}" OBS_KIND="observation_${BASH_REMATCH[2]}"
+                else
+                    OBS_KIND="${PROFILE##*-}"
+                    case "${OBS_KIND}" in
+                        double_frame_equality) [[ "${PROFILE}" == delayed-observations-double_frame_equality ]] || fail 'duplicate double frame profile' ;;
+                        source_identity|seed_source|snapshot|period_range|observation_clock|observation_configuration|observation_views) ;;
+                        *) fail 'wrong observation control profile' ;;
+                    esac
+                fi
+                [[ "${ENTRY}" == "verify_${OBS_KIND}" ]] || fail 'wrong observation control entry'
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_OBSERVATION_SOURCE=${OBS_SOURCE}")
+                ;;
+            frame.cpp)
+                [[ "${PROFILE}" =~ -frame([0123])$ && "${ENTRY}" == verify_observation_storage_frame ]] || fail 'wrong observation frame'
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_FRAME=${BASH_REMATCH[1]}")
+                ;;
+            ring.cpp)
+                [[ "${PROFILE}" =~ -source([012])-(search|retire|finish|null_output)([0-9]*)$ ]] || fail 'wrong ring step profile'
+                OBS_SOURCE="${BASH_REMATCH[1]}" OBS_KIND="${BASH_REMATCH[2]}" OBS_SLOT="${BASH_REMATCH[3]:-0}"
+                case "${OBS_SOURCE}" in 0) LIMIT=16 ;; 1) LIMIT=64 ;; 2) LIMIT=128 ;; esac
+                ((OBS_SLOT < LIMIT)) || fail 'ring step partition outside capacity'
+                if [[ "${OBS_KIND}" == finish || "${OBS_KIND}" == null_output ]]; then
+                    [[ "${PROFILE}" == *-"${OBS_KIND}" ]] || fail 'unexpected ring finish slot suffix'
+                else
+                    [[ "${PROFILE}" =~ [0-9]+$ ]] || fail 'missing ring step slot'
+                fi
+                [[ "${ENTRY}" == "verify_observation_ring_${OBS_KIND}" ]] || fail 'wrong ring step entry'
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_OBSERVATION_SOURCE=${OBS_SOURCE}" -D "FORMAL_ESKF_PROOF_SLOT=${OBS_SLOT}")
+                ;;
+            owner.cpp)
+                [[ "${PROFILE}" =~ -owner-(constructor|reset)$ ]] || fail 'wrong owner profile'
+                [[ "${ENTRY}" == "verify_observation_${BASH_REMATCH[1]}" ]] || fail 'wrong owner entry'
+                EXPECTED=(--proof-unwind 140 --64 --z3 -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}")
+                ;;
+            context_caller.cpp)
+                [[ "${PROFILE}" =~ -context-caller([01])$ && "${ENTRY}" == verify_context_caller ]] || fail 'wrong context caller'
+                EXPECTED=(--proof-unwind 140 --64 --z3 -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}"
+                          -D FORMAL_ESKF_PROOF_FRAME=4 -D FORMAL_ESKF_PROOF_CHUNK=0
+                          -D "FORMAL_ESKF_PROOF_PREDICTION=${BASH_REMATCH[1]}")
+                ;;
+            seed.cpp|record.cpp|enqueue.cpp|pop.cpp)
+                if [[ "${KEY}" == seed.cpp || "${KEY}" == record.cpp ]]; then
+                    [[ "${PROFILE}" =~ -(seed|record)-frame([0123])-chunk([0-9]+)$ ]] || fail 'wrong seed/record partition'
+                    OBS_KIND="${BASH_REMATCH[1]}" FRAME="${BASH_REMATCH[2]}" CHUNK="${BASH_REMATCH[3]}"
+                    [[ "${KEY}" == "${OBS_KIND}.cpp" ]] || fail 'wrong seed/record source'
+                    if [[ "${KEY}" == seed.cpp ]]; then
+                        [[ "${ENTRY}" == verify_observation_seed ]] || fail 'wrong seed entry'
+                    else
+                        [[ "${ENTRY}" == verify_context_record ]] || fail 'wrong record entry'
+                    fi
+                else
+                    [[ "${PROFILE}" =~ -source([012])-(enqueue|pop)-frame([0123])-chunk([0-9]+)$ ]] || fail 'wrong queue partition'
+                    OBS_SOURCE="${BASH_REMATCH[1]}" OBS_KIND="${BASH_REMATCH[2]}"
+                    FRAME="${BASH_REMATCH[3]}" CHUNK="${BASH_REMATCH[4]}"
+                    [[ "${KEY}" == "${OBS_KIND}.cpp" && "${ENTRY}" == "verify_observation_${OBS_KIND}" ]] || fail 'wrong queue source/entry'
+                fi
+                case "${FRAME}" in 0) LIMIT=1 ;; 1) LIMIT=4 ;; 2|3) LIMIT=8 ;; esac
+                ((CHUNK < LIMIT)) || fail 'caller frame partition outside capacity'
+                FLAGS=(--tuple-sym-flattener --array-flattener)
+                EXPECTED=(--proof-unwind 140 --64 --z3 --fp2bv "${FLAGS[@]}" -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}")
+                if [[ "${KEY}" == enqueue.cpp || "${KEY}" == pop.cpp ]]; then EXPECTED+=(-D "FORMAL_ESKF_PROOF_OBSERVATION_SOURCE=${OBS_SOURCE}"); fi
+                EXPECTED+=(-D "FORMAL_ESKF_PROOF_FRAME=${FRAME}" -D "FORMAL_ESKF_PROOF_CHUNK=${CHUNK}")
+                ;;
+            context_producers.cpp)
+                [[ "${PROFILE}" =~ -context-(step([0-9]+)|views|empty)$ ]] || fail 'wrong context producer'
+                OBS_KIND="${BASH_REMATCH[1]}" OBS_SLOT="${BASH_REMATCH[2]:-0}"
+                ((OBS_SLOT < 128)) || fail 'context position outside capacity'
+                case "${OBS_KIND}" in
+                    step*) OBS_KIND=step ;;
+                    views) FLAGS=(--tuple-sym-flattener --array-flattener) ;;
+                    empty) FLAGS=(--fp2bv --smt-symex-guard) ;;
+                esac
+                [[ "${ENTRY}" == "verify_context_${OBS_KIND}" ]] || fail 'wrong context producer entry'
+                EXPECTED=(--proof-unwind 140 --64 --z3 "${FLAGS[@]}" -D "FORMAL_ESKF_PROOF_BINARY64=${BITS}"
+                          -D FORMAL_ESKF_PROOF_FRAME=4 -D FORMAL_ESKF_PROOF_CHUNK=0 -D "FORMAL_ESKF_PROOF_SLOT=${OBS_SLOT}")
+                ;;
+            *) fail 'unrecognized observation proof source' ;;
+        esac
+        case "${KEY}" in
+            ring.cpp) [[ "${ESBMC_ARGUMENTS[0]}" == -I && "${ESBMC_ARGUMENTS[1]}" == "${REPO_DIR}/output/esbmc/ring-steps" ]] || fail 'missing ring overlay' ;;
+            context_producers.cpp)
+                [[ "${ESBMC_ARGUMENTS[0]}" == -I &&
+                   "${ESBMC_ARGUMENTS[1]}" == "${REPO_DIR}/output/esbmc/ring-steps/context" &&
+                   "${ESBMC_ARGUMENTS[2]}" == -I && "${ESBMC_ARGUMENTS[3]}" == "${PROOF_DIR}" ]] ||
+                    fail 'missing context source step or its proof include directory'
+                ;;
+            *) [[ " ${ESBMC_ARGUMENTS[*]} " != *'/output/esbmc/ring-steps'* ]] || fail 'step overlay leaked into original source' ;;
+        esac
+        [[ "$*" == "${EXPECTED[*]}" ]] || fail "wrong observation arguments: ${PROFILE}"
+        [[ -z "${INVOCATIONS[${SOURCE_FILE}|${ENTRY}|$*]:-}" ]] || fail 'duplicate observation proof invocation'
+        INVOCATIONS["${SOURCE_FILE}|${ENTRY}|$*"]=1
+        COUNTS["${KEY}"]=$((${COUNTS[${KEY}]:-0} + 1))
+        COUNT=$((COUNT + 1))
+    }
+    run_delayed_observations_suite
+    [[ "${COUNT}" == 2163 && "${#VISITED[@]}" == 2163 && "${#COUNTS[@]}" == 11 ]] || fail 'observation history matrix incomplete'
+    for KEY in storage:680 control:27 frame:8 ring:844 seed:42 owner:4 context_caller:4 record:42 enqueue:126 pop:126 context_producers:260; do
+        [[ "${COUNTS[${KEY%:*}.cpp]:-0}" == "${KEY#*:}" ]] || fail "missing observation partitions: ${KEY}"
+    done
+)
+
+check_ring_step_extraction()
+{
+    python3 - "${REPO_DIR}" <<'PYTHON'
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+
+sys.dont_write_bytecode = True
+ROOT = Path(sys.argv[1])
+RELATIVE = Path('formal/cpp/esbmc/ring_steps.py')
+SPEC = importlib.util.spec_from_file_location('ring_steps', ROOT / RELATIVE)
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
+with tempfile.TemporaryDirectory(prefix='formal-eskf-ring-steps-') as TEMP:
+    FIXTURE = Path(TEMP) / 'repo'
+    for NAME in [*MODULE.PINS, str(RELATIVE)]:
+        DESTINATION = FIXTURE / NAME
+        DESTINATION.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / NAME, DESTINATION)
+    COMMAND = [sys.executable, str(FIXTURE / RELATIVE)]
+    OUTPUT = FIXTURE / 'output'
+    subprocess.run([*COMMAND, str(OUTPUT)], check=True, capture_output=True)
+    MANIFEST = json.loads((OUTPUT / 'ring-steps.json').read_text())
+    OVERLAY = OUTPUT / 'formal_eskf/runtime/ring_buffer.hpp'
+    assert MANIFEST['source_sha256'] == MODULE.PINS
+    assert MANIFEST['overlay_sha256'] == hashlib.sha256(OVERLAY.read_bytes()).hexdigest()
+    assert 'proof_search_step' in OVERLAY.read_text()
+    CONTEXT = OUTPUT / 'context/context_step.hpp'
+    CONTEXT_MANIFEST = json.loads((OUTPUT / 'context-steps.json').read_text())
+    assert CONTEXT_MANIFEST['source_sha256'] == MODULE.PINS
+    assert CONTEXT_MANIFEST['generator_sha256'] == hashlib.sha256((FIXTURE / RELATIVE).read_bytes()).hexdigest()
+    assert CONTEXT_MANIFEST['extracted_sha256'] == hashlib.sha256(CONTEXT.read_bytes()).hexdigest()
+    assert 'auto const & m_context = owner.m_context;' in CONTEXT.read_text()
+    assert 'return false;' in CONTEXT.read_text()
+    assert 'output = result;' in CONTEXT.read_text()
+    assert not (OUTPUT / 'context/formal_eskf/runtime/ring_buffer.hpp').exists()
+    for NAME in MODULE.PINS:
+        SOURCE = FIXTURE / NAME
+        ORIGINAL = SOURCE.read_bytes()
+        SOURCE.write_bytes(ORIGINAL + b'\n// changed source\n')
+        RESULT = subprocess.run([*COMMAND, str(OUTPUT)], capture_output=True, text=True)
+        assert RESULT.returncode == 1 and 'requires review' in RESULT.stderr and NAME in RESULT.stderr
+        SOURCE.write_bytes(ORIGINAL)
+    ORIGINAL = (FIXTURE / 'include/formal_eskf/runtime/ring_buffer.hpp').read_bytes()
+    RESULT = subprocess.run([*COMMAND, str(FIXTURE / 'include')], capture_output=True, text=True)
+    assert RESULT.returncode == 1 and 'must not replace production' in RESULT.stderr
+    assert (FIXTURE / 'include/formal_eskf/runtime/ring_buffer.hpp').read_bytes() == ORIGINAL
+PYTHON
+}
 
 check_height_arguments()
 (
@@ -2723,6 +2913,8 @@ check_delayed_views_arguments
 check_delayed_seed_arguments
 check_delayed_storage_arguments
 check_delayed_history_arguments
+check_delayed_observations_arguments
+check_ring_step_extraction
 check_navigation_recovery_arguments
 check_navigation_reset_arguments
 check_gnss_lifecycle_arguments
@@ -2751,7 +2943,7 @@ check_observations_arguments
 check_solver_argument_guard
 check_reference_preflight
 check_frame_preflight
-printf 'ESBMC inventory tests: pass (3006 profiles; 289 entry points; all shards)\n'
+printf 'ESBMC inventory tests: pass (5169 profiles; 316 entry points; all shards)\n'
 if ((RUN_SOLVER)); then
     check_runtime_input_regressions
     check_ring_buffer_regressions

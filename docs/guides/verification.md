@@ -16,8 +16,8 @@ it is neither a proof nor a mandatory review of every function.
 ## Open boundaries
 
 - Full `HeightAiding` transactions remain outside the completed producer checks.
-- Delayed observation/output owners and live IMU/PX4/replay calling sequences
-  need source-composition evidence. The IMU owner's scoped contracts and induction
+- Output-owner transactions and live IMU/PX4/replay calling sequences need
+  source-composition evidence. IMU and observation-owner contracts and induction
   are described below; native owner/module tests do not prove the live sequence.
 - Deployed matrix/libm accuracy, numerical error budgets and repeated-step
   invariants are not implied by finite outputs or exact-real theorems.
@@ -207,6 +207,12 @@ Actual typed-producer evidence supplies the missing value equations. Every
 partition in both formats is mandatory. Completion and owner reset execute
 without these summaries and check their complete frames.
 
+In the pinned ESBMC implementation, `__ESBMC_init_object` havocs the enclosing
+root object even when given a pointer to one of its members. A producer summary
+using it must restore every required frame of that root, after checking the
+caller's pre-state. Passing a member pointer does not limit the havoc to that
+member. These assumptions require matching actual-producer evidence.
+
 Borrowed-input profiles execute push using each physical stored input, assuming
 its timestamp does not exceed the previous endpoint. Rejection preserves every
 stored field. Temporal induction and the actual view contracts discharge this
@@ -327,6 +333,78 @@ patch identities and reruns of affected source evidence, including IEEE storage
 frames. Earlier evidence is not transferred to the patched binary. Reviewed
 source, qualification and affected reruns are required together; passing this
 small qualification alone does not establish that all prior proofs remain valid.
+
+### Delayed observations and context
+
+The observation contracts concern the single-owner `ObservationHistory` and its
+actual fixed profile: GNSS 16, magnetic 64, barometer 128 and context 128 slots.
+Both scalar formats use the 64-bit word model and qualified reference/IEEE-frame
+verifier. Numerical payloads, including inactive storage, remain arbitrary IEEE
+values. Copy frames preserve signed zero and NaN classification, not padding or
+NaN payload bits. Public inputs/outputs are external to the owner's private
+storage. Live caller sequencing, deployed backends and WCET remain separate.
+
+Acceptance composes the following obligations; neither a caller summary nor an
+isolated Lean theorem replaces its dependencies.
+
+| Obligation | Source and model boundary |
+|---|---|
+| Storage | Actual typed push checks every destination, exact metadata, complete input copying and untouched cells. Actual reset clears all slots and retains length. |
+| Admission/control | Actual source identity, seed-source guards, timestamp subtraction, raw/arrival/admitted watermarks, generation, next/begin eligibility, binary64 period recurrence, selection and read-only views. Complete owner frames accompany the behavioral equations. |
+| Construction/seed/reset | Actual owner construction/reset and seed orchestration check initialization, retained configuration, input preservation, guards and publication. Seed's typed storage contract is a separate dependency. |
+| Public enqueue/pop | Actual callers check producer receiver, complete arguments, order, statuses, discard/retirement diagnostics, metadata and input/storage frames. Source changes clear the selected queue even when later admission rejects it. |
+| Context | Actual newest-reference identity and snapshot equations support record. The caller retains the real owner alias; it cannot substitute a fresh reference. Lookup steps check every field, original-message age masks and read-only frames; public wrappers check query/sequence guards. |
+| Induction | Physical ring stores and retirement refine logical append/drop; reverse search chooses the first nonfuture cell. Temporal/list lemmas preserve bounded metadata, chronology, current source/generation and snapshot provenance through the source contracts. |
+
+Metadata encodings cover every valid oldest/count/write tuple. Caller frame
+profiles partition assertions into complete 16-slot chunks; they do not reduce
+storage or input values. All chunks, physical destinations and scalar formats are
+mandatory. Summaries check their observed receiver frame **before** the call and
+preserve arbitrary producer poststates afterward. The complete partition union
+supplies the full frame. Actual typed producers supply value equations omitted
+from broad summaries; reviewed write footprints justify enclosing-owner locality.
+Whole-root havoc follows the verifier rule described above and restores only
+producer-established frames. Actual alias identity plus the complete pre-call
+frame supplies the original previous context to the pure snapshot producer.
+
+Large ring/context loops use pinned source extraction. Original methods remain
+unchanged; added ring entry points contain no data. Search `break`/context
+`return` becomes an explicit stop result; retirement and final metadata statements
+are copied. Review extraction against the entire source body, including initial
+locals, bounds, increments, early exits and empty/null paths. Typed ESBMC steps,
+Lean loop induction and that correspondence review are separate evidence; this is
+not an automated C++-to-Lean refinement certificate.
+
+The reviewed source-to-model composition requires:
+
+- Construction/reset establish empty rings and disabled clocks. Seed establishes
+  positive equal seed/latest/fusion epochs, source watermarks and one context.
+- Actual record guards strictly advance the supplied endpoint. Snapshot retains
+  an old message or copies only a strictly newer, nonfuture message; typed push
+  preserves every field and supplies the newest slot. Record creates no interior
+  gap snapshots; the live caller must supply admitted real IMU intervals.
+- Begin advances fusion within latest/lag bounds once per latest endpoint; the
+  actual IEEE recurrence preserves the period range needed by half-period casts.
+- Valid arrivals may advance arrival time on raw-time rejection. Only a newer raw
+  timestamp changes source/generation; `generation <= raw` prevents unsigned
+  generation wrap. Effective-time subtraction is guarded before use. Admission
+  and event construction read the same unchanged mean through the same pure
+  half-period getter, so the frozen offset agrees with the effective epoch.
+- Queued effective time is positive and beyond the retained admitted watermark.
+  Existing active records are bounded by that watermark, so physical append/drop
+  preserves strict order. Source changes first supply an empty old list; unchanged
+  sources retain the provenance predicate. Rejections retain the specified frames.
+- Pop's inspected counter stays below count, removed never exceeds count, and a
+  selected result removes at least one record. The physical retained suffix is
+  unchanged and contains only future entries; output on a miss is preserved.
+- Context search does not consume data. Snapshot provenance places original
+  message time at/before its stored epoch, discharging unsigned-age subtraction;
+  missing, stale or explicitly unknown records cannot grant permission.
+
+The boundary needs current positive results and named mutation controls for the
+same source/tool/configuration. Timeout, OOM, incomplete partitions or missing
+producer evidence remain gaps. No numerical estimator success, sensor validity,
+whole-callback atomicity or target timing follows from these queue properties.
 
 ## Proof execution resources
 

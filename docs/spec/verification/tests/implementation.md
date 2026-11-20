@@ -50,7 +50,7 @@ Integration owners and production behavior changes remain outside this work.
 | T-17 | `tests/core/test_injection_reset.cpp` | Injection, reset and three-output transaction, both reset models and all allowed aliases. | Implemented |
 | T-18 | `tests/core/test_correction.cpp` | Independent gain/Joseph equations, solve/failure stages, bias controls and joint publication. | Implemented |
 | T-19 | `tests/core/test_innovation.cpp` | Componentwise ratios, threshold equality, IEEE limits and complete diagnostic publication. | Implemented |
-| T-20 | `tests/core/test_position.cpp` | Position selectors, residuals, noise/permissions forwarding and correction transactions. | Pending |
+| T-20 | `tests/core/test_position.cpp` | Position selectors, residuals, noise/permissions forwarding and correction transactions. | Implemented |
 | T-21 | `tests/core/test_velocity.cpp` | Velocity selectors, residuals, noise/permissions forwarding and correction transactions. | Pending |
 | T-22 | `tests/core/test_accelerometer.cpp` | Gravity observation, fixed preprocessing, domains and wrapper transactions. | Pending |
 | T-23 | `tests/core/test_magnetometer.cpp` | Magnetic observation, selected gain projection, geometry and wrapper transactions. | Pending |

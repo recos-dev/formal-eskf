@@ -1147,6 +1147,5 @@ int main(int argc, char ** argv)
         {"TC-E-BIAS-UPDATE-all-permissions", "INS.binary64.M6", test_bias_update<DoubleLinalg, 6U>},
         {"TC-E-BIAS-UPDATE-call-local", "INS.binary64", test_bias_update_failures<DoubleLinalg>},
     };
-    std::cout << "Configuration: reset_approx=" << ESKF_RESET_APPROX << " codegen=" << ESKF_CODEGEN << '\n';
     return formal_eskf::test::run_cases(cases, argc, argv);
 }

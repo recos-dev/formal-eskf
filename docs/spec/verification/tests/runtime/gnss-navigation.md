@@ -1,0 +1,145 @@
+# GNSS qualification, navigation transactions and lifecycle tests
+
+**Status:** Draft
+
+**Scope:** Portable `GnssQuality`, `GnssFusion`, generic gated measurement
+transactions and navigation operations. Geographic conversion, receiver parsing,
+integration owners, replay and PX4 execution are excluded.
+
+**Level and purpose:** Unit tests for independent numerical/policy operations;
+component sequences for qualification, permission, actual operation and feedback.
+The cases are designed from requirements, independently of existing tests.
+
+**Profiles:** Follow [shared profiles and oracle rules](../profiles.md).
+Numerical cases use binary32/binary64 and supported backends; navigation/quality
+cases use INS. Generic measurement cases use both AHRS and INS, observation sizes
+1/2/3, relevant correction/codegen options, all four independent whole-prior
+state/covariance alias arrangements and INS bias permissions where stated.
+`GnssFusion` and reporting truth tables are backend-independent.
+
+**Setup and oracle:** Use explicit NED measurements, a nonidentity unit attitude,
+distinct nominal fields and symmetric PSD covariance with nonzero cross blocks.
+Generate positive covariance/noise fixtures independently as `L L^T` and
+`M M^T + d I`, with `d > 0`; include correlated noise within a group. A separate
+reference evaluator computes residuals, products, componentwise ratios and
+Joseph correction from the equations, without calling production observation,
+gate, correction or reset helpers. Numerical bounds follow the shared policy;
+status, permission, identity, timestamps and untouched coefficients are exact.
+Lifecycle expected results come from declarative event/transition tables, not
+from a second copy of the controller. Snapshot observable state and use a common
+continuation after rejected calls to detect changes to private watermarks/history.
+
+**Regression:** Retain fixed boundary and event sequences with explicit expected
+results. A result produced by the implementation under test is not a golden
+oracle. Every row is a required case family; listed partitions are obligations,
+not optional examples. All executable bindings are pending.
+
+## Operation allocation
+
+| Production header / public group | Cases / disposition |
+|---|---|
+| `measurement_fusion.hpp`: `MeasurementCheck::passed`, `FusionResult` construction, `check_measurement`, AHRS/INS `fuse_measurement` | `TC-R-MEASUREMENT-FUSION-01` through `08` |
+| `navigation.hpp`: horizontal/vertical position, horizontal/3D velocity fusion; result records | `TC-R-MEASUREMENT-FUSION-07`, `08`; recovery rows below |
+| `navigation.hpp`: `check_gnss_velocity`, `fuse_gnss_velocity`, `fuse_height`, navigation diagnostic records | `TC-R-GNSS-VERTICAL-RECOVERY-01` through `05` |
+| `navigation.hpp`: horizontal position, vertical position, vertical velocity and full velocity resets | `TC-R-GNSS-RESET-01` through `04` |
+| `gnss_quality.hpp`: parameter/result defaults, `GnssQualityChecks::any_enabled`, constructor/reset/restart_health/update | `TC-R-GNSS-QUALITY-01` through `10` |
+| `gnss_lifecycle.hpp`: constructor/reset/state/update, three feedback APIs, restart, `VerticalAccelerationTimes::reset_required` | `TC-R-GNSS-FUSION-01` through `15` |
+| Portable caller sequence across these groups | `TC-SW-GNSS-01`, `02`; platform bindings excluded |
+
+Private helpers are covered through the owning public operation. No separate
+requirement is inferred merely because a helper has a C++ symbol.
+
+## Gated measurement transactions
+
+| Case ID | Requirement / clause | Conditions, inputs and action | Expected result and independent oracle | Executable test |
+|---|---|---|---|---|
+| TC-R-MEASUREMENT-FUSION-01 | [R-MEASUREMENT-FUSION](../../../requirements/runtime/measurement-fusion.md), result meanings | Enumerate status success/failure, diagnostics valid/invalid and rejected true/false in reporting records; construct a `FusionResult` from each `MeasurementCheck`. | `passed()` is true only for successful valid nonrejected evidence. Construction never fabricates `fused`; rejected is reported only for successful valid rejection. Diagnostics/status copy faithfully. Detects confusion between gate pass and fusion success. | Pending |
+| TC-R-MEASUREMENT-FUSION-02 | Same, same-prior covariance and component gate | Use nonzero `P H^T`, correlated V and residuals whose gate outcome differs between `diag(V)` and `diag(H P H^T+V)`; vary one component below/equal/above ratio 1. Include a vector that a joint-NIS test would reject while all individual ratios pass. | Independent products/ratios match; equality passes; one excessive component rejects the entire group. `check_measurement` never modifies inputs or estimator outputs. Detects wrong covariance, joint gate or axis omission. | Pending |
+| TC-R-MEASUREMENT-FUSION-03 | Same, pre-gate validation and diagnostics | Individually corrupt consumed state, sigma, P, r, H, V and normalization threshold with nonfinite/domain-invalid values; use finite product overflow. Include multiple faults only where the core defines precedence. | Exact prescribed status; `failed`, invalid zero diagnostics, unchanged state/P outputs. An independent finite/domain partition follows the named core contracts. Detects stale diagnostics and prematurely published covariance. | Pending |
+| TC-R-MEASUREMENT-FUSION-04 | Same, rejected calls skip correction | Produce a valid rejected gate while later-only solve/injection inputs would fail; repeat with all aliases. Use a contract-conforming observation seam if a downstream-only failure cannot be reached naturally. | `rejected/success`, valid raw diagnostics; no solve/correction/injection invocation; outputs retain all sentinel/prior coefficients. Detects eager correction and treating rejection as numerical failure. | Pending |
+| TC-R-MEASUREMENT-FUSION-05 | Same, accepted correction and permissions | Pass gate with nonzero cross covariance; compare AHRS/INS correction against independent Joseph/injection/reset reference. For INS exercise the default, all-enabled/all-disabled and each single-enabled/single-disabled bias mask; exhaustive inner gain semantics belong to the core tests. | `fused/success`; one coherent state/P publication; disallowed bias increments are zero, while permitted coupled state changes match the reference. Gate diagnostics are mask-independent. Detects lost permission forwarding or partial publication. | Pending |
+| TC-R-MEASUREMENT-FUSION-06 | Same, downstream failure frame | After a successful gate, induce each independently reachable solve, arithmetic, quaternion or reset failure; exercise all aliases and disjoint sentinels. | `failed` with callee status; valid original gate diagnostics retained; both outputs unchanged and borrowed inputs pure. Detects rollback holes and destruction of useful rejected/failed-observation evidence. | Pending |
+| TC-R-MEASUREMENT-FUSION-07 | Same, named navigation models | Exercise each of the four named wrappers with distinct N/E/D values, full correlated within-group V, zero/nonzero residual, nonfinite observation and finite subtraction overflow. | Independent selector-matrix residual/Jacobian gives N/E position, Down position, N/E velocity or all velocity as named; unused nominal coordinates remain subject to stated finite-state validation. Correct units/sign, exact failure class and transaction frame. Detects index, Down/altitude and observation-minus-prediction errors. | Pending |
+| TC-R-MEASUREMENT-FUSION-08 | Same, independent sequential groups | On coupled P, execute two groups with first fused/rejected/failed, then the second; use cross-group independent noise. Compare with a separately recomputed sequential reference, and with a deliberately stale-prior negative control. | Second group uses the newly committed prior only after actual fusion; rejected/failed first group cannot roll back an earlier success or automatically reject the second. No whole-GNSS atomicity is asserted. Detects cached residual/Jacobian reuse. | Pending |
+
+## GNSS quality
+
+| Case ID | Requirement / clause | Conditions, inputs and action | Expected result and independent oracle | Executable test |
+|---|---|---|---|---|
+| TC-R-GNSS-QUALITY-01 | [R-GNSS-QUALITY](../../../requirements/runtime/gnss/quality.md), defaults and enabled checks | Check documented parameter defaults. For each named failure bit, enable it alone, disable it alone, then combine disjoint bits; vary fix type below/at 3 and satellite count around its integer minimum. | Boolean set intersection determines `any_enabled`; disabled checks still report diagnostics; mandatory invalid fix rejects even with all optional checks disabled. Detects bit-field wiring and accidental disable of mandatory admission. | Pending |
+| TC-R-GNSS-QUALITY-02 | Same, metadata thresholds | Independently vary PDOP, horizontal/vertical/speed accuracy at each configured maximum and adjacent representable values; toggle the matching enable and spoofing flags. Use valid stationary/moving/in-air contexts. | Equality passes each upper bound; excessive enabled value/spoofing rejects with `status=success`; disabled value does not block by itself. Failure flags identify the correct quantity. Detects unit, inequality and selection mistakes. | Pending |
+| TC-R-GNSS-QUALITY-03 | Same, stationary recurrence | Seed a sample, then known unequal N/E/Down displacements/velocities; use intervals below/at/above 1 ms and 10 s. Include positive/negative impulses large enough to hit 10-times clamps. | Independent scalar recurrence applies clamped dt, position-rate filtering then state clamp, and velocity-input clamp before filtering; horizontal norm and vertical absolute value agree. First displacement is ignored while first velocity is filtered. Detects order, axis and first-sample errors. | Pending |
+| TC-R-GNSS-QUALITY-04 | Same, motion transitions and raw-speed guard | Stationary failure → moving ground → stationary → in-air; supply unused displacement NaNs outside stationary mode. Cross raw horizontal norm and vertical absolute speed limits at equality and both neighbours in all modes. | Ground motion resets filters but retains motion failure flags; in-air clears them; stationary restart does not reuse displacement continuity incorrectly. Raw-speed violations still set flags, controlled by their enable bits. `drift_valid` distinguishes unavailable diagnostics. Detects stale filters and fake zero-drift passes. | Pending |
+| TC-R-GNSS-QUALITY-05 | Same, initial qualification/recovery | First passing sample at t0; passing samples at health and recovery thresholds and ±1 us; then reject → pass → recovery. Choose health durations where `max(1 s, health/10)` takes either branch. | First sample establishes failing baseline; both strict elapsed predicates are required. Historical qualification survives rejection; recovery does not repeat initial qualification. last-pass/fail use horizon time, not sample time. Detects startup bypass and timer reset errors. | Pending |
+| TC-R-GNSS-QUALITY-06 | Same, invalid consumed data | Inject each nonfinite/negative accuracy, consumed vector nonfinite and finite filter/norm overflow, with checks disabled as well as enabled. Follow with corrected data and a deliberately stale displacement reference. | Numerical bad data is consumed `rejected` with failing status, resets filters/position continuity and restarts health; optional masks cannot suppress it. Valid retry needs a later sample. Compare subsequent history to a freshly reset-filter reference. Detects treating bad data as an unconsumed API error. | Pending |
+| TC-R-GNSS-QUALITY-07 | Same, invalid-call frame | Nonzero sample followed by zero/duplicate/backward sample, future sample, backward horizon and wrong previous-consumed-reference time; correct each and retry. Include ignored-reference contexts. | `invalid_call` with prescribed status and no consumed history; a common valid continuation matches an untouched control. Wrong reference is rejected only when consumed by the contract. Detects watermark advance or overvalidation of unused data. | Pending |
+| TC-R-GNSS-QUALITY-08 | Same, parameter arithmetic domain | Each finite-positive-normal bound at normal/subnormal/zero/negative/nonfinite; zero health duration; motion bounds whose clamps/squares overflow or underflow; large but valid compare-only accuracy limits. | Invalid config is `invalid_call` without mutation; compare-only values are not rejected merely for being large. Exact scalar-format classification follows independently evaluated bound expressions. Detects unsafe derived limits and invented universal bounds. | Pending |
+| TC-R-GNSS-QUALITY-09 | Same, reset and health restart | Qualify, accumulate filters, reject, invoke `restart_health`; continue with increasing source time. Separately full-reset and begin a new timeline/source. | Health restart clears only health times, preserving qualification/filter/time/reference state; full reset restores initial behavior. Long gaps alone do not revoke historical quality qualification. Detects conflating source reset with aiding-session stop. | Pending |
+| TC-R-GNSS-QUALITY-10 | Same, timestamp arithmetic and data purity | Repeat health/filter traces near UINT64_MAX using legal ordered differences; snapshot every borrowed sample/parameter object. | Outcomes depend on elapsed differences without unsigned addition wrap; all borrowed inputs unchanged. No claim is made for an actual clock wrap without caller reset. Detects overflow-prone deadlines and input reuse as scratch. | Pending |
+
+## Navigation reset and recovery
+
+| Case ID | Requirement / clause | Conditions, inputs and action | Expected result and independent oracle | Executable test |
+|---|---|---|---|---|
+| TC-R-GNSS-RESET-01 | [R-GNSS-RESET](../../../requirements/runtime/gnss/reset.md), four reset equations | Independently invoke all four reset APIs on dense PSD P and distinct state values, with anisotropic supplied variances below/equal/above the scalar-format `0.01^2` floor. | Declarative affected-axis masks verify every covariance cell: horizontal position uses the variance sum for both diagonals; Down velocity also decorrelates height; full velocity decorrelates position/velocity while retaining position variances. Only named nominal values change; delta=new−old. Detects incomplete row/column clearing and per-axis/summed variance confusion. | Pending |
+| TC-R-GNSS-RESET-02 | Same, success publication and aliases | Run each reset with four state/P alias arrangements, sentinel deltas and positive/negative/zero Down changes. | All three outputs publish on success; untouched state/P entries are representation-preserved; delta units/sign agree with the supplied NED coordinate. No hidden normalization or output-history change. Detects alias-dependent reset semantics. | Pending |
+| TC-R-GNSS-RESET-03 | Same, validation and failure | For each API corrupt every consumed input category, a single asymmetric P pair, a negative diagonal/variance, and finite delta or horizontal-variance-sum overflow. | Prescribed nonfinite/domain/result status; all three outputs and all borrowed inputs preserved for every alias. Symmetric PSD and unit attitude remain caller premises; this test does not invent a PSD validator. Detects partial reset and overly permissive recovery. | Pending |
+| TC-R-GNSS-RESET-04 | Same, reset distinct from correction | Execute same reset twice, then reset to a different supplied observation; interleave a successful independent correction. | Second identical reset reports zero delta without fake fusion metadata; later delta uses current state; unselected blocks persist exactly. Independent mask oracle checks no accumulated extra covariance. Detects stale prior/reset latches. | Pending |
+| TC-R-GNSS-VERTICAL-RECOVERY-01 | [R-GNSS-VERTICAL-RECOVERY](../../../requirements/runtime/gnss/vertical-recovery.md), velocity exception | Cross fault true/false, Down ratio below/equal/above 1, N/E ratios below/equal/above 1 and reported speed accuracy below/equal/above its max. Independently invalidate accuracy/max even with fault false. | Exception requires all strict predicates; horizontal equality blocks it, ordinary gate equality passes. Invalid accuracy returns prescribed failure before correction. Detects an overly broad fault bypass or use of floored noise in place of receiver accuracy. | Pending |
+| TC-R-GNSS-VERTICAL-RECOVERY-02 | Same, signed limiter and diagnostics-only API | Use positive/negative excessive Down residuals and correlated covariance/noise. Invoke `check_gnss_velocity`, then the fusion API on an unchanged prior. | Independent `sigma*sqrt(S_D)` clamp changes only Down, preserves raw diagnostics and reports selected residual separately. No re-gating of the rounded boundary; check-only cannot report fusion or mutate estimates. Detects sign loss, V-versus-S limit and duplicate gate. | Pending |
+| TC-R-GNSS-VERTICAL-RECOVERY-03 | Same, height deadzone order | Height residual negative/zero/positive; deadzone 0, below/equal/above positive selected residual; with and without fault limiting; originally rejected gate without authorized exception. | Clamp first, positive-only deadzone second; raw gate never recomputed/released by deadzone. `innovation_limited` reports only fault clamp. Independent piecewise equation detects wrong transform order and silent gate bypass. | Pending |
+| TC-R-GNSS-VERTICAL-RECOVERY-04 | Same, failed/rejected transaction | Invalid deadzone, gate error, limit arithmetic failure and correction failure after valid limiting; all aliases and the forwarding-mask partitions above. | Rejection/failure preserves state/P; status and valid raw/selected diagnostics retain their stage-specific meanings. Disjoint inputs remain pure. Detects conflating selected innovation with actually applied innovation. | Pending |
+| TC-R-GNSS-VERTICAL-RECOVERY-05 | Same, ordinary-path equivalence | Fault false and deadzone zero; compare generic versus navigation-specific fusion using the same prior and independent equations, then enable fault with already-passing residual. | Same ordinary update and diagnostics within shared numerical criteria; no unnecessary clamp or covariance change. Detects an exception altering normal measurements. | Pending |
+
+## GNSS lifecycle sequences
+
+Use symbolic names for groups and times. Set fixed nonzero durations and derive
+events at each deadline minus one microsecond, exactly the deadline and plus one.
+The table oracle records active/action/recovery separately from start/fuse/reset
+timestamps. It does not infer successful fusion from an accepted quality sample.
+
+| Case ID | Requirement / clause | Conditions, inputs and action | Expected result and independent oracle | Executable test |
+|---|---|---|---|---|
+| TC-R-GNSS-FUSION-01 | [R-GNSS-FUSION](../../../requirements/runtime/gnss/lifecycle.md), construction/startup | Reset; vary enabled/ready/start_without_reset independently for all groups on accepted, waiting, rejected and quality-unavailable fresh samples. | Only qualified ready groups receive a single fuse/reset instruction; startup time is not last-fuse time. Initialization-required reset never masquerades as correction. Exact transition table detects implicit readiness or activity assumptions. | Pending |
+| TC-R-GNSS-FUSION-02 | Same, feedback protocol | Grant fuse, report fused/rejected/failed; wrong sample/group/enum and duplicate feedback; call update before old feedback; process two distinct samples on one horizon with prior feedback complete. | Only matching single-use feedback is accepted; only fused advances last-fuse; failed latches repair. Duplicate/old feedback cannot advance progress. Invalid feedback preserves metadata, unlike an update revoking permission. Detects replayed permission and invented success. | Pending |
+| TC-R-GNSS-FUSION-03 | Same, no-data and quality expiry | Active horizontal and height sessions; no-data ticks across each receipt deadline; fresh waiting/rejected/unavailable samples across quality-pass deadline. | Data equality expires; poor-quality expiry is strict; waiting refreshes quality-pass while unavailable does not. Height can stop alone; loss of horizontal receipt can stop all. No reset permission on absent data. Detects mixed receipt/quality/progress clocks. | Pending |
+| TC-R-GNSS-FUSION-04 | Same, horizontal unsuccessful progress | Maintain one group progressing while the other fails; then both overdue; separately position overdue for twice timeout. At boundary supply fresh accepted sample. | Horizontal reset decisions occur before either current horizontal attempt, using max(start,fuse,reset). Only active enabled ready groups receive reset; session remains active. Detects independent deadline versus joint-reset errors. | Pending |
+| TC-R-GNSS-FUSION-05 | Same, height post-attempt deadline | Height progress overdue; current accepted sample's correction succeeds, rejects or fails at strict timeout neighbours. | Success refreshes before timeout; rejection may grant same-sample reset while retaining activity; numerical failure requires repair and cannot grant reset. Detects timeout evaluation before the current chance to recover. | Pending |
+| TC-R-GNSS-FUSION-06 | Same, reset acknowledgment | Grant each group's reset; feed correct success/failure and wrong/duplicate sample; then ordinary good samples, enable toggles and explicit group restart. | Success advances reset only and consumes permission; failure latches reset_failed; no same-sample correction or automatic numerical repair. Restart clears only repaired group metadata and requires new sample. Detects fake resets and unrelated group/history loss. | Pending |
+| TC-R-GNSS-FUSION-07 | Same, acceleration reset predicate | Known/unavailable health with last-good zero, ordered healthy time and 500000 us ±1 boundaries; include stale/future/inverted verdict times and held fault unrelated to recent good time. | `reset_required` uses known ordered timestamps and strict elapsed rule. Unavailable health disables only acceleration reset; timeout remains. Malformed supplied health rejects update/feedback as specified. Detects using the three-second fault latch as the reset clock. | Pending |
+| TC-R-GNSS-FUSION-08 | Same, Down-only reset ordering | Established height/3D velocity; overdue height or acceleration reset criterion at update; velocity fused/rejected/failed; attempt height feedback before pending Down reset, then acknowledge Down and height. | Snapshot survives later height recovery; only fused/rejected velocity can release one Down reset. Wrong order preserves permission; success advances only Down-reset timestamp; failure latches velocity repair. Horizontal-only and startup full velocity reset cannot duplicate Down reset. Detects order-dependent recovery loss. | Pending |
+| TC-R-GNSS-FUSION-09 | Same, reset-reason priority and repetition | Trigger timeout and bad-acceleration simultaneously; complete reset; next good GNSS sample without new healthy IMU verdict; then provide a recent good verdict while fault remains held. | Acceleration reason takes priority; successful reset fabricates neither health time nor cooldown, so criterion can recur. Recent good verdict releases acceleration criterion independently of held fault. Detects hidden cooldown and health reset side effects. | Pending |
+| TC-R-GNSS-FUSION-10 | Same, last horizontal session stop | Stop one then last active horizontal group through disable, readiness loss or timeout; consume restart_quality; resume quality monitor and fusion on later samples. | Exactly one stop notification; caller health restart excludes outage from healthy time while retaining historic qualification. Height-only activity does not suppress the notification. Detects repeatedly clearing health or accepting outage as qualification time. | Pending |
+| TC-R-GNSS-FUSION-11 | Same, invalid update frame | Invalid/changed duration, horizontal duration above UINT64_MAX/2; zero/backward/future/duplicate times and invalid available quality; invalid group/decision feedback. | Invalid update revokes permissions but consumes no history/config/time; invalid feedback preserves all metadata. Corrected update can retry according to timestamp contract. Explicit frame oracle detects both over-rollback and under-rollback. | Pending |
+| TC-R-GNSS-FUSION-12 | Same, restart versus full reset | Build independently different histories in three groups; restart each group; full-reset on new timeline/configuration. Include pending Down reset and invalid restart group. | Per-group repair preserves unrelated histories, quality and time/config watermarks; velocity restart clears its Down-reset history; velocity/height repair revokes pending Down reset. Full reset restores construction state. Detects accidental session-wide reset. | Pending |
+| TC-R-GNSS-FUSION-13 | Same, overflow-safe deadlines | Repeat start/fuse/reset/no-data timelines near UINT64_MAX with legal positive durations and ordered times. | Same relative-time transitions as translated small-time timeline; no addition overflow. No permission survives crossing a validated deadline. Detects absolute-deadline arithmetic. | Pending |
+| TC-R-GNSS-FUSION-14 | Same, quality-unavailable and partial groups | Supply N/E-only velocity context, no height observation, independently disabled groups and later complete qualified observations; include Sample{} with garbage unused fields. | No invented Down reset, no unknown-quality refresh and no unwanted validation of absent sample payload; independent groups remain consistent. Detects converting missing data into passing or zero data. | Pending |
+| TC-R-GNSS-FUSION-15 | Same, feedback purity and repair persistence | Keep estimator state/P outside controller, deliver a numerical-failure feedback, then repeated accepted quality, source-like parameter context and toggled conditions without explicit repair. | Persistent repair remains until allowed acknowledgment/restart; controller changes only its own metadata. Inputs and external estimator remain untouched. Detects lifecycle silently repairing numerical state. | Pending |
+
+## Portable capability composition
+
+| Case ID | Requirement / clause | Conditions, inputs and action | Expected result and independent oracle | Executable test |
+|---|---|---|---|---|
+| TC-SW-GNSS-01 | [SW-GNSS](../../../requirements/software/gnss-aiding.md), separate admission and actual update | Host sequence: quality update → lifecycle update → only permitted reset/correction → actual matching feedback. Include startup wait, accepted-but-gate-rejected, successful fusion, source reset, outage, health recovery and restart. | Independent event ledger counts receipt, qualification, permission and actual state changes separately; no success timestamp without actual fused output. Quality displacement reference advances only on consumed samples. Detects using quality acceptance as fusion success without relying on PX4/replay. | Pending |
+| TC-SW-GNSS-02 | Same, vertical recovery composition | Established sessions: quality/lifecycle update using preceding health → permitted velocity check/correction and matching feedback → current health update → permitted Down reset and feedback → height correction/reset and feedback, each with success and failure variations. | Each operation uses current state/P and authorized sample; velocity reset decision retains the update-time snapshot, while height feedback uses current health. Reset deltas/feedback match actual success; raw diagnostics feed health with correct sign. No fault bypasses receiver qualification. Independent operations/timeline ledger detect feedback reordering and stale-prior reuse. | Pending |
+
+## Limits and open decisions
+
+- These cases specify portable caller sequences, not module timing, geodesy,
+  buffering, receiver-quality truth, GNSS independence or flight accuracy.
+- Numerical tolerances must be supplied under the shared profiles before a
+  numerical result is accepted; differential agreement alone is insufficient.
+- Invalid caller premises such as arbitrary nonsymmetric/indefinite covariance
+  are tested only where a checked API explicitly defines their treatment.
+  Unsupported partial aliasing is not turned into an invented rejection rule.
+- The requirement's no-universal-precedence rule for independent simultaneous
+  bad inputs is preserved; tests require exact precedence only where specified.
+
+## Review Pending
+
+- Approve the scenario partitions and requirement links before implementation;
+  each Pending family still needs explicit executable fixtures and selectors.
+- Bind independent numerical acceptance to the shared input/error-budget
+  policy. Exact protocol/frame checks do not establish numerical accuracy.
+- Confirm existing seams or scoped proof disposition for unreachable internal
+  failures; do not add private-state mutation solely to make a native test.

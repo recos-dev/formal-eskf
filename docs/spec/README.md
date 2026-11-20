@@ -184,6 +184,7 @@ decisions remain governed by each requirement's Status.
 ## Verification policy
 
 - [Verification and Traceability Policy](verification/assurance.md).
+- [Test Specification and Coverage Standard](verification/testing.md) (Draft), with the [core/runtime test design](verification/tests/README.md).
 - [C++ Function Inventory and Review Boundary](verification/source-inventory.md).
 - [C++ Static Analysis Policy](verification/static-analysis.md).
 

@@ -1,0 +1,126 @@
+# Gravity observation and IMU protection tests
+
+**Status:** Draft
+
+**Scope:** Portable accelerometer sampling/magnitude/conditions/fusion, IMU bias
+permissions, process-noise policies, bias limiting and vertical health. Hardware
+metadata, motion detection, integration owners and adapters are excluded.
+
+**Level and purpose:** Unit tests for each policy and numeric operation;
+portable component sequences for the SW-GRAVITY and SW-IMU capabilities.
+Existing executable tests are not the basis for this design.
+
+**Profiles:** Follow [shared profiles and oracle rules](../profiles.md).
+Numeric cases use binary32/binary64 and supported backends. Accelerometer fusion
+uses AHRS and INS; bias policies/noise use INS. Run actual correction/prediction
+sequences in every applicable numerical build option. Use all four independent
+whole-prior state/P aliases for fusion, and separate/in-place output for noise
+selectors. `AccelerometerSample` tests claim only the specified 10000 us profile.
+
+**Setup and oracle:** Independently construct tilted unit attitudes, PSD P and
+SPD V. Use analytically rotated vectors and a high-precision reference for
+integration, filtering and correction. A separate event ledger computes counters,
+timestamps and policy truth tables. Do not call production filters, permission
+helpers or observation functions to compute expected results. Compare all public
+history fields, and use identical future input sequences to detect hidden
+history changes after failures. Status/Boolean/mask/frame assertions are exact;
+numerical budgets follow the shared rules.
+
+**Regression:** Every listed boundary and transition becomes a deterministic
+regression fixture once implemented. Mutation sensitivity is stated in the
+oracle column. All executable bindings remain pending.
+
+## Operation allocation
+
+| Production header / public group | Cases / disposition |
+|---|---|
+| `accelerometer.hpp`: `AccelerometerMagnitude` construction/reset/update/initialized/filtered value | `TC-R-ACCELEROMETER-MAGNITUDE-01` through `04` |
+| `accelerometer.hpp`: `AccelerometerSample` construction/reset/update/result | `TC-R-ACCELEROMETER-SAMPLING-01` through `05` |
+| `accelerometer.hpp`: conditions/result records, `check_accelerometer_fusion_conditions` | `TC-R-ACCELEROMETER-CONDITIONS-01`, `02` |
+| `accelerometer.hpp`: AHRS/INS `fuse_accelerometer` and separate condition/fusion result | `TC-R-ACCELEROMETER-FUSION-01` through `03` |
+| `imu.hpp`: `ImuBiasInhibition` parameterized construction/update and result permissions | `TC-R-IMU-BIAS-INHIBITION-01` through `04` |
+| `imu.hpp`: `select_imu_process_noise`, `inhibit_bias_process_noise`, `limit_bias` and parameter records | Process-noise/bias rows below |
+| `vertical_acceleration_health.hpp`: constructor/reset/state/update and observation-slot records | `TC-R-VERTICAL-ACCELERATION-01` through `07` |
+| `tilt_alignment.hpp` | Ownership gap and candidate acceptance cases in [storage and alignment](storage-alignment.md) |
+| Portable SW-GRAVITY / SW-IMU compositions | Capability cases below; no module/replay sequence coverage claimed |
+
+## Gravity sampling and eligibility
+
+| Case ID | Requirement / clause | Conditions, inputs and action | Expected result and independent oracle | Executable test |
+|---|---|---|---|---|
+| TC-R-ACCELEROMETER-MAGNITUDE-01 | [R-ACCELEROMETER-MAGNITUDE](../../../requirements/runtime/gravity/magnitude.md), construction/seed/filter/reset | Construct; seed distinct finite body force; apply constant, step and opposing vectors; reset after history and reseed. Read both accessors without updating. | First vector is stored exactly; subsequent vector components follow the scalar-format fixed-alpha recurrence before squared norm. Opposing vectors cancel unlike magnitude filtering. Reset removes history; accessors are pure. Detects norm-first filtering and accidental reseed. | Pending |
+| TC-R-ACCELEROMETER-MAGNITUDE-02 | Same, strict gravity band | Set/reach filtered squared norm below/equal/above each encoded `(0.9 g)^2` / `(1.1 g)^2` boundary using independently checked scalar arithmetic; include zero, g, and constant horizontal acceleration that remains in band. | Only strict interior passes; successful out-of-band samples still advance filter. A numerical band pass is not labelled physical rest. If exact scalar boundary is unreachable by input construction, retain the boundary as a proof obligation rather than asserting an approximate equality. Detects inclusive thresholds or discarding rejected history. | Pending |
+| TC-R-ACCELEROMETER-MAGNITUDE-03 | Same, failure publication | Inject nonfinite coefficients in each axis before/after seeding; finite filter and squared-norm overflow; retry with a valid vector. | Prescribed non_finite_input/result, false band and invalid zero diagnostic; initialized/filter history unchanged. Common continuation matches unmodified control. Detects partial vector publication or consuming invalid input. | Pending |
+| TC-R-ACCELEROMETER-MAGNITUDE-04 | Same, units and filter cadence | Feed identical vector sequence through equal numbers of updates despite different external sample timestamps; compare against bias-subtracted/normalized negative-control inputs. | Magnitude component has no dt/bias/normalization behavior; counts, not external elapsed time, determine recurrence. Inputs remain unchanged. Detects hidden time scaling and removal of gravity magnitude. | Pending |
+| TC-R-ACCELEROMETER-SAMPLING-01 | [R-ACCELEROMETER-SAMPLING](../../../requirements/runtime/gravity/sampling.md), rotating increments | With 10000 us target, accumulate zero rotation/constant force, single-axis rotation/nonparallel force, and noncommuting angular increments. Use unequal legal integer periods. | Independent rotation matrices implement `D*dV_old + (dv+D*dv)/2`; divide by actual accumulated duration only on emission. Detects reversed rotation, omission of previous-body transport, estimator-bias subtraction and last-sample-only averaging. | Pending |
+| TC-R-ACCELEROMETER-SAMPLING-02 | Same, adaptive interval completion | Exercise steady 250 Hz, 400 Hz and 100 Hz inputs plus alternating periods; derive T/N/target/minimum in a separate recurrence from initial 5 ms. Visit count, duration and target comparisons at equality/adjacent legal microseconds where reachable. | Emission occurs exactly under the two specified predicates; each input belongs to one interval, partial results stay not-ready, no flush/invented 10 ms duration. Interval target is fixed at interval start. Detects always-100-Hz dispatch and recalculating a target mid-interval. | Pending |
+| TC-R-ACCELEROMETER-SAMPLING-03 | Same, clipping and unknown context | Accumulate every mask 0..7 across axes and -1 unknown before/after known masks; emit, then begin a fresh interval. | Known masks OR; unknown is sticky within the interval but clears afterwards; average and magnitude derive only from actual samples. Detects replacing unknown clipping with clear or carrying an old mask into next sample. | Pending |
+| TC-R-ACCELEROMETER-SAMPLING-04 | Same, atomic failure and precedence | From empty/partial/just-before-emission history: period 0,1,50000,50001; mask -2/-1/7/8; nonfinite IMU and failing quaternion threshold/finite arithmetic. Include simultaneous nonfinite IMU and invalid period. | Exact prescribed validation/status order; failures preserve interval, timing average and magnitude history, and publish no sample. Retry/continuation matches an untouched control. Detects partially consumed increments and LPF updates on failed emission. | Pending |
+| TC-R-ACCELEROMETER-SAMPLING-05 | Same, reset and downstream independence | Partial interval → explicit reset on caller-announced gap/source/calibration change → new source; emit while downstream fusion disabled/rejected. | No old increment/mask/filter history leaks after reset; emitted raw average is distinct from LPF vector; magnitude updates once per emission regardless of downstream acceptance. No held prediction sample is accumulated by the portable driver. Detects feedback-dependent sampling and stale-source mixing. | Pending |
+| TC-R-ACCELEROMETER-CONDITIONS-01 | [R-ACCELEROMETER-CONDITIONS](../../../requirements/runtime/gravity/conditions.md), Boolean eligibility | Enumerate enabled, tilt aligned, horizontal aiding, at-rest and in-band Booleans; every three-axis clipping mask; supply successful magnitude evidence. | Independent Boolean expression: active = enabled AND (band OR rest) AND NOT horizontal-aiding AND tilt; eligible = active AND no clipping. Rest bypasses only the band; clipping leaves active true. Detects conflating activation with sample eligibility. | Pending |
+| TC-R-ACCELEROMETER-CONDITIONS-02 | Same, failed evidence and unused diagnostics | Supply each failing magnitude status while at rest/enabled; independently poison unused diagnostic fields in successful evidence. | Failure status propagates and both flags false; unused diagnostics do not become an extra gate. Inputs pure, no history. Detects rest bypassing failure and accidental validation beyond the condition contract. | Pending |
+| TC-R-ACCELEROMETER-FUSION-01 | [R-ACCELEROMETER-FUSION](../../../requirements/runtime/gravity/fusion.md), condition-first transaction | Failed magnitude, ineligible successful condition and eligible condition; put invalid later-only state/P/V/threshold into first two branches. | Failed magnitude→failed with source status; ineligible→rejected/success without correction or unused-input validation. No state/P output changes. Eligibility remains independent from later numerical outcome. Detects eager correction or treating disabled fusion as failure. | Pending |
+| TC-R-ACCELEROMETER-FUSION-02 | Same, actual observation and bias forwarding | Eligible AHRS with calibrated force; INS with nonzero prior b_a and default/all-enabled/all-disabled plus each single-enabled/single-disabled learning mask. Use nonunit-magnitude gravity and correlated V, nonzero residual and tilted q. | Independent E-OBS/E-CORRECT reference uses raw interval measurement and subtracts INS bias exactly once; correct gravity/Jacobian/noise units; no innovation gate added. Both outputs match for all aliases. Detects using the LPF vector, duplicate bias subtraction or normalization. | Pending |
+| TC-R-ACCELEROMETER-FUSION-03 | Same, downstream failure and ownership | Eligible condition followed by every independently reachable correction failure, then valid retry; keep an already-updated magnitude monitor alongside the call. | failed/status propagated, state/P rollback for all aliases, conditions may still show eligible. Magnitude history is neither updated nor rolled back by fusion. Detects conflating estimator transaction with policy history transaction. | Pending |
+
+## Bias and process-noise policies
+
+| Case ID | Requirement / clause | Conditions, inputs and action | Expected result and independent oracle | Executable test |
+|---|---|---|---|---|
+| TC-R-IMU-BIAS-INHIBITION-01 | [R-IMU-BIAS-INHIBITION](../../../requirements/runtime/imu/bias-inhibition.md), peak recurrence | Construct with valid explicit parameters; biased sensor impulses followed by lower values. Use distinct force/angular intervals below/equal/above tau; cross each peak limit at equality/neighbours. | Independent bias-subtracted norms and max/linear-decay recurrence from zero; dt≥tau erases only past peak, never current measurement. Strictly excessive peak inhibits immediately; no startup timer. Detects shared dt, exponential decay or equality errors. | Pending |
+| TC-R-IMU-BIAS-INHIBITION-02 | Same, permissions truth table | Cross both enable flags, high dynamics, vertical fault, all clip masks, rest, fake height/position. Use identity and tilted attitudes placing each `abs(R(2,i))` below/at/above 0.966 where representable. | Per-axis Boolean oracle; gyro follows only its enable, accel rest bypasses observability only, fake height dominates fake position outside rest. Detects body-axis swap, rest bypass of faults or gyro coupling to accel dynamics. | Pending |
+| TC-R-IMU-BIAS-INHIBITION-03 | Same, failure history | Invalid finite/domain/nonfinite intervals, parameters, IMU/bias coefficients, masks; overflow norm/rotation. Perform valid update, failing update, then a shared valid continuation. | Disabled permissions and prescribed failing status; neither peak changes. Failure-result zero placeholders are not treated as stored peaks. All borrowed state/IMU input is pure. Detects half-updated envelopes and using failed permissions as successful evidence. | Pending |
+| TC-R-IMU-BIAS-INHIBITION-04 | Same, missing samples and gravity | Separate controllers receive the same actual valid update sequence with and without external idle gaps; test force including gravity and a new controller session. | No hidden wall-clock decay, invented sample or gravity subtraction; construction starts zero peaks. Compare sequence oracle, not physical observability claims. Detects resetting history simply because a sample was absent. | Pending |
+| TC-R-IMU-PROCESS-NOISE-01 | [R-IMU-PROCESS-NOISE](../../../requirements/runtime/imu/process-noise.md), replacement selection | Enumerate fault Boolean × all eight clipping masks; configured axis variances both smaller/larger than fault variance and zero. | Direct selection oracle replaces selected accel variances even when this lowers them; gyro and both bias vectors exact unchanged. Compare separate/in-place outputs. Detects max-instead-of-replace and using variance as standard deviation. | Pending |
+| TC-R-IMU-PROCESS-NOISE-02 | Same, validation and restoration | Corrupt fault variance and each of 12 configured coefficients, including replaced entries; test specified fault-first priority. Then clear fault/clipping, selecting again from original configured noise. | Exact error status and whole-output rollback; restoration immediate. No retained noise state or extra rotation/dt multiplication. Detects skipping validation of replaced fields and compounding previous selection. | Pending |
+| TC-R-BIAS-PROCESS-NOISE-01 | [R-BIAS-PROCESS-NOISE](../../../requirements/runtime/imu/bias-process-noise.md), six comparisons | Set six prior bias diagonals independently below/equal/above corresponding selected IMU variance, including zero; distinct bias intensities. | Independent coefficient table keeps intensity only for strict less-than; equality zeros that axis. Both measurement vectors and all unselected intensity axes exact unchanged. Detects wrong offsets, comparison direction and changing measurement noise. | Pending |
+| TC-R-BIAS-PROCESS-NOISE-02 | Same, consumed inputs and alias rollback | Invalid/nonfinite each noise coefficient and each consumed P diagonal; other P entries arbitrary including nonfinite; separate and whole-noise-alias output. | Validate all consumed coefficients even inhibited ones; ignore unused P entries; preserve output/state/P on error. Do not assert universal priority for unrelated simultaneous invalid values. Detects both overvalidation and missing inhibited-axis validation. | Pending |
+| TC-R-BIAS-PROCESS-NOISE-03 | Same, pre-increment/release semantics | Bias variance just below threshold with sufficient positive intensity to cross it in one prediction; next step; then an independent correction reducing variance below threshold. Use nonzero P cross blocks. | Identity bias transition retains prior diagonal before selected intensity*dt. First increment can cross, next inhibits without reducing existing P, correction releases immediately. Independent prediction/Joseph oracle detects hard clamping, dt² bias scaling or hysteresis. | Pending |
+| TC-R-BIAS-LIMITS-01 | [R-BIAS-LIMITS](../../../requirements/runtime/imu/bias-limits.md), per-axis clamp | All six biases below/equal/inside/above ±limits, signed zeros and zero limits; distinct non-bias state values; some inhibited axes. | Direct scalar clamp oracle; only six biases change, in-range representations retained, no vector-norm limit. Limits apply even to inhibited out-of-range priors. Detects hidden permission gating and unwanted nominal changes. | Pending |
+| TC-R-BIAS-LIMITS-02 | Same, full validation before writes | Each invalid limit/bias coefficient, including an invalid last axis after earlier axes need clamping; nonfinite unrelated nominal fields. | non_finite_input before negative-limit domain error as specified; whole state unchanged. Unrelated fields not consumed or repaired. Detects early partial clamp and inappropriate whole-state validation. | Pending |
+| TC-R-BIAS-LIMITS-03 | Same, no latch and correction independence | Clamp an out-of-range prior, repeat; apply independent inward correction and limit again; preserve a separate covariance snapshot. | Idempotent clamp, immediate inward release, P unchanged by limiter; no rejected measurement or reset implied. Detects saturation latch or covariance edits. | Pending |
+
+## Vertical acceleration health
+
+| Case ID | Requirement / clause | Conditions, inputs and action | Expected result and independent oracle | Executable test |
+|---|---|---|---|---|
+| TC-R-VERTICAL-ACCELERATION-01 | [R-VERTICAL-ACCELERATION](../../../requirements/runtime/imu/vertical-health.md), initialization and signed source evidence | Constructor/reset and updates with none/each/all active slots. Positive/negative innovation; S below/equal/above fixed FLT_EPSILON in both scalar formats, plus invalid coefficients in inactive slots. | Below-floor active sources ignored; equality consumed; signed innovation/sqrt(S), not abs or gate ratio. No-source low evidence is not labelled proof of health. Inactive garbage ignored. Detects DBL_EPSILON substitution and residual-sign inversion. | Pending |
+| TC-R-VERTICAL-ACCELERATION-02 | Same, likelihood thresholds/reference grouping | Ratios at 1 and 3 and one-sided neighbours; pair every >3 slot with every >1 slot, including GNSS height+velocity and range+vision combinations of the same type. | Independent pressure/GNSS/ground truth table gives high only across distinct types, medium for a lone >3, otherwise low. Equality does not exceed. Detects counting two correlated channels as independent evidence. | Pending |
+| TC-R-VERTICAL-ACCELERATION-03 | Same, clipping recurrence | Choose N=2, odd N, and larger N via interval; repeated clipped/unclipped sequences, sustained clipping at N, and a changed N below stored count. Exercise each axis then all axes. | Counter oracle increments only clipped count<N, otherwise decrements positive count; N/2 integer warning, any critical/all warning bad clipping, Z warning frequent clipping. Detects intuitive-but-wrong saturating/sliding-window implementation. | Pending |
+| TC-R-VERTICAL-ACCELERATION-04 | Same, fault and independent last-good timing | High evidence; medium evidence with/without frequent clipping; low evidence; bad→good at 3 s minus/equal/plus 1 us, then renewed bad. | bad_sample predicate matches table; last-bad refresh only bad, last-good refresh every nonbad successful update even while held fault true; hold clears at ≥3 s. Near-UINT64_MAX translation gives same outcome. Detects conflating fault hold with instantaneous health. | Pending |
+| TC-R-VERTICAL-ACCELERATION-05 | Same, time/interval/conversion validation | Zero/duplicate/backward time; nonfinite/nonpositive interval; reciprocal nonfinite and values around [2,65536); unknown clipping; simultaneous faults to exercise prescribed priority. | Exact time-first and interval/clipping/conversion status; no uint16 overflow or invented clear clipping. Entire history preserved; corrected retry at failed timestamp accepted. Detects unsafe conversion and time consumption on failure. | Pending |
+| TC-R-VERTICAL-ACCELERATION-06 | Same, all active slots and first failure | Individually bad input/negative S/root failure/ratio overflow in every slot, including a later bad slot after earlier evidence already establishes high likelihood. | All required sources validated in prescribed order; first failure status, no counter/timestamp publication. Inactive bad slot stays irrelevant. Use independent error-order oracle and common continuation. Detects early-exit evidence shortcut and partial history update. | Pending |
+| TC-R-VERTICAL-ACCELERATION-07 | Same, reset and cached evidence | Update with repeated cached active diagnostics while IMU times advance; then reset on explicit gap/unknown-metadata/source/frame interruption, restart with current valid inputs. | No invented source-freshness timeout; cached active rejected innovations remain eligible evidence. Reset clears all counters/verdict times; old verdict cannot become current after failure. Physical freshness remains caller-owned. Detects inappropriate monitor-owned expiry. | Pending |
+
+## Portable capability composition
+
+| Case ID | Requirement / clause | Conditions, inputs and action | Expected result and independent oracle | Executable test |
+|---|---|---|---|---|
+| TC-SW-GRAVITY-01 | [SW-GRAVITY](../../../requirements/software/gravity-aiding.md), sample-to-correction sequence | Actual IMU intervals → sampler emission → same-horizon condition check → permitted AHRS/INS correction. Include partial intervals, disabled fusion, rest override, horizontal aiding, clipping and correction failure. | Event ledger permits correction only for emitted eligible sample; uses actual average, not filtered vector. Magnitude advances once per emission even when no correction; estimator updates only fused. Independent averaging and correction reference detect duplicate sample consumption. | Pending |
+| TC-SW-GRAVITY-02 | Same, discontinuity and context | Partial old-source interval → explicit gap/source/calibration reset → new samples; distinguish known rest from unknown/not-rest and actual unknown clip mask. | No old increments/masks cross reset; missing data never produces a zero/held observation. Current context controls eligibility without creating physical-rest knowledge. Platform detection of these events is excluded. Detects fabricated observations/context. | Pending |
+| TC-SW-IMU-01 | [SW-IMU](../../../requirements/software/imu-protection.md), ordered controls | Preceding vertical-health verdict + current clipping → select measurement noise from config → select bias noise using that result → prediction; evaluate new health after current diagnostics; permission update uses prior bias/attitude and separate actual periods. | Independent pipeline computes selected Q_i with sampled noise*dt² and bias intensity*dt; body rotation appears once. A changed selected variance can change bias-noise inhibition; new fault affects following prediction. Detects stale/original threshold and wrong-horizon fault use. | Pending |
+| TC-SW-IMU-02 | Same, independent protection meanings | Hold a nonzero bias with learning disabled while process noise is enabled; limit out-of-range prior; recover dynamics/health and permit an inward correction. Include a failed policy update. | Independent model distinguishes held gain rows, selected process noise, bias value clamp and health timing; none is silently substituted for another. Failed evidence cannot invent valid permissions; core state/P obey each invoked operation's own transaction. Detects conflated protection switches. | Pending |
+
+## Open decisions and exclusions
+
+- Non-10000-us `AccelerometerSample` template instantiations are legal C++ but
+  have no complete behavioral requirement here. Their cadence/rounding acceptance
+  needs an explicit requirement extension before coverage is claimed.
+- TiltAlignment's partial specification and candidate tests are recorded in
+  [storage and alignment](storage-alignment.md); successful condition/fusion
+  tests must supply a caller-established alignment premise in the meantime.
+- Physical rest, observability, fault detection sensitivity, clipping metadata
+  truth and flight accuracy need deployment evidence. Passing deterministic
+  policy tests does not establish those properties.
+- Shared numerical error-budget gaps apply to finite arithmetic/filtering.
+  A copied implementation recurrence is not an independent numerical oracle;
+  exact state-machine checks and numerical accuracy claims remain distinct.
+
+## Review Pending
+
+- Approve the scenario partitions and requirement links before implementation;
+  each Pending family still needs explicit executable fixtures and selectors.
+- Bind independent numerical acceptance to the shared input/error-budget
+  policy. Exact protocol/frame checks do not establish numerical accuracy.
+- Confirm existing seams or scoped proof disposition for unreachable internal
+  failures; do not add private-state mutation solely to make a native test.

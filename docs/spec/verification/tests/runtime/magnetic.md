@@ -1,0 +1,143 @@
+# Magnetic qualification, fusion and recovery tests
+
+**Status:** Draft
+
+**Scope:** Portable field/reference/heading monitors, magnetic lifecycle,
+reset-only filtering, gated magnetic correction and heading reset. Geographic
+lookup, calibration, module/replay scheduling and reset publication are excluded.
+
+**Level and purpose:** Unit tests of each numerical operation and state machine;
+component tests of portable SW-MAGNETIC call sequences. This is a fresh design
+from requirements, not an inventory of existing executable tests.
+
+**Profiles:** Follow [shared profiles and oracle rules](../profiles.md).
+All numerical families use binary32/binary64 and supported backends; fusion and
+reset use AHRS and INS. Actual correction transactions exercise both magnetic
+tilt options and applicable codegen/reset options. Lifecycle integer/Boolean
+sequences need one run per implementation. State/P transactions use all four
+independent whole-prior aliases and INS permission masks where stated.
+
+**Setup and oracle:** Use known NED/body fields, independent rotation matrices,
+nonzero tilt, distinct declination/inclination, nonzero cross-covariance and
+correlated SPD measurement noise. Compute geometric expectations using an
+independent high-precision reference and analytic axis cases; do not call
+production quaternion/field/heading helpers for expected results. Lifecycle
+oracles are declarative event tables recording activity, consumable permission,
+recovery and actual progress separately. Snapshot public state; test hidden
+history via identical future continuations. Exact status/frame/clock assertions
+and numerical accuracy criteria follow the shared profiles.
+
+**Regression:** Each row defines a stable case family with mandatory partitions.
+Retain deterministic field and event fixtures; add future discovered defects to
+the relevant family. All executable bindings are pending.
+
+## Operation allocation
+
+| Production header / public group | Cases / disposition |
+|---|---|
+| `magnetic_field.hpp`: parameter/check/failure records, `check_magnetic_field` | `TC-R-MAGNETIC-FIELD-01` through `06` |
+| `magnetic_reference.hpp`: constructor/reset/state/update and checked/changed result | `TC-R-MAGNETIC-REFERENCE-01` through `05`; revision exhaustion disposition below |
+| `magnetometer.hpp`: `MagneticHeading` constructor/state/reset/reset_acceleration/reset_heading/update_acceleration/update | `TC-R-MAGNETIC-HEADING-01` through `06` |
+| `magnetometer.hpp`: `MagnetometerFilter` constructor/reset/update/initialized/field_b | `TC-R-MAGNETOMETER-FILTER-01` through `03` |
+| `magnetometer.hpp`: AHRS/INS `fuse_magnetometer` and separate field/fusion diagnostics | `TC-R-MAGNETOMETER-FUSION-01` through `04` |
+| `magnetometer.hpp`: AHRS/INS `reset_magnetic_heading`, including delta quaternion | `TC-R-MAGNETOMETER-RESET-01` through `04` |
+| `magnetometer_lifecycle.hpp`: constructor/reset with optional source/state/update/record_fusion/record_reset/restart | `TC-R-MAGNETOMETER-LIFECYCLE-01` through `13` |
+| Portable capability composition | `TC-SW-MAGNETIC-01` through `03`; platform bindings excluded |
+
+## Field plausibility and model reference
+
+| Case ID | Requirement / clause | Conditions, inputs and action | Expected result and independent oracle | Executable test |
+|---|---|---|---|---|
+| TC-R-MAGNETIC-FIELD-01 | [R-MAGNETIC-FIELD](../../../requirements/runtime/magnetic/field.md), geometry and sign | Identity and tilted q; body field generated from independent NED geometry; North/East/Down examples and heading across ±pi. Observation and health references intentionally differ. | Measured field rotates body→NED; strength/inclination use Down-positive geometry; heading uses observation reference and measured-minus-reference wrap. Analytic/reference calculations detect transpose, frame, sign and reference substitution errors. | Pending |
+| TC-R-MAGNETIC-FIELD-02 | Same, all selection/reference partitions | All eight strength/inclination/require-reference flag combinations × absent/available health reference; available pointer disjoint, equal to observation, or aliased to body input. Include unused invalid health data when both physical checks disabled. | Selection table controls which data is consumed; required missing reference rejects only selected checks; optional fallback strength inclusive 5..85 µT, no fallback inclination. Checked flags/reference-strength placeholders match meaning. No implicit observation substitution. Detects treating observation availability as WMM availability. | Pending |
+| TC-R-MAGNETIC-FIELD-03 | Same, threshold equality and horizontal guard | Strength/inclination/heading errors below/equal/above tolerances; horizontal magnitudes below/equal/above minimum; heading-observable true/false; vertical-only health reference. | Upper equality and minimum equality pass. Horizontal guard remains active regardless of physical-check flags/tilt option; vertical health reference alone does not violate observation geometry. Heading false skips only heading test. Detects disabled-check bypass of essential geometry. | Pending |
+| TC-R-MAGNETIC-FIELD-04 | Same, validation and arithmetic failures | Default/invalid parameters, each consumed vector nonfinite/zero; subnormal total squared strength, finite rotation/norm overflow; checked scalar failure via existing seam where needed. | Prescribed status, accepted false, invalid zero diagnostics; inputs pure. Unavailable/unselected health data ignored. Exact stage/domain oracle detects partially valid diagnostics and silent normalization/clamping. | Pending |
+| TC-R-MAGNETIC-FIELD-05 | Same, rejection versus numerical error | Finite physically rejected field with every independent named failure; combine failures after successful arithmetic. Then supply successful field after rejection. | Rejection is success status with valid diagnostics; fresh call has no inherited failure bits. Numerical failure remains distinct. Independent threshold table detects conflating accepted/valid/status or stale flags. | Pending |
+| TC-R-MAGNETIC-FIELD-06 | Same, same geometry under representation changes | q and -q, known common navigation yaw rotation applied consistently to attitude/references, and finite alternate health reference while observation is fixed. | Geometric plausibility transforms consistently; changing health-only reference may change health verdict but not computed observation heading relation. Pair with known-answer geometry, not metamorphic checks alone. Detects quaternion-sign dependence and health/observation role mixing. | Pending |
+| TC-R-MAGNETIC-REFERENCE-01 | [R-MAGNETIC-REFERENCE](../../../requirements/runtime/magnetic/reference.md), construction and NED conversion | Construct/reset; adopt D=0, ±pi/2, ±pi and I=0, ±pi/2 with positive B; general D/I; use independent trig reference. | Reference starts absent/id0; successful first adoption id1 with `B[cos I cos D, cos I sin D, sin I]`; reset clears model/clocks. Axes/strength within shared bounds. Detects degrees/radians, East/Down sign and field ordering. | Pending |
+| TC-R-MAGNETIC-REFERENCE-02 | Same, lookup schedule and skipped values | No position/no origin; first valid position; 10s−1/exact/+1 after check; origin update before interval including position_valid=false. Supply invalid model values on skipped checks. | Skips consume only update clock and do not validate/adopt field; origin requests immediate check. Strict schedule computed by elapsed subtraction. `checked` and `changed` are distinct. Detects stale check clock and conflating origin event with frame reset. | Pending |
+| TC-R-MAGNETIC-REFERENCE-03 | Same, adoption change thresholds | D/I differences at one encoded degree and neighbours; B at 1 µT and neighbours; several subthreshold changes accumulating relative to adopted field; ±pi cut. | Strictly exceeding any bound adopts and increments ID; equality retains model but advances check clock. Compare direct angle difference, not wrapped difference. Detects comparison against last observed sample or periodic-angle assumption. | Pending |
+| TC-R-MAGNETIC-REFERENCE-04 | Same, failure atomicity and retry | Zero/duplicate/backward timestamp, invalid D/I/B and failing scalar arithmetic; after failure correct the sample at the same timestamp. Include times near UINT64_MAX. | Failure preserves all reference/revision/timing history, allows corrected retry under clock rule; `changed=false` on failure. Independent snapshot/continuation distinguishes failed check from successful skip. Detects advancing clocks before adoption completes. | Pending |
+| TC-R-MAGNETIC-REFERENCE-05 | Same, revision exhaustion | Establish the public initialization/adoption invariant; review the maximum uint32 revision transition under the formal/source-proof profile rather than billions of native updates or a private-state hack. | Exhaustion must fail before revision wrap and preserve model/clocks. This is an explicit non-native-test obligation with proof tied to current source/profile, not a native pass. Detects an unreviewed overflow boundary. | Pending — source proof |
+
+## Heading consistency and reset filter
+
+| Case ID | Requirement / clause | Conditions, inputs and action | Expected result and independent oracle | Executable test |
+|---|---|---|---|---|
+| TC-R-MAGNETIC-HEADING-01 | [R-MAGNETIC-HEADING](../../../requirements/runtime/magnetic/heading.md), acceleration vector LPF | Begin at zero, unequal variable dt with N/E impulses and opposite accelerations; independently vary finite Down; cross excitation threshold at equality/neighbours. | Independent vector recurrence uses dt/(1s+dt), then N/E norm; opposite forces cancel and finite Down has no numeric contribution. Observable recomputed on magnetic update with aiding, strictly above limit. Detects norm-first filter, fixed dt and fake vertical excitation. | Pending |
+| TC-R-MAGNETIC-HEADING-02 | Same, heading innovation/filter/latch | Known positive/negative heading offsets and ±pi cut; repeated samples bring filtered innovation below/equal/above noise bound; toggle horizontal aiding and excitation. | Wrapped measured-field minus reference heading filtered once/sample with nominal fixed alpha. Abs(filtered) ≥noise clears; otherwise aided strict excitation acquires; otherwise retains prior latch. Independent wrap/filter table detects sign, inequality and unwanted automatic acquisition. | Pending |
+| TC-R-MAGNETIC-HEADING-03 | Same, weak field and lost alignment | Established consistency/history; unaligned update; separately weak measured/reference horizontal field and exactly minimum; restore valid field. | Unaligned success clears heading history/latch after input validation. Weak field clears latch and current innovation validity/value, retains filtered history. Equality sufficient. Detects fabricated zero-heading evidence and improper history erasure. | Pending |
+| TC-R-MAGNETIC-HEADING-04 | Same, partial and full reset frames | Establish nonzero acceleration/heading histories; call reset_acceleration, reset_heading, full reset; read state repeatedly. | Accel reset clears only accel/observability, preserving heading; successful-heading-reset notification zeros heading history and sets consistent while preserving accel/observable; full reset restores initial false consistency. Exact frame oracle detects partial-reset overreach. | Pending |
+| TC-R-MAGNETIC-HEADING-05 | Same, validation/failure history | Each invalid parameter, nonfinite q/field/acceleration including Down, invalid dt; finite geometry/filter overflow and scalar failures; repeat while heading_aligned=false. | Failed call preserves all history; finite unused Down is a no-op but nonfinite Down is rejected. Heading inputs validate before unaligned short circuit; no valid verdict from failure. Common continuation detects half-published filter state. | Pending |
+| TC-R-MAGNETIC-HEADING-06 | Same, clocks/source ownership | Identical consumed magnetic/IMU sequences with external idle intervals; explicit acceleration reset on gap and full session reset on caller source/frame repair. | No implicit timestamps, source switch or reset acknowledgment invented; magnetic sample count controls heading LPF, actual dt controls accel LPF. Detects hidden elapsed-time scaling and assuming source change proves consistent yaw. | Pending |
+| TC-R-MAGNETOMETER-FILTER-01 | [R-MAGNETOMETER-FILTER](../../../requirements/runtime/magnetic/reset-filter.md), seed/recurrence/accessors | Construct, first vector, constant/step/opposite vectors, explicit reseed, reset then first vector; check initialized/field accessors. | First/reseed exact copy; ordinary updates componentwise fixed-alpha recurrence; reset discards history; queries pure. Independent scalar recurrence detects hidden bias/magnitude filtering or wrong reseed precedence. | Pending |
+| TC-R-MAGNETOMETER-FILTER-02 | Same, failure preservation | Invalid/nonfinite input and finite recurrence overflow before/after initialization, including reseed=true. Follow with same valid continuation. | Exact error status; initialized/value preserved on failure, even failed reseed. Detects publishing source-change seed before validating it. | Pending |
+| TC-R-MAGNETOMETER-FILTER-03 | Same, reference-only versus sensor switch | Continue ordinary update across reference revision; explicitly reseed for physical sensor/calibration change; normal fusion consumes raw sample while reset consumes filter output. | Reference-only change preserves LPF; source change starts with new field; reset filter is not used as normal correction measurement. Caller sequence oracle detects calibration mixing and unnecessary filter reset. | Pending |
+
+## Magnetic correction and heading reset
+
+| Case ID | Requirement / clause | Conditions, inputs and action | Expected result and independent oracle | Executable test |
+|---|---|---|---|---|
+| TC-R-MAGNETOMETER-FUSION-01 | [R-MAGNETOMETER-FUSION](../../../requirements/runtime/magnetic/fusion.md), field-first stages | Nonfinite nominal state; field numerical failure; finite field rejection with invalid later P/V/sigma; field acceptance followed by gate rejection. | Overall decision/status and separate diagnostic validity follow exact stage table; no innovation/correction before field acceptance, no correction after gate rejection. State/P unchanged. Detects eager validation/correction and mixed field/innovation status. | Pending |
+| TC-R-MAGNETOMETER-FUSION-02 | Same, full gate and protected correction | Tilted AHRS/INS, correlated V and cross-coupled P, nonzero residual; both tilt modes and default/all-enabled/all-disabled plus each single-enabled/single-disabled INS bias mask; exhaustive gain-mask interactions belong to the core tests. Compare q and -q. | Independent full H/P gate is invariant to correction projection and masks; accepted update follows the selected projected/full gain with the same gain in Joseph covariance. Heading reference is m_n, not health reference. Detects projected-H gate or bypassing magnetic correction. | Pending |
+| TC-R-MAGNETOMETER-FUSION-03 | Same, diagnostics and transaction failure | Fail residual arithmetic, gate and downstream correction after valid preceding stages; exercise four aliases and all allowed health-reference pointer arrangements. | Only fused publishes state/P; field evidence survives later failures, gate evidence survives downstream correction failure. Other borrowed data pure; no stale diagnostics. Detects partial publication and dropped diagnostic evidence. | Pending |
+| TC-R-MAGNETOMETER-FUSION-04 | Same, optional health geometry independence | Hold observation m_n/raw m_b fixed; absent health reference, explicitly shared m_n, and distinct trustworthy health reference yielding same accepted verdict. | Under matched accepted verdict the independent observation/Joseph oracle predicts the same correction; health geometry only affects qualification/diagnostics. Detects accidentally feeding health reference to H or residual. | Pending |
+| TC-R-MAGNETOMETER-RESET-01 | [R-MAGNETOMETER-RESET](../../../requirements/runtime/magnetic/heading-reset.md), navigation-Down left reset | AHRS/INS with nonzero roll/pitch and positive/negative heading difference, wrap boundary and zero difference; distinct non-attitude nominal fields. | Independent navigation-Down rotation aligns horizontal field and preserves tilt; delta quaternion left-composes with prior, normalizes, preserves all other nominal fields. Compare physical rotations rather than arbitrary q sign. Detects body-Z/right-multiplication reset. | Pending |
+| TC-R-MAGNETOMETER-RESET-02 | Same, covariance transport/floor | Dense PSD P with attitude/other cross blocks; yaw variance 0, below/equal/above 0.01². Use strongly tilted prior and after attitude. | Independently form A=R_after^T C R_before and u=R_after^T e_D; attitude/cross blocks match equations, other block exact retained, yaw floor and symmetrization agree. Detects clearing body-Z rows or using only new/old frame. | Pending |
+| TC-R-MAGNETOMETER-RESET-03 | Same, validation/failure frame | Nonfinite consumed inputs, asymmetric P, negative diagonal/yaw variance, bad horizontal/normalization threshold, weak field and finite arithmetic overflow; downstream scalar/SO3 failure controls when otherwise unreachable. | Prescribed status; state/P/delta all unchanged for four aliases; a computed negative attitude variance gives not_positive_definite. Caller PSD/unit assumptions are not weakened into repair guarantees. Detects partial reset and delta publication before success. | Pending |
+| TC-R-MAGNETOMETER-RESET-04 | Same, repeated reset and action purity | Successful reset, then same measured/reference field with updated state; independently compare covariance to reset equation again. | Second applied heading delta is zero within declared numerical bounds; covariance follows reset equation, never fabricated lifecycle progress. Input fields pure. Detects stale prior/delta reuse without assuming bitwise covariance idempotence. | Pending |
+
+## Magnetic lifecycle
+
+For each timeline use explicit sample and horizon timestamps; expand strict
+thresholds at deadline−1, deadline and deadline+1 microseconds. Use table models
+with separate session, health, source, permission and progress fields. The
+controller owns no estimator state/P or physical field data.
+
+| Case ID | Requirement / clause | Conditions, inputs and action | Expected result and independent oracle | Executable test |
+|---|---|---|---|---|
+| TC-R-MAGNETOMETER-LIFECYCLE-01 | [R-MAGNETOMETER-LIFECYCLE](../../../requirements/runtime/magnetic/lifecycle.md), initialization/start qualification | Construct/reset with/without seeded source; enabled/ready samples 1..5, health duration zero/positive, strict health boundary and sample age around maximum interval; starting_allowed toggles. | At least four consumed enabled samples plus required current/stable/health/freshness conditions grant one start attempt; no active/start/fuse timestamp before actual success. First enabled sample emits filter_reset once. Detects counting permission as fusion and missing startup filters. | Pending |
+| TC-R-MAGNETOMETER-LIFECYCLE-02 | Same, feedback/single-use semantics | Granted startup/active fuse followed by fused/rejected/failed; wrong sample, invalid enum, duplicate feedback and update before feedback. | Only actual fused starts/refreshes progress; startup rejection remains inactive; failure latches repair. Feedback consumes one instruction; invalid feedback preserves metadata. Detects fabricated success or reused sample permission. | Pending |
+| TC-R-MAGNETOMETER-LIFECYCLE-03 | Same, active field rejection and data stops | Established session; field reject then good field; disable/readiness loss; no-data at two-interval equality/neighbours; fresh restart. | Rejection inhibits but retains active session; subsequent good sample need not repeat startup checks. Ordinary stops retain health/count/fusion history; no-data does not fabricate field failure. Qualified data may restart without explicit repair. Detects unnecessary requalification or permanent timeout latch. | Pending |
+| TC-R-MAGNETOMETER-LIFECYCLE-04 | Same, post-attempt fusion timeout | Active session overdue by equality/+1; current fused/rejected/failed/field-rejected attempt; horizontal aiding × rest; inactive startup rejections. | Success refreshes before deadline test; >timeout with aided motion stops ordinarily, otherwise requests recovery; no deadline for inactive attempts and no-data follows recency branch. Detects before-attempt timeout or forcing every timeout into reset. | Pending |
+| TC-R-MAGNETOMETER-LIFECYCLE-05 | Same, timeout reset qualification and cancellation | Pending timeout, good/bad/fresh/stale sample, stable/unstable start; requalify field health; restore horizontal aiding without rest. | Reset only with explicit fresh accepted qualified sample and allowed context; no-data revokes instruction. Restored aiding cancels timeout recovery into ordinary stop/retry; bad field cannot reset immediately. Detects unsafe blind reset. | Pending |
+| TC-R-MAGNETOMETER-LIFECYCLE-06 | Same, actual reset acknowledgment | Granted reset; success/failure, wrong sample and duplicate; existing session versus source reinitialization. | Success updates last-reset, preserves actual last-fuse and existing-session start, consumes instruction; new source session starts at reset time. Failure latches reset_failed; no second correction on same sample. Detects fake fusion progress and inconsistent session start. | Pending |
+| TC-R-MAGNETOMETER-LIFECYCLE-07 | Same, heading consistency and alignment | Aided active session with inconsistent heading; timeout/reference reset while at rest; heading_aligned=false with/without source recovery or numerical latch; restore aligned/consistent. | Inconsistency inhibits ordinary aided correction without resetting health/progress; it blocks aided timeout/reference yaw reset. Explicit source alignment retains its own rule; lost alignment requires actual qualified reset and cannot bypass known-flight/numerical repair. Detects treating consistency as alignment. | Pending |
+| TC-R-MAGNETOMETER-LIFECYCLE-08 | Same, sensor/calibration changes | Change device ID and calibration independently during inactive/active state, with pending feedback; new four-sample qualification in ground/in-air/unknown flight state, aided/unaided contexts. | Source progress/count reset and old permission revoked, field-failure clock retained, one filter reseed. Ground or latched lost-alignment requires reset; unknown waits; allowed in-air recovery can grant ordinary startup. Takeoff/aiding cannot erase required alignment. Detects sensor identity as automatic repair. | Pending |
+| TC-R-MAGNETOMETER-LIFECYCLE-09 | Same, reference revision change | Same physical source/new reference ID during aided motion, unaided flight and rest; pending timeout/source/numerical recovery; restore aiding. | Reference-only transition retains LPF/count/health/progress; aided motion uses ordinary gate, unaided/rest may request qualified reset; source/numerical reasons dominate; pending reference reset can cancel into stop/retry. Detects source/reference conflation. | Pending |
+| TC-R-MAGNETOMETER-LIFECYCLE-10 | Same, numerical repair/restart/reset | Latch fusion_failed/reset_failed, then good field/source switch/condition toggles; invoke restart after explicit repair; separately reset with seed source/new timeline. | Numerical latch persists until repair; restart clears session/health/count while preserving source/time/config watermarks; full reset clears timeline. Reset acknowledgment is not replaced by restart. Detects retry loops that hide numerical failure. | Pending |
+| TC-R-MAGNETOMETER-LIFECYCLE-11 | Same, invalid update frame and precedence | Zero/changed durations, interval>UINT64_MAX/2, zero/backward/duplicate/future times, zero new source ID, invalid flight enum; combine duration/time faults; Sample{} with invalid ignored payload. | Prescribed parameter-before-time status; invalid updates stop activity/permission and clear filter instruction but preserve source/config/time/health/progress; absent payload ignored. Corrected retry and continuation expose hidden mutations. Detects assuming every failure is whole-controller rollback. | Pending |
+| TC-R-MAGNETOMETER-LIFECYCLE-12 | Same, bounded count and overflow-safe time | Long sequences of valid enabled samples, disabled samples, source resets; repeat legal timeout/health traces translated near UINT64_MAX. | Sample count saturates at four with stable externally observable behavior; elapsed-time comparisons retain strict/inclusive distinctions without addition overflow. Source switch restarts count, reference-only switch does not. Detects narrow counter overflow and deadline arithmetic. | Pending |
+| TC-R-MAGNETOMETER-LIFECYCLE-13 | Same, snapshot/accessor and pending reason | Query state repeatedly during recovery; disable/not-ready/no-data while reset reason pending; wrong feedback after each. | Queries pure; displayed stop reason does not erase persistent recovery reason; no controller action changes external estimator state/P. Detects loss of recovery through status-display branches. | Pending |
+
+## Portable capability composition
+
+| Case ID | Requirement / clause | Conditions, inputs and action | Expected result and independent oracle | Executable test |
+|---|---|---|---|---|
+| TC-SW-MAGNETIC-01 | [SW-MAGNETIC](../../../requirements/software/magnetic-aiding.md), separate stages | Portable host sequence: adopted observation reference + optional distinct health reference → field check → heading/lifecycle updates → permitted raw-sample fusion → actual feedback. Cover field reject, innovation reject, correction failure and success. | Independent ledger keeps reference availability, field acceptance, heading consistency, permission and fused output distinct. Both qualifying/check and correction use correct current prior/reference; only fused feeds success. Detects replacing one stage's verdict with another. | Pending |
+| TC-SW-MAGNETIC-02 | Same, source/filter/reset transaction | Source/calibration switch → filter reseed and four qualified samples → permitted heading reset using LPF → actual acknowledgment → heading reset notification. Include failed reseed/reset and unknown flight state. | No old/new sensor mix, no filter failure continued as valid new-source data, no controller or heading success before numerical reset. Raw observations remain ordinary correction input. Estimator transaction and controller history have separately checked frames. Detects fictitious alignment. | Pending |
+| TC-SW-MAGNETIC-03 | Same, reference-only adoption | Small unchanged model checks, then adopted revision; physically unchanged sensor. Run aided-motion and allowed-reset portable contexts with optional health reference absent/present. | New model changes observation field without reseeding physical LPF or inventing WMM health availability; lifecycle selects ordinary fusion/reset per requirement and uses actual feedback. No navigation-frame change is inferred. Detects reference revision as source/calibration reset. | Pending |
+
+## Open decisions and non-test evidence
+
+- Physical magnetic health, correctness of geographic model/calibration,
+  independent heading observability and real-flight threshold tuning remain
+  deployment assumptions. Numerical/policy test passes do not establish them.
+- Revision exhaustion uses source proof because native setup must not fabricate
+  inaccessible private state. Bind proof evidence to the implementation/profile;
+  this row cannot be reported as an executed native test.
+- Near-boundary numerical geometry needs declared input/error budgets under the
+  shared profile. Test input construction must independently verify the computed
+  quantity lies on the claimed represented side of each threshold.
+- No missing geographic conversion or `MagneticModel::to_origin_frame` test is
+  silently covered here; those operations belong to the excluded integration
+  layer, not the 13-header portable runtime inventory.
+
+## Review Pending
+
+- Approve the scenario partitions and requirement links before implementation;
+  each Pending family still needs explicit executable fixtures and selectors.
+- Bind independent numerical acceptance to the shared input/error-budget
+  policy. Exact protocol/frame checks do not establish numerical accuracy.
+- Confirm existing seams or scoped proof disposition for unreachable internal
+  failures; do not add private-state mutation solely to make a native test.

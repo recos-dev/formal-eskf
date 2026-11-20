@@ -192,7 +192,7 @@ formal_eskf_add_backend_test(test_magnetic_reference test_magnetic_reference for
 formal_eskf_add_backend_test(test_magnetometer_reset test_magnetometer_reset formal_eskf.magnetometer_reset.eigen formal_eskf::runtime)
 formal_eskf_add_backend_test(test_eskf_position core/test_position formal_eskf.position.eigen formal_eskf::core)
 formal_eskf_add_backend_test(test_eskf_velocity core/test_velocity formal_eskf.velocity.eigen formal_eskf::core)
-formal_eskf_add_backend_test(test_eskf_magnetometer test_eskf_magnetometer formal_eskf.magnetometer.eigen formal_eskf::core)
+formal_eskf_add_backend_test(test_eskf_magnetometer core/test_magnetometer formal_eskf.magnetometer.eigen formal_eskf::core)
 formal_eskf_add_backend_test(test_eskf_accelerometer core/test_accelerometer formal_eskf.accelerometer.eigen formal_eskf::core)
 
 formal_eskf_add_backend_test(test_contracts common/test_contracts formal_eskf.common.contracts formal_eskf::runtime)

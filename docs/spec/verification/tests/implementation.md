@@ -53,7 +53,7 @@ Integration owners and production behavior changes remain outside this work.
 | T-20 | `tests/core/test_position.cpp` | Position selectors, residuals, noise/permissions forwarding and correction transactions. | Implemented |
 | T-21 | `tests/core/test_velocity.cpp` | Velocity selectors, residuals, noise/permissions forwarding and correction transactions. | Implemented |
 | T-22 | `tests/core/test_accelerometer.cpp` | Gravity observation, fixed preprocessing, domains and wrapper transactions. | Implemented |
-| T-23 | `tests/core/test_magnetometer.cpp` | Magnetic observation, selected gain projection, geometry and wrapper transactions. | Pending |
+| T-23 | `tests/core/test_magnetometer.cpp` | Magnetic observation, selected gain projection, geometry and wrapper transactions. | Implemented |
 | T-24 | `tests/core/test_sequence.cpp` | Portable full-core sequences and meaningful interacting macro profiles. | Pending |
 | T-25 | `tests/core/test_codegen.cpp` | Generated caller selection and equation checks; no mere dense/generated agreement claim. | Pending |
 | T-26 | `tests/runtime/test_ring_buffer.cpp` | All 11 ring-buffer families, including full-backing clearing evidence and legal horizon aliases. | Implemented |

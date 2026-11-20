@@ -55,7 +55,7 @@ Known clipping preserves an otherwise active mode while rejecting the sample.
 These module history boundaries are checked through production gravity and
 `Run()` paths in `integrations/px4/tests/ModuleTest.cpp`. Sampler cadence,
 unknown metadata and failure preservation remain checked across native backends
-in `tests/test_accelerometer_sample.cpp`. Neither establishes a whole-tick
+in `tests/runtime/gravity/test_sampling.cpp`. Neither establishes a whole-tick
 transaction, module source proof or physical model validity. The portable
 sampler/fusion contracts own their scoped Lean/ESBMC obligations; their proofs
 do not establish this adapter's context and scheduling.

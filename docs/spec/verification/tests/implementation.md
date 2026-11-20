@@ -91,7 +91,7 @@ Integration owners and production behavior changes remain outside this work.
 | T-58 | `tests/runtime/imu/test_bias_inhibition.cpp` | Observe all borrowed nominal fields on rejected policy updates. | Implemented |
 | T-59 | `tests/runtime/gravity/test_fusion.cpp` | Replace opaque condition numbers with named scenarios without changing assertions. | Implemented |
 
-| T-60 | `tests/core/test_sequence.cpp` | Use shared profile metadata so case registration remains machine-readable. | Pending |
+| T-60 | `tests/core/test_sequence.cpp` | Use shared profile metadata so case registration remains machine-readable. | Implemented |
 
 | T-61 | `scripts/verify_tests.py` | Check configured source completeness, report optional backend exclusions and hash shared production/oracle dependencies. | Pending |
 | T-62 | `tests/tools/test_test_plan.py` | Reject missing enabled sources and verify optional exclusions and dependency provenance. | Pending |

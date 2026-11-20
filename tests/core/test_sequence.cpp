@@ -672,7 +672,5 @@ int main(int argc, char ** argv)
         {"TC-SW-CORE-composition", "INS.binary32", test_composition<float_backend, Ins>},
         {"TC-SW-CORE-composition", "INS.binary64", test_composition<double_backend, Ins>},
     };
-    std::cout << "Configuration: quat_approx=" << ESKF_QUAT_APPROX << " reset_approx=" << ESKF_RESET_APPROX
-              << " mag_tilt=" << ESKF_MAG_TILT << " codegen=" << ESKF_CODEGEN << '\n';
     return formal_eskf::test::run_cases(cases, argc, argv);
 }

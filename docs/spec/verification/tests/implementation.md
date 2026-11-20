@@ -71,7 +71,7 @@ Integration owners and production behavior changes remain outside this work.
 | T-38 | `tests/runtime/gnss/test_lifecycle.cpp` | All 15 lifecycle families and portable SW-GNSS command/feedback sequence. | Implemented |
 | T-39 | `tests/runtime/gnss/test_measurement.cpp` | Generic/named gated fusion, diagnostics, vertical recovery and sequential groups. | Implemented |
 | T-40 | `tests/runtime/gnss/test_reset.cpp` | Four reset equations, covariance masks, delta, aliases and failure publication. | Implemented |
-| T-41 | `tests/runtime/test_measurement_fusion.cpp` | Generic measurement reporting, checked gate/correction and failure transactions. | Pending |
+| T-41 | `tests/runtime/test_measurement_fusion.cpp` | Generic measurement reporting, checked gate/correction and failure transactions. | Implemented |
 | T-42 | `tests/runtime/magnetic/test_field.cpp` | Independent field geometry, selection/reference combinations, thresholds and failures. | Pending |
 | T-43 | `tests/runtime/magnetic/test_reference.cpp` | Reference conversion/adoption/timing; revision exhaustion mapped to scoped source evidence. | Pending |
 | T-44 | `tests/runtime/magnetic/test_heading.cpp` | Acceleration/heading filters, observability, latch, partial resets and failures. | Pending |

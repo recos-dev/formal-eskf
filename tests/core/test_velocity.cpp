@@ -9,6 +9,8 @@
 #include <array>
 #include <bit>
 #include <cstddef>
+#include <cmath>
+#include <type_traits>
 #include <initializer_list>
 #include <iostream>
 #include <limits>
@@ -20,6 +22,8 @@
 #include "test_backend.hpp"
 
 #include "test_support.hpp"
+#include "test_cases.hpp"
+#include "correction_reference.hpp"
 
 namespace
 {
@@ -35,7 +39,8 @@ template <typename Matrix> bool same_bits(Matrix const & a, Matrix const & b)
     {
         for (std::size_t column = 0U; column < Matrix::column_count; ++column)
         {
-            if (std::bit_cast<bytes_type>(a(row, column)) != std::bit_cast<bytes_type>(b(row, column)))
+            if (!(std::isnan(a(row, column)) && std::isnan(b(row, column))) &&
+                std::bit_cast<bytes_type>(a(row, column)) != std::bit_cast<bytes_type>(b(row, column)))
             {
                 return false;
             }
@@ -298,7 +303,7 @@ void test_velocity_analytic(TestContext & test, std::string_view profile, typena
                 "uncorrelated attitude stays unchanged");
 }
 
-template <typename Fixture> void test_velocity_delegation(TestContext & test, std::string_view profile)
+template <typename Fixture> auto coupled_fixture(TestContext & test, std::string_view profile)
 {
     using Linalg = typename Fixture::linalg_type;
     constexpr std::size_t measurement_size = Fixture::measurement_type::row_count;
@@ -312,12 +317,61 @@ template <typename Fixture> void test_velocity_delegation(TestContext & test, st
             fixture.P(row, column) += static_cast<value_type>((row + 1U) * (column + 1U)) / value_type{256};
         }
     }
-    fixture.V(0U, 1U) = value_type{0.25};
-    fixture.V(1U, 0U) = value_type{0.25};
+    if constexpr (measurement_size > 1U)
+    {
+        fixture.V(0U, 1U) = value_type{0.25};
+        fixture.V(1U, 0U) = value_type{0.25};
+    }
+    if constexpr (measurement_size == 3U)
+    {
+        fixture.V(0U, 2U) = value_type{0.125};
+        fixture.V(2U, 0U) = value_type{0.125};
+        fixture.V(1U, 2U) = value_type{-0.125};
+        fixture.V(2U, 1U) = value_type{-0.125};
+    }
     test.expect(formal_eskf::so3::UnitQuaternion<Linalg>::from_coefficients(
                     value_type{0.5}, value_type{0.5}, value_type{0.5}, value_type{0.5}, Fixture::minimum_norm,
                     fixture.state.q_nb) == Status::success,
                 profile, "non-identity prior attitude is valid");
+    return fixture;
+}
+
+template <typename Fixture> struct VelocityReference
+{
+    using value_type = typename Fixture::value_type;
+    using state_type = typename Fixture::state_type;
+    using covariance_type = typename Fixture::covariance_type;
+    static constexpr bool is_ins = true;
+    static constexpr std::size_t size = 15U;
+    static constexpr std::size_t attitude_offset = 6U;
+    static constexpr std::size_t measurement_size = Fixture::measurement_type::row_count;
+    state_type state;
+    covariance_type P;
+    typename Fixture::jacobian_type H;
+    typename Fixture::measurement_type r;
+    typename Fixture::measurement_covariance_type V;
+
+    explicit VelocityReference(Fixture const & fixture) : state(fixture.state), P(fixture.P), V(fixture.V)
+    {
+        for (std::size_t axis = 0U; axis < measurement_size; ++axis)
+        {
+            H(axis, 3U + Fixture::axis_offset + axis) = value_type{1};
+            r(axis) = fixture.z(axis) - fixture.state.v_n(Fixture::axis_offset + axis);
+        }
+    }
+};
+
+template <typename Fixture> void test_velocity_delegation(TestContext & test, std::string_view profile)
+{
+    using Linalg = typename Fixture::linalg_type;
+    using value_type = typename Fixture::value_type;
+    constexpr std::size_t measurement_size = Fixture::measurement_type::row_count;
+    auto fixture = coupled_fixture<Fixture>(test, profile);
+    VelocityReference<Fixture> const independent_input(fixture);
+    auto const independent =
+        formal_eskf::test::reference::reference_correction(independent_input, ESKF_RESET_APPROX != 0);
+    // Scoped finite-angle regression, not a general nonlinear error envelope.
+    constexpr value_type tolerance = static_cast<value_type>(std::is_same_v<value_type, float> ? 8e-6 : 2e-12);
     formal_eskf::linalg::Matrix<Linalg, measurement_size, 15U> H;
     for (std::size_t axis = 0U; axis < measurement_size; ++axis)
     {
@@ -344,6 +398,9 @@ template <typename Fixture> void test_velocity_delegation(TestContext & test, st
                     profile, "all output-alias combinations succeed");
         test.expect(same_state(state_output, expected_state) && same_bits(P_output, expected_P), profile,
                     "wrapper preserves full selected-model correction result, including attitude reset");
+        test.expect(formal_eskf::test::reference::matches_reference(independent_input, independent, state_output,
+                                                                    P_output, tolerance),
+                    profile, "complete velocity wrapper matches independent full correction/reset equations");
         test.expect(((aliases & 1U) != 0U || same_state(input.state, fixture.state)) &&
                         ((aliases & 2U) != 0U || same_bits(input.P, fixture.P)) && same_bits(input.z, fixture.z) &&
                         same_bits(input.V, fixture.V),
@@ -357,20 +414,35 @@ template <typename Fixture> void test_velocity_delegation(TestContext & test, st
                 profile, "measurement from in-place state succeeds");
     test.expect(same_state(zero_residual.state, fixture.state) && zero_residual.P(3U, 3U) < fixture.P(3U, 3U), profile,
                 "zero residual leaves state unchanged but still reduces velocity uncertainty");
+}
 
-    // Check wrapper wiring separately from the independent generic-correction oracle.
-    for (unsigned permissions = 0U; permissions < 64U; ++permissions)
+template <typename Fixture> void test_bias_forwarding(TestContext & test, std::string_view profile)
+{
+    using value_type = typename Fixture::value_type;
+    auto fixture = coupled_fixture<Fixture>(test, profile);
+    VelocityReference<Fixture> const independent_input(fixture);
+    constexpr value_type tolerance = static_cast<value_type>(std::is_same_v<value_type, float> ? 8e-6 : 2e-12);
+    std::array<unsigned, 14U> permissions{0U, 63U};
+    for (unsigned axis = 0U; axis < 6U; ++axis)
+    {
+        permissions[2U + axis] = 1U << axis;
+        permissions[8U + axis] = 63U ^ (1U << axis);
+    }
+    typename Fixture::state_type unrestricted_state;
+    typename Fixture::covariance_type unrestricted_P;
+    test.expect(Fixture::correct(fixture.state, fixture.P, fixture.z, fixture.V, Fixture::minimum_norm,
+                                 unrestricted_state, unrestricted_P) == Status::success,
+                profile, "omitted permissions permit unrestricted wrapper correction");
+    for (unsigned mask : permissions)
     {
         formal_eskf::configuration::Ins::BiasUpdate bias_update;
         for (std::size_t axis = 0U; axis < 3U; ++axis)
         {
-            bias_update.accelerometer[axis] = (permissions & (1U << axis)) != 0U;
-            bias_update.gyroscope[axis] = (permissions & (1U << (3U + axis))) != 0U;
+            bias_update.accelerometer[axis] = (mask & (1U << axis)) != 0U;
+            bias_update.gyroscope[axis] = (mask & (1U << (3U + axis))) != 0U;
         }
-        test.expect(formal_eskf::correct<Linalg, measurement_size, Fixture::model>(
-                        fixture.state, fixture.P, r, H, fixture.V, Fixture::minimum_norm, expected_state, expected_P,
-                        bias_update) == Status::success,
-                    profile, "controlled selected-model correction reference succeeds");
+        auto const reference =
+            formal_eskf::test::reference::reference_correction(independent_input, ESKF_RESET_APPROX != 0, bias_update);
         for (unsigned aliases = 0U; aliases < 4U; ++aliases)
         {
             auto input = fixture;
@@ -380,18 +452,30 @@ template <typename Fixture> void test_velocity_delegation(TestContext & test, st
             auto & P_output = (aliases & 2U) != 0U ? input.P : separate_P;
             test.expect(Fixture::correct(input.state, input.P, input.z, input.V, Fixture::minimum_norm, state_output,
                                          P_output, bias_update) == Status::success &&
-                            same_state(state_output, expected_state) && same_bits(P_output, expected_P),
-                        profile, "every bias permission and output alias reaches correction unchanged");
+                            formal_eskf::test::reference::matches_reference(independent_input, reference, state_output,
+                                                                            P_output, tolerance),
+                        profile, "each forwarding partition matches independently constrained gain and Joseph");
+            if (mask == 63U)
+            {
+                test.expect(same_state(state_output, unrestricted_state) && same_bits(P_output, unrestricted_P),
+                            profile, "explicit default/all-enabled equals omitted permissions");
+            }
+            for (std::size_t axis = 0U; axis < 3U; ++axis)
+            {
+                test.expect((bias_update.accelerometer[axis] || state_output.b_a(axis) == fixture.state.b_a(axis)) &&
+                                (bias_update.gyroscope[axis] || state_output.b_g(axis) == fixture.state.b_g(axis)),
+                            profile, "each disabled axis retains its own nominal bias exactly");
+            }
             test.expect(((aliases & 1U) != 0U || same_state(input.state, fixture.state)) &&
                             ((aliases & 2U) != 0U || same_bits(input.P, fixture.P)) && same_bits(input.z, fixture.z) &&
                             same_bits(input.V, fixture.V),
-                        profile, "bias control preserves distinct inputs");
+                        profile, "bias forwarding preserves distinct inputs");
             auto const saved_state = state_output;
             auto const saved_P = P_output;
             test.expect(Fixture::correct(input.state, input.P, input.z, input.V, value_type{0}, state_output, P_output,
                                          bias_update) == Status::domain_error &&
                             same_state(state_output, saved_state) && same_bits(P_output, saved_P),
-                        profile, "bias control preserves outputs on downstream failure");
+                        profile, "bias forwarding never bypasses checked failure or atomic rollback");
         }
     }
 }
@@ -407,7 +491,12 @@ template <typename Fixture> void test_velocity_failures(TestContext & test, std:
         {
             auto input = bad;
             auto separate_state = fixture.state;
+            separate_state.q_nb = -separate_state.q_nb;
+            separate_state.p_n(0U) = std::numeric_limits<value_type>::quiet_NaN();
+            separate_state.v_n(1U) = -value_type{0};
             typename Fixture::covariance_type separate_P = fixture.P * value_type{7};
+            separate_P(0U, 1U) = -value_type{0};
+            separate_P(1U, 0U) = std::numeric_limits<value_type>::quiet_NaN();
             auto & state_output = (aliases & 1U) != 0U ? input.state : separate_state;
             auto & P_output = (aliases & 2U) != 0U ? input.P : separate_P;
             auto const state_before = state_output;
@@ -418,7 +507,7 @@ template <typename Fixture> void test_velocity_failures(TestContext & test, std:
                         profile, description);
             test.expect(same_state(input.state, bad.state) && same_bits(input.P, bad.P) && same_bits(input.z, bad.z) &&
                             same_bits(input.V, bad.V),
-                        profile, "failed velocity correction preserves all inputs bit-for-bit");
+                        profile, "failed velocity correction preserves all logical input fields");
         }
     };
     for (value_type invalid :
@@ -445,6 +534,16 @@ template <typename Fixture> void test_velocity_failures(TestContext & test, std:
     bad.state.v_n(Fixture::axis_offset) = -std::numeric_limits<value_type>::max();
     bad.z(0U) = std::numeric_limits<value_type>::max();
     fail(bad, Fixture::minimum_norm, Status::non_finite_result, "finite velocity subtraction overflow rolls back");
+    fail(bad, value_type{0}, Status::non_finite_result,
+         "computed residual overflow precedes downstream correction domain failure");
+    bad.V(0U, 0U) = std::numeric_limits<value_type>::quiet_NaN();
+    fail(bad, Fixture::minimum_norm, Status::non_finite_result,
+         "finite velocity residual overflow precedes downstream covariance validation");
+    bad = fixture;
+    bad.state.v_n(2U) = std::numeric_limits<value_type>::quiet_NaN();
+    fail(bad, value_type{0}, Status::non_finite_input,
+         "complete prior vector is checked before downstream threshold failure");
+
     bad = fixture;
     bad.state.p_n(0U) = std::numeric_limits<value_type>::quiet_NaN();
     fail(bad, Fixture::minimum_norm, Status::non_finite_input, "downstream injection validation rolls back");
@@ -632,13 +731,48 @@ void test_velocity_sequence(TestContext & test, std::string_view profile, typena
     }
 }
 
-template <typename Fixture>
-void run_velocity_tests(TestContext & test, std::string_view profile, typename Fixture::value_type tolerance)
+template <typename Fixture> void test_selectors(TestContext & test, std::string_view profile)
 {
-    test_velocity_jacobian<Fixture>(test, profile, tolerance);
+    using value_type = typename Fixture::value_type;
+    test_velocity_jacobian<Fixture>(test, profile, value_type{0});
+    for (value_type const sign : {value_type{-1}, value_type{1}})
+    {
+        Fixture fixture;
+        fixture.V = Fixture::measurement_covariance_type::identity() * value_type{3};
+        auto expected = fixture.state;
+        auto expected_P = fixture.P;
+        for (std::size_t axis = 0U; axis < Fixture::measurement_type::row_count; ++axis)
+        {
+            std::size_t const index = Fixture::axis_offset + axis;
+            fixture.z(axis) = sign * static_cast<value_type>(8U * (axis + 1U));
+            expected.v_n(index) += (fixture.z(axis) - fixture.state.v_n(index)) / value_type{4};
+            expected_P(3U + index, 3U + index) = value_type{0.75};
+        }
+        auto state = fixture.state;
+        auto P = fixture.P;
+        test.expect(Fixture::correct(fixture.state, fixture.P, fixture.z, fixture.V, Fixture::minimum_norm, state, P) ==
+                            Status::success &&
+                        same_state(state, expected) && same_bits(P, expected_P),
+                    profile,
+                    "exact selector/residual oracle retains NED sign and treats supplied variance as variance");
+    }
+}
+
+template <typename Fixture> void test_transaction(TestContext & test, std::string_view profile)
+{
+    using value_type = typename Fixture::value_type;
+    constexpr value_type tolerance = static_cast<value_type>(std::is_same_v<value_type, float> ? 8e-6 : 2e-12);
     test_velocity_analytic<Fixture>(test, profile, tolerance);
     test_velocity_delegation<Fixture>(test, profile);
     test_velocity_failures<Fixture>(test, profile);
+}
+
+template <typename Fixture> void test_boundaries(TestContext & test, std::string_view profile)
+{
+    using value_type = typename Fixture::value_type;
+    constexpr value_type tolerance = static_cast<value_type>(std::is_same_v<value_type, float> ? 8e-6 : 2e-12);
+    // Existing independent velocity/position timelines remain regression cases,
+    // not general sensor-accuracy or nonlinear conditioning acceptance.
     test_velocity_translation<Fixture>(test, profile, tolerance);
     test_velocity_sequence<Fixture>(test, profile, tolerance, false);
     test_velocity_sequence<Fixture>(test, profile, tolerance, true);
@@ -646,21 +780,42 @@ void run_velocity_tests(TestContext & test, std::string_view profile, typename F
 
 } /* end namespace */
 
-int main()
+int main(int argc, char ** argv)
 {
-    TestContext test;
     formal_eskf::test::configure_backend_test();
-    run_velocity_tests<HorizontalVelocityFixture<formal_eskf::test::Backend<float>>>(
-        test, "INS horizontal velocity binary32", 8.0e-6F);
-    run_velocity_tests<HorizontalVelocityFixture<formal_eskf::test::Backend<double>>>(
-        test, "INS horizontal velocity binary64", 2.0e-12);
-    run_velocity_tests<VelocityFixture<formal_eskf::test::Backend<float>>>(test, "INS 3D velocity binary32", 8.0e-6F);
-    run_velocity_tests<VelocityFixture<formal_eskf::test::Backend<double>>>(test, "INS 3D velocity binary64", 2.0e-12);
-    if (test.failures() != 0)
-    {
-        std::cerr << test.failures() << " ESKF velocity test(s) failed\n";
-        return 1;
-    }
-    std::cout << "All ESKF velocity tests passed\n";
-    return 0;
+    formal_eskf::test::Case const cases[] = {
+        {"TC-E-OBS-VELOCITY-selectors", "INS.velocity.horizontal.binary32",
+         test_selectors<HorizontalVelocityFixture<formal_eskf::test::Backend<float>>>},
+        {"TC-E-OBS-VELOCITY-selectors", "INS.velocity.horizontal.binary64",
+         test_selectors<HorizontalVelocityFixture<formal_eskf::test::Backend<double>>>},
+        {"TC-E-OBS-VELOCITY-selectors", "INS.velocity.3d.binary32",
+         test_selectors<VelocityFixture<formal_eskf::test::Backend<float>>>},
+        {"TC-E-OBS-VELOCITY-selectors", "INS.velocity.3d.binary64",
+         test_selectors<VelocityFixture<formal_eskf::test::Backend<double>>>},
+        {"TC-E-OBS-VELOCITY-transaction", "INS.velocity.horizontal.binary32",
+         test_transaction<HorizontalVelocityFixture<formal_eskf::test::Backend<float>>>},
+        {"TC-E-OBS-VELOCITY-transaction", "INS.velocity.horizontal.binary64",
+         test_transaction<HorizontalVelocityFixture<formal_eskf::test::Backend<double>>>},
+        {"TC-E-OBS-VELOCITY-transaction", "INS.velocity.3d.binary32",
+         test_transaction<VelocityFixture<formal_eskf::test::Backend<float>>>},
+        {"TC-E-OBS-VELOCITY-transaction", "INS.velocity.3d.binary64",
+         test_transaction<VelocityFixture<formal_eskf::test::Backend<double>>>},
+        {"TC-E-OBS-bias-forwarding", "INS.velocity.horizontal.binary32",
+         test_bias_forwarding<HorizontalVelocityFixture<formal_eskf::test::Backend<float>>>},
+        {"TC-E-OBS-bias-forwarding", "INS.velocity.horizontal.binary64",
+         test_bias_forwarding<HorizontalVelocityFixture<formal_eskf::test::Backend<double>>>},
+        {"TC-E-OBS-bias-forwarding", "INS.velocity.3d.binary32",
+         test_bias_forwarding<VelocityFixture<formal_eskf::test::Backend<float>>>},
+        {"TC-E-OBS-bias-forwarding", "INS.velocity.3d.binary64",
+         test_bias_forwarding<VelocityFixture<formal_eskf::test::Backend<double>>>},
+        {"TC-E-OBS-boundary-ownership", "INS.velocity.horizontal.binary32",
+         test_boundaries<HorizontalVelocityFixture<formal_eskf::test::Backend<float>>>},
+        {"TC-E-OBS-boundary-ownership", "INS.velocity.horizontal.binary64",
+         test_boundaries<HorizontalVelocityFixture<formal_eskf::test::Backend<double>>>},
+        {"TC-E-OBS-boundary-ownership", "INS.velocity.3d.binary32",
+         test_boundaries<VelocityFixture<formal_eskf::test::Backend<float>>>},
+        {"TC-E-OBS-boundary-ownership", "INS.velocity.3d.binary64",
+         test_boundaries<VelocityFixture<formal_eskf::test::Backend<double>>>},
+    };
+    return formal_eskf::test::run_cases(cases, argc, argv);
 }

@@ -82,6 +82,17 @@ decisions remain governed by each requirement's Status.
 | `F-JR` | [SO(3) right Jacobian](requirements/math/so3/right-jacobian.md) |
 | `SO3-SMALL-ANGLE` | [Small-angle behavior](requirements/math/so3/small-angle.md) |
 
+### Proposed geodesy extension
+
+These Draft contracts define a proposed utility outside the ESKF state model.
+They have no production, native-test or formal-proof bindings yet and do not
+extend the existing core/runtime test-plan or executable review-map denominator.
+
+| ID | Required behavior |
+|---|---|
+| `F-GEO-ECEF` | [WGS84 geodetic and ECEF position conversion](requirements/math/geodesy/geodetic-ecef.md) |
+| `F-GEO-NED` | [Fixed-origin ECEF and NED transformations](requirements/math/geodesy/local-ned.md) |
+
 ## Core requirements
 
 | ID | Required behavior |
@@ -178,6 +189,7 @@ decisions remain governed by each requirement's Status.
 - [Numerical Architecture](architecture/numerics.md).
 - [Software Architecture and Verification Boundaries](architecture/overview.md).
 - [PX4 Module Architecture](architecture/px4-module.md).
+- [Geodesy Architecture and Minimal API](architecture/geodesy.md) (Draft proposal).
 
 ## Deployment profiles
 

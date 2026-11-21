@@ -38,6 +38,12 @@ policy defines evidence acceptance. None is a second copy of a requirement.
 - Keep notation, domain and failure definitions close to their equations. After
   extraction, replace context-dependent phrases such as "above" with a definition
   or specific link. Preserve relevant tables and diagrams.
+- Describe requirement and architecture interfaces through operations, inputs,
+  outputs, units, state effects and failure behavior. Do not embed C++ interface
+  declarations or implementation bodies; link canonical headers for exact
+  signatures once implemented. Preserve equations and language-neutral pseudocode.
+  Brief C++ examples belong in usage guides or language/style rules when needed
+  to explain usage or syntax, not to duplicate an interface specification.
 - Cite paper versions/equations and upstream revisions/locations. State adaptations
   explicitly. A reference alone does not establish behavioral equivalence.
 - Every requirement carries an explicit **Status**, following the approval rules

@@ -79,7 +79,7 @@ Integration owners and production behavior changes remain outside this work.
 | T-46 | `tests/runtime/magnetic/test_fusion.cpp` | Field/gate/correction stages, independent references, effective gain and diagnostics. | Implemented |
 | T-47 | `tests/runtime/magnetic/test_reset.cpp` | Heading/covariance transport, delta quaternion, floors, failure frames and repeat behavior. | Implemented |
 | T-48 | `tests/runtime/magnetic/test_lifecycle.cpp` | All 13 lifecycle families and SW-MAGNETIC source/reference/reset sequences. | Implemented |
-| T-49 | `scripts/verify_tests.py` | Reconcile design IDs/dispositions with registrations; run cases with per-item `[Pass]`/`[Failed]`, totals and a failing exit status; missing cases cannot silently pass. | Implemented |
+| T-49 | `scripts/verify_tests.py` | Reconcile design IDs/dispositions with registrations; run cases with per-item `[Pass]`/`[Fail]`, totals and a failing exit status; missing cases cannot silently pass. | Implemented |
 | T-50 | `tests/tools/test_test_plan.py` | Negative controls for missing/duplicate/unknown registrations, failed/empty execution, display totals and unsupported evidence claims. | Implemented |
 | T-51 | `tests/CMakeLists.txt` | Enforce the declared strict floating-point test profile, including optimized builds. | Implemented |
 | T-52 | `tests/support/correction_reference.hpp` | Share an independent dense correction oracle across core/runtime cases; validate with exact analytic controls. | Implemented |

@@ -30,9 +30,9 @@ cleanup procedure. Link detailed values, data and tool/environment prerequisites
 
 ## Cases
 
-| Case ID | Requirement / clause | Conditions, inputs and action | Expected result and oracle | Executable test |
-|---|---|---|---|---|
-| TC-<requirement-ID>-<suffix> | <Specific clause link> | <Initial state, input partition, action; profile override if needed> | <Status, values and changed/preserved state; reference/derivation and tolerance rationale> | <File, function and selector, or Pending> |
+| Case ID | Name | Requirement / clause | Conditions, inputs and action | Expected result and oracle | Executable test |
+|---|---|---|---|---|---|
+| TC-<requirement-ID>-<suffix> | <Short description of the tested behavior> | <Specific clause link> | <Initial state, input partition, action; profile override if needed> | <Status, values and changed/preserved state; reference/derivation and tolerance rationale> | <File, function and selector, or Pending> |
 
 ## Gaps and exclusions
 
@@ -44,9 +44,10 @@ criteria and existing task links. Omit only if none remain.>
 <Pending, or approval reference identifying reviewer, revision and case/profile scope.>
 ````
 
-The five case columns answer: which test, which obligation, which scenario,
-what constitutes correctness, and where it runs. Shared fields apply unless a
-case explicitly overrides them. A numeric criterion or procedure may be linked;
+The case columns identify the test and its readable name, obligation, scenario,
+acceptance criteria and executable binding. Names describe behavior; stable IDs
+remain the selection and traceability keys. Shared fields apply unless a case
+explicitly overrides them. A numeric criterion or procedure may be linked;
 its identified version is part of the case. Run-specific PASS text stays outside
 this document.
 

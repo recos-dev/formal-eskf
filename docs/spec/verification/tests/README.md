@@ -22,8 +22,12 @@ tested scope and remaining acceptance gaps; they do not approve Draft requiremen
 
 The runner configures/builds the selected CMake directory, reconciles this design
 with CTest source labels and each executable's case registry, and reports
-`[Pass]` or `[Failed]` for each case/profile. Results and logs stay under
-`output/tests/`. A failure returns exit code 1; missing/unresolved bindings,
+green `[Pass]` or red `[Fail]` with the planned case name, backend where applicable
+and profile. Stable IDs remain in `--list`, `--case` selection and the JSON report;
+ANSI colors are confined to console status labels and execution totals. The
+registration-gap total is green at zero and red otherwise; it counts reconciliation
+issues, not requirement-coverage gaps. Results and logs stay under `output/tests/`.
+A failure returns exit code 1; missing/unresolved bindings,
 registrations or build errors return 2. The C++ case runner rejects empty or
 assertion-free cases; every selected command must return its exact result markers.
 

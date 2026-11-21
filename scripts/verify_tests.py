@@ -17,6 +17,9 @@ import time
 REPO_DIR = Path(__file__).resolve().parents[1]
 PLAN_DIR = REPO_DIR / "docs/spec/verification/tests"
 CASE_PATTERN = re.compile(r"TC-[A-Za-z0-9_.-]+")
+PASS_COLOR = "\033[32;01m"
+FAIL_COLOR = "\033[31;01m"
+NO_COLOR = "\033[0m"
 
 
 def read_plan(DIRECTORY, ROOT):
@@ -26,9 +29,11 @@ def read_plan(DIRECTORY, ROOT):
             CELLS = [CELL.strip() for CELL in LINE.split("|")]
             if len(CELLS) < 2 or not CASE_PATTERN.fullmatch(CELLS[1]):
                 continue
-            if len(CELLS) != 7:
+            if len(CELLS) != 8:
                 raise ValueError(f"malformed planned case row in {FILE}: {CELLS[1]}")
-            ID, BINDING = CELLS[1], CELLS[5]
+            ID, NAME, BINDING = CELLS[1], CELLS[2], CELLS[6]
+            if not NAME:
+                raise ValueError(f"missing case name in {FILE}: {ID}")
             if ID in CASES:
                 raise ValueError(f"duplicate planned ID: {ID}")
             KIND = BINDING.split(":", 1)[0]
@@ -41,7 +46,7 @@ def read_plan(DIRECTORY, ROOT):
                     SOURCES.append(SOURCE.relative_to(ROOT).as_posix())
             if KIND in ("Native", "Partial") and not SOURCES:
                 raise ValueError(f"{ID}: {KIND} binding has no test source")
-            CASES[ID] = {"kind": KIND, "sources": SOURCES, "binding": BINDING,
+            CASES[ID] = {"name": NAME, "kind": KIND, "sources": SOURCES, "binding": BINDING,
                          "design": FILE.relative_to(ROOT).as_posix()}
     if not CASES:
         raise ValueError("empty test design")
@@ -177,6 +182,13 @@ def write_report(LOG_DIR, PLAN, RESULTS, ERRORS, ELAPSED, BUILD_DIR, TESTS, BUIL
     (LOG_DIR / "report.json").write_text(json.dumps(REPORT, indent=2) + "\n")
 
 
+def case_label(TEST, PLAN):
+    BACKENDS = {"eigen": "Eigen", "px4_matrix": "PX4 matrix", "cmsis_dsp": "CMSIS-DSP", "standard": "StandardMath"}
+    BACKEND = BACKENDS.get(TEST["name"].rsplit(".", 1)[-1])
+    PROFILE = f"{BACKEND}, {TEST['profile']}" if BACKEND else TEST["profile"]
+    return f"{PLAN[TEST['id']]['name']} ({PROFILE})"
+
+
 def main():
     PARSER = argparse.ArgumentParser(description=__doc__)
     PARSER.add_argument("--build-dir", type=Path, default=REPO_DIR / "build/tests")
@@ -221,13 +233,14 @@ def main():
         for INDEX, TEST in enumerate(TESTS):
             if ARGS.case and TEST["id"] not in ARGS.case:
                 continue
-            LABEL = f"{TEST['id']} ({TEST['name']}, {TEST['profile']})"
+            LABEL = case_label(TEST, PLAN)
             if ARGS.list:
-                print(LABEL)
+                print(f"{TEST['id']}: {LABEL}")
                 continue
             RESULT = execute_case(TEST, ARGS.timeout, LOG_DIR / f"case-{INDEX:04d}.log")
             RESULTS.append(RESULT)
-            print(f"[{'Pass' if RESULT['passed'] else 'Failed'}] {LABEL}", flush=True)
+            COLOR = PASS_COLOR if RESULT["passed"] else FAIL_COLOR
+            print(f"{COLOR}[{'Pass' if RESULT['passed'] else 'Fail'}]{NO_COLOR} {LABEL}", flush=True)
             if not RESULT["passed"]:
                 print(f"  Log: {RESULT['log']}")
         PASS_COUNT = sum(RESULT["passed"] for RESULT in RESULTS)
@@ -235,7 +248,10 @@ def main():
         PARTIAL = sum(CASE["kind"] == "Partial" for CASE in PLAN.values())
         NON_EXECUTABLE = sum(CASE["kind"] in ("Analysis", "Delegated") for CASE in PLAN.values())
         ELAPSED = time.monotonic() - START
-        print(f"\nExecution: {PASS_COUNT} passed, {FAIL_COUNT} failed, {len(ERRORS)} registration gaps")
+        GAP_COLOR = FAIL_COLOR if ERRORS else PASS_COLOR
+        print(f"\nExecution: {PASS_COLOR}{PASS_COUNT} passed{NO_COLOR}, "
+              f"{FAIL_COLOR}{FAIL_COUNT} failed{NO_COLOR}, "
+              f"{GAP_COLOR}{len(ERRORS)} registration gaps{NO_COLOR}")
         print(f"Design: {len(PLAN)} IDs; {PARTIAL} partial acceptance, {NON_EXECUTABLE} analysis/delegated obligations")
         print(f"Total elapsed: {ELAPSED:.1f} s\nReport: {LOG_DIR / 'report.json'}")
         write_report(LOG_DIR, PLAN, RESULTS, ERRORS, ELAPSED, BUILD_DIR, TESTS, not ARGS.no_build, NOT_SELECTED)

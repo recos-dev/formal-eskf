@@ -28,12 +28,13 @@ class TestPlan(unittest.TestCase):
         (SELF.ROOT / SOURCE).write_text("// Test source fixture.\n")
         SELF.PLAN_DIR = SELF.ROOT / "docs"
         SELF.PLAN_DIR.mkdir()
-        SELF.PLAN = {ID: {"kind": "Native", "sources": [SOURCE], "binding": "Native", "design": "docs/cases.md"}}
+        SELF.PLAN = {ID: {"name": "Status classification", "kind": "Native", "sources": [SOURCE],
+                         "binding": "Native", "design": "docs/cases.md"}}
         SELF.CTEST = {"tests": [{"name": "fixture", "command": ["fixture-executable"],
                                 "properties": [{"name": "LABELS", "value": ["plan-source:" + SOURCE]}]}]}
 
     def write_case(SELF, BINDING, CASE_ID=ID):
-        return f"| {CASE_ID} | requirement | inputs | oracle | {BINDING} |\n"
+        return f"| {CASE_ID} | Status classification | requirement | inputs | oracle | {BINDING} |\n"
 
     def test_plan_binding_and_duplicate_detection(SELF):
         FILE = SELF.PLAN_DIR / "cases.md"
@@ -41,6 +42,10 @@ class TestPlan(unittest.TestCase):
         FILE.write_text(ROW)
         PLAN = RUNNER.read_plan(SELF.PLAN_DIR, SELF.ROOT)
         SELF.assertEqual(PLAN[ID]["sources"], [SOURCE])
+        SELF.assertEqual(PLAN[ID]["name"], "Status classification")
+        FILE.write_text(ROW.replace("Status classification", ""))
+        with SELF.assertRaisesRegex(ValueError, "missing case name"):
+            RUNNER.read_plan(SELF.PLAN_DIR, SELF.ROOT)
         FILE.write_text(ROW + ROW)
         with SELF.assertRaisesRegex(ValueError, "duplicate"):
             RUNNER.read_plan(SELF.PLAN_DIR, SELF.ROOT)
@@ -192,9 +197,12 @@ class TestPlan(unittest.TestCase):
 
     def test_display_totals_and_exit_status(SELF):
         OPTIONAL = "tests/math/test_cmsis_dsp_backend.cpp"
-        SELF.PLAN[ID]["sources"].append(OPTIONAL)
         (SELF.ROOT / "CMakeCache.txt").write_text("FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND:BOOL=OFF\n")
-        for PASS, EXPECTED in ((True, 0), (False, 1)):
+        for PASS, MISSING, EXPECTED in ((True, False, 0), (False, False, 1), (True, True, 2)):
+            SELF.PLAN[ID]["sources"] = [SOURCE, OPTIONAL]
+            if MISSING:
+                SELF.PLAN[ID]["sources"].append("tests/common/unregistered.cpp")
+
             def COMMAND(COMMAND, *_ARGS, **_KWARGS):
                 if COMMAND[0] == "ctest":
                     return 0, json.dumps(SELF.CTEST)
@@ -210,9 +218,19 @@ class TestPlan(unittest.TestCase):
                     patch.object(sys, "argv", ["verify_tests.py", "--no-build", "--build-dir", str(SELF.ROOT)]), \
                     contextlib.redirect_stdout(OUTPUT):
                 SELF.assertEqual(RUNNER.main(), EXPECTED)
-            SELF.assertIn(f"[{'Pass' if PASS else 'Failed'}] {ID}", OUTPUT.getvalue())
+            COLOR = "\033[32;01m" if PASS else "\033[31;01m"
+            SELF.assertIn(f"{COLOR}[{'Pass' if PASS else 'Fail'}]\033[0m Status classification (binary64)",
+                          OUTPUT.getvalue())
             SELF.assertIn(f"[Not selected] {OPTIONAL}: FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND=OFF", OUTPUT.getvalue())
-            SELF.assertIn(f"{int(PASS)} passed, {int(not PASS)} failed, 0 registration gaps", OUTPUT.getvalue())
+            GAP_COLOR = "\033[31;01m" if MISSING else "\033[32;01m"
+            SELF.assertIn(f"Execution: \033[32;01m{int(PASS)} passed\033[0m, "
+                          f"\033[31;01m{int(not PASS)} failed\033[0m, "
+                          f"{GAP_COLOR}{int(MISSING)} registration gaps\033[0m", OUTPUT.getvalue())
+
+    def test_display_name_keeps_backend_and_profile_distinct(SELF):
+        for BACKEND, DISPLAY in (("eigen", "Eigen"), ("px4_matrix", "PX4 matrix"), ("cmsis_dsp", "CMSIS-DSP")):
+            TEST = {"id": ID, "profile": "binary32", "name": f"formal_eskf.common.contracts.{BACKEND}"}
+            SELF.assertEqual(RUNNER.case_label(TEST, SELF.PLAN), f"Status classification ({DISPLAY}, binary32)")
 
 
 if __name__ == "__main__":

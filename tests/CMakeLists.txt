@@ -44,7 +44,7 @@ if(TARGET replay_ins)
                 -DREPLAY=$<TARGET_FILE:replay_ins>
                 -DOUTPUT_DIR=${PROJECT_BINARY_DIR}
                 -DCASE=${CASE}
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/test_replay_bias.cmake
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/replay/test_replay_bias.cmake
         )
     endforeach()
     foreach(CASE IN ITEMS fault height activation reset_quality reset_gap reset_metadata_gap horizontal speed_accuracy negative clear missing gap metadata_gap quality batch outage)
@@ -54,7 +54,7 @@ if(TARGET replay_ins)
                 -DREPLAY=$<TARGET_FILE:replay_ins>
                 -DOUTPUT_DIR=${PROJECT_BINARY_DIR}
                 -DCASE=${CASE}
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/test_replay_vertical_acceleration.cmake
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/replay/test_replay_vertical_acceleration.cmake
         )
     endforeach()
     foreach(CASE IN ITEMS timeout disturbed aided data_gap_unaided data_gap_aided
@@ -70,7 +70,7 @@ if(TARGET replay_ins)
                 -DREPLAY=$<TARGET_FILE:replay_ins>
                 -DOUTPUT_DIR=${PROJECT_BINARY_DIR}
                 -DCASE=${CASE}
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/test_replay_magnetometer_reset.cmake
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/replay/test_replay_magnetometer_reset.cmake
         )
     endforeach()
     foreach(GROUP IN ITEMS velocity horizontal_position vertical_position)
@@ -80,7 +80,7 @@ if(TARGET replay_ins)
                 -DREPLAY=$<TARGET_FILE:replay_ins>
                 -DOUTPUT_DIR=${PROJECT_BINARY_DIR}
                 -DGROUP=${GROUP}
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/test_replay_gnss_failure.cmake
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/replay/test_replay_gnss_failure.cmake
         )
     endforeach()
     foreach(CASE IN ITEMS startup both_timeout position_timeout reset_failure position_reset_failure
@@ -92,7 +92,7 @@ if(TARGET replay_ins)
                 -DREPLAY=$<TARGET_FILE:replay_ins>
                 -DOUTPUT_DIR=${PROJECT_BINARY_DIR}
                 -DCASE=${CASE}
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/test_replay_gnss_reset.cmake
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/replay/test_replay_gnss_reset.cmake
         )
     endforeach()
 endif()
@@ -105,13 +105,15 @@ if(FORMAL_ESKF_BUILD_EIGEN_BACKEND OR FORMAL_ESKF_BUILD_PX4_MATRIX_BACKEND OR
 endif()
 
 function(formal_eskf_add_backend_test target_name source_name test_name library)
+    get_filename_component(source_file "${source_name}.cpp" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+    file(RELATIVE_PATH source_path "${PROJECT_SOURCE_DIR}" "${source_file}")
     if(FORMAL_ESKF_BUILD_EIGEN_BACKEND)
         add_executable(${target_name} ${source_name}.cpp)
         target_link_libraries(${target_name} PRIVATE ${library} formal_eskf::linalg_eigen)
         target_compile_definitions(${target_name} PRIVATE EIGEN_RUNTIME_NO_MALLOC)
         formal_eskf_configure_test(${target_name})
         add_test(NAME ${test_name} COMMAND ${target_name})
-        set_tests_properties(${test_name} PROPERTIES LABELS "plan-source:tests/${source_name}.cpp")
+        set_tests_properties(${test_name} PROPERTIES LABELS "plan-source:${source_path}")
     endif()
 
     if(FORMAL_ESKF_BUILD_PX4_MATRIX_BACKEND)
@@ -125,7 +127,7 @@ function(formal_eskf_add_backend_test target_name source_name test_name library)
         formal_eskf_configure_test(${px4_target})
         string(REGEX REPLACE "\\.eigen$" "" px4_test_name "${test_name}")
         add_test(NAME ${px4_test_name}.px4_matrix COMMAND ${px4_target})
-        set_tests_properties(${px4_test_name}.px4_matrix PROPERTIES LABELS "plan-source:tests/${source_name}.cpp")
+        set_tests_properties(${px4_test_name}.px4_matrix PROPERTIES LABELS "plan-source:${source_path}")
     endif()
 
     if(FORMAL_ESKF_BUILD_CMSIS_DSP_BACKEND)
@@ -139,7 +141,7 @@ function(formal_eskf_add_backend_test target_name source_name test_name library)
         formal_eskf_configure_test(${cmsis_target})
         string(REGEX REPLACE "\\.eigen$" "" cmsis_test_name "${test_name}")
         add_test(NAME ${cmsis_test_name}.cmsis_dsp COMMAND ${cmsis_target})
-        set_tests_properties(${cmsis_test_name}.cmsis_dsp PROPERTIES LABELS "plan-source:tests/${source_name}.cpp")
+        set_tests_properties(${cmsis_test_name}.cmsis_dsp PROPERTIES LABELS "plan-source:${source_path}")
     endif()
 endfunction()
 
@@ -174,17 +176,17 @@ formal_eskf_add_backend_test(test_vertical_acceleration_health runtime/imu/test_
 formal_eskf_add_backend_test(test_accelerometer_magnitude runtime/gravity/test_magnitude formal_eskf.accelerometer_magnitude.eigen formal_eskf::runtime)
 formal_eskf_add_backend_test(test_accelerometer_conditions runtime/gravity/test_conditions formal_eskf.accelerometer_conditions.eigen formal_eskf::runtime)
 formal_eskf_add_backend_test(test_accelerometer_fusion runtime/gravity/test_fusion formal_eskf.accelerometer_fusion.eigen formal_eskf::runtime)
-formal_eskf_add_backend_test(test_replay_conditions test_replay_conditions formal_eskf.replay_conditions.eigen formal_eskf::runtime)
+formal_eskf_add_backend_test(test_replay_conditions replay/test_replay_conditions formal_eskf.replay_conditions.eigen formal_eskf::runtime)
 formal_eskf_add_backend_test(test_imu_bias_inhibition runtime/imu/test_bias_inhibition formal_eskf.imu_bias_inhibition.eigen formal_eskf::runtime)
-formal_eskf_add_backend_test(test_replay_gnss test_replay_gnss formal_eskf.replay_gnss.eigen formal_eskf::runtime)
+formal_eskf_add_backend_test(test_replay_gnss replay/test_replay_gnss formal_eskf.replay_gnss.eigen formal_eskf::runtime)
 formal_eskf_add_backend_test(test_accelerometer_sample runtime/gravity/test_sampling formal_eskf.accelerometer_sample.eigen formal_eskf::runtime)
 formal_eskf_add_backend_test(test_measurement_fusion runtime/test_measurement_fusion formal_eskf.measurement_fusion.eigen formal_eskf::runtime)
-formal_eskf_add_backend_test(test_px4_magnetic_model test_px4_magnetic_model formal_eskf.px4_magnetic_model.eigen formal_eskf::runtime)
-formal_eskf_add_backend_test(test_px4_height_aiding test_px4_height_aiding formal_eskf.px4_height_aiding.eigen formal_eskf::runtime)
-formal_eskf_add_backend_test(test_px4_imu_prediction test_px4_imu_prediction formal_eskf.px4_imu_prediction.eigen formal_eskf::runtime)
-formal_eskf_add_backend_test(test_px4_imu_history test_px4_imu_history formal_eskf.px4_imu_history.eigen formal_eskf::runtime)
-formal_eskf_add_backend_test(test_px4_output_predictor test_px4_output_predictor formal_eskf.px4_output_predictor.eigen formal_eskf::runtime)
-formal_eskf_add_backend_test(test_px4_observation_history test_px4_observation_history formal_eskf.px4_observation_history.eigen formal_eskf::runtime)
+formal_eskf_add_backend_test(test_px4_magnetic_model ../integrations/px4/tests/test_px4_magnetic_model formal_eskf.px4_magnetic_model.eigen formal_eskf::runtime)
+formal_eskf_add_backend_test(test_px4_height_aiding ../integrations/px4/tests/test_px4_height_aiding formal_eskf.px4_height_aiding.eigen formal_eskf::runtime)
+formal_eskf_add_backend_test(test_px4_imu_prediction ../integrations/px4/tests/test_px4_imu_prediction formal_eskf.px4_imu_prediction.eigen formal_eskf::runtime)
+formal_eskf_add_backend_test(test_px4_imu_history ../integrations/px4/tests/test_px4_imu_history formal_eskf.px4_imu_history.eigen formal_eskf::runtime)
+formal_eskf_add_backend_test(test_px4_output_predictor ../integrations/px4/tests/test_px4_output_predictor formal_eskf.px4_output_predictor.eigen formal_eskf::runtime)
+formal_eskf_add_backend_test(test_px4_observation_history ../integrations/px4/tests/test_px4_observation_history formal_eskf.px4_observation_history.eigen formal_eskf::runtime)
 formal_eskf_add_backend_test(test_magnetometer_fusion runtime/magnetic/test_fusion formal_eskf.magnetometer_fusion.eigen formal_eskf::runtime)
 formal_eskf_add_backend_test(test_magnetometer_lifecycle runtime/magnetic/test_lifecycle formal_eskf.magnetometer_lifecycle.eigen formal_eskf::runtime)
 formal_eskf_add_backend_test(test_magnetic_field runtime/magnetic/test_field formal_eskf.magnetic_field.eigen formal_eskf::runtime)

@@ -105,8 +105,8 @@ From the repository root, choose checks affected by the change:
 ./scripts/verify_cppcheck.sh
 ./scripts/verify_asan.sh
 ./scripts/format_cpp.sh --check
-./tests/test_esbmc.sh
-./tests/test_agent_review.sh
+./tests/tools/test_esbmc.sh
+./tests/tools/test_agent_review.sh
 ```
 
 `--list` inventories scheduled profiles; it does not run them. The two shell
@@ -320,11 +320,11 @@ cmake -S tools/bootstrap/esbmc-reference -B tools/bootstrap/esbmc-reference/buil
     -DENABLE_BUNDLE_LIBC_32BIT=OFF
 cmake --build tools/bootstrap/esbmc-reference/build --target esbmc --parallel 2
 FORMAL_ESKF_ESBMC="$PWD/tools/bootstrap/esbmc-reference/build/src/esbmc/esbmc" \
-    ./tests/test_esbmc.sh --references
+    ./tests/tools/test_esbmc.sh --references
 FORMAL_ESKF_ESBMC="$PWD/tools/bootstrap/esbmc-reference/build/src/esbmc/esbmc" \
-    ./tests/test_esbmc.sh --frames
+    ./tests/tools/test_esbmc.sh --frames
 FORMAL_ESKF_ESBMC="$PWD/tools/bootstrap/esbmc-reference/build/src/esbmc/esbmc" \
-    ./tests/test_esbmc.sh --initialization
+    ./tests/tools/test_esbmc.sh --initialization
 FORMAL_ESKF_ESBMC="$PWD/tools/bootstrap/esbmc-reference/build/src/esbmc/esbmc" \
     ./scripts/verify_esbmc.sh delayed-views
 ```
@@ -358,7 +358,7 @@ identity must compare representations, consistent with the existing expression
 hash. Numeric IEEE equality remains distinct from expression identity: positive
 and negative zero compare numerically equal, and NaN compares unequal to itself.
 
-`./tests/test_esbmc.sh --frames` checks both scalar formats, with fourteen positive
+`./tests/tools/test_esbmc.sh --frames` checks both scalar formats, with fourteen positive
 properties and six intentional failures at named assertions. The properties cover
 arbitrary IEEE field equality, signed-zero literals, non-NaN representation round
 trips, reference/value operands with single evaluation, non-NaN sign inversion
@@ -384,7 +384,7 @@ quaternion in an output history record; sharing or delaying evaluation can also
 change constructor and initializer side effects. Production initialization must
 not be rewritten to accommodate that verifier defect.
 
-`./tests/test_esbmc.sh --initialization` compares the cases with a native C/C++
+`./tests/tools/test_esbmc.sh --initialization` compares the cases with a native C/C++
 compiler and checks both scalar formats. It covers default and partial record
 arrays, nested and empty arrays, constructor/default-member evaluation order,
 explicit scalar initializers and C zero-fill/designated initialization. Named
@@ -617,6 +617,6 @@ executing real verifiers or an agent. Reports missing required tool results must
 be regenerated, not relabeled as having passed unrun checks.
 
 ```bash
-./tests/test_agent_review.sh
+./tests/tools/test_agent_review.sh
 ./scripts/run_agent_review.sh report.json
 ```

@@ -4,7 +4,7 @@ set -euo pipefail
 
 TEST_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/verify_esbmc.sh
-source "${TEST_DIR}/../scripts/verify_esbmc.sh"
+source "${TEST_DIR}/../../scripts/verify_esbmc.sh"
 RUNNER="${REPO_DIR}/scripts/verify_esbmc.sh"
 
 check_count()
@@ -2125,7 +2125,7 @@ check_mode_constants()
     local TEST_WORK_DIR RESULT=0
     TEST_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/formal-eskf-mode-test.XXXXXX")"
     trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
-    SOURCE_FILE="${TEST_DIR}/esbmc/mode_constants.cpp"
+    SOURCE_FILE="${REPO_DIR}/tests/esbmc/mode_constants.cpp"
     run_prediction_suite()
     {
         local APPROX
@@ -2272,7 +2272,7 @@ check_jacobian_solver()
     trap 'rm -r -- "${TEST_WORK_DIR}"' EXIT
     select_esbmc
     check_esbmc_version
-    SOURCE_FILE="${TEST_DIR}/esbmc/jacobian_checks.cpp"
+    SOURCE_FILE="${REPO_DIR}/tests/esbmc/jacobian_checks.cpp"
     for FAULT in 0 1; do
         PROFILE="regression-jacobian-fault${FAULT}"
         verify verify_jacobian_checks -D "FORMAL_ESKF_PROOF_CHECK_FAULT=${FAULT}" \
@@ -2496,7 +2496,7 @@ PY_MUTATIONS
     done
     for HISTORY in 0 1 2; do
         RESULT=0
-        "${ESBMC_COMMAND}" "${TEST_DIR}/esbmc/ring_buffer_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
+        "${ESBMC_COMMAND}" "${REPO_DIR}/tests/esbmc/ring_buffer_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
             --function verify_buffer_seed_reachable --unwind 5 --timeout 60s --memlimit 2g --boolector \
             -D FORMAL_ESKF_PROOF_CAPACITY=3 -D "FORMAL_ESKF_TEST_HISTORY=${HISTORY}" \
             >"${TEST_WORK_DIR}/history${HISTORY}.log" 2>&1 || RESULT=$?
@@ -2546,7 +2546,7 @@ check_reset_regressions()
                     ;;
             esac
             RESULT=0
-            "${ESBMC_COMMAND}" "${TEST_DIR}/esbmc/reset_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
+            "${ESBMC_COMMAND}" "${REPO_DIR}/tests/esbmc/reset_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
                 --unwind 226 --timeout 120s --memlimit 4g --function "${FUNCTION_NAME}" \
                 "${ARGUMENTS[@]}" --multi-property >"${TEST_WORK_DIR}/${BINARY64}-${CASE}.log" 2>&1 || RESULT=$?
             if [[ "${RESULT}" != "${EXPECTED}" ]] || ! grep -Fq "${LABEL}" "${TEST_WORK_DIR}/${BINARY64}-${CASE}.log"; then
@@ -2737,7 +2737,7 @@ check_pcov_regressions()
                     ;;
             esac
             RESULT=0
-            "${ESBMC_COMMAND}" "${TEST_DIR}/esbmc/pcov_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
+            "${ESBMC_COMMAND}" "${REPO_DIR}/tests/esbmc/pcov_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
                 --unwind 226 --timeout 120s --memlimit 4g --function verify_pcov_regression \
                 "${ARGUMENTS[@]}" --multi-property >"${TEST_WORK_DIR}/${BINARY64}-${CASE}.log" 2>&1 || RESULT=$?
             if [[ "${RESULT}" != "${EXPECTED}" ]] || ! grep -Fq "${LABEL}" "${TEST_WORK_DIR}/${BINARY64}-${CASE}.log" ||
@@ -2790,7 +2790,7 @@ check_step_regressions()
     select_esbmc
     check_esbmc_version
     for BINARY64 in 0 1; do
-        if ! "${ESBMC_COMMAND}" "${TEST_DIR}/esbmc/step_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
+        if ! "${ESBMC_COMMAND}" "${REPO_DIR}/tests/esbmc/step_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
             --unwind 226 --timeout 120s --memlimit 4g --function verify_step_regression \
             -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_INS=1 \
             -D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 -D FORMAL_ESKF_PROOF_STEP_ALIAS=7 \
@@ -2844,7 +2844,7 @@ check_step_correction_regressions()
     select_esbmc
     check_esbmc_version
     for BINARY64 in 0 1; do
-        if ! "${ESBMC_COMMAND}" "${TEST_DIR}/esbmc/step_correction_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
+        if ! "${ESBMC_COMMAND}" "${REPO_DIR}/tests/esbmc/step_correction_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
             --unwind 226 --timeout 120s --memlimit 4g --function verify_correction_step_regression \
             -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_STATE_SIZE=15 \
             -D FORMAL_ESKF_PROOF_STEP_CONTRACT=1 -D FORMAL_ESKF_PROOF_STEP_ALIAS=3 \
@@ -2902,7 +2902,7 @@ check_solve_regressions()
     for BINARY64 in 0 1; do
         for FAULT in 0 1; do
             RESULT=0
-            "${ESBMC_COMMAND}" "${TEST_DIR}/esbmc/solve_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
+            "${ESBMC_COMMAND}" "${REPO_DIR}/tests/esbmc/solve_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
                 --unwind 10 --timeout 120s --memlimit 4g --function verify_solve_regression \
                 -D FORMAL_ESKF_PROOF_SIZE=2 -D FORMAL_ESKF_PROOF_COLUMNS=3 \
                 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D "FORMAL_ESKF_PROOF_CHECK_FAULT=${FAULT}" \
@@ -2980,7 +2980,7 @@ check_correction_regressions()
                 1) LABEL='Regression: full correlated Joseph covariance, including last-cell faults' ;;
                 2) LABEL='Regression: every correction coordinate, including the last' ;;
             esac
-            "${ESBMC_COMMAND}" "${TEST_DIR}/esbmc/correction_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
+            "${ESBMC_COMMAND}" "${REPO_DIR}/tests/esbmc/correction_checks.cpp" "${ESBMC_ARGUMENTS[@]}" \
                 --unwind 226 --timeout 180s --memlimit 4g --function verify_correction_regression \
                 -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" -D FORMAL_ESKF_PROOF_STATE_SIZE=3 \
                 -D FORMAL_ESKF_PROOF_MEASUREMENT_SIZE=1 -D FORMAL_ESKF_PROOF_SIZE=1 \
@@ -3040,7 +3040,7 @@ check_observation_regressions()
             verify_observation_rotation) ARGUMENTS+=(-D FORMAL_ESKF_TEST_PRODUCER=1) ;;
         esac
         "${CXX:-g++}" -std=c++20 -O0 -Wall -Wextra -Werror -I "${REPO_DIR}/include" -I "${PROOF_DIR}/include" \
-            "${ARGUMENTS[@]}" "${TEST_DIR}/esbmc/observation_checks.cpp" -o "${TEST_WORK_DIR}/witness"
+            "${ARGUMENTS[@]}" "${REPO_DIR}/tests/esbmc/observation_checks.cpp" -o "${TEST_WORK_DIR}/witness"
         "${TEST_WORK_DIR}/witness" >"${TEST_WORK_DIR}/native.log" 2>&1 || {
             cat "${TEST_WORK_DIR}/native.log" >&2
             fail "observation native regression failed: ${FUNCTION_NAME} ${ARGUMENTS[*]}"
@@ -3155,7 +3155,7 @@ check_frame_regressions()
     local ENTRY RESULT LOG BINARY64 EXPECTED
     LOG="$(mktemp)"
     trap 'rm -f -- "${LOG}"' EXIT
-    SOURCE_FILE="${TEST_DIR}/esbmc/frame_checks.cpp"
+    SOURCE_FILE="${REPO_DIR}/tests/esbmc/frame_checks.cpp"
     for BINARY64 in 0 1; do
         for ENTRY in relation literals round_trip reference value negation nan; do
             PROFILE="frame-binary$((32 + 32 * BINARY64))-${ENTRY}"
@@ -3234,7 +3234,7 @@ check_initialization_regressions()
     WORK_DIR="$(mktemp -d)"
     trap 'rm -rf -- "${WORK_DIR}"' EXIT
     ulimit -c 0
-    SOURCE_FILE="${TEST_DIR}/esbmc/initialization_checks.cpp"
+    SOURCE_FILE="${REPO_DIR}/tests/esbmc/initialization_checks.cpp"
     for BINARY64 in 0 1; do
         "${CXX:-c++}" -std=c++20 -Wall -Wextra -Werror -DNATIVE \
             -D "FORMAL_ESKF_PROOF_BINARY64=${BINARY64}" "${SOURCE_FILE}" -o "${WORK_DIR}/native"
@@ -3266,7 +3266,7 @@ CHECK
             fi
         done
     done
-    SOURCE_FILE="${TEST_DIR}/esbmc/initialization_checks.c"
+    SOURCE_FILE="${REPO_DIR}/tests/esbmc/initialization_checks.c"
     "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -DNATIVE "${SOURCE_FILE}" -o "${WORK_DIR}/native-c"
     "${WORK_DIR}/native-c"
     PROFILE=initialization-c-arrays
@@ -3287,7 +3287,7 @@ check_reference_regressions()
     local ENTRY RESULT LOG
     LOG="$(mktemp)"
     trap 'rm -f -- "${LOG}"' EXIT
-    SOURCE_FILE="${TEST_DIR}/esbmc/reference_checks.cpp"
+    SOURCE_FILE="${REPO_DIR}/tests/esbmc/reference_checks.cpp"
     for ENTRY in identity write pointer array function; do
         PROFILE="reference-${ENTRY}"
         verify "verify_reference_${ENTRY}" --proof-unwind 70 --proof-timeout 30s --proof-memory 1g --z3

@@ -11,7 +11,7 @@ import unittest
 
 sys.dont_write_bytecode = True
 
-REPO_DIR = Path(__file__).resolve().parents[1]
+REPO_DIR = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("configure", REPO_DIR / "scripts/configure.py")
 FRONTEND = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(FRONTEND)

@@ -2,7 +2,7 @@
 #include <array>
 #include <limits>
 
-#include "../integrations/px4/module/ImuPrediction.hpp"
+#include "../module/ImuPrediction.hpp"
 #include <formal_eskf/runtime/imu.hpp>
 #include <formal_eskf/runtime/vertical_acceleration_health.hpp>
 #include "test_backend.hpp"

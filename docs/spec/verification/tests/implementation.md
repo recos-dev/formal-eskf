@@ -126,8 +126,9 @@ Report implemented cases separately from partial numerical/source-evidence rows,
 unsupported profiles and remaining retention decisions. No test-count percentage
 stands for correctness, structural coverage or proof completion.
 
-Retain `tests/test_px4_*.cpp`, `tests/test_replay_*.cpp`, replay CMake scenarios,
-`tests/esbmc/` and tool fixtures under their existing owners. They observe
-integration or verification-tool behavior outside this allocation; their continued
-CTest execution does not qualify them as designed core/runtime cases. A later
-integration test design should determine their grouping and any further refactor.
+PX4 component tests live in `integrations/px4/tests/`; replay helper tests and
+CMake scenarios live in `tests/replay/`. Tool tests live in `tests/tools/`, with
+verifier qualification fixtures in `tests/esbmc/`. These retain their separate
+integration/tool responsibilities. Directory placement and continued execution
+do not qualify them as designed core/runtime cases. The remaining test-plan and
+redundancy reviews are tracked under [V-02](../../../roadmap.md#v-02--design-and-execution-evidence-pilot).

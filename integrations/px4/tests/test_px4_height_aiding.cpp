@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 #include <limits>
 
-#include "../integrations/px4/module/HeightAiding.hpp"
+#include "../module/HeightAiding.hpp"
 #include "test_backend.hpp"
 #include "test_support.hpp"
 

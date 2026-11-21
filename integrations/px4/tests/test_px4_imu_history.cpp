@@ -5,7 +5,7 @@
 #include <limits>
 #include <vector>
 
-#include "../integrations/px4/module/ImuHistory.hpp"
+#include "../module/ImuHistory.hpp"
 #include "test_backend.hpp"
 #include "test_support.hpp"
 

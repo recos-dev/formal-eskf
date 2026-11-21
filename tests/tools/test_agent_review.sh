@@ -4,7 +4,7 @@ set -euo pipefail
 
 TEST_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/run_agent_review.sh
-source "${TEST_DIR}/../scripts/run_agent_review.sh"
+source "${TEST_DIR}/../../scripts/run_agent_review.sh"
 
 SOURCE_REPO_DIR="${REPO_DIR}"
 TEST_ROOT="$(mktemp -d /tmp/formal-eskf-agent-test.XXXXXX)"

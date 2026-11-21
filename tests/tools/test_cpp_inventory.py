@@ -14,7 +14,7 @@ from unittest import mock
 
 sys.dont_write_bytecode = True
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("inventory_cpp", REPO / "scripts/inventory_cpp.py")
 INVENTORY = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(INVENTORY)

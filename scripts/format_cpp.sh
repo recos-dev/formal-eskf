@@ -53,7 +53,9 @@ list_sources()
 {
     # Include pinned generated headers and their tests; ignored output/vendor
     # trees remain outside the formatting boundary.
-    git ls-files -z --cached --others --exclude-standard -- include/ src/ examples/ tests/ codegen/tests/ formal/cpp/ integrations/px4/module/
+    git ls-files -z --cached --others --exclude-standard -- \
+        include/ src/ examples/ tests/ codegen/tests/ formal/cpp/ \
+        integrations/px4/module/ 'integrations/px4/tests/test_*.cpp'
 }
 
 fix_sources()

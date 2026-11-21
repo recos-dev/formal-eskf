@@ -8,7 +8,7 @@ import sys
 import unittest
 
 sys.dont_write_bytecode = True
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts"))
 import call_graph as GRAPH
 from test_cpp_inventory import InventoryTests

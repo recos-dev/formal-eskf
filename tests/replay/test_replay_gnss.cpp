@@ -10,7 +10,7 @@
 #include <limits>
 #include <string_view>
 
-#include "../examples/replay_gnss.hpp"
+#include "../../examples/replay_gnss.hpp"
 #include "test_backend.hpp"
 #include "test_support.hpp"
 

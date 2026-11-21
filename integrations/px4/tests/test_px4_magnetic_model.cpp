@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause
-#include "../integrations/px4/module/MagneticModel.hpp"
+#include "../module/MagneticModel.hpp"
 #include "test_backend.hpp"
 #include "test_support.hpp"
 

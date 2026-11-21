@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <limits>
 
-#include "../integrations/px4/module/OutputPredictor.hpp"
+#include "../module/OutputPredictor.hpp"
 #include "test_backend.hpp"
 #include "test_support.hpp"
 

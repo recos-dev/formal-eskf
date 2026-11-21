@@ -89,8 +89,8 @@ these inputs are unchanged, never that a review or proof passed.
 Validate the extractor with real AST fixtures:
 
 ```bash
-python3 tests/test_cpp_inventory.py
-python3 tests/test_call_graph.py
+python3 tests/tools/test_cpp_inventory.py
+python3 tests/tools/test_call_graph.py
 ```
 
 Generated graphs and local review records belong under `output/`, not in commits.

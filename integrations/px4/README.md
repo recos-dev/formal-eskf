@@ -124,6 +124,11 @@ The destination requires the pinned PX4 checkout and its build dependencies. It 
 
 ## Production module tests
 
+The native `test_px4_*.cpp` component tests in `tests/` are built by the repository's
+root CMake/CTest configuration. They exercise module helpers with the selected
+linalg backend without starting PX4. They are separate from the uORB fixture
+below and are not installed into the PX4 package.
+
 After installing the package, enable the host fixture on the pinned SITL target:
 
 ```bash

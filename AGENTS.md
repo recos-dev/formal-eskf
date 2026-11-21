@@ -50,8 +50,8 @@ reference and consistency checks, not a full proof run.
 
 - Use `./scripts/format_cpp.sh --check` to inspect formatting; its default edits
   files. Cppcheck only analyzes. ESBMC `--list` only inventories profiles.
-- For ESBMC/review tooling changes, run the applicable `./tests/test_esbmc.sh`
-  and `./tests/test_agent_review.sh`; their defaults test offline fixtures, not
+- For ESBMC/review tooling changes, run the applicable `./tests/tools/test_esbmc.sh`
+  and `./tests/tools/test_agent_review.sh`; their defaults test offline fixtures, not
   real proof execution or an AI audit. Consult the CI workflow for other checks.
 - Verify production paths and all required producer/caller dependencies. Never
   weaken requirements/assertions, assume away failures or substitute a rewritten

@@ -150,6 +150,17 @@ Remaining work:
    hashes. Keep native execution, mathematical and bounded-source proofs distinct.
 4. Validate stale/missing evidence and modified runner-owned outcomes offline
    before accepting a release baseline. Local green results do not approve it.
+5. Inventory PX4 component and module tests against integration requirements.
+   Record each case's inputs, independent oracle, assertions, profile and actual
+   execution entry; identify duplicates and missing behavior before extending
+   the test plan. Keep native components, uORB/module fixtures and flight checks
+   distinct; directory organization does not establish coverage.
+6. Review tool and replay tests for distinct defect detection. Retain tool checks
+   for false passes, missing/stale evidence and incorrect configuration; retain
+   replay-specific input mapping, sequencing, failure propagation and output
+   consistency. Consolidate duplicate core/runtime checks only after confirming
+   a retained owner. CSV replay cases do not qualify ULog preprocessing or
+   physical accuracy, and tool tests do not count as estimator coverage.
 
 ### V-03 — AST mapping and review completeness
 

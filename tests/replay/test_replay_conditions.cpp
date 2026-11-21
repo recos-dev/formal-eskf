@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include "../examples/replay_conditions.hpp"
+#include "../../examples/replay_conditions.hpp"
 
 #include <cmath>
 #include <iostream>

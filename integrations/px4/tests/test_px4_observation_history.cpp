@@ -4,8 +4,8 @@
 #include <cstdlib>
 #include <limits>
 
-#include "../integrations/px4/module/ObservationHistory.hpp"
-#include "../integrations/px4/module/OutputPredictor.hpp"
+#include "../module/ObservationHistory.hpp"
+#include "../module/OutputPredictor.hpp"
 #include "test_backend.hpp"
 #include "test_support.hpp"
 

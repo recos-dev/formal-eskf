@@ -19,7 +19,7 @@ import shutil
 import subprocess
 
 from replay_common import (IMU_HEADER, INITIAL_HEADER, NAVIGATION_HEADER, PROGRESS_FORMAT,
-                           dot, ecef, ned_basis, plot_replay, write_csv)
+                           dot, project_coordinates, plot_replay, write_csv)
 
 
 def topic(ULOG, NAME):
@@ -363,7 +363,7 @@ def gnss_quality_rows(ULOG, GPS, TIMES, START, END):
     return ROWS
 
 
-def geographic_magnetic_fields(BINARY, FIXES, BASIS):
+def geographic_magnetic_fields(BINARY, FIXES, COORDINATES):
     """Query the host model in one batch, then rotate local NED fields into the replay frame."""
     INPUT = "".join(f"{math.degrees(READING[0]):.17g} {math.degrees(READING[1]):.17g}\n"
                     for _, READING in FIXES)
@@ -380,15 +380,14 @@ def geographic_magnetic_fields(BINARY, FIXES, BASIS):
         DECLINATION, INCLINATION, STRENGTH = math.radians(VALUES[0]), math.radians(VALUES[1]), VALUES[2]
         LOCAL = [STRENGTH * math.cos(INCLINATION) * math.cos(DECLINATION),
                  STRENGTH * math.cos(INCLINATION) * math.sin(DECLINATION), STRENGTH * math.sin(INCLINATION)]
-        LOCAL_BASIS = ned_basis(READING[0], READING[1])
-        ECEF_FIELD = [sum(LOCAL_BASIS[AXIS][COLUMN] * LOCAL[AXIS] for AXIS in range(3)) for COLUMN in range(3)]
-        FIELD = [dot(AXIS, ECEF_FIELD) for AXIS in BASIS]
+        _, ROTATION = COORDINATES[INDEX]
+        FIELD = [dot(AXIS, LOCAL) for AXIS in ROTATION]
         FIELDS[INDEX] = [math.atan2(FIELD[1], FIELD[0]), math.atan2(FIELD[2], math.hypot(*FIELD[:2])),
                          math.sqrt(dot(FIELD, FIELD))]
     return FIELDS
 
 
-def prepare(ULOG, OUTPUT, MAGNETIC_MODEL=None):
+def prepare(ULOG, OUTPUT, BINARY, MAGNETIC_MODEL=None):
     IMU = topic(ULOG, "sensor_combined")
     GPS = topic(ULOG, "vehicle_gps_position")
     MAG = topic(ULOG, "vehicle_magnetometer")
@@ -423,12 +422,17 @@ def prepare(ULOG, OUTPUT, MAGNETIC_MODEL=None):
         raise ValueError("no valid GNSS seed within one second before initialization")
     ORIGIN_INDEX, ORIGIN = GPS_SEED[-1]
     LAT0, LON0, ALT0, V0, ACCURACY0 = ORIGIN
-    ORIGIN_ECEF, BASIS = ecef(LAT0, LON0, ALT0), ned_basis(LAT0, LON0)
+    REPLAY_FIXES = [(ORIGIN_INDEX, ORIGIN)] + [
+        (INDEX, gps_reading(GPS, INDEX, REQUIRE_VALID=False)) for INDEX, TIME in enumerate(GPS_TIMES)
+        if START < TIME <= IMU_TIMES[-1]]
+    POSITIONS = [[math.degrees(READING[0]), math.degrees(READING[1]), READING[2]] for _, READING in REPLAY_FIXES]
+    COORDINATES = dict(zip((INDEX for INDEX, _ in REPLAY_FIXES),
+                          project_coordinates(BINARY, POSITIONS[0], POSITIONS)))
     MODEL_FIELDS = {}
     if MAGNETIC_MODEL is not None:
         MODEL_FIXES = [(ORIGIN_INDEX, ORIGIN)] + [(INDEX, READING) for INDEX, READING in VALID
                                                 if START < GPS_TIMES[INDEX] <= IMU_TIMES[-1]]
-        MODEL_FIELDS = geographic_magnetic_fields(MAGNETIC_MODEL, MODEL_FIXES, BASIS)
+        MODEL_FIELDS = geographic_magnetic_fields(MAGNETIC_MODEL, MODEL_FIXES, COORDINATES)
     DECLINATION, DECLINATION_SOURCE = magnetic_declination(
         ULOG, MODEL_FIELDS[ORIGIN_INDEX][0] if MODEL_FIELDS else None)
     Q = initial_quaternion(ACCEL, FIELD, math.radians(DECLINATION))
@@ -451,17 +455,11 @@ def prepare(ULOG, OUTPUT, MAGNETIC_MODEL=None):
         if not finite(VALUES):
             raise ValueError("non-finite IMU reading")
         IMU_ROWS.append([IMU_TIMES[INDEX], PERIOD, *VALUES])
-    for INDEX in range(len(GPS_TIMES)):
-        if not START < GPS_TIMES[INDEX] <= IMU_TIMES[-1]:
-            continue
-        LAT, LON, ALT, VELOCITY, ACCURACY = gps_reading(GPS, INDEX, REQUIRE_VALID=False)
-        DELTA = [X - Y for X, Y in zip(ecef(LAT, LON, ALT), ORIGIN_ECEF)]
-        POSITION = [dot(ROW, DELTA) for ROW in BASIS]
+    for INDEX, READING in REPLAY_FIXES[1:]:
+        _, _, _, VELOCITY, ACCURACY = READING
+        POSITION, ROTATION = COORDINATES[INDEX]
         # Rotate receiver-local NED velocity into the fixed origin's NED axes.
-        LOCAL_BASIS = ned_basis(LAT, LON)
-        VELOCITY_ECEF = [sum(LOCAL_BASIS[AXIS][COLUMN] * VELOCITY[AXIS] for AXIS in range(3))
-                         for COLUMN in range(3)]
-        GPS_ROWS.append([GPS_TIMES[INDEX], *POSITION, *[dot(ROW, VELOCITY_ECEF) for ROW in BASIS], *ACCURACY])
+        GPS_ROWS.append([GPS_TIMES[INDEX], *POSITION, *[dot(ROW, VELOCITY) for ROW in ROTATION], *ACCURACY])
         if MODEL_FIELDS:
             MODEL_ROWS.append([GPS_TIMES[INDEX], int(INDEX in MODEL_FIELDS), *MODEL_FIELDS.get(INDEX, [0, 0, 0])])
     if len(IMU_ROWS) < 2 or not GPS_ROWS:
@@ -503,6 +501,7 @@ def prepare(ULOG, OUTPUT, MAGNETIC_MODEL=None):
             "gnss_valid_rows_outside_replay": sum(not START < GPS_TIMES[I] <= IMU_TIMES[-1] for I, _ in VALID),
             "origin_lat_deg": math.degrees(LAT0), "origin_lon_deg": math.degrees(LON0),
             "origin_alt_ellipsoid_m": ALT0, "initialization": "first 0.2 s accel/mag; latest valid GNSS",
+            "coordinate_conversion": "formal_eskf::geodesy via replay_ins --geodesy; binary64 WGS84, fixed origin",
             "magnetic_declination_deg": DECLINATION, "magnetic_declination_source": DECLINATION_SOURCE,
             "magnetic_declination_mask": int(ULOG.initial_parameters.get("EKF2_DECL_TYPE", 3)),
             "magnetic_declination_mask_source": "logged" if "EKF2_DECL_TYPE" in ULOG.initial_parameters else "PX4 v1.16.2 default",
@@ -596,7 +595,7 @@ def run_replay(LOG_FILE, BINARY, COMPARE_MAG=False, MAGNETIC_MODEL=None):
             shutil.rmtree(OUTPUT)
             PROGRESS.write(f"Removed previous replay output: {OUTPUT}")
         OUTPUT.mkdir(parents=True, exist_ok=False)
-        META = prepare(ULOG, OUTPUT / "input", MAGNETIC_MODEL)
+        META = prepare(ULOG, OUTPUT / "input", BINARY, MAGNETIC_MODEL)
         with LOG_FILE.open("rb") as STREAM:
             HASH = hashlib.sha256()
             for CHUNK in iter(lambda: STREAM.read(1048576), b""):

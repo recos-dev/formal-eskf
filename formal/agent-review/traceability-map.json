@@ -7747,6 +7747,46 @@
         ],
         "esbmc": []
       }
+    },
+    {
+      "id": "R-REPLAY-GEODESY",
+      "title": "Replay geodetic positions and vector frames",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/requirements/integration/replay/geodesy.md",
+            "symbol": "# R-REPLAY-GEODESY:"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "examples/replay_ins.cpp",
+            "symbol": "void project_coordinates("
+          },
+          {
+            "file": "examples/replay_common.py",
+            "symbol": "def project_coordinates("
+          },
+          {
+            "file": "examples/replay_px4.py",
+            "symbol": "def prepare("
+          },
+          {
+            "file": "examples/replay_px4.py",
+            "symbol": "def geographic_magnetic_fields("
+          },
+          {
+            "file": "examples/replay_kitti.py",
+            "symbol": "def prepare("
+          },
+          {
+            "file": "examples/replay_kitti.py",
+            "symbol": "def navigation_sample("
+          }
+        ],
+        "esbmc": []
+      }
     }
   ]
 }

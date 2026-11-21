@@ -4,7 +4,7 @@
 
 **Status:** Draft
 
-**Applies to:** The existing host PX4-log replay sensor-policy bindings and their declared input capabilities; no live PX4 timing equivalence is implied.
+**Applies to:** Host PX4-log replay sensor-policy bindings and shared PX4/KITTI coordinate preparation within their declared input capabilities; no live PX4 timing equivalence is implied.
 
 **Uses:** [SW-CORE](core-estimation.md), [R-MEASUREMENT-FUSION](../runtime/measurement-fusion.md). Each child declares its portable-policy dependencies.
 
@@ -37,6 +37,7 @@ checks required by the selected profile.
 
 | Child requirement | Allocated obligation |
 |---|---|
+| [R-REPLAY-GEODESY](../integration/replay/geodesy.md) | Bind checked geodetic positions and vector bases to one fixed replay origin. |
 | [R-REPLAY-GNSS-QUALITY](../integration/replay/gnss-quality.md) | Convert and qualify available receiver metadata. |
 | [R-REPLAY-GNSS-LIFECYCLE](../integration/replay/gnss-lifecycle.md) | Bind ordered GNSS permissions, operations, feedback and reset records. |
 | [R-REPLAY-GNSS-GATING](../integration/replay/gnss-gating.md) | Apply group gates and record vertical-recovery diagnostics. |

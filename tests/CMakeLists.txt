@@ -206,6 +206,11 @@ formal_eskf_add_backend_test(test_contracts common/test_contracts formal_eskf.co
 formal_eskf_add_backend_test(test_tilt_alignment runtime/test_tilt_alignment formal_eskf.tilt_alignment.eigen formal_eskf::runtime)
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+if(TARGET replay_ins)
+    add_test(NAME formal_eskf.replay_geodesy
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/replay/test_replay_geodesy.py
+            --binary $<TARGET_FILE:replay_ins>)
+endif()
 if(FORMAL_ESKF_BUILD_EIGEN_BACKEND)
     separate_arguments(TEST_COMPILER_ARGS NATIVE_COMMAND "${CMAKE_CXX_COMPILER_ARG1} ${CMAKE_CXX_FLAGS}")
     list(TRANSFORM TEST_COMPILER_ARGS PREPEND "--compiler-arg=")

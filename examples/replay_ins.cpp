@@ -27,6 +27,7 @@
 #include <system_error>
 
 #include <formal_eskf/eskf/eskf.hpp>
+#include <formal_eskf/geodesy/local_ned.hpp>
 #include <formal_eskf/runtime/accelerometer.hpp>
 #include <formal_eskf/runtime/imu.hpp>
 #include <formal_eskf/runtime/navigation.hpp>
@@ -202,6 +203,56 @@ bool read_row(std::istream & stream, std::span<double> output, bool allow_non_fi
         }
     }
     return true;
+}
+
+// Host preparation bridge: one geodetic origin, followed by geodetic sample
+// locations (degrees, degrees, ellipsoidal metres). Each output row contains
+// position_n and the row-major rotation from sample NED to origin NED.
+void project_coordinates(std::istream & input, std::ostream & output)
+{
+    using LocalNed = formal_eskf::geodesy::LocalNed<Linalg>;
+    std::array<double, 3U> row{};
+    LocalNed origin;
+    if (!read_row(input, row) || !formal_eskf::succeeded(origin.set_origin({row[0U], row[1U], row[2U]})))
+    {
+        throw std::runtime_error(
+            "invalid geodetic origin: expected degrees and WGS84 ellipsoidal height in [-12000,100000] m");
+    }
+    LocalNed::matrix_type C_0e;
+    if (!formal_eskf::succeeded(origin.rotation_from_ecef(C_0e)))
+    {
+        throw std::runtime_error("cannot retrieve origin NED basis");
+    }
+    output << std::setprecision(std::numeric_limits<double>::max_digits10);
+    while (read_row(input, row))
+    {
+        LocalNed sample;
+        Vector3 position_e, position_n;
+        LocalNed::matrix_type C_se;
+        // The sample location is the zero position of its own local frame.
+        if (!formal_eskf::succeeded(sample.set_origin({row[0U], row[1U], row[2U]})) ||
+            !formal_eskf::succeeded(sample.ned_to_ecef(Vector3{}, position_e)) ||
+            !formal_eskf::succeeded(origin.ecef_to_ned(position_e, position_n)) ||
+            !formal_eskf::succeeded(sample.rotation_from_ecef(C_se)))
+        {
+            throw std::runtime_error(
+                "geodetic sample conversion failed: check latitude, longitude and ellipsoidal height");
+        }
+        auto const T_0s = C_0e * formal_eskf::linalg::transpose(C_se);
+        output << position_n(0U) << ',' << position_n(1U) << ',' << position_n(2U);
+        for (std::size_t axis = 0U; axis < 3U; ++axis)
+        {
+            for (std::size_t column = 0U; column < 3U; ++column)
+            {
+                output << ',' << T_0s(axis, column);
+            }
+        }
+        output << '\n';
+    }
+    if (!output)
+    {
+        throw std::runtime_error("coordinate output failed");
+    }
 }
 
 std::uint64_t timestamp(double value)
@@ -2228,13 +2279,19 @@ void replay(std::filesystem::path const & input, std::filesystem::path const & o
 
 int main(int argc, char ** argv)
 {
-    if (argc != 3 && !(argc == 4 && std::string_view(argv[3]) == "--no-mag"))
-    {
-        std::cerr << "Usage: replay_ins INPUT_DIR NEW_OUTPUT_DIR [--no-mag]\n";
-        return 2;
-    }
     try
     {
+        if (argc == 2 && std::string_view(argv[1]) == "--geodesy")
+        {
+            project_coordinates(std::cin, std::cout);
+            return 0;
+        }
+        if (argc != 3 && !(argc == 4 && std::string_view(argv[3]) == "--no-mag"))
+        {
+            std::cerr << "Usage: replay_ins INPUT_DIR NEW_OUTPUT_DIR [--no-mag]\n"
+                         "       replay_ins --geodesy < GEODETIC_ROWS\n";
+            return 2;
+        }
         replay(argv[1], argv[2], argc == 3);
     }
     catch (std::exception const & error)

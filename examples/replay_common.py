@@ -2,6 +2,7 @@
 
 import csv
 import math
+import subprocess
 
 
 IMU_HEADER = "timestamp_us,integral_dt_us,fx,fy,fz,wx,wy,wz"
@@ -10,20 +11,22 @@ INITIAL_HEADER = "timestamp_us,q0,q1,q2,q3,vn,ve,vd,eph,epv,speed_accuracy"
 PROGRESS_FORMAT = "{desc}: {bar} {n_fmt}/{total_fmt} stages [{elapsed}]"
 
 
-def ecef(LAT, LON, ALT):
-    """WGS84; latitude/longitude in radians, ellipsoidal altitude in metres."""
-    A = 6378137.0
-    E2 = (1.0 / 298.257223563) * (2.0 - 1.0 / 298.257223563)
-    N = A / math.sqrt(1.0 - E2 * math.sin(LAT) ** 2)
-    return [(N + ALT) * math.cos(LAT) * math.cos(LON),
-            (N + ALT) * math.cos(LAT) * math.sin(LON),
-            (N * (1.0 - E2) + ALT) * math.sin(LAT)]
-
-
-def ned_basis(LAT, LON):
-    return [[-math.sin(LAT) * math.cos(LON), -math.sin(LAT) * math.sin(LON), math.cos(LAT)],
-            [-math.sin(LON), math.cos(LON), 0.0],
-            [-math.cos(LAT) * math.cos(LON), -math.cos(LAT) * math.sin(LON), -math.sin(LAT)]]
+def project_coordinates(BINARY, ORIGIN, POSITIONS):
+    """Batch C++ geodesy: degrees/ellipsoidal metres -> position and sample-to-origin NED basis."""
+    INPUT = "".join(",".join(format(VALUE, ".17g") for VALUE in ROW) + "\n" for ROW in [ORIGIN, *POSITIONS])
+    RESULT = subprocess.run([str(BINARY), "--geodesy"], input=INPUT, text=True, capture_output=True, check=False)
+    if RESULT.returncode:
+        raise ValueError(f"C++ coordinate conversion failed: {RESULT.stderr.strip()}")
+    ROWS = RESULT.stdout.splitlines()
+    if len(ROWS) != len(POSITIONS):
+        raise ValueError("coordinate conversion must return one row per sample")
+    PROJECTED = []
+    for ROW in ROWS:
+        VALUES = [float(VALUE) for VALUE in ROW.split(",")]
+        if len(VALUES) != 12 or not all(math.isfinite(VALUE) for VALUE in VALUES):
+            raise ValueError("invalid C++ coordinate conversion result")
+        PROJECTED.append((VALUES[:3], [VALUES[3:6], VALUES[6:9], VALUES[9:12]]))
+    return PROJECTED
 
 
 def dot(A, B):

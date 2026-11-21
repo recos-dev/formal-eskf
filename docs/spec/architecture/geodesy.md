@@ -12,7 +12,8 @@ requirements, not new children of the ESKF state model.
 
 This component provides a portable numerical utility for adapters. It does
 not change [E-STATE](../requirements/core/state.md), prediction/correction,
-sensor admission, published frames or current replay/PX4 behavior. The contracts
+sensor admission or PX4 module frames. Host replay adoption is specified by
+[R-REPLAY-GEODESY](../requirements/integration/replay/geodesy.md). The contracts
 remain Draft; implementation and tests do not constitute approval.
 
 ## Responsibilities and interfaces
@@ -110,10 +111,15 @@ remain separate from target timing/stack qualification.
   is spherical azimuthal-equidistant, with module Down supplied by MSL height
   difference. F-GEO-NED is an ellipsoidal-origin Cartesian transform. Sharing
   the letters NED does not make their coordinates, derivatives or datums equal.
-- The replay [existing ECEF/basis helpers](../../../examples/replay_common.py)
-  are migration candidates, not implementations of these new checked contracts.
-  Adopting this API in replay or PX4 needs a separate caller/data-flow review;
-  this Draft authorizes no replacement or automatic mode selection.
+- Both replay preparers use [one batch bridge](../../../examples/replay_common.py)
+  to the existing `replay_ins --geodesy` executable mode. It consumes an origin
+  followed by sample locations in degrees/ellipsoidal metres and returns fixed
+  NED positions plus sample-to-origin rotations. The C++ path uses `LocalNed`;
+  Python no longer implements the ellipsoid/basis equations. This host-only mode
+  adds no binding dependency, separate executable or embedded transport protocol.
+- Live PX4 adoption remains separate. The replay's GNSS quality displacement
+  still uses its specified adjacent-fix spherical projection and MSL height;
+  substituting trajectory coordinates would change its admission policy.
 - GeographicLib v2.5 supplies an independent host oracle with explicit ENU/NED
   adaptation. It is not vendored or linked into the flight component by this
   proposal. The production inverse uses the bounded iteration described above,

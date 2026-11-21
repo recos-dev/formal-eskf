@@ -175,6 +175,7 @@ remain empty: these two additional review units are proof gaps, not verified cla
 | `R-PX4-STATUS` | [confidence and failure reporting](requirements/integration/px4/status.md) |
 | `PX4-TIME` | [timestamps and bounded history](requirements/integration/px4/timestamps.md) |
 | `R-REPLAY-GNSS-GATING` | [Replay GNSS gating](requirements/integration/replay/gnss-gating.md) |
+| `R-REPLAY-GEODESY` | [Replay geodetic positions and vector frames](requirements/integration/replay/geodesy.md) |
 | `R-REPLAY-GNSS-LIFECYCLE` | [Replay GNSS lifecycle](requirements/integration/replay/gnss-lifecycle.md) |
 | `R-REPLAY-GNSS-QUALITY` | [Replay GNSS quality](requirements/integration/replay/gnss-quality.md) |
 | `R-REPLAY-GRAVITY-CONDITIONS` | [Replay condition sources (host demo)](requirements/integration/replay/gravity-conditions.md) |

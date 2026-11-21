@@ -8,7 +8,8 @@
 
 **Parent:** [SW-REPLAY](../../software/replay-aiding.md).
 
-**Uses:** [R-MAGNETIC-REFERENCE](../../runtime/magnetic/reference.md).
+**Uses:** [R-MAGNETIC-REFERENCE](../../runtime/magnetic/reference.md),
+[R-REPLAY-GEODESY](geodesy.md).
 
 ## Required behavior
 

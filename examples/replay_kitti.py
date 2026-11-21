@@ -18,7 +18,7 @@ import statistics
 import subprocess
 
 from replay_common import (IMU_HEADER, INITIAL_HEADER, NAVIGATION_HEADER, PROGRESS_FORMAT,
-                           dot, ecef, ned_basis, plot_replay, write_csv)
+                           dot, project_coordinates, plot_replay, write_csv)
 
 
 OXTS_FIELDS = (
@@ -139,32 +139,24 @@ def inertial_sample(PACKET):
             PACKET["wx"], -PACKET["wy"], -PACKET["wz"]]
 
 
-def navigation_sample(PACKET, ORIGIN, BASIS):
-    LAT, LON = math.radians(PACKET["lat"]), math.radians(PACKET["lon"])
-    POSITION_ECEF = ecef(LAT, LON, PACKET["alt"])
-    POSITION = [dot(ROW, [A - B for A, B in zip(POSITION_ECEF, ORIGIN)]) for ROW in BASIS]
+def navigation_sample(PACKET, COORDINATES):
+    POSITION, ROTATION = COORDINATES
     # OXTS vn/ve/vu refer to the tangent frame at the current location.
     # Rotate velocity through ECEF so all rows use the same initial NED basis.
-    LOCAL_BASIS = ned_basis(LAT, LON)
     LOCAL_VELOCITY = [PACKET["vn"], PACKET["ve"], -PACKET["vu"]]
-    VELOCITY_ECEF = [dot(COLUMN, LOCAL_VELOCITY) for COLUMN in zip(*LOCAL_BASIS)]
-    VELOCITY = [dot(ROW, VELOCITY_ECEF) for ROW in BASIS]
+    VELOCITY = [dot(ROW, LOCAL_VELOCITY) for ROW in ROTATION]
     return [*POSITION, *VELOCITY]
 
 
-def prepare(RECORDS, NAVIGATION_HZ):
+def prepare(RECORDS, NAVIGATION_HZ, BINARY):
     SEED_INDEX = next((INDEX for INDEX, (_, PACKET) in enumerate(RECORDS) if navigation_valid(PACKET)), None)
     if SEED_INDEX is None:
         raise ValueError("no locked OXTS solution with position and velocity aiding for initialization")
     RECORDS = RECORDS[SEED_INDEX:]
     START, SEED = RECORDS[0]
-    LAT0, LON0 = math.radians(SEED["lat"]), math.radians(SEED["lon"])
-    ORIGIN = ecef(LAT0, LON0, SEED["alt"])
-    BASIS = ned_basis(LAT0, LON0)
-    INITIAL = [START, *initial_quaternion(SEED), *navigation_sample(SEED, ORIGIN, BASIS)[3:], *NAVIGATION_STD]
     # The first row initializes the runner; its interval is not integrated.
     IMU_ROWS = [[START, 1, *inertial_sample(SEED)]]
-    NAVIGATION_ROWS = []
+    NAVIGATION_PACKETS = []
     GAPS = []
     SKIPPED_UPDATES = 0
     PERIOD = round(1000000 / NAVIGATION_HZ)
@@ -185,12 +177,17 @@ def prepare(RECORDS, NAVIGATION_HZ):
             TICK = NEXT_TICK
         if TIME >= NEXT_UPDATE:
             if navigation_valid(PACKET):
-                NAVIGATION_ROWS.append([TIME, *navigation_sample(PACKET, ORIGIN, BASIS), *NAVIGATION_STD])
+                NAVIGATION_PACKETS.append((TIME, PACKET))
             else:
                 SKIPPED_UPDATES += 1
             NEXT_UPDATE += ((TIME - NEXT_UPDATE) // PERIOD + 1) * PERIOD
-    if not NAVIGATION_ROWS:
+    if not NAVIGATION_PACKETS:
         raise ValueError("drive is too short for a navigation correction at the requested rate")
+    POSITIONS = [[PACKET["lat"], PACKET["lon"], PACKET["alt"]] for _, PACKET in [(START, SEED), *NAVIGATION_PACKETS]]
+    COORDINATES = project_coordinates(BINARY, POSITIONS[0], POSITIONS)
+    INITIAL = [START, *initial_quaternion(SEED), *navigation_sample(SEED, COORDINATES[0])[3:], *NAVIGATION_STD]
+    NAVIGATION_ROWS = [[TIME, *navigation_sample(PACKET, COORDINATE), *NAVIGATION_STD]
+                       for (TIME, PACKET), COORDINATE in zip(NAVIGATION_PACKETS, COORDINATES[1:])]
     META = {
         "dataset": "KITTI Raw unsynced OXTS", "imu_rows": len(IMU_ROWS),
         "navigation_rows": len(NAVIGATION_ROWS), "navigation_hz": NAVIGATION_HZ,
@@ -198,6 +195,7 @@ def prepare(RECORDS, NAVIGATION_HZ):
         "gap_holds": GAPS, "synthetic_imu_rows": sum(GAP["synthetic_rows"] for GAP in GAPS),
         "origin_lat_deg": SEED["lat"], "origin_lon_deg": SEED["lon"], "origin_alt_m": SEED["alt"],
         "frame": "body FRD, fixed initial local NED; geodetic via WGS84 ECEF",
+        "coordinate_conversion": "formal_eskf::geodesy via replay_ins --geodesy; binary64 WGS84, fixed origin",
         "height": "OXTS altitude used as WGS84 altitude; no geoid/datum correction",
         "initialization": "first locked OXTS solution with position/velocity aiding; position zero; biases zero",
         "timestamp": "offline timestamp sort; identical duplicates removed; rebased then truncated to microseconds",
@@ -229,7 +227,7 @@ def run_replay(DRIVE, BINARY, NAVIGATION_HZ):
             or BINARY.is_relative_to(OUTPUT.resolve())):
         raise ValueError("dataset, executable and replay output paths must not overlap")
     RECORDS, HASH, TIMING = read_oxts(DRIVE)
-    INITIAL, IMU_ROWS, NAVIGATION_ROWS, META = prepare(RECORDS, NAVIGATION_HZ)
+    INITIAL, IMU_ROWS, NAVIGATION_ROWS, META = prepare(RECORDS, NAVIGATION_HZ, BINARY)
     # Validate the entire selected drive before replacing a previous result.
     with TQDM(total=2, desc="Prepare CSV / metadata", dynamic_ncols=True, bar_format=PROGRESS_FORMAT) as PROGRESS:
         if OUTPUT.exists():

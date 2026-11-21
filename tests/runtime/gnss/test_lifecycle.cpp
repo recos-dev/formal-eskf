@@ -1392,10 +1392,10 @@ template <typename Linalg> void vertical_composition(TestContext & test, std::st
     struct Scenario
     {
         FusionDecision velocity;
-        bool down_reset;
-        bool current_good;
+        bool down_reset = false;
+        bool current_good = false;
         FusionDecision height;
-        bool height_reset;
+        bool height_reset = false;
     };
     Scenario const scenarios[]{
         {FusionDecision::fused, true, false, FusionDecision::fused, true},

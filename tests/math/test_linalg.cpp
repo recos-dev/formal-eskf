@@ -277,7 +277,7 @@ template <typename B> void product(Context & test, std::string_view profile)
         }
     }
     transposed(0, 0) = Scalar{-20};
-    test.expect(a(0, 0) == Scalar{1}, profile, "transpose is owning");
+    test.expect(transposed(0, 0) == Scalar{-20} && a(0, 0) == Scalar{1}, profile, "transpose is owning");
     for (std::size_t inner = 0; inner < 12; ++inner)
     {
         la::Matrix<B, 15, 12> left;

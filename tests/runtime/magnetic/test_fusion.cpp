@@ -82,6 +82,8 @@ template <typename Linalg, typename Configuration> struct Fixture
     using value_type = typename Linalg::value_type;
     using state_type = typename Configuration::template NominalState<Linalg>;
     static constexpr std::size_t size = Configuration::error_state_dimension;
+    // Used through dependent fixture types in the test/oracle templates.
+    // cppcheck-suppress unusedStructMember
     static constexpr std::size_t measurement_size = 3;
     static constexpr bool is_ins = std::is_same_v<Configuration, Ins>;
     static constexpr std::size_t attitude_offset = is_ins ? 6 : 0;

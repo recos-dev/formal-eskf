@@ -69,6 +69,8 @@ template <typename Scalar, ResetGroup Group> struct Fixture
     static constexpr bool vertical = Group == ResetGroup::vertical_position || Group == ResetGroup::vertical_velocity;
     static constexpr bool velocity = Group == ResetGroup::velocity || Group == ResetGroup::vertical_velocity;
     static constexpr std::size_t size = Group == ResetGroup::horizontal_position ? 2U : vertical ? 1U : 3U;
+    // Used through dependent fixture types in the test/oracle templates.
+    // cppcheck-suppress unusedStructMember
     static constexpr std::size_t axis_offset = vertical ? 2U : 0U;
     using vector_type = formal_eskf::linalg::Matrix<linalg_type, size, 1U>;
 

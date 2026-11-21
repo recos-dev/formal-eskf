@@ -3119,6 +3119,8 @@ check_scalar_contract_guards()
 check_reference_preflight()
 {
     local PROBE_RESULT=0 ESBMC_COMMAND=reference_probe
+    # Invoked indirectly through ESBMC_COMMAND by the preflight helper.
+    # shellcheck disable=SC2317
     reference_probe()
     {
         [[ "$*" == "${REPO_DIR}/tests/esbmc/reference_checks.cpp --std c++20 --64 --assign-param-nondet --quiet --unwind 70 --timeout 15s --memlimit 1g --function verify_reference_identity --z3" ]] || return 2
@@ -3135,6 +3137,8 @@ check_reference_preflight()
 check_frame_preflight()
 {
     local PROBE_RESULT=0 ESBMC_COMMAND=frame_probe
+    # Invoked indirectly through ESBMC_COMMAND by the preflight helper.
+    # shellcheck disable=SC2317
     frame_probe()
     {
         [[ "$1" == "${REPO_DIR}/tests/esbmc/frame_checks.cpp" && "$*" == *"--function verify_literals --z3" ]] || return 2
@@ -3198,6 +3202,8 @@ check_initialization_preflight()
     local PROBE_RESULT=0 PROBE_COUNT=0 ESBMC_COMMAND=initialization_probe
     # Each command substitution has its own shell; inspect the two calls in
     # separate runs so a rejected binary64 profile cannot be silently skipped.
+    # Invoked indirectly through ESBMC_COMMAND by the preflight helper.
+    # shellcheck disable=SC2317
     initialization_probe()
     {
         [[ "$*" == "${REPO_DIR}/tests/esbmc/initialization_checks.cpp --std c++20 --64 --quiet --unwind 70 --timeout 30s --memlimit 1g -D FORMAL_ESKF_PROOF_BINARY64="[01]" --function verify_initialization --z3" ]] || return 2

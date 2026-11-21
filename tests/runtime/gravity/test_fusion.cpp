@@ -68,6 +68,8 @@ template <typename Linalg, typename Configuration> struct FusionFixture
     using magnitude_type = formal_eskf::runtime::AccelerometerMagnitude<Linalg>;
     static constexpr bool is_ins = std::is_same_v<Configuration, Ins>;
     static constexpr std::size_t size = Configuration::error_state_dimension;
+    // Used through dependent fixture types in the test/oracle templates.
+    // cppcheck-suppress unusedStructMember
     static constexpr std::size_t measurement_size = 3U;
     static constexpr std::size_t attitude_offset = is_ins ? 6U : 0U;
     formal_eskf::linalg::Matrix<Linalg, 3U, size> H{};

@@ -74,6 +74,8 @@ template <typename Base> struct LimitMath : Base
     static inline bool oversized_root = false;
     static value_type sqrt(value_type value)
     {
+        // Tests change the fault selector before invoking this backend through templates.
+        // cppcheck-suppress knownConditionTrueFalse
         return oversized_root ? std::numeric_limits<value_type>::max() : Base::sqrt(value);
     }
 };
@@ -87,8 +89,14 @@ template <typename Linalg, std::size_t M> struct ReferenceFixture
     using state_type = typename GnssMeasurementFixture<Linalg>::state_type;
     using covariance_type = typename GnssMeasurementFixture<Linalg>::covariance_type;
     static constexpr std::size_t size = 15U;
+    // Used through dependent fixture types in the test/oracle templates.
+    // cppcheck-suppress unusedStructMember
     static constexpr std::size_t measurement_size = M;
+    // Used through dependent fixture types in the test/oracle templates.
+    // cppcheck-suppress unusedStructMember
     static constexpr std::size_t attitude_offset = 6U;
+    // Used through dependent fixture types in the test/oracle templates.
+    // cppcheck-suppress unusedStructMember
     static constexpr bool is_ins = true;
     state_type state;
     covariance_type P;

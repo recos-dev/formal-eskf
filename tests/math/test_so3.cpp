@@ -118,7 +118,7 @@ template <typename B> void identity(Context & test, std::string_view profile)
                 profile, "default/static identity scalar-first coefficients");
     auto values = q.coefficients();
     values(0) = Scalar{-3};
-    test.expect(q.q0() == Scalar{1}, profile, "coefficient copy is owning");
+    test.expect(values(0) == Scalar{-3} && q.q0() == Scalar{1}, profile, "coefficient copy is owning");
     auto const nonidentity = quaternion<B>(test, profile, {0.5, 0.5, 0.5, 0.5});
     test.expect(so::same_coefficients(q * nonidentity, nonidentity) &&
                     so::same_coefficients(nonidentity * q, nonidentity),
@@ -483,8 +483,8 @@ template <typename B> void matrix_coefficients(Context & test, std::string_view 
     auto const R = so::to_rotation_matrix(general);
     for (std::size_t index = 0; index < 9; ++index)
     {
-        long double const expected = static_cast<long double>(numerators[index]) / 30;
-        test.expect(std::abs(static_cast<long double>(R(index / 3, index % 3)) - expected) <=
+        long double const expected_coefficient = static_cast<long double>(numerators[index]) / 30;
+        test.expect(std::abs(static_cast<long double>(R(index / 3, index % 3)) - expected_coefficient) <=
                         Scalar{16} * std::numeric_limits<Scalar>::epsilon(),
                     profile, "independent rational oblique rotation checks every coefficient and cross term");
     }

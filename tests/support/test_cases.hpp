@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <ostream>
 #include <span>
@@ -22,7 +23,7 @@ struct Case
 {
     std::string_view id;
     std::string_view profile;
-    void (*run)(Context &, std::string_view);
+    void (*run)(Context &, std::string_view) = nullptr;
 };
 
 // No arguments runs the suite. A selection must identify exactly one case/profile.
@@ -51,13 +52,13 @@ inline int run_cases(std::span<Case const> cases, int argc, char const * const *
             output << "ERROR: incomplete case registry entry\n";
             return 2;
         }
-        for (std::size_t previous = 0U; previous < index; ++previous)
+        auto const previous = cases.first(index);
+        if (std::any_of(previous.begin(), previous.end(),
+                        [&entry](Case const & other)
+                        { return entry.id == other.id && entry.profile == other.profile; }))
         {
-            if (entry.id == cases[previous].id && entry.profile == cases[previous].profile)
-            {
-                output << "ERROR: duplicate case/profile: " << entry.id << ' ' << entry.profile << '\n';
-                return 2;
-            }
+            output << "ERROR: duplicate case/profile: " << entry.id << ' ' << entry.profile << '\n';
+            return 2;
         }
         if (selected && entry.id == argv[2] && entry.profile == argv[4])
         {

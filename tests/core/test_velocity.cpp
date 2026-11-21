@@ -341,8 +341,12 @@ template <typename Fixture> struct VelocityReference
     using value_type = typename Fixture::value_type;
     using state_type = typename Fixture::state_type;
     using covariance_type = typename Fixture::covariance_type;
+    // Used through dependent fixture types in the test/oracle templates.
+    // cppcheck-suppress unusedStructMember
     static constexpr bool is_ins = true;
     static constexpr std::size_t size = 15U;
+    // Used through dependent fixture types in the test/oracle templates.
+    // cppcheck-suppress unusedStructMember
     static constexpr std::size_t attitude_offset = 6U;
     static constexpr std::size_t measurement_size = Fixture::measurement_type::row_count;
     state_type state;

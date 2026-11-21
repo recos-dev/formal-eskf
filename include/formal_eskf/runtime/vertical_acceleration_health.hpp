@@ -103,6 +103,8 @@ Status VerticalAccelerationHealth<Linalg>::falling_likelihood(Observations const
     Evidence pressure, gnss, ground;
     struct Check
     {
+        // Every Check aggregate below explicitly binds both references.
+        // cppcheck-suppress uninitMemberVarNoCtor
         Innovation const & observation;
         Evidence & reference;
     };

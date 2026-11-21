@@ -241,17 +241,32 @@ template <typename Scalar> struct BranchMath : formal_eskf::scalar::StandardMath
     static inline unsigned trig_calls{};
     static Scalar sqrt(Scalar value)
     {
-        return fault == Fault::root ? std::numeric_limits<Scalar>::quiet_NaN()
-                                    : (fault == Fault::zero_root ? Scalar{0} : Base::sqrt(value));
+        // Tests change the fault selector before invoking this backend through templates.
+        // cppcheck-suppress knownConditionTrueFalse
+        if (fault == Fault::root)
+        {
+            return std::numeric_limits<Scalar>::quiet_NaN();
+        }
+        // The zero-root selector is also set by the fault-injection cases.
+        // cppcheck-suppress knownConditionTrueFalse
+        if (fault == Fault::zero_root)
+        {
+            return Scalar{0};
+        }
+        return Base::sqrt(value);
     }
     static Scalar sin(Scalar value)
     {
         ++trig_calls;
+        // Tests change the fault selector before invoking this backend through templates.
+        // cppcheck-suppress knownConditionTrueFalse
         return fault == Fault::sine ? std::numeric_limits<Scalar>::infinity() : Base::sin(value);
     }
     static Scalar cos(Scalar value)
     {
         ++trig_calls;
+        // Tests change the fault selector before invoking this backend through templates.
+        // cppcheck-suppress knownConditionTrueFalse
         return fault == Fault::cosine ? std::numeric_limits<Scalar>::quiet_NaN() : Base::cos(value);
     }
 };
@@ -268,9 +283,9 @@ template <typename Base> struct BranchBackend : Base
         return override_squared ? squared_value : Base::template squared_norm<N>(input);
     }
     template <std::size_t R, std::size_t C>
-    static void scale(Storage<R, C> const & input, Scalar scale, Storage<R, C> & output)
+    static void scale(Storage<R, C> const & input, Scalar factor, Storage<R, C> & output)
     {
-        Base::template scale<R, C>(input, scale, output);
+        Base::template scale<R, C>(input, factor, output);
         if (bad_candidate)
         {
             Base::template coefficient<R, C>(output, R - 1, C - 1) = std::numeric_limits<Scalar>::infinity();

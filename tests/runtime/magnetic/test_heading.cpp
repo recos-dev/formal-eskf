@@ -388,12 +388,12 @@ template <typename Backend> void ownership(Context & test, std::string_view prof
     using Scalar = typename Backend::value_type;
     auto const params = parameters<Backend>();
     Heading<Backend> immediate, idle;
-    auto const acceleration = Vector<Backend>::from_row_major({Scalar{2}, Scalar{0}, Scalar{100}});
+    auto const specific_force = Vector<Backend>::from_row_major({Scalar{2}, Scalar{0}, Scalar{100}});
     auto const east = Vector<Backend>::from_row_major({Scalar{0}, Scalar{20}, Scalar{40}});
     for (unsigned sample = 0; sample < 8; ++sample)
     {
-        test.expect(immediate.update_acceleration(acceleration, Scalar{0.5}) == Status::success &&
-                        idle.update_acceleration(acceleration, Scalar{0.5}) == Status::success,
+        test.expect(immediate.update_acceleration(specific_force, Scalar{0.5}) == Status::success &&
+                        idle.update_acceleration(specific_force, Scalar{0.5}) == Status::success,
                     profile, "equal consumed IMU intervals");
         auto const before = idle.state();
         for (unsigned queries = 0; queries < 50; ++queries)

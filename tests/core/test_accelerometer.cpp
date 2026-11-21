@@ -66,6 +66,8 @@ template <typename Linalg, typename Configuration> struct AccelerometerFixture
     using state_type = typename Configuration::template NominalState<Linalg>;
     using error_type = typename Configuration::template ErrorState<Linalg>;
     static constexpr std::size_t size = Configuration::error_state_dimension;
+    // Used through dependent fixture types in the test/oracle templates.
+    // cppcheck-suppress unusedStructMember
     static constexpr std::size_t attitude_offset = size == 3U ? 0U : 6U;
     static constexpr value_type minimum_norm = static_cast<value_type>(1.0e-6);
     using vector_type = formal_eskf::linalg::Vector<Linalg, 3U>;
@@ -320,6 +322,8 @@ template <typename Fixture> struct GravityReference
     static constexpr bool is_ins = Fixture::size == 15U;
     static constexpr std::size_t size = Fixture::size;
     static constexpr std::size_t attitude_offset = Fixture::attitude_offset;
+    // Used through dependent fixture types in the test/oracle templates.
+    // cppcheck-suppress unusedStructMember
     static constexpr std::size_t measurement_size = 3U;
     state_type state;
     covariance_type P;

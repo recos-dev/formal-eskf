@@ -107,7 +107,11 @@ template <typename Linalg, typename Configuration, std::size_t MeasurementSize> 
     using covariance_type = typename types::error_covariance_type;
     static constexpr bool is_ins = std::is_same_v<Configuration, eskf::configuration::Ins>;
     static constexpr std::size_t size = types::error_state_dimension;
+    // Used through dependent fixture types in the test/oracle templates.
+    // cppcheck-suppress unusedStructMember
     static constexpr std::size_t attitude_offset = is_ins ? 6U : 0U;
+    // Used through dependent fixture types in the test/oracle templates.
+    // cppcheck-suppress unusedStructMember
     static constexpr std::size_t measurement_size = MeasurementSize;
     state_type state{};
     covariance_type P{};

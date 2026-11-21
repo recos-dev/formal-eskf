@@ -30,14 +30,14 @@ struct Interval
 };
 long double down(long double value) { return std::nextafter(value, -std::numeric_limits<long double>::infinity()); }
 long double up(long double value) { return std::nextafter(value, std::numeric_limits<long double>::infinity()); }
-Interval add(Interval a, Interval b) { return {down(a.low + b.low), up(a.high + b.high)}; }
-Interval multiply(Interval a, Interval b)
+Interval add(Interval const & a, Interval const & b) { return {down(a.low + b.low), up(a.high + b.high)}; }
+Interval multiply(Interval const & a, Interval const & b)
 {
     std::array const products{a.low * b.low, a.low * b.high, a.high * b.low, a.high * b.high};
     return {down(*std::min_element(products.begin(), products.end())),
             up(*std::max_element(products.begin(), products.end()))};
 }
-Interval divide(Interval value, long double positive)
+Interval divide(Interval const & value, long double positive)
 {
     return {down(value.low / positive), up(value.high / positive)};
 }
@@ -60,7 +60,7 @@ std::array<Interval, 2> trig_reference(long double angle, int turns)
     }
     // Every fixture has |reduced x| <= 4. The omitted alternating tail is
     // smaller than its next term, hence conservatively < 2*last-term magnitude.
-    auto widen = [](Interval sum, Interval last)
+    auto widen = [](Interval const & sum, Interval const & last)
     {
         long double const bound = up(2 * std::max(std::abs(last.low), std::abs(last.high)));
         return add(sum, {-bound, bound});
@@ -68,7 +68,7 @@ std::array<Interval, 2> trig_reference(long double angle, int turns)
     return {widen(sine, sine_term), widen(cosine, cosine_term)};
 }
 
-template <typename Scalar> bool contains_fixture_result(Scalar actual, Interval reference)
+template <typename Scalar> bool contains_fixture_result(Scalar actual, Interval const & reference)
 {
     // A one-adjacent-value allowance around the reference enclosure is a
     // declared finite-fixture regression target, not a uniform libm bound or

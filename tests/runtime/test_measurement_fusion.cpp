@@ -431,7 +431,6 @@ void test_downstream_failures(TestContext & test, std::string_view profile)
     fixture.r = fixture_type::vector_type::zero();
     auto bad = fixture;
     // Gate passes, LLT fails: positive innovation diagonal is not an SPD proof.
-    bad = fixture;
     bad.V(0U, 1U) = value_type{8};
     bad.V(1U, 0U) = value_type{8};
     auto check =
@@ -505,8 +504,8 @@ enum class Observation
 template <typename Linalg, Observation Kind, std::size_t MeasurementSize>
 struct ObservationFusionFixture : FusionFixture<Linalg, formal_eskf::configuration::Ins, MeasurementSize>
 {
-    static constexpr std::size_t measurement_size = MeasurementSize;
-    using base_type = FusionFixture<Linalg, formal_eskf::configuration::Ins, measurement_size>;
+    using base_type = FusionFixture<Linalg, formal_eskf::configuration::Ins, MeasurementSize>;
+    using base_type::measurement_size;
     using value_type = typename base_type::value_type;
     using state_type = typename base_type::state_type;
     using covariance_type = typename base_type::covariance_type;
@@ -547,6 +546,8 @@ struct ObservationFusionFixture : FusionFixture<Linalg, formal_eskf::configurati
         }
     }
 
+    // Named observation fixture deliberately replaces the generic residual fusion call.
+    // cppcheck-suppress duplInheritedMember
     auto fuse(state_type & output, covariance_type & output_P, BiasUpdate const & permissions = {}) const
     {
         if constexpr (Kind == Observation::horizontal_position)

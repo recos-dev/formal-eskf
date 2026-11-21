@@ -109,6 +109,8 @@ void allocation_and_reset(Context & test, std::string_view profile)
     auto const oldest_time = buffer.get_oldest().time_us;
     auto const newest_time = buffer.get_newest().time_us;
     ObservedSample::begin();
+    // Deliberately assert the required invariant, even when statically known.
+    // cppcheck-suppress knownConditionTrueFalse
     bool const unchanged = buffer.allocate(3) && !buffer.allocate(0) && !buffer.allocate(9);
     ObservedSample::end();
     test.expect(unchanged && ObservedSample::assignments == 0 && buffer.entries() == 3 &&
@@ -344,6 +346,8 @@ void slot_access(Context & test, std::string_view profile)
     for (int repetition = 0; repetition < 3; ++repetition)
     {
         test.expect(view.get_oldest() == Sample{3, 3} && view.get_newest() == Sample{5, 5} && view.entries() == 3 &&
+                        // Deliberately assert the required invariant, even when statically known.
+                        // cppcheck-suppress knownConditionTrueFalse
                         view.get_oldest_index() == oldest,
                     profile, "endpoint views are nonconsuming and const slot access is physical");
     }

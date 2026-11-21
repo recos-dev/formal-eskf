@@ -1143,6 +1143,8 @@ template <typename Linalg, typename Configuration> struct MagneticCompositionRef
     static constexpr bool is_ins = std::is_same_v<Configuration, formal_eskf::configuration::Ins>;
     static constexpr std::size_t size = types::error_state_dimension;
     static constexpr std::size_t attitude_offset = is_ins ? 6U : 0U;
+    // Used through dependent fixture types in the test/oracle templates.
+    // cppcheck-suppress unusedStructMember
     static constexpr std::size_t measurement_size = 3U;
     state_type state;
     covariance_type P;
@@ -1507,7 +1509,6 @@ void test_source_filter_composition(TestContext & test, std::string_view profile
                         profile,
                         "actual alignment precedes heading notification and is distinct from ordinary fusion progress");
             lifecycle.conditions.heading_aligned = true;
-            lifecycle.conditions.heading_consistent = heading.state().consistent;
             auto const raw = changed_raw;
             auto const next_check =
                 formal_eskf::runtime::check_magnetic_field(state.q_nb, raw, field, &field, field_parameters, false);

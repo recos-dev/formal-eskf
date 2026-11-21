@@ -67,6 +67,8 @@ template <typename Linalg, typename Configuration> struct MagnetometerFixture
     using state_type = typename Configuration::template NominalState<Linalg>;
     using error_type = typename Configuration::template ErrorState<Linalg>;
     static constexpr std::size_t size = Configuration::error_state_dimension;
+    // Used through dependent fixture types in the test/oracle templates.
+    // cppcheck-suppress unusedStructMember
     static constexpr std::size_t attitude_offset = size == 3U ? 0U : 6U;
     static constexpr value_type minimum_norm = static_cast<value_type>(1.0e-6);
     using vector_type = formal_eskf::linalg::Matrix<Linalg, 3U, 1U>;
@@ -121,9 +123,13 @@ template <typename Fixture> struct MagneticReference
     using value_type = typename Fixture::value_type;
     using state_type = typename Fixture::state_type;
     using covariance_type = typename Fixture::covariance_type;
+    // Used through dependent fixture types in the test/oracle templates.
+    // cppcheck-suppress unusedStructMember
     static constexpr bool is_ins = Fixture::size == 15U;
     static constexpr std::size_t size = Fixture::size;
     static constexpr std::size_t attitude_offset = Fixture::attitude_offset;
+    // Used through dependent fixture types in the test/oracle templates.
+    // cppcheck-suppress unusedStructMember
     static constexpr std::size_t measurement_size = 3U;
     using linalg_type = typename Fixture::linalg_type;
     state_type state;

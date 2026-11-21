@@ -7,11 +7,13 @@
  */
 
 #include <formal_eskf/runtime/magnetometer.hpp>
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cmath>
 #include <limits>
 #include <numbers>
+#include <numeric>
 #include <type_traits>
 #include "test_backend.hpp"
 #include "test_cases.hpp"
@@ -72,6 +74,8 @@ template <typename Linalg, typename Configuration> struct Fixture
     using State = typename Configuration::template NominalState<Linalg>;
     using Q = formal_eskf::so3::UnitQuaternion<Linalg>;
     static constexpr bool ins = std::is_same_v<Configuration, Ins>;
+    // Used through dependent fixture types in the test/oracle templates.
+    // cppcheck-suppress unusedStructMember
     static constexpr std::size_t size = Configuration::error_state_dimension, offset = ins ? 6 : 0;
     using Matrix = formal_eskf::linalg::Matrix<Linalg, size, size>;
     using Vector = formal_eskf::linalg::Vector<Linalg, 3>;
@@ -135,15 +139,10 @@ template <typename F> Expected<F> oracle(F const & fixture)
     }
     result.delta = {std::cos(angle / 2), 0, 0, std::sin(angle / 2)};
     result.attitude = product(result.delta, copied(fixture.state.q_nb));
-    long double squared = 0;
-    for (auto coefficient : result.attitude)
-    {
-        squared += coefficient * coefficient;
-    }
-    for (auto & coefficient : result.attitude)
-    {
-        coefficient /= std::sqrt(squared);
-    }
+    long double const squared =
+        std::inner_product(result.attitude.begin(), result.attitude.end(), result.attitude.begin(), 0.0L);
+    std::transform(result.attitude.begin(), result.attitude.end(), result.attitude.begin(),
+                   [squared](long double coefficient) { return coefficient / std::sqrt(squared); });
     result.after = rotation(result.attitude);
     Rotation A{};
     // Removing navigation Down keeps exactly the first two navigation rows.

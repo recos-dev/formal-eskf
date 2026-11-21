@@ -10,14 +10,14 @@ positions, datum, domain and conversion behavior.
 positions, basis orientation and origin lifecycle. They are shared mathematical
 requirements, not new children of the ESKF state model.
 
-This proposal introduces a portable numerical utility used by adapters. It does
+This component provides a portable numerical utility for adapters. It does
 not change [E-STATE](../requirements/core/state.md), prediction/correction,
-sensor admission, published frames or current replay/PX4 behavior. It defines
-proposed operations and data semantics for review, not an implemented interface.
+sensor admission, published frames or current replay/PX4 behavior. The contracts
+remain Draft; implementation and tests do not constitute approval.
 
 ## Responsibilities and interfaces
 
-The planned capability has two layers, tracked under
+The capability has two layers, tracked under
 [F-05](../../roadmap.md#f-05--sensor-location-and-frames):
 
 | Layer | Responsibility |
@@ -34,8 +34,10 @@ geodetic -> ECEF -> fixed-origin local NED -> existing ESKF position input
 global output <- geodetic <- ECEF <- local NED position
 ~~~
 
-Proposed placement: `include/formal_eskf/geodesy/ecef.hpp` and `local_ned.hpp`,
-namespace `formal_eskf::geodesy`. The first owns the geodetic value type and
+Implementation: [ecef.hpp](../../../include/formal_eskf/geodesy/ecef.hpp) and
+[local_ned.hpp](../../../include/formal_eskf/geodesy/local_ned.hpp), namespace
+`formal_eskf::geodesy`, exposed by the `formal_eskf::geodesy` CMake target. The first
+owns the geodetic value type and
 stateless conversions; the second owns one origin and its cached basis. There
 is no new projection backend, virtual interface, policy hierarchy or precision
 selector. Reuse `Status`, scalar math and fixed-size linalg; `Linalg` is the one
@@ -79,6 +81,28 @@ the origin subtraction in binary64, then checks the conversion to its estimator
 scalar. Template variation stays at this numerical boundary. Datum lookup,
 sensor timing and quality remain adapter/runtime responsibilities.
 
+The inverse uses eight fixed-point refinements of geocentric latitude, then
+computes height by projection onto the ellipsoid normal. It has no convergence
+retry loop. With horizontal radius `p`, the update is
+`T(phi) = atan2(z + e2 N(phi) sin(phi), p)`. For `p > 0`, the exact-real derivative
+is bounded on the admitted near-surface shell by:
+
+~~~text
+r_min = b - 12000, r_max = a + 100000, d = e2*a/sqrt(1-e2)
+abs(T'(phi)) <= r_max * e2*a / ((1-e2)^(3/2) * (r_min-d)^2) < 0.008
+~~~
+
+Here `d` bounds the vertical adjustment, so the adjusted radius is at least
+`r_min-d`. Eight iterations reduce an initial error bounded by pi to less than
+`5.3e-17` radians in exact arithmetic. The z axis is handled directly. This is
+an analytic truncation argument, not a machine-checked theorem or a bound on
+rounding/libm errors. Nonfinite inputs and necessary radial bounds are checked
+before squared-distance arithmetic; final computed height still controls admission.
+
+The affine operations reuse cached origin/basis data without trig calls; their
+workspace and arithmetic dimensions are fixed at three. Native/oracle checks
+remain separate from target timing/stack qualification.
+
 ## Design decisions
 
 - Preserve the existing PX4 projection. Its pinned
@@ -92,8 +116,8 @@ sensor timing and quality remain adapter/runtime responsibilities.
   this Draft authorizes no replacement or automatic mode selection.
 - GeographicLib v2.5 supplies an independent host oracle with explicit ENU/NED
   adaptation. It is not vendored or linked into the flight component by this
-  proposal. Selection of a production inverse algorithm remains separate from
-  selection of an oracle.
+  proposal. The production inverse uses the bounded iteration described above,
+  independent of GeographicLib's inverse algorithm.
 - This conversion proposal adds no geoid database, datum/epoch conversion,
   geodetic covariance Jacobian, live frame rebasing, navigation-frame transport
   or Earth-rotation dynamics. Origin rebasing is the next layer described above.
@@ -104,9 +128,9 @@ sensor timing and quality remain adapter/runtime responsibilities.
 
 The two requirement IDs provide the initial review units. Their acceptance
 sections separate exact geometry, checked source behavior and numerical error.
-There is no implementation, registered test suite or proof evidence for these
-Drafts yet. The current executable review-map denominator remains unchanged;
-adoption must register source/test/proof bindings and explicitly retain gaps.
+Source bindings and the [native test suite](../verification/tests/math/geodesy.md)
+are registered. Both IDs are in the formal review map with empty Lean/ESBMC
+bindings; exact-model/source proofs and uniform numerical bounds remain gaps.
 
 Independent-oracle and round-trip tests alone cannot establish a uniform error
 bound. Component acceptance also cannot discharge the module's

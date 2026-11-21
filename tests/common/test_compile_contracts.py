@@ -15,6 +15,7 @@ CASES = (
     "TC-C-CPP-SUBSET-CONFIGURATION",
     "TC-C-LAYER-BOUNDARY-DEPENDENCIES",
     "TC-C-CPP-SUBSET-RESTRICTIONS",
+    "TC-F-GEO-ECEF-FORMAT",
 )
 PREAMBLE = """
 #include <formal_eskf/linalg/backend/eigen.hpp>
@@ -29,7 +30,7 @@ struct Sample { std::uint64_t time_us{}; int value{}; };
 """
 
 
-def compile_source(ARGS, DIRECTORY, SOURCE, *, DEFINITIONS=(), EXPECT_SUCCESS=True, OPTIONS=()):
+def compile_source(ARGS, DIRECTORY, SOURCE, *, DEFINITIONS=(), EXPECT_SUCCESS=True, OPTIONS=(), DIAGNOSTIC=None):
     SOURCE_FILE = DIRECTORY / "fixture.cpp"
     SOURCE_FILE.write_text(SOURCE)
     COMMAND = [ARGS.compiler, *ARGS.compiler_arg, "-std=c++20", "-fno-exceptions", "-fno-rtti", "-fno-fast-math",
@@ -43,6 +44,8 @@ def compile_source(ARGS, DIRECTORY, SOURCE, *, DEFINITIONS=(), EXPECT_SUCCESS=Tr
         raise AssertionError(f"unexpected compile result ({RESULT.returncode}): {shlex.join(COMMAND)}\n{RESULT.stderr}")
     if not EXPECT_SUCCESS and RESULT.returncode < 0:
         raise AssertionError("compiler termination is not an expected compile-time rejection")
+    if DIAGNOSTIC and DIAGNOSTIC not in RESULT.stderr:
+        raise AssertionError(f"missing expected diagnostic: {DIAGNOSTIC}\n{RESULT.stderr}")
     return RESULT.stdout
 
 
@@ -91,6 +94,7 @@ def configuration(ARGS, DIRECTORY):
 def dependencies(ARGS, DIRECTORY):
     INCLUDE_DIR = REPO_DIR / "include" / "formal_eskf"
     HEADERS = sorted((INCLUDE_DIR / "eskf").glob("*.hpp")) + sorted((INCLUDE_DIR / "runtime").glob("*.hpp"))
+    HEADERS += sorted((INCLUDE_DIR / "geodesy").glob("*.hpp"))
     if not HEADERS:
         raise AssertionError("empty public-header inventory")
     for HEADER in HEADERS:
@@ -100,8 +104,10 @@ def dependencies(ARGS, DIRECTORY):
         DEPENDENCIES = compile_source(ARGS, DIRECTORY, SOURCE, OPTIONS=("-MM", "-MT", "fixture"))
         TOKENS = shlex.split(DEPENDENCIES.replace("\\\n", " "))[1:]
         FORBIDDEN = ("integrations/", "examples/", "uORB/", "px4_platform_common/", "nuttx/")
-        if HEADER.parent.name == "eskf":
+        if HEADER.parent.name in ("eskf", "geodesy"):
             FORBIDDEN += ("formal_eskf/runtime/",)
+        if HEADER.parent.name == "geodesy":
+            FORBIDDEN += ("formal_eskf/eskf/",)
         BAD = [TOKEN for TOKEN in TOKENS if any(PART in TOKEN for PART in FORBIDDEN)]
         if BAD:
             raise AssertionError(f"{NAME} has forbidden transitive dependencies: {BAD}")
@@ -138,6 +144,24 @@ auto magnitude(formal_eskf::runtime::AccelerometerMagnitude<Backend> & filter, T
         print(REPORT.read_text(), end="")
 
 
+def geodesy_format(ARGS, DIRECTORY):
+    PREFIX = """
+#include <formal_eskf/geodesy/local_ned.hpp>
+#include <formal_eskf/linalg/backend/eigen.hpp>
+namespace geo = formal_eskf::geodesy;
+"""
+    OPERATIONS = (
+        "geo::LocalNed<B> frame; (void)frame;",
+        "geo::GeodeticPosition g; formal_eskf::linalg::Vector<B,3> e; (void)geo::geodetic_to_ecef<B>(g,e);",
+        "geo::GeodeticPosition g; formal_eskf::linalg::Vector<B,3> e; (void)geo::ecef_to_geodetic<B>(e,g);",
+    )
+    for OPERATION in OPERATIONS:
+        for SCALAR in ("double", "float"):
+            SOURCE = PREFIX + f"using B = formal_eskf::linalg::EigenBackend<{SCALAR}>;\nint main(){{{OPERATION}}}"
+            compile_source(ARGS, DIRECTORY, SOURCE, EXPECT_SUCCESS=SCALAR == "double",
+                           DIAGNOSTIC=None if SCALAR == "double" else "Geodesy requires IEEE-754 binary64 double")
+
+
 def main():
     PARSER = argparse.ArgumentParser(description=__doc__)
     PARSER.add_argument("--compiler", default=os.environ.get("CXX", "c++"))
@@ -158,7 +182,7 @@ def main():
     OUTPUT_DIR = REPO_DIR / "output" / "test-compile-contracts"
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     FAILED = 0
-    for CASE, CALLBACK in zip(CASES, (shapes, configuration, dependencies, restrictions)):
+    for CASE, CALLBACK in zip(CASES, (shapes, configuration, dependencies, restrictions, geodesy_format)):
         if ARGS.case and CASE != ARGS.case:
             continue
         print(f"RUN {CASE} {PROFILE}", flush=True)

@@ -108,6 +108,8 @@ Integration owners and production behavior changes remain outside this work.
 | T-69 | `tests/core/test_correction.cpp` | Use shared profile metadata and verify strict registry reconciliation. | Implemented |
 
 | T-70 | `tests/math/test_so3.cpp` | Construct Log branch boundary quaternions that retain their specified side through each backend normalization. | Implemented |
+| T-71 | `tests/math/test_geodetic_ecef.cpp` | Independent WGS84 fixtures, inverse reconstruction, domain boundaries and failure preservation; format rejection in the existing compile suite. | Implemented; numerical acceptance partial |
+| T-72 | `tests/math/test_local_ned.cpp` | Analytic axes, independent affine geometry, frame lifecycle, vector/covariance transport and overflow/alias behavior. | Implemented; numerical acceptance partial |
 
 ## Final reconciliation and cleanup
 
@@ -117,7 +119,7 @@ requirement/defect sensitivity; relocate or revise it under its owning file.
 Delete an obsolete source only when its meaningful observations have a reviewed
 replacement. Record necessary retained-test changes in the affected action before
 editing. Do not remove integration, replay, tool or proof fixtures merely because
-they are outside the 250-row design.
+they are outside the core/runtime/component case design.
 
 Run the complete supported native selection, optimized compiler checks and
 ASan/UBSan; exercise the documented macro interactions and available backend

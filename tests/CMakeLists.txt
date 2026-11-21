@@ -157,6 +157,8 @@ formal_eskf_add_backend_test(test_linalg_eigen math/test_linalg formal_eskf.lina
 formal_eskf_add_backend_test(test_linalg_spd math/test_spd_solve formal_eskf.linalg.spd formal_eskf::linalg)
 formal_eskf_add_backend_test(test_so3_eigen math/test_so3 formal_eskf.so3.eigen formal_eskf::so3)
 formal_eskf_add_backend_test(test_so3_jacobian math/test_so3_jacobian formal_eskf.so3.jacobian formal_eskf::so3)
+formal_eskf_add_backend_test(test_geodetic_ecef math/test_geodetic_ecef formal_eskf.geodetic_ecef.eigen formal_eskf::geodesy)
+formal_eskf_add_backend_test(test_local_ned math/test_local_ned formal_eskf.local_ned.eigen formal_eskf::geodesy)
 formal_eskf_add_backend_test(test_eskf_types core/test_types formal_eskf.types.eigen formal_eskf::core)
 formal_eskf_add_backend_test(test_eskf_sequence core/test_sequence formal_eskf.sequence.eigen formal_eskf::core)
 formal_eskf_add_backend_test(test_eskf_prediction core/test_prediction formal_eskf.prediction.eigen formal_eskf::core)

@@ -37,6 +37,10 @@ target_include_directories(
 target_compile_features(formal_eskf_so3 INTERFACE cxx_std_20)
 target_link_libraries(formal_eskf_so3 INTERFACE formal_eskf::linalg)
 
+add_library(formal_eskf_geodesy INTERFACE)
+add_library(formal_eskf::geodesy ALIAS formal_eskf_geodesy)
+target_link_libraries(formal_eskf_geodesy INTERFACE formal_eskf::linalg)
+
 add_library(formal_eskf_core INTERFACE)
 add_library(formal_eskf::core ALIAS formal_eskf_core)
 

@@ -4,7 +4,7 @@
 
 **Status:** Draft
 
-**Applies to:** Proposed portable geodesy component; fixed-origin Cartesian
+**Applies to:** Portable geodesy component; fixed-origin Cartesian
 positions and changes of vector basis, using IEEE-754 binary64.
 
 **Uses:** [F-GEO-ECEF](geodetic-ecef.md),
@@ -126,6 +126,10 @@ not established by a successful 3x3 basis conversion.
 - Exercise default use, successful origin replacement, rejected replacement,
   invalid input precedence, output/input aliasing and unchanged failure outputs.
   Inspect bounded storage/work. Host timing is not a target WCET certificate.
+
+The [implementation](../../../../../include/formal_eskf/geodesy/local_ned.hpp)
+and [native test design](../../../verification/tests/math/geodesy.md) are bound.
+Exact identities and source/numerical proofs remain open.
 
 ## Open decisions
 

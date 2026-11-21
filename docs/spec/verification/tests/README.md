@@ -62,22 +62,22 @@ qualification keep their own runners.
 | Layer | Canonical requirements | Production headers | Responsibility |
 |---|---:|---:|---|
 | Common | 6 | 1 | Failure/domain/numerical/language/layer contracts; Status. |
-| Math | 16 | 15 | Scalar, fixed-size linalg/adapters, quaternion and SO(3). |
+| Math | 18 | 17 | Scalar, fixed-size linalg/adapters, quaternion, SO(3) and geodesy. |
 | ESKF core | 21 | 21 | State, prediction, correction, observations and transactions, including generated kernels. |
 | Portable runtime | 23 | 13 | Admission, health, lifecycle, alignment, reset/fusion orchestration and fixed-capacity storage. |
 | Software capabilities | 5 | Shared above | SW-CORE, SW-GNSS, SW-GRAVITY, SW-IMU and SW-MAGNETIC compositions. |
-| **Total** | **71** | **50** | Inventory denominator, not proof/test completion. |
+| **Total** | **73** | **52** | Inventory denominator, not proof/test completion. |
 
-The 71 IDs include parent and child requirement documents. They are not 71
+The 73 IDs include parent and child requirement documents. They are not 73
 independent passing claims, and parent/child evidence must not be added together
 to manufacture a completion percentage.
 
-The header boundary is `include/formal_eskf/{eskf,runtime,linalg,scalar,so3}` plus
+The header boundary is `include/formal_eskf/{eskf,runtime,linalg,scalar,so3,geodesy}` plus
 `status.hpp`. Each family's source/operation table maps public API groups and
 internal dependencies to cases or an explicit disposition. One header is not one
 test, and this manual allocation is not an AST function-by-function coverage claim.
 
-Excluded: `integrations/`, `examples/`, PX4/replay owners, uORB, geodesy, actual
+Excluded: `integrations/`, `examples/`, PX4/replay owners, uORB, actual
 flight scheduling, tool runners and the generator pipeline. In particular,
 ImuHistory, ObservationHistory, OutputPredictor and HeightAiding currently owned
 under the PX4 integration are outside this task even where proof work groups
@@ -98,6 +98,7 @@ the canonical equations.
 | [Shared contracts](common.md) | C-FAILURE, C-INPUT-DOMAIN, C-NUMERICAL-PROFILE, C-NUMERICAL-ACCEPTANCE, C-LAYER-BOUNDARY, C-CPP-SUBSET. |
 | [Scalar and linalg](math/scalar-linalg.md) | F-SCALAR, F-LINALG, F-SOLVE. |
 | [Quaternion and SO(3)](math/quaternion-so3.md) | Q-IDENTITY, Q-MUL, Q-INVERSE, Q-NORMALIZE, Q-ROT-COMPOSE, Q-SIGN, Q-ROT-MATRIX, Q-ROTATE, SO3-HAT, SO3-EXP, SO3-LOG, SO3-SMALL-ANGLE, F-JR. |
+| [Geodesy](math/geodesy.md) | F-GEO-ECEF, F-GEO-NED. |
 | [State and propagation](core/propagation.md) | E-STATE, E-PRED, E-PRED-ATTITUDE, E-PRED-INS, E-NOISE, E-PCOV, E-STEP-PRED. |
 | [Correction, injection and reset](core/update.md) | E-CORRECT, E-BIAS-UPDATE, E-INJECT, E-RESET, E-STEP-INJECT-RESET, E-STEP-CORRECT, E-STEP; SW-CORE. |
 | [Observations and innovation](core/observations.md) | E-OBS, E-OBS-POSITION, E-OBS-VELOCITY, E-OBS-ACCEL, E-OBS-MAGNETIC, E-MAG-TILT, E-INNOV. |

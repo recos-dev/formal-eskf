@@ -13,7 +13,7 @@ tolerances are not acceptance criteria. Bindings distinguish **Native** executio
 | Dimension | Required selection and reduction rule |
 |---|---|
 | Estimator | INS (16 nominal coefficients, 15 errors) and rotation-only AHRS (4 coefficients, 3 errors). INS-only APIs are excluded from AHRS, not counted as passes. |
-| Scalar | Binary32 and binary64 for numerical cases. Integer/Boolean policy cases need one execution per distinct implementation, with numerical threshold calculations repeated for both formats where used. |
+| Scalar | Binary32 and binary64 for numerical cases, except geodesy (binary64 only, with binary32 compile-time rejection). Integer/Boolean policy cases need one execution per distinct implementation, with numerical threshold calculations repeated for both formats where used. |
 | Backend | Run public arithmetic/conformance and numerical compositions with Eigen, PX4 matrix and CMSIS-DSP adapters when dependencies are available. Unavailable supported adapters are **Blocked**, not silently omitted. Test the abstraction, not every external library function. A simple independent host reference supplies the oracle, not another production backend alone. |
 | Generated arithmetic | `ESKF_CODEGEN=0/1` for INS covariance, innovation, Joseph correction and reset. Compare each to the same independent mathematical oracle. Agreement between two implementations is supporting evidence. AHRS has no generated arithmetic claim. |
 | Attitude prediction | `ESKF_QUAT_APPROX=0/1` for nominal and covariance prediction and their combined step. These are different models at nonzero dt; do not demand identical outputs. |

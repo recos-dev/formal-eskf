@@ -82,11 +82,12 @@ decisions remain governed by each requirement's Status.
 | `F-JR` | [SO(3) right Jacobian](requirements/math/so3/right-jacobian.md) |
 | `SO3-SMALL-ANGLE` | [Small-angle behavior](requirements/math/so3/small-angle.md) |
 
-### Proposed geodesy extension
+### Geodesy
 
-These Draft contracts define a proposed utility outside the ESKF state model.
-They have no production, native-test or formal-proof bindings yet and do not
-extend the existing core/runtime test-plan or executable review-map denominator.
+These Draft contracts own the portable conversion utility outside the ESKF state
+model. Source bindings are in the traceability map and native cases in the
+[geodesy test design](verification/tests/math/geodesy.md). Lean/ESBMC bindings
+remain empty: these two additional review units are proof gaps, not verified claims.
 
 | ID | Required behavior |
 |---|---|
@@ -189,7 +190,7 @@ extend the existing core/runtime test-plan or executable review-map denominator.
 - [Numerical Architecture](architecture/numerics.md).
 - [Software Architecture and Verification Boundaries](architecture/overview.md).
 - [PX4 Module Architecture](architecture/px4-module.md).
-- [Geodesy Architecture and Minimal API](architecture/geodesy.md) (Draft proposal).
+- [Geodesy Architecture and Minimal API](architecture/geodesy.md) (Draft).
 
 ## Deployment profiles
 

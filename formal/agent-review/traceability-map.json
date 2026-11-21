@@ -7683,6 +7683,70 @@
           }
         ]
       }
+    },
+    {
+      "id": "F-GEO-ECEF",
+      "title": "WGS84 geodetic and ECEF position conversion",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/requirements/math/geodesy/geodetic-ecef.md",
+            "symbol": "# F-GEO-ECEF:"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/geodesy/ecef.hpp",
+            "symbol": "struct GeodeticPosition"
+          },
+          {
+            "file": "include/formal_eskf/geodesy/ecef.hpp",
+            "symbol": "Status geodetic_to_ecef("
+          },
+          {
+            "file": "include/formal_eskf/geodesy/ecef.hpp",
+            "symbol": "Status ecef_to_geodetic("
+          }
+        ],
+        "esbmc": []
+      }
+    },
+    {
+      "id": "F-GEO-NED",
+      "title": "Fixed-origin ECEF and NED transformations",
+      "references": {
+        "spec": [
+          {
+            "file": "docs/spec/requirements/math/geodesy/local-ned.md",
+            "symbol": "# F-GEO-NED:"
+          }
+        ],
+        "lean": [],
+        "cpp": [
+          {
+            "file": "include/formal_eskf/geodesy/local_ned.hpp",
+            "symbol": "class LocalNed"
+          },
+          {
+            "file": "include/formal_eskf/geodesy/local_ned.hpp",
+            "symbol": "Status LocalNed<Linalg>::set_origin("
+          },
+          {
+            "file": "include/formal_eskf/geodesy/local_ned.hpp",
+            "symbol": "Status LocalNed<Linalg>::ecef_to_ned("
+          },
+          {
+            "file": "include/formal_eskf/geodesy/local_ned.hpp",
+            "symbol": "Status LocalNed<Linalg>::ned_to_ecef("
+          },
+          {
+            "file": "include/formal_eskf/geodesy/local_ned.hpp",
+            "symbol": "Status LocalNed<Linalg>::rotation_from_ecef("
+          }
+        ],
+        "esbmc": []
+      }
     }
   ]
 }

@@ -4,7 +4,7 @@
 
 **Status:** Draft
 
-**Applies to:** Proposed portable geodesy component, IEEE-754 binary64 only.
+**Applies to:** Portable geodesy component, IEEE-754 binary64 only.
 This is not an ECEF estimator-state model or a flight operating envelope.
 
 **Uses:** [C-FAILURE](../../common/failure.md),
@@ -111,10 +111,13 @@ and establish its numerical adequacy over this domain before acceptance.
   libm, compiler and oracle uncertainties still need explicit evidence. A finite
   grid establishes only its sampled scope, not a uniform floating-point bound.
 - Separate exact-model properties, source/status/atomicity checks and numerical
-  comparison evidence. No proof or implementation is currently bound to this Draft.
+  comparison evidence. The [implementation](../../../../../include/formal_eskf/geodesy/ecef.hpp) and
+  [native test design](../../../verification/tests/math/geodesy.md) are bound;
+  exact/source proofs and uniform floating-point bounds remain open.
 
 ## Open decisions
 
 Owner review is required for the proposed height limits and numerical budget.
-Inverse algorithm selection and its bounded-work/error justification remain
-implementation work; acceptance cannot rely solely on matching GeographicLib.
+The [architecture](../../../architecture/geodesy.md#execution-and-state) records
+the bounded inverse and exact-arithmetic iteration argument. Floating-point/libm
+acceptance cannot rely solely on matching GeographicLib.

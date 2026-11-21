@@ -112,6 +112,7 @@ jobs:
           cmake -S . -B build/ci \
               -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
               -DCMAKE_CXX_FLAGS=-Werror \
+              -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
               -DBUILD_TESTING=ON \
               -DFORMAL_ESKF_BUILD_EIGEN_BACKEND=ON \
               -DFORMAL_ESKF_BUILD_EXAMPLES=ON \
@@ -121,7 +122,14 @@ jobs:
               -DESKF_CODEGEN="${CODEGEN}"
           cmake --build build/ci --parallel "$(nproc)"
       - name: Test
-        run: ctest --test-dir build/ci --output-on-failure --no-tests=error
+        run: ./scripts/verify_tests.py --build-dir build/ci --no-build --ctest
+      - name: Save test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tests-${{ strategy.job-index }}
+          path: output/tests/
+          retention-days: 14
 
   asan:
     name: ASan and UBSan

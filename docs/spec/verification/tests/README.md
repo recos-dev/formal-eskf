@@ -39,11 +39,23 @@ bound sources fail reconciliation; an explicitly disabled optional CMSIS adapter
 is reported as `Not selected`. Required scalar/macro/backend profile coverage is
 reviewed against [profiles](profiles.md), not inferred from the discovered registry.
 
+CI builds each selected compiler/macro configuration, then runs
+`./scripts/verify_tests.py --build-dir build/ci --no-build --ctest`. The `--ctest`
+option also runs CTest targets not already handled by the case plan, including
+replay, PX4 component and tool tests. Selection comes from the CTest inventory;
+there is no separate target list and no duplicate execution of planned targets.
+Additional CTest results are recorded separately in `report.json` and `ctest.log`;
+their failures also fail the command. This option cannot be combined with
+`--case` or `--list`. CI retains the test reports and logs for 14 days; release
+acceptance must retain its selected evidence separately. ASan/UBSan continues to
+run its own instrumented CTest suite.
+
 Execution results and acceptance are separate: `Partial` bindings retain numerical,
 contract or source-evidence gaps even when their executable checks pass. `Analysis`
-and `Delegated` obligations are not executable passes. This runner covers the
-configured native core/runtime profile; integration, tool self-tests, formal proofs
-and deployment qualification keep their own runners.
+and `Delegated` obligations are not executable passes. Planned-case totals cover
+the configured native core/runtime profile. Additional CTest targets retain their
+own scope and do not count toward those totals. Formal proofs and deployment
+qualification keep their own runners.
 
 ## Scope inventory
 

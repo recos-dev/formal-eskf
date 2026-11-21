@@ -160,7 +160,25 @@ def execute_case(TEST, TIMEOUT, LOG_FILE):
             "passed": PASSED, "exit_code": CODE, "log": str(LOG_FILE)}
 
 
-def write_report(LOG_DIR, PLAN, RESULTS, ERRORS, ELAPSED, BUILD_DIR, TESTS, BUILD_PERFORMED, NOT_SELECTED):
+def run_remaining_tests(CTEST, TESTS, BUILD_DIR, TIMEOUT, LOG_DIR):
+    PLANNED_TARGETS = {TEST["name"] for TEST in TESTS}
+    TARGETS = sorted({TEST["name"] for TEST in CTEST.get("tests", [])} - PLANNED_TARGETS)
+    if not TARGETS:
+        print("\nCTest: no additional targets")
+        return None
+    PATTERN = "^(" + "|".join(re.escape(NAME) for NAME in TARGETS) + ")$"
+    COMMAND = ["ctest", "--test-dir", str(BUILD_DIR), "--output-on-failure", "--no-tests=error",
+               "--timeout", str(TIMEOUT), "-R", PATTERN]
+    print(f"\nCTest: {len(TARGETS)} targets outside the case plan", flush=True)
+    CODE, OUTPUT = run_command(COMMAND, REPO_DIR, TIMEOUT * len(TARGETS) + 30)
+    LOG_FILE = LOG_DIR / "ctest.log"
+    LOG_FILE.write_text(OUTPUT)
+    print(OUTPUT, end="" if OUTPUT.endswith("\n") else "\n", flush=True)
+    return {"targets": TARGETS, "exit_code": CODE, "log": str(LOG_FILE)}
+
+
+def write_report(LOG_DIR, PLAN, RESULTS, ERRORS, ELAPSED, BUILD_DIR, TESTS, BUILD_PERFORMED,
+                 NOT_SELECTED, ADDITIONAL_CTEST=None):
     CODE, HEAD = run_command(["git", "rev-parse", "HEAD"], REPO_DIR, 30)
     _, STATUS = run_command(["git", "status", "--short"], REPO_DIR, 30)
     FILES = set(PLAN_DIR.rglob("*.md"))
@@ -178,7 +196,8 @@ def write_report(LOG_DIR, PLAN, RESULTS, ERRORS, ELAPSED, BUILD_DIR, TESTS, BUIL
               "freshness": "Build executed" if BUILD_PERFORMED else "Existing binaries; source freshness not checked",
               "file_sha256": HASHES, "plan": PLAN,
               "not_selected_sources": NOT_SELECTED,
-              "results": RESULTS, "errors": ERRORS, "elapsed_seconds": ELAPSED}
+              "results": RESULTS, "errors": ERRORS, "additional_ctest": ADDITIONAL_CTEST,
+              "elapsed_seconds": ELAPSED}
     (LOG_DIR / "report.json").write_text(json.dumps(REPORT, indent=2) + "\n")
 
 
@@ -197,9 +216,12 @@ def main():
     PARSER.add_argument("--timeout", type=float, default=180, help="seconds per case or registry command")
     PARSER.add_argument("--case", action="append", default=[], help="run only these IDs after full registry checks")
     PARSER.add_argument("--list", action="store_true", help="list reconciled case/profile registrations")
+    PARSER.add_argument("--ctest", action="store_true", help="also run remaining CTest targets (replay, PX4 and tools)")
     ARGS = PARSER.parse_args()
     if ARGS.jobs < 1 or not math.isfinite(ARGS.timeout) or ARGS.timeout <= 0:
         PARSER.error("jobs and timeout must be positive")
+    if ARGS.ctest and (ARGS.case or ARGS.list):
+        PARSER.error("--ctest cannot be combined with --case or --list")
     START = time.monotonic()
     BUILD_DIR = ARGS.build_dir.resolve()
     OUTPUT_DIR = REPO_DIR / "output/tests"
@@ -224,7 +246,8 @@ def main():
         if CODE:
             raise ValueError(f"CTest inventory failed ({CODE}): {OUTPUT}")
         (LOG_DIR / "ctest.json").write_text(OUTPUT)
-        TESTS, ERRORS, NOT_SELECTED = collect_tests(json.loads(OUTPUT), PLAN, BUILD_DIR, ARGS.timeout, LOG_DIR)
+        CTEST = json.loads(OUTPUT)
+        TESTS, ERRORS, NOT_SELECTED = collect_tests(CTEST, PLAN, BUILD_DIR, ARGS.timeout, LOG_DIR)
         for ERROR in ERRORS:
             print(f"[Missing] {ERROR}")
         for ITEM in NOT_SELECTED:
@@ -243,6 +266,7 @@ def main():
             print(f"{COLOR}[{'Pass' if RESULT['passed'] else 'Fail'}]{NO_COLOR} {LABEL}", flush=True)
             if not RESULT["passed"]:
                 print(f"  Log: {RESULT['log']}")
+        ADDITIONAL_CTEST = run_remaining_tests(CTEST, TESTS, BUILD_DIR, ARGS.timeout, LOG_DIR) if ARGS.ctest else None
         PASS_COUNT = sum(RESULT["passed"] for RESULT in RESULTS)
         FAIL_COUNT = len(RESULTS) - PASS_COUNT
         PARTIAL = sum(CASE["kind"] == "Partial" for CASE in PLAN.values())
@@ -254,8 +278,10 @@ def main():
               f"{GAP_COLOR}{len(ERRORS)} registration gaps{NO_COLOR}")
         print(f"Design: {len(PLAN)} IDs; {PARTIAL} partial acceptance, {NON_EXECUTABLE} analysis/delegated obligations")
         print(f"Total elapsed: {ELAPSED:.1f} s\nReport: {LOG_DIR / 'report.json'}")
-        write_report(LOG_DIR, PLAN, RESULTS, ERRORS, ELAPSED, BUILD_DIR, TESTS, not ARGS.no_build, NOT_SELECTED)
-        return 2 if ERRORS else int(FAIL_COUNT != 0)
+        write_report(LOG_DIR, PLAN, RESULTS, ERRORS, ELAPSED, BUILD_DIR, TESTS, not ARGS.no_build,
+                     NOT_SELECTED, ADDITIONAL_CTEST)
+        CTEST_FAILED = ADDITIONAL_CTEST is not None and ADDITIONAL_CTEST["exit_code"] != 0
+        return 2 if ERRORS else int(FAIL_COUNT != 0 or CTEST_FAILED)
     except (ValueError, OSError, KeyError) as ERROR:
         print(f"error: {ERROR}\nLogs: {LOG_DIR}", file=sys.stderr)
         return 2

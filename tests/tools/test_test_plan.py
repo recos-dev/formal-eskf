@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import re
 import sys
 import tempfile
 import unittest
@@ -149,6 +150,52 @@ class TestPlan(unittest.TestCase):
         SELF.assertIn(str(Path(RUNNER.__file__).resolve()), AFTER["file_sha256"])
         for FILE in (HEADER, SUPPORT):
             SELF.assertNotEqual(BEFORE["file_sha256"][str(FILE)], AFTER["file_sha256"][str(FILE)])
+        SELF.assertIsNone(AFTER["additional_ctest"])
+
+    def test_remaining_ctest_targets_do_not_repeat_planned_targets(SELF):
+        INVENTORY = {"tests": [{"name": NAME} for NAME in ("planned", "planned.extra", "replay[0]+(case)")]}
+        PLANNED = [{"name": "planned", "profile": PROFILE} for PROFILE in ("binary32", "binary64")]
+        for CODE in (0, 8):
+            with patch.object(RUNNER, "run_command", return_value=(CODE, "CTest output\n")) as COMMAND, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                RESULT = RUNNER.run_remaining_tests(INVENTORY, PLANNED, SELF.ROOT, 10, SELF.ROOT)
+            SELF.assertEqual(RESULT["targets"], ["planned.extra", "replay[0]+(case)"])
+            SELF.assertEqual(RESULT["exit_code"], CODE)
+            SELF.assertEqual(Path(RESULT["log"]).read_text(), "CTest output\n")
+            ARGS = COMMAND.call_args.args[0]
+            PATTERN = ARGS[ARGS.index("-R") + 1]
+            for NAME in RESULT["targets"]:
+                SELF.assertIsNotNone(re.search(PATTERN, NAME))
+            for NAME in ("planned", "planned.extra.more", "prefix.replay[0]+(case)"):
+                SELF.assertIsNone(re.search(PATTERN, NAME))
+            SELF.assertIn("--no-tests=error", ARGS)
+            SELF.assertEqual(ARGS[ARGS.index("--timeout") + 1], "10")
+        with patch.object(RUNNER, "run_command") as COMMAND, contextlib.redirect_stdout(io.StringIO()):
+            SELF.assertIsNone(RUNNER.run_remaining_tests({"tests": [{"name": "planned"}]},
+                                                       PLANNED, SELF.ROOT, 10, SELF.ROOT))
+            COMMAND.assert_not_called()
+
+    def test_remaining_ctest_failure_fails_main_and_is_reported(SELF):
+        SELF.CTEST["tests"].append({"name": "replay", "command": ["replay-executable"]})
+        RESPONSES = [(0, json.dumps(SELF.CTEST)), (0, f"{ID} binary64\n"),
+                     (0, f"RUN {ID} binary64\nPASS {ID} binary64\n"), (8, "Replay failed\n")]
+        with patch.object(RUNNER, "REPO_DIR", SELF.ROOT), \
+                patch.object(RUNNER, "read_plan", return_value=SELF.PLAN), \
+                patch.object(RUNNER, "run_command", side_effect=RESPONSES), \
+                patch.object(RUNNER, "write_report") as REPORT, \
+                patch.object(sys, "argv", ["verify_tests.py", "--no-build", "--build-dir", str(SELF.ROOT), "--ctest"]), \
+                contextlib.redirect_stdout(io.StringIO()):
+            SELF.assertEqual(RUNNER.main(), 1)
+        SELF.assertEqual(REPORT.call_args.args[-1]["exit_code"], 8)
+        SELF.assertEqual(REPORT.call_args.args[-1]["targets"], ["replay"])
+        SELF.assertTrue(REPORT.call_args.args[2][0]["passed"])
+
+    def test_ctest_option_rejects_partial_selection(SELF):
+        for ARGUMENTS in (["--list"], ["--case", ID]):
+            with patch.object(sys, "argv", ["verify_tests.py", "--ctest", *ARGUMENTS]), \
+                    contextlib.redirect_stderr(io.StringIO()), SELF.assertRaises(SystemExit) as ERROR:
+                RUNNER.main()
+            SELF.assertEqual(ERROR.exception.code, 2)
 
     def test_disabled_missing_and_unresolved_are_not_passes(SELF):
         SELF.CTEST["tests"][0]["properties"].append({"name": "DISABLED", "value": True})

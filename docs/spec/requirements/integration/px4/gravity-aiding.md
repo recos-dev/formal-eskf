@@ -8,7 +8,10 @@
 
 **Parent:** [SW-PX4](../../software/px4-estimation.md).
 
-**Uses:** [R-ACCELEROMETER-SAMPLING](../../runtime/gravity/sampling.md), [R-ACCELEROMETER-FUSION](../../runtime/gravity/fusion.md), [PX4-CONFIG](configuration.md), [R-PX4-DELAYED-FUSION](delayed-fusion.md).
+**Uses:** [R-ACCELEROMETER-SAMPLING](../../runtime/gravity/sampling.md),
+[R-ACCELEROMETER-FUSION](../../runtime/gravity/fusion.md),
+[R-TILT-ALIGNMENT](../../runtime/tilt-alignment.md),
+[PX4-CONFIG](configuration.md), [R-PX4-DELAYED-FUSION](delayed-fusion.md).
 
 ## Required behavior
 
@@ -20,9 +23,8 @@ accel period. Historical `vehicle_land_detected.at_rest` (strictly less than 2 s
 old at the delayed horizon, known at its retained IMU context and not future)
 provides the rest override; missing/stale rest is false. Horizontal aiding is the
 actual GNSS position/velocity lifecycle activity, not merely a valid fix.
-Tilt alignment latches when the NED roll/pitch variance sum is below (3°)²;
-the estimator owns this latch independently of the gravity sampler and enablement,
-and module alignment flags expose it. Clipping is ORed across intervals.
+The estimator owns the R-TILT-ALIGNMENT latch independently of the gravity sampler
+and enablement, and module alignment flags expose it. Clipping is ORed across intervals.
 Rejected IMU samples and small gaps clear partial samples and LPF history;
 synthetic holds never enter the sampler. Existing restart-required identity,
 calibration and large-gap faults terminate the session before further sampling.

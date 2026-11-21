@@ -2416,6 +2416,18 @@
           {
             "file": "docs/spec/requirements/math/linalg/operations.md",
             "symbol": "## Shared derived operations"
+          },
+          {
+            "file": "docs/spec/requirements/math/linalg/operations.md",
+            "symbol": "#### Checked normalization"
+          },
+          {
+            "file": "docs/spec/requirements/math/linalg/operations.md",
+            "symbol": "#### Finite inspection and maximum magnitude"
+          },
+          {
+            "file": "docs/spec/requirements/math/linalg/operations.md",
+            "symbol": "#### Symmetry"
           }
         ],
         "lean": [
@@ -4594,12 +4606,16 @@
     },
     {
       "id": "R-ACCELEROMETER-CONDITIONS",
-      "title": "Gravity-fusion predicate and inductive tilt latch verified; rest/aiding producers and horizon correspondence remain separate",
+      "title": "Gravity-fusion predicate and covariance-based tilt latch; numerical and caller obligations remain separate",
       "references": {
         "spec": [
           {
             "file": "docs/spec/requirements/runtime/gravity/conditions.md",
             "symbol": "# R-ACCELEROMETER-CONDITIONS: gravity-fusion prerequisites"
+          },
+          {
+            "file": "docs/spec/requirements/runtime/tilt-alignment.md",
+            "symbol": "# R-TILT-ALIGNMENT: Covariance-based tilt alignment latch"
           },
           {
             "file": "docs/spec/requirements/integration/replay/gravity-conditions.md",

@@ -38,8 +38,9 @@ their existing subrequirements under SW-CORE; those meaningful subgroups do not
 require equivalent extra levels elsewhere.
 
 Common and mathematical requirements remain shared contracts. E-STATE,
-R-MEASUREMENT-FUSION and R-RING-BUFFER also remain shared roots: state conventions,
-a generic gated transaction and storage behavior serve multiple capabilities.
+R-MEASUREMENT-FUSION, R-RING-BUFFER and R-TILT-ALIGNMENT also remain shared roots:
+state conventions, a generic gated transaction, storage and alignment history
+serve multiple callers.
 Their absence of a Parent does not waive evidence obligations. Integration
 requirements use portable contracts without becoming their children; in particular,
 PX4 two-source height management does not inherit the GNSS-only height profile.
@@ -133,6 +134,7 @@ decisions remain governed by each requirement's Status.
 | `R-MAGNETOMETER-FILTER` | [magnetic data for heading reset](requirements/runtime/magnetic/reset-filter.md) |
 | `R-MEASUREMENT-FUSION` | [gated correction of one observation group](requirements/runtime/measurement-fusion.md) |
 | `R-RING-BUFFER` | [Fixed-capacity timestamped history](requirements/runtime/ring-buffer.md) |
+| `R-TILT-ALIGNMENT` | [Covariance-based tilt alignment latch](requirements/runtime/tilt-alignment.md) |
 
 ## Integration requirements
 

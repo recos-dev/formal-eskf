@@ -48,11 +48,11 @@ and deployment qualification keep their own runners.
 | Common | 6 | 1 | Failure/domain/numerical/language/layer contracts; Status. |
 | Math | 16 | 15 | Scalar, fixed-size linalg/adapters, quaternion and SO(3). |
 | ESKF core | 21 | 21 | State, prediction, correction, observations and transactions, including generated kernels. |
-| Portable runtime | 22 | 13 | Admission, health, lifecycle, reset/fusion orchestration and fixed-capacity storage. |
+| Portable runtime | 23 | 13 | Admission, health, lifecycle, alignment, reset/fusion orchestration and fixed-capacity storage. |
 | Software capabilities | 5 | Shared above | SW-CORE, SW-GNSS, SW-GRAVITY, SW-IMU and SW-MAGNETIC compositions. |
-| **Total** | **70** | **50** | Inventory denominator, not proof/test completion. |
+| **Total** | **71** | **50** | Inventory denominator, not proof/test completion. |
 
-The 70 IDs include parent and child requirement documents. They are not 70
+The 71 IDs include parent and child requirement documents. They are not 71
 independent passing claims, and parent/child evidence must not be added together
 to manufacture a completion percentage.
 
@@ -88,7 +88,7 @@ the canonical equations.
 | [GNSS and navigation](runtime/gnss-navigation.md) | R-MEASUREMENT-FUSION, R-GNSS-QUALITY, R-GNSS-FUSION, R-GNSS-RESET, R-GNSS-VERTICAL-RECOVERY; SW-GNSS. |
 | [Gravity and IMU](runtime/gravity-imu.md) | R-ACCELEROMETER-MAGNITUDE, R-ACCELEROMETER-SAMPLING, R-ACCELEROMETER-CONDITIONS, R-ACCELEROMETER-FUSION, R-IMU-BIAS-INHIBITION, R-IMU-PROCESS-NOISE, R-BIAS-PROCESS-NOISE, R-BIAS-LIMITS, R-VERTICAL-ACCELERATION; SW-GRAVITY, SW-IMU. |
 | [Magnetic aiding](runtime/magnetic.md) | R-MAGNETIC-REFERENCE, R-MAGNETIC-FIELD, R-MAGNETIC-HEADING, R-MAGNETOMETER-FILTER, R-MAGNETOMETER-FUSION, R-MAGNETOMETER-RESET, R-MAGNETOMETER-LIFECYCLE; SW-MAGNETIC. |
-| [Storage and alignment](runtime/storage-alignment.md) | R-RING-BUFFER; TiltAlignment candidate cases with incomplete ownership under R-ACCELEROMETER-CONDITIONS, not a new approved requirement. |
+| [Storage and alignment](runtime/storage-alignment.md) | R-RING-BUFFER, R-TILT-ALIGNMENT; existing alignment test IDs retain their R-ACCELEROMETER-CONDITIONS prefix. |
 
 ## What completeness means here
 
@@ -122,8 +122,7 @@ without mapped, reviewed bindings and a matching build/profile record.
 | Gap | Required action |
 |---|---|
 | Numerical criteria | Define bounded input/conditioning domains and error budgets for general libm, reductions, SO(3), covariance, solve, filter and repeated-operation cases. Exact fixtures/status/state-machine cases can proceed independently. |
-| Derived linalg contracts | Clarify canonical normalization, symmetry and nonfinite max_abs behavior identified in the math family; proposed source bindings remain Draft. |
-| TiltAlignment ownership | Extract/clarify its behavior currently partly described in gravity-condition evidence prose, including construction/reconstruction, accessors and input premises. Keep the candidate binding under R-ACCELEROMETER-CONDITIONS unapproved; it is not accepted normative coverage. |
+| Contract approval | Review the clarified [F-LINALG derived clauses](../../requirements/math/linalg/operations.md#shared-derived-operations) and [R-TILT-ALIGNMENT](../../requirements/runtime/tilt-alignment.md), alongside the other Draft requirements. Explicit ownership and passing bindings do not approve the contracts or close their general numerical budgets. |
 | Publicly unreachable failure inputs | Select a legitimate seam or scoped source proof for malformed private quaternion states and controlled producer failures. Do not fabricate objects through layout casts. |
 | Observation of call order | Select passive instrumentation/source evidence where output equality cannot prove a callee was skipped or which arguments it consumed. Actual body tests remain required. |
 | Supported instance/target limits | Bind capacities, generic sizes, FTZ/FMA behavior, dependencies and resource budgets to explicit profiles. Non-10000-us AccelerometerSample instantiations need an extended cadence contract. No universal maximum or host-to-target acceptance is implied. |

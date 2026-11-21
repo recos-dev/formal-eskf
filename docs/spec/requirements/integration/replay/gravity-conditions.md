@@ -8,7 +8,8 @@
 
 **Parent:** [SW-REPLAY](../../software/replay-aiding.md).
 
-**Uses:** [R-ACCELEROMETER-CONDITIONS](../../runtime/gravity/conditions.md).
+**Uses:** [R-ACCELEROMETER-CONDITIONS](../../runtime/gravity/conditions.md),
+[R-TILT-ALIGNMENT](../../runtime/tilt-alignment.md).
 
 ## Required behavior
 
@@ -18,9 +19,8 @@ the full GNSS qualification/reset controller. `fusion_conditions.csv` records
 raw-tick conditions; interval observations and correction outcomes are recorded
 separately as specified in [R-REPLAY-GRAVITY-SAMPLING](gravity-sampling.md).
 
-- Derive tilt uncertainty from this estimator, never a logged EKF status:
-  `P_theta_n = R_nb * P_theta_b * R_nb^T`, using INS covariance rows/columns 6..8.
-  Latch alignment when `P_theta_n(0,0)+P_theta_n(1,1) < (3*pi/180)^2`.
+- Derive tilt uncertainty from this estimator through R-TILT-ALIGNMENT, never
+  a logged EKF status, using INS covariance rows/columns 6..8.
   Evaluate tilt on the predicted prior before that tick's navigation corrections.
   A new replay resets the latch; subsequent variance growth does not clear it.
   A constructed quaternion alone is not alignment. Unit attitude and PSD

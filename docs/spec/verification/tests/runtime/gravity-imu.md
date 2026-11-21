@@ -41,7 +41,7 @@ oracle column. The case tables identify executable bindings and remaining accept
 | `imu.hpp`: `ImuBiasInhibition` parameterized construction/update and result permissions | `TC-R-IMU-BIAS-INHIBITION-01` through `04` |
 | `imu.hpp`: `select_imu_process_noise`, `inhibit_bias_process_noise`, `limit_bias` and parameter records | Process-noise/bias rows below |
 | `vertical_acceleration_health.hpp`: constructor/reset/state/update and observation-slot records | `TC-R-VERTICAL-ACCELERATION-01` through `07` |
-| `tilt_alignment.hpp` | Ownership gap and candidate acceptance cases in [storage and alignment](storage-alignment.md) |
+| `tilt_alignment.hpp` | R-TILT-ALIGNMENT cases in [storage and alignment](storage-alignment.md#tilt-alignment) |
 | Portable SW-GRAVITY / SW-IMU compositions | Capability cases below; no module/replay sequence coverage claimed |
 
 ## Gravity sampling and eligibility
@@ -106,9 +106,9 @@ oracle column. The case tables identify executable bindings and remaining accept
 - Non-10000-us `AccelerometerSample` template instantiations are legal C++ but
   have no complete behavioral requirement here. Their cadence/rounding acceptance
   needs an explicit requirement extension before coverage is claimed.
-- TiltAlignment's partial specification and candidate tests are recorded in
+- TiltAlignment's separate contract and numerical acceptance limits are recorded in
   [storage and alignment](storage-alignment.md); successful condition/fusion
-  tests must supply a caller-established alignment premise in the meantime.
+  tests consume a caller-established alignment flag and do not verify its producer.
 - Physical rest, observability, fault detection sensitivity, clipping metadata
   truth and flight accuracy need deployment evidence. Passing deterministic
   policy tests does not establish those properties.

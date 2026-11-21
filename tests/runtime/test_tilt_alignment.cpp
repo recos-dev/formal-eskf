@@ -22,8 +22,8 @@ using formal_eskf::Status;
 using formal_eskf::test::Case;
 using formal_eskf::test::Context;
 
-// Candidate behavior from R-ACCELEROMETER-CONDITIONS' evidence paragraph.
-// Running these tests does not approve the missing standalone producer contract.
+// R-TILT-ALIGNMENT owns these cases; retain their established test IDs.
+// Running these tests does not approve the Draft requirement.
 template <typename Scalar> void geometry(Context & test, std::string_view profile)
 {
     using Backend = formal_eskf::test::Backend<Scalar>;

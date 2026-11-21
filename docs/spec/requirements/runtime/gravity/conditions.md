@@ -47,18 +47,14 @@ separate Lean state-machine theorem is needed for this predicate. Actual
 rest/aiding producers and sample/horizon correspondence retain their own
 obligations; the portable fusion composition is specified by [R-ACCELEROMETER-FUSION](fusion.md).
 
-`TiltAlignment` has its own initialized inductive proof: finite nonnegative
-stored variance and a monotone alignment latch, with both fields preserved on
-failure. ESBMC checks the actual source in both formats, consuming the exact-type
-rotation and 3x3 product frame contracts. Observers bind `R_nb * P_theta_b * R_nbᵀ`,
-all operands and call order; the real transpose and all finite/negative checks
-remain inline. Success stores precisely the N/E diagonal sum and applies the
-strict encoded `(pi/60)^2` threshold. Numerical outputs may be arbitrary IEEE
-values, so overflow/nonfinite/negative-result paths are retained. Lean separately
-proves the real tilt projection's nonnegativity, trace decomposition/bound and
-identity-frame formula under PSD covariance. It does not establish the truth
-of covariance-based attitude confidence, floating-point PSD, or target libraries.
+The optional covariance-based alignment producer is specified by
+[R-TILT-ALIGNMENT](../tilt-alignment.md). Its initialization, latch, projection
+and failure semantics are separate from this predicate. The caller shall supply
+an alignment flag appropriate to its session and horizon; this stateless
+function neither requires ownership of a `TiltAlignment` object nor checks
+the supplied flag against covariance.
 
 ## Caller bindings
 
 - Replay condition sources (host demo): [R-REPLAY-GRAVITY-CONDITIONS](../../integration/replay/gravity-conditions.md).
+- Delayed PX4 binding: [R-PX4-GRAVITY](../../integration/px4/gravity-aiding.md).

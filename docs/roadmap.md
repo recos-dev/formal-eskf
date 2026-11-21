@@ -139,7 +139,10 @@ reconciliation and local evidence. Integration remains outside this allocation.
 Remaining work:
 
 1. Review and approve applicable requirements, test partitions and numerical
-   acceptance criteria; retain unresolved owners and general error budgets.
+   acceptance criteria. Derived linalg behavior is owned by
+   [F-LINALG](spec/requirements/math/linalg/operations.md#shared-derived-operations);
+   alignment history is owned by [R-TILT-ALIGNMENT](spec/requirements/runtime/tilt-alignment.md).
+   Both remain Draft; general numerical error budgets remain open.
 2. Review required scalar/backend/macro profiles and structural coverage gaps.
    Discovered case IDs and source labels alone do not prove profile completeness.
 3. Integrate native results with the formal/agent evidence schema and release

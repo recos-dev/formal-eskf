@@ -6,9 +6,8 @@
 operation. IMU-history owners, delayed observation/context queues, output
 predictors, height owners and module/replay wiring are outside this design.
 
-**Level and purpose:** Storage unit/sequence tests, compile-time API checks and
-bounded-resource inspection; candidate alignment unit cases with an explicit
-requirement-ownership gap. Existing tests are not used as design input.
+**Level and purpose:** Storage/alignment unit and sequence tests, compile-time API
+checks and bounded-resource inspection. Existing tests are not used as design input.
 
 **Profiles:** Follow [shared profiles and oracle rules](../profiles.md).
 Storage is scalar/backend-independent; use capacities 1, 2, 3, 8 and 257, and
@@ -56,28 +55,25 @@ the case tables identify executable bindings and remaining acceptance gaps.
 | TC-R-RING-BUFFER-10 | Same, combined bounded operation sequences | Enumerate bounded push/pop/reset/allocate sequences at small capacities; use deterministic longer seeded sequences at larger capacities with legal timestamp/alias premises. Compare after every operation, including empty→full→wrap→empty transitions. | List model and ring invariants agree at every step; oldest/newest and all live payloads match, inactive time tags zero, count/index bounded. Paired known-answer cases above prevent a mutually wrong model. Detects interaction defects missed by isolated operations. | Native: [test_ring_buffer.cpp](../../../../../tests/runtime/test_ring_buffer.cpp) |
 | TC-R-RING-BUFFER-11 | Same, fixed storage and bounded work | Compile/inspect instantiated buffer operations, instrument bounded payload copies, and run host allocation detection across allocation/push/pop/reset. Inspect loops and forbidden dependencies. | No heap allocation/locks/logging in buffer operations; push bounded O(1), pop/reset at most capacity-dependent bounded work; stored Sample obeys its own bounded-copy contract. Source evidence, not host wall time, supports complexity; target WCET/stack budget remains separate. Detects accidental dynamic storage or unbounded work. | Partial: [test_ring_buffer.cpp](../../../../../tests/runtime/test_ring_buffer.cpp); bounded-copy observations and source inspection; host heap instrumentation belongs to the shared resource profile, no target WCET claim |
 
-## Alignment ownership and candidate acceptance
+## Tilt alignment
 
-`TiltAlignment` is an exposed portable API, but its behavior currently appears
-in a proof/evidence paragraph appended to
-[R-ACCELEROMETER-CONDITIONS](../../../requirements/runtime/gravity/conditions.md),
-the requirement's separate stateless eligibility predicate.
-The following cases retain this visible behavior for review; they do not create
-new normative requirements. Before approving these cases, put the alignment
-producer's contract in an explicit requirement and rebind their IDs/trace links
-without losing review history. Current default values/public constant are source
-observations requiring that approval, not facts inferred from existing tests.
+[R-TILT-ALIGNMENT](../../../requirements/runtime/tilt-alignment.md) owns the
+producer's construction, projection, threshold, latch and failure behavior.
+The existing test IDs retain their R-ACCELEROMETER-CONDITIONS prefix for stable
+identity; their requirement owner is now explicit below. This does not expand
+the stateless gravity predicate or count these tests twice. The requirement
+remains Draft; native execution does not approve it.
 
 | Case ID | Requirement / clause | Conditions, inputs and action | Expected result and independent oracle | Executable test |
 |---|---|---|---|---|
-| TC-R-ACCELEROMETER-CONDITIONS-03 | R-ACCELEROMETER-CONDITIONS, alignment evidence paragraph; ownership pending | Construct; query aligned/variance; update identity and tilted unit q with anisotropic PSD P and nonzero cross terms; re-read accessors. | Candidate contract: initial false latch/zero diagnostic; variance is N/E diagonal sum of independent `R P R^T`; queries pure. Protects against body-frame diagonal sum and unintended alignment merely from default zero variance. | Partial: [test_tilt_alignment.cpp](../../../../../tests/runtime/test_tilt_alignment.cpp); candidate producer contract ownership remains pending |
-| TC-R-ACCELEROMETER-CONDITIONS-04 | Same, strict threshold and sticky latch | Independently construct variance below/equal/above encoded `(pi/60)^2` where reachable; above→below→above sequence; reconstruct new owner. | Candidate contract: strict inequality acquires once, later high variance updates diagnostic but not latch; new object clears latch. No public reset method is assumed. Detects inclusive boundary and accidental unlatching. | Partial: [test_tilt_alignment.cpp](../../../../../tests/runtime/test_tilt_alignment.cpp); candidate producer contract ownership remains pending |
-| TC-R-ACCELEROMETER-CONDITIONS-05 | Same, failure frame | Nonfinite consumed P, finite rotated arithmetic overflow, negative computed N/E diagonal through an explicitly admitted invalid-input profile; malformed q through public underflow/multiplication fixtures in the declared host profile. | Candidate contract: exact nonfinite/domain status, both diagnostic/latch unchanged on failure, borrowed inputs pure. Symmetric PSD/unit q remain success premises. Native tests do not bypass UnitQuaternion construction. Detects diagnostic publication before validation. | Partial: [test_tilt_alignment.cpp](../../../../../tests/runtime/test_tilt_alignment.cpp); candidate producer contract ownership remains pending; malformed values use public construction and multiplication |
+| TC-R-ACCELEROMETER-CONDITIONS-03 | R-TILT-ALIGNMENT, initialization, observations and projection | Construct; query aligned/variance; update identity and tilted unit q with anisotropic PSD P and nonzero cross terms; re-read accessors. | Initial false latch/zero diagnostic; variance is N/E diagonal sum of independent `R P R^T`; queries pure. Protects against body-frame diagonal sum and unintended alignment merely from default zero variance. | Partial: [test_tilt_alignment.cpp](../../../../../tests/runtime/test_tilt_alignment.cpp); exact and independently enclosed fixtures; general rotation/product error budget remains open |
+| TC-R-ACCELEROMETER-CONDITIONS-04 | R-TILT-ALIGNMENT, strict threshold and sticky latch | Independently construct variance below/equal/above encoded `(pi/60)^2` where reachable; above→below→above sequence; reconstruct new owner. | Strict inequality acquires once, later high variance updates diagnostic but not latch; new object clears latch. No public reset method is assumed. Detects inclusive boundary and accidental unlatching. | Native: [test_tilt_alignment.cpp](../../../../../tests/runtime/test_tilt_alignment.cpp) |
+| TC-R-ACCELEROMETER-CONDITIONS-05 | R-TILT-ALIGNMENT, validation and failure frame | Nonfinite consumed P, finite rotated arithmetic overflow, negative computed N/E diagonal through an explicitly admitted invalid-input profile; malformed q through public underflow/multiplication fixtures in the declared host profile. | Exact nonfinite/domain status, both diagnostic/latch unchanged on failure, borrowed inputs pure. Symmetric PSD/unit q remain success premises. Native tests do not bypass UnitQuaternion construction. Detects diagnostic publication before validation. | Native: [test_tilt_alignment.cpp](../../../../../tests/runtime/test_tilt_alignment.cpp); malformed values use public construction and multiplication in the declared host profile |
 
 ## Review Pending
 
-- Approve or revise the alignment requirement owner and construction/reset
-  semantics before treating its candidate cases as normative acceptance.
+- Review the Draft R-TILT-ALIGNMENT contract and its numerical profile before
+  accepting a deployment's alignment claim. A latched flag is not an accuracy bound.
 - Review the listed fixture/selector bindings and required profiles before
   accepting results; these documents record design and scope, not executions.
 - Bounded copy/work inspection does not certify a deployment's WCET, total

@@ -376,6 +376,11 @@ template <typename B> void finite(Context & test, std::string_view profile)
     auto const good = Matrix::from_row_major({1, -2, 3, -9, 5, -6});
     test.expect(la::all_finite(good) && la::max_abs(good) == Scalar{9} && la::max_abs(Matrix{}) == Scalar{0}, profile,
                 "independent finite magnitude maximum");
+    Matrix zeros{};
+    zeros(0, 1) = -Scalar{0};
+    auto const zero_max = la::max_abs(zeros);
+    test.expect(zero_max == Scalar{0} && !std::signbit(zero_max), profile,
+                "maximum magnitude of signed zeros is positive zero");
     for (std::size_t index = 0; index < 6; ++index)
     {
         for (Scalar invalid : {std::numeric_limits<Scalar>::quiet_NaN(), std::numeric_limits<Scalar>::infinity(),
@@ -384,15 +389,23 @@ template <typename B> void finite(Context & test, std::string_view profile)
             auto input = good;
             input(index / 3, index % 3) = invalid;
             auto const saved = input;
-            test.expect(!la::all_finite(input) && !std::isfinite(la::max_abs(input)) && same(input, saved), profile,
-                        "any nonfinite position is visible, with input preserved (candidate max_abs binding)");
+            auto const magnitude = la::max_abs(input);
+            bool const classified =
+                std::isnan(invalid) ? std::isnan(magnitude) : magnitude == std::numeric_limits<Scalar>::infinity();
+            test.expect(!la::all_finite(input) && classified && same(input, saved), profile,
+                        "NaN remains NaN and either infinity has positive infinite magnitude; input preserved");
         }
     }
-    auto mixed = good;
-    mixed(0, 0) = std::numeric_limits<Scalar>::infinity();
-    mixed(1, 2) = std::numeric_limits<Scalar>::quiet_NaN();
-    test.expect(!la::all_finite(mixed) && !std::isfinite(la::max_abs(mixed)), profile,
-                "multiple nonfinite entries require classification, not a payload/order choice");
+    for (bool nan_first : {false, true})
+    {
+        auto mixed = good;
+        mixed(0, 0) = nan_first ? std::numeric_limits<Scalar>::quiet_NaN() : -std::numeric_limits<Scalar>::infinity();
+        mixed(1, 2) = nan_first ? -std::numeric_limits<Scalar>::infinity() : std::numeric_limits<Scalar>::quiet_NaN();
+        auto const magnitude = la::max_abs(mixed);
+        test.expect(!la::all_finite(mixed) &&
+                        (std::isnan(magnitude) || magnitude == std::numeric_limits<Scalar>::infinity()),
+                    profile, "mixed faults allow NaN or positive infinity without an ordering guarantee");
+    }
 }
 
 template <typename B> void symmetry(Context & test, std::string_view profile)
@@ -417,7 +430,8 @@ template <typename B> void symmetry(Context & test, std::string_view profile)
     }
     near(0, 1) = Scalar{0};
     near(1, 0) = -Scalar{0};
-    test.expect(la::is_symmetric(near, Scalar{0}), profile, "signed zero pair is symmetric");
+    test.expect(la::is_symmetric(near, Scalar{0}) && la::is_symmetric(near, -Scalar{0}), profile,
+                "signed zero pair is symmetric with either zero tolerance");
     for (std::size_t slot = 0; slot < 4; ++slot)
     {
         for (Scalar invalid : {std::numeric_limits<Scalar>::quiet_NaN(), std::numeric_limits<Scalar>::infinity(),
